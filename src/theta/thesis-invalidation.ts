@@ -1,6 +1,7 @@
 import type { ManagementInputState } from './management-input-state.js';
 import { buildLossStateVector, type LossStateVector } from './loss-state-vector.js';
 import { riskStateSchema } from './aegis-contract.js';
+import { ownershipEvaluationResponseSchema } from './ownership-contract.js';
 
 export const thesisInvalidationVersion = 'theta-thesis-invalidation-v2' as const;
 
@@ -37,6 +38,14 @@ export interface ThesisInvalidationAssessment {
   readonly lossState: LossStateVector;
   readonly originalEntryThesisHash: string | null;
   readonly entryBreakEvenBreached: boolean | null;
+  readonly thesisHealth: {
+    readonly state: 'THESIS_VALID' | 'THESIS_WEAKENED' | 'THESIS_FAILED' | 'THESIS_UNKNOWN';
+    readonly policyVersion: 'theta-management-thesis-health-v1';
+    readonly scope: 'OBSERVED_STRUCTURAL_CONDITIONS_NOT_PROFITABILITY';
+    readonly maxOwnershipAgeMs: 180000;
+    readonly ownershipEvidenceState: 'QUALIFIED' | 'UNKNOWN';
+    readonly reasons: readonly string[];
+  };
 }
 
 function finite(value: number | null): value is number {
@@ -116,7 +125,36 @@ export function assessThesisInvalidation(state: ManagementInputState): ThesisInv
   if (state.context.concentration !== null) uninterpretedSignals.push('PORTFOLIO_CONCENTRATION_PRESENT_UNINTERPRETED');
   if (state.context.sectorCorrelation !== null) uninterpretedSignals.push('SECTOR_CORRELATION_PRESENT_UNINTERPRETED');
 
+  const ownership = ownershipEvaluationResponseSchema.safeParse(state.context.ownershipAssessment);
+  const ownershipAge = ownership.success ? Date.parse(state.observedAt) - Date.parse(ownership.data.timestamp) : NaN;
+  const ownershipQualified = ownership.success && ownership.data.underlyingSymbol === state.underlying
+    && ownership.data.snapshotId === state.evidenceBundle.fusionSnapshotHash
+    && Number.isFinite(ownershipAge) && ownershipAge >= 0 && ownershipAge <= 180_000
+    && ownership.data.ownability !== null
+    && ownership.data.thesisInvalidated === ownership.data.reasons.some(reason => reason.code === 'THESIS_INVALIDATED' && reason.polarity === -1);
+  // A model's false default is not positive thesis assurance. Full structural
+  // coverage is required for VALID. Explicit invalidation requires its named
+  // model reason, not a low score, a loss, or an opaque expert-prior object.
+  const invalidated = ownershipQualified && ownership.success && ownership.data.thesisInvalidated
+    && ownership.data.reasons.some(reason => reason.code === 'THESIS_INVALIDATED' && reason.polarity === -1);
+  if (invalidated) thesisFailureSignals.push('QUALIFIED_OWNERSHIP_THESIS_INVALIDATED');
   const hasThesisFailure = thesisFailureSignals.length > 0;
+  const thesisHealthReasons = [
+    ...(originalThesis === null ? ['ORIGINAL_THESIS_NOT_VERIFIED'] : []),
+    ...(!ownershipQualified ? ['CURRENT_OWNERSHIP_EVIDENCE_UNQUALIFIED'] : []),
+    ...(invalidated ? ['QUALIFIED_OWNERSHIP_THESIS_INVALIDATED'] : []),
+    ...thesisFailureSignals,
+  ];
+  const coverageComplete = originalThesis !== null && ownershipQualified
+    && safeLabels.has(eventLabel ?? '') && safeLabels.has(dividendLabel ?? '')
+    && ['ALLOW_FULL', 'ALLOW_REDUCED'].includes(String(state.context.aegisState))
+    && state.hardBlockers.length === 0 && state.evidenceBundle.timingState === 'VALID'
+    && state.context.assignmentCapacityEvidence.state !== 'UNKNOWN';
+  const thesisHealthState = originalThesis === null ? 'THESIS_UNKNOWN'
+    : invalidated ? 'THESIS_FAILED'
+      : hasThesisFailure ? 'THESIS_WEAKENED'
+        : coverageComplete ? 'THESIS_VALID' : 'THESIS_UNKNOWN';
+  if (!coverageComplete && thesisHealthState === 'THESIS_UNKNOWN') thesisHealthReasons.push('STRUCTURAL_THESIS_COVERAGE_INCOMPLETE');
   const classification: ThesisInvalidationClassification =
     !priceLossKnown && structureBroken === null && !hasThesisFailure ? 'INSUFFICIENT_EVIDENCE'
       : hasThesisFailure && priceLossKnown && (lossDollars as number) > 0 ? 'THESIS_FAILURE_AND_PRICE_LOSS'
@@ -133,5 +171,8 @@ export function assessThesisInvalidation(state: ManagementInputState): ThesisInv
     priceLossKnown, priceLossDollars: lossDollars, priceStructureBroken: structureBroken,
     classification, thesisFailureSignals, uninterpretedSignals, uncertaintyNote, lossState,
     originalEntryThesisHash: originalThesis?.immutableHash ?? null, entryBreakEvenBreached,
+    thesisHealth: { state: thesisHealthState, policyVersion: 'theta-management-thesis-health-v1',
+      scope: 'OBSERVED_STRUCTURAL_CONDITIONS_NOT_PROFITABILITY', maxOwnershipAgeMs: 180000,
+      ownershipEvidenceState: ownershipQualified ? 'QUALIFIED' : 'UNKNOWN', reasons: thesisHealthReasons },
   };
 }

@@ -751,7 +751,11 @@ export class PostgresThetaCycleStore {
           aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
           aegisAssessmentIdentity, releaseIdentity: releaseIdentityPayload,
           empiricalUtilityState: authority.empiricalUtilityState, executionAuthorized: false };
-    const receiptStorage = projectDecisionReceiptForPostgres(receiptPayload);
+    const receiptStorage = projectDecisionReceiptForPostgres({ ...receiptPayload,
+      // Compact typed model output for subsequent management review. Raw
+      // providers and full candidate arrays remain in the canonical archive.
+      managementContext: { ownership: cycle.orchestration?.ownership ?? null },
+    });
     const inserted = await client.query(
       `INSERT INTO trade.decision(decision_id,fusion_snapshot_id,candidate_set_id,selected_candidate_id,decision_kind,action_code,quantity,
          aegis_action,strategy_branch,decided_at,status,explanation_text,explanation_hash,runtime_selected_candidate_ref,

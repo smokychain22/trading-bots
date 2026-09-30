@@ -1,0 +1,147 @@
+[
+  {
+    "id": "4.1",
+    "reviewedBehavior": "Q enumerates exact contracts with collateral, break-even, maximum loss, cost and capital-day economics. Cost absence and empirical EV remain unknown. These are deterministic mechanics, not profitable-trade proof.",
+    "sources": ["src/theta/canonical-strategy-frontier.ts", "src/theta/common-horizon-economics.ts"],
+    "tests": [{"file": "tests/phase3-strategy-economics-formulas.test.ts", "names": [
+      "CLOSED (Phase 3, THETA-Q-CSP-MAXLOSS-NOT-POPULATED): Q single-leg CSP maxLoss now matches the Command 3 formula (strike*multiplier - creditReceived, gross of costs) instead of always being null",
+      "capital-days is first-class on both Q and D economics (capitalDayYield present, computed from real dte)",
+      "Phase 4 missing opening-cost policy stays UNKNOWN rather than becoming zero cost"
+    ]}]
+  },
+  {
+    "id": "4.2",
+    "reviewedBehavior": "H enumerates its 2-5 DTE lattice with near-expiry evidence. Actual frontier enumeration is recorded in provenance without turning synthetic data into realness or granting broker authority.",
+    "sources": ["src/theta/canonical-strategy-frontier.ts"],
+    "tests": [{"file": "tests/canonical-strategy-frontier.test.ts", "names": [
+      "hold-strike evaluates 2-5 DTE near-expiry contracts without treating missing delta as a hard veto",
+      "actual canonical H and D enumeration reaches method provenance without granting realness to fixtures"
+    ]}]
+  },
+  {
+    "id": "4.3",
+    "reviewedBehavior": "D retains two-leg identity, multiplier-correct risk, costs and locked plans. Impossible spread credit is rejected. Bounded pair enumeration is order-invariant and duplicate-safe. Fill simultaneity remains uncalibrated.",
+    "sources": ["src/theta/canonical-strategy-frontier.ts"],
+    "tests": [{"file": "tests/canonical-strategy-frontier.test.ts", "names": [
+      "defined-risk frontier prices both legs with the broker multiplier and keeps the branch research-only",
+      "bounded defined-risk enumeration is invariant to provider contract order",
+      "duplicate D contracts cannot inflate bounded spread pair enumeration",
+      "defined-risk plan records Level 3 MLeg support while remaining locked and non-submittable"
+    ]}, {"file": "tests/phase3-strategy-economics-formulas.test.ts", "names": [
+      "CORE CLAIM (3F): defined-risk maxLoss/maxProfit/breakEven exactly match the documented formula",
+      "defined-risk rejects an impossible credit at or above spread width"
+    ]}]
+  },
+  {
+    "id": "4.4",
+    "reviewedBehavior": "Recovery requires stock inventory. Resident management assembly loads the canonical whole-chain repository sequentially, persists the bound input and passes it to the existing policy. Wait, sale and call alternatives remain distinct. Mocked repository execution is integration proof, not deployed evidence.",
+    "sources": ["src/theta/management-input-state.ts", "src/theta/postgres-whole-chain-components-repository.ts", "src/theta/recovery-state.ts", "src/theta/paper-bootstrap-management-policy.ts"],
+    "tests": [{"file": "tests/management-whole-chain-wiring.test.ts", "names": [
+      "resident management assembly loads canonical whole-chain components sequentially before persisting and evaluating policy",
+      "canonical whole-chain binding rejects identity hash and projection tampering and preserves unknown fees"
+    ]}, {"file": "tests/paper-bootstrap-management-policy.test.ts", "names": [
+      "RECOVERY_WAIT/SELL_STOCK/SELL_CC can EACH win rationally -- no action carries a hidden permanent law over the other two",
+      "past recovery holding cost cannot manufacture an avoidable forward cost or force stock sale"
+    ]}]
+  },
+  {
+    "id": "4.5",
+    "reviewedBehavior": "Covered calls preserve covered share limits, prior losses, remaining inventory and whole-chain call-away economics. Unknown event evidence cannot create false Pareto dominance. Candidate ties are deterministic.",
+    "sources": ["src/theta/covered-call-lattice.ts", "src/theta/paper-bootstrap-management-policy.ts"],
+    "tests": [{"file": "tests/covered-call-lattice.test.ts", "names": [
+      "partial covered-call call-away preserves uncovered inventory and all prior chain losses",
+      "covered-call lattice cannot rank uncovered or malformed contract quantities",
+      "a higher-premium call with unknown event risk cannot Pareto-eliminate a proven-safe call",
+      "covered-call utility ties select the same exact contract under input permutation"
+    ]}]
+  },
+  {
+    "id": "4.6",
+    "reviewedBehavior": "Formula and accounting tests exercise costs, monotonicity, dollars-times-days, realized/unrealized partial exits and the full cash-flow identity. Missing components never become zero. Expected after-cost EV remains explicitly unavailable.",
+    "sources": ["src/theta/whole-chain-economics.ts", "src/theta/whole-chain-component-evidence.ts", "src/theta/common-horizon-economics.ts"],
+    "tests": [{"file": "tests/whole-chain-economics.test.ts", "names": [
+      "partial stock exits preserve realized losses and remaining unrealized P&L together",
+      "missing partial stock exit proceeds cannot disappear behind a known remaining mark",
+      "CASH-FLOW IDENTITY: wholeChainPnl equals the exact sum of every actual leg cash flow, for a full CSP-to-call-away chain"
+    ]}, {"file": "tests/phase3-strategy-economics-formulas.test.ts", "names": [
+      "after-cost EV is always typed null on both Q and D -- delta is never substituted as a probability (STAT-001)",
+      "Phase 4 monotonicity: higher fees and slippage cannot improve cost-adjusted outcomes",
+      "Phase 4 monotonicity: higher collateral cannot improve capital-day efficiency when net premium is unchanged"
+    ]}, {"file": "tests/paper-bootstrap-management-policy.test.ts", "names": [
+      "roll and recovery report dollars times calendar days instead of labeling elapsed days as capital exposure"
+    ]}]
+  },
+  {
+    "id": "4.7",
+    "reviewedBehavior": "All 17 profit-taking challengers execute in offline replay with explicit modeled fill assumptions. Missing continuation models and invalid PIT quotes remain unresolved rather than generating imaginary outcomes.",
+    "sources": ["src/research/profit-taking-replay.ts"],
+    "tests": [{"file": "tests/profit-taking-replay.test.ts", "names": [
+      "all 17 registered challengers execute offline and preserve explicit after-cost fill assumptions",
+      "a missing continuation model remains unresolved, never a zero EV or forced hold",
+      "future evidence and stale BBO cannot create counterfactual fills",
+      "high captured profit can hold when forward economics remain better"
+    ]}]
+  },
+  {
+    "id": "4.8",
+    "reviewedBehavior": "The called shadow-management producer represents profit capture, giveback, remaining reward and recovery alternatives. Persisted position paths exclude future and same-time history, bind history into identity and distinguish call from put economics. These descriptive features never become universal exit rules.",
+    "sources": ["src/theta/shadow-management-policy.ts", "src/theta/position-path-state.ts"],
+    "tests": [{"file": "tests/shadow-management-policy.test.ts", "names": [
+      "a deteriorated 30 percent winner records giveback but still needs a forward model",
+      "unknown peak stays unknown instead of becoming zero giveback",
+      "full premium capture has zero remaining reward without implying an automatic exit"
+    ]}, {"file": "tests/position-path-state.test.ts", "names": [
+      "position path excludes future and same-time history instead of manufacturing a historical peak",
+      "position path hash binds history and stays deterministic under input order permutations",
+      "covered-call path uses stock capital and call breakeven, never put collateral and put breakeven"
+    ]}]
+  },
+  {
+    "id": "4.9",
+    "reviewedBehavior": "One management frontier enumerates lifecycle-specific actions, can select a same-snapshot risk-reducing close, and preserves passive alternatives when evidence is incomplete. Loss alone is not an automatic stop rule. Future capital opportunity costs remain separate from sunk costs.",
+    "sources": ["src/theta/management-action-frontier.ts", "src/theta/paper-bootstrap-management-policy.ts", "src/theta/loss-state-vector.ts"],
+    "tests": [{"file": "tests/management-action-frontier.test.ts", "names": [
+      "CSP management enumerates the full required action surface",
+      "assigned stock compares recovery wait, stock sale, and covered call without forcing a CC",
+      "covered call management exposes hold, close, roll, and call-away",
+      "complete same-snapshot economics can select a risk-reducing CSP close",
+      "incomplete or stale policy evidence cannot displace passive management"
+    ]}]
+  },
+  {
+    "id": "4.10",
+    "reviewedBehavior": "Original entry thesis is loaded with hash, logical decision/snapshot identity and PIT checks. Current thesis health exposes valid/weakened/failed/unknown using qualified structural evidence, never a loss alone or a fabricated profitability assessment. Compact ownership persistence is additionally exercised in disposable PostgreSQL CI.",
+    "sources": ["src/theta/management-entry-thesis.ts", "src/theta/management-input-state.ts", "src/theta/postgres-theta-cycle-store.ts", "src/theta/thesis-invalidation.ts"],
+    "tests": [{"file": "tests/entry-thesis-receipt.test.ts", "names": [
+      "persisted original entry thesis reaches management without rewriting its identity or treating price loss as thesis failure",
+      "original thesis loader rejects missing malformed future mismatched and semantically invalid evidence",
+      "management thesis health evaluates qualified current conditions without equating price loss with failure"
+    ]}]
+  },
+  {
+    "id": "4.11",
+    "reviewedBehavior": "A roll preserves close-old realized loss and only opens a successor after matching actual fill evidence. Partial terminal close never authorizes a successor. Policy uses conservative bid-side opening credit, and capital release is not charged as extra capital.",
+    "sources": ["src/theta/roll-incremental-utility.ts", "src/theta/paper-bootstrap-management-policy.ts"],
+    "tests": [{"file": "tests/broker-fill-lifecycle-router.test.ts", "names": [
+      "terminal partial roll close never authorizes a successor leg",
+      "a confirmed roll close records the old loss without requiring an opening fill",
+      "roll is one atomic close-old plus open-new application and preserves the old loss"
+    ]}, {"file": "tests/paper-bootstrap-management-policy.test.ts", "names": [
+      "ROLL never uses the midpoint as the deterministic new-leg credit -- it uses the bid side",
+      "single roll rejects overflowing known quotes instead of claiming complete economics"
+    ]}]
+  },
+  {
+    "id": "4.12",
+    "reviewedBehavior": "Assignment, expiry and call-away require corresponding broker activity and inventory. Moneyness alone does not confirm assignment. Unknown multiplier or shares remain non-reconcilable. These tests cannot confer broker authorization.",
+    "sources": ["src/theta/management-action-frontier.ts", "src/theta/whole-chain-economics.ts"],
+    "tests": [{"file": "tests/broker-lifecycle-evidence.test.ts", "names": [
+      "moneyness or a disappeared position cannot confirm assignment without broker activity",
+      "broker assignment plus exact stock appearance confirms the full recovery path",
+      "short-put expiry returns to cash only after broker OPEXP evidence",
+      "covered-call assignment confirms call-away only when shares leave the account",
+      "unknown multiplier is non-reconcilable and never defaults to 100",
+      "unknown broker stock quantity never becomes zero during assignment classification"
+    ]}]
+  }
+]

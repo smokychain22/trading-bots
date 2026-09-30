@@ -94,5 +94,13 @@ Replayed frontier hash is
 Source-only corrections above do not retroactively change that evidence.
 
 Phase-3 continuation finding: `proveDecisionDataRoute` in V19 certification
-uses a synthetic local map. It cannot certify the actual Production consumer
-call graph. Keep that audit open until requirement-specific paths are executed.
+used a synthetic local map. Current code labels that declaration-only evidence
+NOT_PROVEN. Reviewed source behaviors now have executed named cases and hashes
+in the separate Phase-3 artifact. This does not confer current-worker L7.
+
+Phase-4 continuation completed whole-chain repository-to-management input-to-
+policy wiring, typed original/current thesis health, symbol-scoped snapshots
+and consistent management capital-day units. The Phase-4 artifact covers twelve
+reviewed source groups with 222 executed tests. Current worker remains d870f29,
+unchanged, so deployment and real-inventory evidence are not silently closed.
+Phase 5 proceeds from the current call graph, not the historical closure label.

@@ -19,9 +19,23 @@ Phase-3 denominator. Current source review disproved several prior assumptions:
 - The lexical/Pareto ordering test duplicated the comparator. It now invokes the
   actual canonical comparator.
 
-CURRENT_PHASE_3_STATE = REQUIREMENT_RECONCILIATION_IN_PROGRESS
+CURRENT_PHASE_3_STATE = REVIEWED_SOURCE_ENGINEERING_COMPLETE_RUNTIME_AND_EMPIRICAL_PENDING
 
 CURRENT_WORKER_PROOF = NOT_CLAIMED_FOR_THESE_CHANGES
+
+The reviewed source denominator is now bound to 13 groups in
+`THETA_PHASE3_REVIEWED_TEST_BINDINGS.json`. The executed artifact records 249
+tests, zero failures and skips, named required cases and current per-file
+hashes. Deterministic canonical replay covers permutation, optional research
+failure, extreme inputs and adjacent observations. It does not certify
+empirical false-reject rates or optimal policy stability.
+
+A provider-free replay of the archived d870f29 cycle changed its old GLOBAL_WAIT
+to SYSTEM_HOLD because unrefreshed candidates did not establish complete
+economic search. That is a cross-source counterfactual result, not a same-SHA
+replay or live-cycle claim. Original archive and original result remain intact.
+The 3.14 source closure permits Phase 4 while retaining runtime alignment and
+empirical behavior as separate evidence requirements.
 
 The active entry selector is `buildCanonicalStrategyFrontier`.
 `resolveCanonicalDecisionAuthority` is its persistence handoff, not another selector.

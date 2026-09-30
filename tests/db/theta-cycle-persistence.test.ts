@@ -111,7 +111,11 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
           alternatives: [{ candidateId: contract.optionSymbol, disposition: 'PASS', evNet: null, returnPerCapitalDay: null, aegisState: null, quantity: 0, executionRecommendedAction: null, rejectionReason: 'EDGE_UNKNOWN' }], ownershipSnapshotId: null,
           regimeSnapshotId: null, executionAuthorized: false, reasonCodes: ['NO_ELIGIBLE_CANDIDATE'], plainEnglishExplanation: 'No candidate qualified.',
           failClosedReason: null, policyVersion: 'test-policy', modelVersions: {} },
-        ownership: null, regime: null,
+        ownership: { contractVersion: 'theta-ownership-runtime-v1', snapshotId: fusion.contentHash,
+          underlyingSymbol: 'SPY', timestamp: now, policyVersion: 'test-ownership', ownability: null,
+          thesisInvalidated: false, reasons: [], components:
+            ['LiquidityQuality', 'StructuralQuality', 'RecoveryQuality', 'TailQuality', 'EventAdjustment']
+              .map(name => ({ name, value: null, status: 'TEST', reasons: [] })) }, regime: null,
         routing,
         thetaQ: { contractVersion: 'theta-q-runtime-v1', fusionSnapshotHash: fusion.contentHash,
           candidates: [{ candidateId: contract.optionSymbol, rank: 1, actionFeasible: false, quantity: 0,
@@ -183,6 +187,8 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     assert.deepEqual(counts.rows[0], { snapshots: 1, candidate_sets: 1, candidates: 1, candidate_reasons: 1, linked_quotes: 1, decisions: 1,
       routes: 1, opportunities: 2, canonical_branches: 5, canonical_candidates: 3 });
     const decisionReceipt = await pool.query(`SELECT receipt_json FROM trade.decision WHERE fusion_snapshot_id=$1`, [first.fusionSnapshotId]);
+    assert.deepEqual(decisionReceipt.rows[0].receipt_json.managementContext.ownership, cycle.orchestration?.ownership,
+      'qualified ownership context must survive the compact decision projection for management loading');
     assert.deepEqual(decisionReceipt.rows[0].receipt_json.releaseIdentity, { sourceSha: 'a'.repeat(40), workerSha: 'b'.repeat(40) },
       'the release identity supplied via the persistence context must reach the persisted decision receipt, no migration required');
     const researchEvidence = await pool.query(`SELECT c.branch::text,c.candidate_ref,c.hard_blockers_json

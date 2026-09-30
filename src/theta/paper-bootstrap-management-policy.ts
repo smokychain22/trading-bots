@@ -7,7 +7,7 @@ import {
   type ManagementActionExecutionEvidence, type ManagementFrontierAction,
   type ManagementPolicyActionValue, type ManagementPolicyEvidence,
 } from './management-action-frontier.js';
-import { buildCommonHorizonComparison, forwardContinuationCashFlow, sunkRealizedEconomics } from './common-horizon-economics.js';
+import { buildCommonHorizonComparison, contractualCapitalDays, forwardContinuationCashFlow, sunkRealizedEconomics } from './common-horizon-economics.js';
 import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incremental-utility.js';
 import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './thesis-invalidation.js';
 import { buildRecoveryState, type BasisSource, type RecoveryState } from './recovery-state.js';
@@ -337,6 +337,15 @@ const UNKNOWN_VALUE: Omit<ManagementPolicyActionValue, 'action'> = {
   executionEvidence: null, reasons: ['DETERMINISTIC_INPUT_INCOMPLETE'],
 };
 
+function rollCapitalDays(state: ManagementInputState, candidate: RollCandidate): number | null {
+  const currentCapital = capitalCommitted(state);
+  const nextCapital = candidate.optionType === 'CALL' ? currentCapital : candidate.strike * candidate.multiplier * candidate.quantity;
+  const before = contractualCapitalDays(currentCapital, state.observedAt, state.contract.expiration);
+  const after = contractualCapitalDays(nextCapital, state.observedAt, candidate.expiration);
+  const difference = before === null || after === null ? null : after - before;
+  return finite(difference) ? difference : null;
+}
+
 const THESIS_FAILURE_CLASSIFICATIONS = new Set<ThesisInvalidationAssessment['classification']>([
   'THESIS_FAILURE_SUSPECTED', 'THESIS_FAILURE_AND_PRICE_LOSS',
 ]);
@@ -358,6 +367,8 @@ function thesisUtilityAdjustment(thesis: ThesisInvalidationAssessment, bias: num
   const reasons = [
     `PRICE_LOSS_KNOWN_${thesis.priceLossKnown}`,
     `THESIS_CLASSIFICATION_${thesis.classification}`,
+    `THESIS_HEALTH_${thesis.thesisHealth.state}`,
+    `ORIGINAL_THESIS_HASH_${thesis.originalEntryThesisHash ?? 'UNAVAILABLE'}`,
     ...(failurePresent ? thesis.thesisFailureSignals : []),
     ...(thesis.uninterpretedSignals.length > 0 ? [`THESIS_UNCERTAINTY_SIGNALS_${thesis.uninterpretedSignals.length}`] : []),
   ];
@@ -386,7 +397,9 @@ function valueForSingleRollCandidate(
   // current-quote dollar boundaries, so the old leg's realized P&L cannot
   // be silently re-added into this roll's forward comparison.
   const forward = forwardContinuationCashFlow({ closeCostDollars: currentMark, openCreditDollars });
-  const netCredit = forward.netCashFlow as number; // complete=true guaranteed: both legs are known here
+  if (!forward.complete || forward.netCashFlow === null || !Number.isFinite(openCreditMidDollars))
+    return { ...base, ...UNKNOWN_VALUE, reasons: ['ROLL_FORWARD_ECONOMICS_INVALID', ...forward.reasons] };
+  const netCredit = forward.netCashFlow;
   const horizon = buildCommonHorizonComparison(state.observedAt, state.economics, state.contract.expiration, [candidate.expiration]);
   const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
   const executionEvidence: ManagementActionExecutionEvidence = {
@@ -400,7 +413,7 @@ function valueForSingleRollCandidate(
   };
   return {
     ...base, expectedFutureValue: null, downsideTailEstimate: null,
-    incrementalCapitalDays: null, executionCostRisk: Math.abs(currentMark) + Math.abs(openCreditDollars) * 0.01,
+    incrementalCapitalDays: rollCapitalDays(state, candidate), executionCostRisk: Math.abs(currentMark) + Math.abs(openCreditDollars) * 0.01,
     opportunityCost: null, uncertainty: null,
     // a net-debit roll never outranks passive HOLD under this bootstrap
     // policy; a suspected thesis failure additionally penalizes extending
@@ -463,7 +476,7 @@ function valueForRollFromCandidates(
     },
   };
   return {
-    ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: best.daysExtended,
+    ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: rollCapitalDays(state, matchedSource),
     executionCostRisk: Math.abs(currentMark) + Math.abs(best.candidate.openCreditDollars ?? 0) * 0.01,
     opportunityCost: null, uncertainty: null,
     // A roll is preferred only when its RollIncrementalUtility clears the
@@ -727,7 +740,7 @@ function valueFor(
       const waitOpportunityCostContribution = recoveryState.forwardOpportunityCostDollars !== null
         ? waitOpportunityCostWeight * recoveryState.forwardOpportunityCostDollars : 0;
       return {
-        ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: recoveryState.forwardHorizonDays,
+        ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: recoveryState.forwardCapitalDays,
         executionCostRisk: null, opportunityCost: recoveryState.forwardOpportunityCostDollars, uncertainty: null,
         utility: -adjustment.closeBias - waitOpportunityCostContribution,
         executionEvidence: null,

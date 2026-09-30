@@ -2,7 +2,7 @@
 
 ## Current requirement reconciliation, 2026-10-01
 
-CURRENT_STATE = IMPLEMENTING_REQUIREMENT_CLOSURE
+CURRENT_STATE = REVIEWED_SOURCE_ENGINEERING_COMPLETE_RUNTIME_AND_EMPIRICAL_PENDING
 
 The historical September 29 source-complete claim below is superseded for
 current certification. Direct call-graph and executed tests found these defects:
@@ -21,17 +21,41 @@ cash-flow history, explicit forward horizons, deterministic ties and immutable
 entry-thesis lineage. Scenario proceeds remain BENCHMARK_CASHFLOW, not fills.
 Source tests do not promote empirical models or prove deployed behavior.
 
-The call graph also confirms an outstanding integration task: the existing
-whole-chain repository is not yet consumed by the resident management scan.
-`attachWholeChainEvidence` is still inert at this checkpoint. The original
-thesis loader now reaches management, but the full typed current-thesis-health
-assessment still needs requirement-level reconciliation. Neither item may be
-closed using the old global certificate.
+The resident management scan now loads canonical whole-chain evidence before
+persisting its management input, sequentially and outside the persistence
+transaction. The same input reaches the existing policy. The latest snapshot
+query is scoped to the chain's underlying. Hash, projection and inventory
+mismatches are rejected. Accounting uncertainty does not globally prohibit a
+risk-reducing action.
 
-Checkpoint validation: Node 3269 PASS / 16 SKIP, Python 1234 PASS,
+Original thesis identity and current qualified ownership evidence reach the
+thesis-health evaluator. Its four states describe observed structural
+conditions only. They do not certify expected profit, recovery probability,
+or calibrated continuation value. Unknown evidence remains unknown.
+
+Management incremental capital-days now use USD times calendar days, instead
+of mislabeled elapsed days. Date-only contract expiry uses its UTC date
+boundary and does not invent a market-close timestamp.
+
+The reviewed denominator is `THETA_PHASE4_REVIEWED_TEST_BINDINGS.json`, groups
+4.1 through 4.12. `evidence/THETA_PHASE4_EXECUTED_TESTS.json` records 222 executed
+tests with zero failures or skips, per-file hashes and named required cases.
+Its verification test rejects stale source, missing tests and inherited global
+PASS. Group descriptions deliberately limit each proof to what it exercised.
+The resident integration test uses a fake repository and is not database or L7
+evidence. Compact ownership readback also runs in disposable PostgreSQL CI.
+
+Full local validation: Node 3275 PASS / 16 SKIP, Python 1234 PASS,
 typecheck/lint/build PASS, security findings 0, Git storage policy PASS.
-The separate Phase-3 executed artifact covers 13 reviewed behaviors with
-247 executed tests and no skips. These counts are source tests only.
+Skipped database tests require the isolated CI database, never Production.
+The separate Phase-3 artifact covers 13 reviewed behaviors with 249 executed
+tests and no skips. No source test changes current-worker maturity.
+
+The 4.13 source closure permits continuing Phase 5. Deployment alignment,
+current-inventory applicability and empirical calibration remain separate
+requirements. The old registry-only path-feature module is not claimed as a
+runtime consumer. The called shadow-management and position-path producers
+are the evidenced path-feature implementations.
 
 WORKER_CHANGED = NO
 

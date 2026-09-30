@@ -16,6 +16,7 @@ export interface ManagementActionEconomics {
   readonly expectedFutureValue: number | null;
   readonly certainEconomicPnl: number | null;
   readonly downsideTailEstimate: number | null;
+  /** USD-calendar-days relative to closing now, or the compared old leg for rolls. */
   readonly incrementalCapitalDays: number | null;
   readonly executionCostRisk: number | null;
   readonly opportunityCost: number | null;
@@ -63,6 +64,7 @@ export interface ManagementPolicyActionValue {
   readonly action: ManagementFrontierAction;
   readonly expectedFutureValue: number | null;
   readonly downsideTailEstimate: number | null;
+  /** USD-calendar-days. Elapsed calendar days alone are not this measure. */
   readonly incrementalCapitalDays: number | null;
   readonly executionCostRisk: number | null;
   readonly opportunityCost: number | null;

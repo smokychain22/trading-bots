@@ -106,3 +106,14 @@ export function buildCommonHorizonComparison(
     candidateExpirations: known,
   };
 }
+
+/** USD times elapsed calendar days, using the supplied expiration timestamp.
+ * Date-only expirations denote their UTC date boundary, not an assumed close.
+ * This is a deterministic exposure measure, never expected recovery duration. */
+export function contractualCapitalDays(capital: number | null, asOf: string, expiry: string | null): number | null {
+  if (capital === null || !Number.isFinite(capital) || capital < 0 || expiry === null) return null;
+  const start = Date.parse(asOf), end = Date.parse(expiry);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  const value = capital * Math.max(0, (end - start) / 86_400_000);
+  return Number.isFinite(value) ? value : null;
+}

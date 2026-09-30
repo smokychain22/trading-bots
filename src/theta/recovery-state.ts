@@ -92,6 +92,8 @@ export interface RecoveryState {
   /** Elapsed cost above is historical context, never a avoidable forward cost. */
   readonly forwardOpportunityCostDollars: number | null;
   readonly forwardHorizonDays: number | null;
+  readonly forwardCapitalDays: number | null;
+  readonly capitalDaysUnit: 'USD_CALENDAR_DAYS';
   readonly capitalBasisSource: BasisSource;
   readonly portfolioBurdenDataPresent: boolean;
   readonly dataCompleteness: {
@@ -172,6 +174,8 @@ export function buildRecoveryState(
   const rawForwardCost = finite(capitalLocked) && validRate && validHorizon
     ? capitalLocked * annualOpportunityCostRate * forwardHorizonDays / 365 : null;
   const forwardOpportunityCostDollars = finite(rawForwardCost) ? rawForwardCost : null;
+  const rawCapitalDays = finite(capitalLocked) && validHorizon ? capitalLocked * forwardHorizonDays : null;
+  const forwardCapitalDays = finite(rawCapitalDays) ? rawCapitalDays : null;
 
   const requiresCallerInput: string[] = [];
   if (capitalDaysSoFar === null) requiresCallerInput.push('assignedAtObservedAt (valid non-future time for capitalDaysSoFar)');
@@ -193,6 +197,7 @@ export function buildRecoveryState(
     recoveryProbabilityEstimate: null, expectedRecoveryTimeDays: null, furtherDownsideEstimate: null,
     coveredCallCandidateQualityKnown: false, capitalDaysSoFar, capitalOpportunityCostDollars,
     forwardOpportunityCostDollars, forwardHorizonDays: validHorizon ? forwardHorizonDays : null,
+    forwardCapitalDays, capitalDaysUnit: 'USD_CALENDAR_DAYS',
     capitalBasisSource: finite(capitalBasisReference) ? basisSource : 'UNKNOWN',
     portfolioBurdenDataPresent: state.context.concentration !== null,
     dataCompleteness: {

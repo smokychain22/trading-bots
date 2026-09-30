@@ -557,6 +557,29 @@ test('past recovery holding cost cannot manufacture an avoidable forward cost or
     recent?.actionValues.find(value => value.action === 'SELL_STOCK')?.utility);
 });
 
+test('single roll rejects overflowing known quotes instead of claiming complete economics', () => {
+  const input = { ...state('CSP_OPEN'), rollCandidate: rollCandidate({ bid: Number.MAX_VALUE, ask: Number.MAX_VALUE }) };
+  const result = evaluatePaperBootstrapManagementPolicy(input);
+  const roll = result?.actionValues.find(value => value.action === 'ROLL');
+  assert.equal(roll?.utility, null);
+  assert.equal(roll?.executionEvidence, null);
+  assert.ok(roll?.reasons.includes('ROLL_FORWARD_ECONOMICS_INVALID'));
+});
+
+test('roll and recovery report dollars times calendar days instead of labeling elapsed days as capital exposure', () => {
+  const input = state('CSP_OPEN');
+  const target = rollCandidate({ strike: 200, expiration: '2026-11-20', bid: 2, ask: 2.1 });
+  const result = evaluatePaperBootstrapManagementPolicy({ ...input, rollCandidates: [target] });
+  const before = Date.parse(input.contract.expiration as string), after = Date.parse(target.expiration);
+  const measured = result?.actionValues.find(value => value.action === 'ROLL')?.incrementalCapitalDays;
+  assert.ok(measured !== null && measured !== undefined);
+  assert.ok(Math.abs(measured - 200 * 100 * (after - before) / 86_400_000) < 1e-7);
+  const recovery = state('RECOVERY_WAIT');
+  const compared = evaluatePaperBootstrapManagementPolicy({ ...recovery, recoveryForwardHorizonDays: 10 });
+  assert.equal(compared?.actionValues.find(value => value.action === 'RECOVERY_WAIT')?.incrementalCapitalDays,
+    (recovery.economics.stockBasisPerShare as number) * recovery.economics.openStockShares * 10);
+});
+
 test('ROLL_CC with multiple candidates picks the best combination of NetRollCredit and AdditionalUpsideDollars, not merely the largest credit', () => {
   const input = {
     ...state('CC_OPEN', { option_type: 'CALL', contract_symbol: 'AAPL261016C00200000' }),

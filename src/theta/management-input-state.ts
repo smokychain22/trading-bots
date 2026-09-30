@@ -4,12 +4,13 @@ import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import type { ThetaLifecycleState } from './runtime-state.js';
 import type { ManagementActionFrontier } from './management-action-frontier.js';
 import { PostgresWholeChainComponentsRepository } from './postgres-whole-chain-components-repository.js';
-import type { WholeChainComponentEvidence } from './whole-chain-component-evidence.js';
+import { componentsFromEvidence, wholeChainEvidenceHash, type WholeChainComponentEvidence } from './whole-chain-component-evidence.js';
+import type { WholeChainComponents } from './whole-chain-economics.js';
 import { securedContractCapacity } from './secured-contract-capacity.js';
 import type { ManagementCandidateDiscovery } from './management-candidate-evidence.js';
 import { loadManagementEntryThesis, type ManagementEntryThesis } from './management-entry-thesis.js';
 
-export const managementInputVersion = 'theta-management-input-v4' as const;
+export const managementInputVersion = 'theta-management-input-v5' as const;
 
 export interface ManagementAssignmentCapacityEvidence {
   readonly state: 'KNOWN' | 'UNKNOWN' | 'NOT_APPLICABLE';
@@ -40,6 +41,7 @@ export interface ManagementDecisionEvidenceBundle {
   readonly accountReceivedAt: string | null;
   readonly positionStateAsOf: string | null;
   readonly fusionSnapshotAsOf: string | null;
+  readonly fusionSnapshotHash?: string | null;
   readonly currentLegQuoteObservedAt: string | null;
   readonly currentLegQuoteReceivedAt: string | null;
   readonly candidateDiscoveryObservedAt?: string | null;
@@ -57,6 +59,9 @@ export interface ManagementInputState {
   readonly evidenceBundle: ManagementDecisionEvidenceBundle;
   readonly managementCandidateDiscovery?: ManagementCandidateDiscovery | null;
   readonly originalEntryThesis?: ManagementEntryThesis;
+  readonly wholeChainComponentEvidence?: WholeChainComponentEvidence;
+  readonly wholeChainComponents?: WholeChainComponents | null;
+  readonly assignedAtObservedAt?: string | null;
   readonly lifecycleState: ThetaLifecycleState;
   readonly underlying: string;
   readonly underlyingId: string;
@@ -113,6 +118,7 @@ export interface ManagementInputState {
     readonly eventState: unknown | null;
     readonly dividendExDateState: unknown | null;
     readonly ownershipQuality: unknown | null;
+    readonly ownershipAssessment?: unknown | null;
     readonly assignmentCapacity: number | null;
     readonly assignmentCapacityEvidence: ManagementAssignmentCapacityEvidence;
     readonly recoveryState: unknown | null;
@@ -406,7 +412,7 @@ export function assembleManagementInput(row: Row, input: {
     managementInputSnapshotId: input.managementInputSnapshotId,
     reconciliationSnapshotId: input.reconciliationSnapshotId,
     fusionSnapshotId: text(row.fusion_snapshot_id), chainId: String(row.chain_id), observedAt: input.observedAt,
-    evidenceBundle, managementCandidateDiscovery:candidateDiscovery,
+    evidenceBundle: { ...evidenceBundle, fusionSnapshotHash: text(row.fusion_content_hash) }, managementCandidateDiscovery:candidateDiscovery,
     originalEntryThesis: loadManagementEntryThesis(row.original_entry_thesis, {
       decisionId: row.original_decision_id, snapshotId: row.original_snapshot_id,
       decidedAt: row.original_decided_at, underlying: String(row.underlying), managementAsOf: input.observedAt,
@@ -432,6 +438,7 @@ export function assembleManagementInput(row: Row, input: {
     context: { eventState: snapshot.eventState ?? null,
       dividendExDateState: eventState.exDividendState ?? eventState.exDividendDate ?? null,
       ownershipQuality: snapshot.expertPriorState ?? null,
+      ownershipAssessment: row.management_ownership ?? null,
       assignmentCapacity, assignmentCapacityEvidence,
       recoveryState: snapshot.recoveryState ?? null,
       concentration: object(snapshot.portfolioExposure).concentration ?? null,
@@ -449,8 +456,36 @@ export function assembleManagementInput(row: Row, input: {
   return { ...unsigned, contentHash: createHash('sha256').update(canonicalJson(hashable)).digest('hex') };
 }
 
+/** Bind canonical ledger evidence before persistence and policy evaluation. */
+export function bindManagementWholeChainEvidence(state: ManagementInputState,
+  evidence: WholeChainComponentEvidence): ManagementInputState {
+  if (evidence.chainId !== state.chainId || Date.parse(evidence.asOf) !== Date.parse(state.observedAt))
+    throw new Error('MANAGEMENT_WHOLE_CHAIN_IDENTITY_MISMATCH');
+  const { contentHash, ...unsignedEvidence } = evidence;
+  if (wholeChainEvidenceHash(unsignedEvidence) !== contentHash) throw new Error('MANAGEMENT_WHOLE_CHAIN_HASH_MISMATCH');
+  const projected = componentsFromEvidence(evidence);
+  if (canonicalJson(projected.components) !== canonicalJson(evidence.components)
+    || canonicalJson(projected.blockers) !== canonicalJson(evidence.componentBlockers))
+    throw new Error('MANAGEMENT_WHOLE_CHAIN_PROJECTION_MISMATCH');
+  if (evidence.openStockShares.status !== 'UNKNOWN' && evidence.openStockShares.value !== state.economics.openStockShares)
+    throw new Error('MANAGEMENT_WHOLE_CHAIN_INVENTORY_MISMATCH');
+  const assigned = evidence.assignmentObservedAt;
+  const assignedAt = assigned.status !== 'UNKNOWN' && assigned.value !== null
+    && Number.isFinite(Date.parse(assigned.value)) && Date.parse(assigned.value) <= Date.parse(state.observedAt)
+    ? assigned.value : null;
+  const bound = { ...state, wholeChainComponentEvidence: evidence, wholeChainComponents: projected.components,
+    assignedAtObservedAt: assignedAt,
+    unknownFields: [...new Set([...state.unknownFields, ...projected.blockers.map(reason => `wholeChain.${reason}`)])].sort() };
+  const hashable = Object.fromEntries(Object.entries(bound)
+    .filter(([key]) => key !== 'managementInputSnapshotId' && key !== 'contentHash'));
+  return { ...bound, contentHash: createHash('sha256').update(canonicalJson(hashable)).digest('hex') };
+}
+
 export class PostgresManagementInputStore {
-  constructor(private readonly pool: Pool) {}
+  private readonly wholeChainRepository: Pick<PostgresWholeChainComponentsRepository, 'load'>;
+  constructor(private readonly pool: Pool, wholeChainRepository?: Pick<PostgresWholeChainComponentsRepository, 'load'>) {
+    this.wholeChainRepository = wholeChainRepository ?? new PostgresWholeChainComponentsRepository(pool);
+  }
 
   async assembleAndPersistOpenChains(connectionId: string, reconciliationSnapshotId: string, observedAt: string,
     candidateDiscoveryByChain: ReadonlyMap<string,ManagementCandidateDiscovery> = new Map()): Promise<readonly ManagementInputState[]> {
@@ -464,7 +499,8 @@ export class PostgresManagementInputStore {
         totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,
         totals.realized_stock_pnl,totals.dividends,totals.fees,totals.unknown_fill_fees,
         a.account_snapshot_id,a.buying_power,a.options_buying_power,a.as_of AS account_as_of,
-        a.retrieved_at AS account_retrieved_at,fs.fusion_snapshot_id,fs.snapshot_json,
+        a.retrieved_at AS account_retrieved_at,fs.fusion_snapshot_id,fs.snapshot_json,fs.content_hash AS fusion_content_hash,
+        latest_decision.ownership AS management_ownership,
         fs.decision_time AS fusion_decision_time,brs.observed_at AS reconciliation_observed_at,
         brs.data_quality AS reconciliation_quality,
         brs.provider_timestamp AS clock_timestamp,brs.detail_json AS reconciliation_detail,
@@ -542,8 +578,15 @@ export class PostgresManagementInputStore {
         SELECT s.* FROM trade.account_snapshot s WHERE s.account_id=bi.account_id ORDER BY s.as_of DESC LIMIT 1
       ) a ON true
       LEFT JOIN LATERAL (
-        SELECT f.* FROM trade.fusion_snapshot f WHERE f.bot_instance_id=bi.bot_instance_id ORDER BY f.decision_time DESC LIMIT 1
+        SELECT f.* FROM trade.fusion_snapshot f WHERE f.bot_instance_id=bi.bot_instance_id
+          AND f.snapshot_json #>> '{underlyingState,symbol}'=u.symbol
+        ORDER BY f.decision_time DESC,f.fusion_snapshot_id DESC LIMIT 1
       ) fs ON true
+      LEFT JOIN LATERAL (
+        SELECT d.receipt_json #> '{managementContext,ownership}' AS ownership FROM trade.decision d
+        WHERE d.fusion_snapshot_id=fs.fusion_snapshot_id
+        ORDER BY d.decided_at DESC,d.decision_id DESC LIMIT 1
+      ) latest_decision ON true
       LEFT JOIN trade.broker_position_snapshot bp ON bp.reconciliation_snapshot_id=$2 AND bp.symbol=u.symbol
       LEFT JOIN trade.broker_position_snapshot bop ON bop.reconciliation_snapshot_id=$2 AND bop.symbol=oc.contract_symbol
       WHERE ec.closed_at IS NULL ORDER BY ec.opened_at,ec.chain_id`, [connectionId, reconciliationSnapshotId]);
@@ -557,6 +600,15 @@ export class PostgresManagementInputStore {
       managementCandidateDiscovery:candidateDiscoveryByChain.get(String(row.chain_id)) ?? null,
     }));
     if (states.length === 0) return [];
+    // Each ledger read owns/releases its transaction before the persistence
+    // transaction starts. Bounded sequential reads cannot starve the pool.
+    for (let index = 0; index < states.length; index += 1) {
+      const state = states[index];
+      if (state === undefined) throw new Error('MANAGEMENT_INPUT_INDEX_INVALID');
+      const evidence = await this.wholeChainRepository.load(state.chainId, state.observedAt,
+        { connectionId, reconciliationSnapshotId });
+      states[index] = bindManagementWholeChainEvidence(state, evidence);
+    }
     await withRuntimePostgresTransaction(this.pool, async (client) => {
       for (let index = 0; index < states.length; index += 1) {
         let state = states[index];
@@ -624,19 +676,18 @@ export class PostgresManagementInputStore {
   }
 
   /**
-   * Inert integration surface for the future canonical management provider.
-   * The resident runtime does not call it yet, so it cannot add a second policy
-   * invocation or alter the current locked execution path.
+   * Read-only compatibility surface for research callers. The resident path
+   * binds these same components before persisting each management input above.
    */
   async attachWholeChainEvidence(states: readonly ManagementInputState[], connectionId: string):
   Promise<readonly ManagementInputWithWholeChainEvidence[]> {
-    const repository = new PostgresWholeChainComponentsRepository(this.pool);
-    return Promise.all(states.map(async (state) => ({
-      state,
-      wholeChainEvidence: await repository.load(state.chainId, state.observedAt, {
+    const results: ManagementInputWithWholeChainEvidence[] = [];
+    for (const state of states) results.push({ state,
+      wholeChainEvidence: await this.wholeChainRepository.load(state.chainId, state.observedAt, {
         connectionId,
         reconciliationSnapshotId: state.reconciliationSnapshotId,
       }),
-    })));
+    });
+    return results;
   }
 }

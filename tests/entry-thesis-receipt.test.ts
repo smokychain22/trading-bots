@@ -82,3 +82,38 @@ test('original thesis loader rejects missing malformed future mismatched and sem
     'ORIGINAL_ENTRY_THESIS_SEMANTICS_INVALID');
   assert.equal(loadManagementEntryThesis(receipt, { ...binding, decidedAt: new Date(receipt.decisionAt) }).state, 'VERIFIED');
 });
+
+test('management thesis health evaluates qualified current conditions without equating price loss with failure', () => {
+  const receipt = buildEntryThesisReceipt(input());
+  const at = '2026-09-24T15:00:00.000Z';
+  const ownership = { contractVersion: 'theta-ownership-runtime-v1', snapshotId: 'current-hash', underlyingSymbol: 'SPY',
+    timestamp: at, policyVersion: 'test-bootstrap', ownability: 1, thesisInvalidated: false, reasons: [],
+    components: ['LiquidityQuality', 'StructuralQuality', 'RecoveryQuality', 'TailQuality', 'EventAdjustment']
+      .map(name => ({ name, value: 1, status: 'TEST', reasons: [] })) };
+  const initial = assembleManagementInput({ chain_id: 'chain', lifecycle_state: 'CSP_OPEN', underlying: 'SPY', underlying_id: 'spy',
+    realized_option_pnl: 0, realized_stock_pnl: 0, open_stock_shares: 0, dividends: 0, fees: 0, unknown_fill_fees: false,
+    original_entry_thesis: receipt, original_decision_id: receipt.decisionId, original_snapshot_id: receipt.snapshotId,
+    original_decided_at: receipt.decisionAt, management_ownership: ownership, fusion_content_hash: 'current-hash',
+  }, { managementInputSnapshotId: 'input', reconciliationSnapshotId: 'recon', observedAt: at });
+  const state = { ...initial, hardBlockers: [], evidenceBundle: { ...initial.evidenceBundle, timingState: 'VALID' as const },
+    contract: { ...initial.contract, optionType: 'PUT' as const, strike: 490, multiplier: 100, contracts: 1 },
+    economics: { ...initial.economics, entryCreditDebit: 100 },
+    market: { ...initial.market, spot: 495, optionBid: 2, optionAsk: 2.1 },
+    context: { ...initial.context, aegisState: 'ALLOW_FULL', eventState: 'CLEAR', dividendExDateState: 'NOT_APPLICABLE',
+      assignmentCapacityEvidence: { ...initial.context.assignmentCapacityEvidence, state: 'KNOWN' as const } } };
+  const valid = assessThesisInvalidation(state);
+  assert.equal(valid.thesisHealth.state, 'THESIS_VALID');
+  assert.equal(valid.classification, 'PRICE_LOSS_ONLY');
+  assert.equal(valid.thesisHealth.scope, 'OBSERVED_STRUCTURAL_CONDITIONS_NOT_PROFITABILITY');
+  assert.equal(assessThesisInvalidation({ ...state, context: { ...state.context, eventState: 'PRESENT' } }).thesisHealth.state, 'THESIS_WEAKENED');
+  const failed = assessThesisInvalidation({ ...state, context: { ...state.context, ownershipAssessment: { ...ownership,
+    thesisInvalidated: true, reasons: [{ code: 'THESIS_INVALIDATED', polarity: -1, detail: 'Synthetic explicit structural invalidation.' }] } } });
+  assert.equal(failed.thesisHealth.state, 'THESIS_FAILED');
+  assert.ok(failed.thesisFailureSignals.includes('QUALIFIED_OWNERSHIP_THESIS_INVALIDATED'));
+  for (const bad of [null, { ...ownership, underlyingSymbol: 'QQQ' }, { ...ownership, snapshotId: 'other' },
+    { ...ownership, timestamp: '2026-09-24T14:55:00Z' }, { ...ownership, timestamp: '2026-09-24T15:00:01Z' },
+    { ...ownership, thesisInvalidated: true }, { ...ownership, ownability: null }]) {
+    assert.equal(assessThesisInvalidation({ ...state, context: { ...state.context, ownershipAssessment: bad } }).thesisHealth.state,
+      'THESIS_UNKNOWN');
+  }
+});
