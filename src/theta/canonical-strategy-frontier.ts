@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { JsonValue } from '../market/fusion-snapshot.js';
 import type { NormalizedOptionContract } from './option-contract.js';
 import type { StrategyFamily, StrategyRoutingResponse } from './strategy-router-contract.js';
@@ -135,6 +136,10 @@ export interface CanonicalFrontierCandidate {
   };
   readonly paretoRank: number | null;
   readonly dominatedBy: readonly string[];
+  /** Only present when the complete dominance count exceeds the bounded
+   * witness list. `paretoRank` still uses the exact count, so this cannot
+   * promote a dominated candidate into the nondominated set. */
+  readonly dominatedByOmittedCount?: number;
   readonly executionAuthorized: false;
   readonly entryEligibility?: {
     readonly basis: 'EMPIRICAL_OWNERSHIP' | 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED' | 'INELIGIBLE';
@@ -734,30 +739,59 @@ function objectives(candidate: CanonicalFrontierCandidate): readonly Objective[]
   return [];
 }
 
-function dominates(left: CanonicalFrontierCandidate, right: CanonicalFrontierCandidate): boolean {
-  if (left.branch !== right.branch || left.action !== right.action) return false;
-  const rightObjectives = objectives(right);
-  const leftObjectives = objectives(left);
-  if (leftObjectives.length === 0 || leftObjectives.length !== rightObjectives.length) return false;
-  const pairs = leftObjectives.flatMap((item, index) => {
-    const other = rightObjectives[index];
-    return other === undefined || !finite(item.value) || !finite(other.value) ? [] : [[item, other] as const];
-  });
-  if (pairs.length !== leftObjectives.length) return false;
-  const noWorse = pairs.every(([a, b]) => a.direction === 'MAX' ? (a.value as number) >= (b.value as number) : (a.value as number) <= (b.value as number));
-  const better = pairs.some(([a, b]) => a.direction === 'MAX' ? (a.value as number) > (b.value as number) : (a.value as number) < (b.value as number));
-  return noWorse && better;
+// This is an evidence-payload bound, not an economic or risk threshold.
+// Exact domination count still determines the rank. Unbounded witness arrays
+// used O(n^2) memory on a 2,601-contract offline probe (3.38m strings).
+const maxDominanceWitnessesPerCandidate = 32;
+type ParetoVector = readonly (number | null)[];
+const paretoVector = (candidate: CanonicalFrontierCandidate): ParetoVector => objectives(candidate).map((objective) =>
+  finite(objective.value) ? objective.value * (objective.direction === 'MAX' ? 1 : -1) : null);
+
+function dominatesVector(left: ParetoVector, right: ParetoVector): boolean {
+  if (left.length === 0 || left.length !== right.length) return false;
+  let better = false;
+  for (let index = 0; index < left.length; index++) {
+    const a = left[index];
+    const b = right[index];
+    if (a === null || a === undefined || b === null || b === undefined || a < b) return false;
+    if (a > b) better = true;
+  }
+  return better;
 }
 
+const candidateRankOrder = (a: CanonicalFrontierCandidate, b: CanonicalFrontierCandidate): number =>
+  (a.paretoRank ?? Number.MAX_SAFE_INTEGER) - (b.paretoRank ?? Number.MAX_SAFE_INTEGER)
+    || a.unknownEvidence.length - b.unknownEvidence.length || a.candidateId.localeCompare(b.candidateId);
+
 function rankCandidates(candidates: readonly CanonicalFrontierCandidate[]): readonly CanonicalFrontierCandidate[] {
-  const feasible = candidates.filter((candidate) => candidate.riskFeasible);
+  type Entry = { readonly candidate: CanonicalFrontierCandidate; readonly vector: ParetoVector };
+  const groups = new Map<string, Entry[]>();
+  const vectors = new Map<CanonicalFrontierCandidate, ParetoVector>();
+  for (const candidate of candidates) {
+    if (!candidate.riskFeasible) continue;
+    const key = `${candidate.branch}:${candidate.action}`;
+    const group = groups.get(key) ?? [];
+    const vector = paretoVector(candidate);
+    group.push({ candidate, vector });
+    vectors.set(candidate, vector);
+    groups.set(key, group);
+  }
+  for (const group of groups.values()) group.sort((a, b) => a.candidate.candidateId.localeCompare(b.candidate.candidateId));
   return candidates.map((candidate) => {
     if (!candidate.riskFeasible) return candidate;
-    const dominatedBy = feasible.filter((other) => other.candidateId !== candidate.candidateId && dominates(other, candidate))
-      .map((other) => other.candidateId).toSorted();
-    return { ...candidate, paretoRank: dominatedBy.length + 1, dominatedBy };
-  }).toSorted((a, b) => (a.paretoRank ?? Number.MAX_SAFE_INTEGER) - (b.paretoRank ?? Number.MAX_SAFE_INTEGER)
-    || a.unknownEvidence.length - b.unknownEvidence.length || a.candidateId.localeCompare(b.candidateId));
+    const group = groups.get(`${candidate.branch}:${candidate.action}`) ?? [];
+    const vector = vectors.get(candidate) ?? [];
+    const dominatedBy: string[] = [];
+    let dominatedByCount = 0;
+    for (const other of group) {
+      if (other.candidate.candidateId === candidate.candidateId || !dominatesVector(other.vector, vector)) continue;
+      dominatedByCount++;
+      if (dominatedBy.length < maxDominanceWitnessesPerCandidate) dominatedBy.push(other.candidate.candidateId);
+    }
+    const omitted = dominatedByCount - dominatedBy.length;
+    return { ...candidate, paretoRank: dominatedByCount + 1, dominatedBy,
+      ...(omitted > 0 ? { dominatedByOmittedCount: omitted } : {}) };
+  }).toSorted(candidateRankOrder);
 }
 
 // Stable, deterministic, secret-safe failure identity for a branch-local
@@ -771,8 +805,24 @@ function rankCandidates(candidates: readonly CanonicalFrontierCandidate[]): read
 // operational visibility -- it is simply not part of the hashed,
 // deterministic economic/decision receipt.
 function stableBranchFailureReasonCode(error: unknown): string {
+  if (error instanceof Error && error.message === 'CONFLICTING_CONTRACT_OBSERVATIONS')
+    return error.message;
   const errorClassName = error instanceof Error ? error.constructor.name : 'UnknownThrowValue';
   return `BRANCH_CONSTRUCTION_ERROR_TYPE:${errorClassName}`;
+}
+
+/** Provider pagination and joined feeds can repeat an exact contract. One
+ * OCC symbol must produce at most one alternative. A conflicting duplicate
+ * needs an upstream revision decision, so fail this branch closed instead of
+ * choosing by provider order or counting two different quotes as two ideas. */
+function uniqueContractObservations(contracts: readonly NormalizedOptionContract[]): readonly NormalizedOptionContract[] {
+  const bySymbol = new Map<string, NormalizedOptionContract>();
+  for (const contract of contracts) {
+    const prior = bySymbol.get(contract.optionSymbol);
+    if (prior === undefined) bySymbol.set(contract.optionSymbol, contract);
+    else if (!isDeepStrictEqual(prior, contract)) throw new Error('CONFLICTING_CONTRACT_OBSERVATIONS');
+  }
+  return [...bySymbol.values()];
 }
 
 function buildBranch(
@@ -809,13 +859,15 @@ function buildBranch(
     let raw: CanonicalFrontierCandidate[] = [];
     let enumerationTruncated = false;
     if (branch === 'THETA_CONVENTIONAL' || branch === 'THETA_HOLD_STRIKE') {
-      raw = input.contracts.filter((contract) => contract.optionType === 'PUT' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
+      raw = uniqueContractObservations(input.contracts.filter((contract) => contract.optionType === 'PUT'
+        && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax))
         .map((contract) => singleLegPutCandidate(branch, contract, input));
     } else if (branch === 'THETA_DEFINED_RISK') {
       // The bounded research enumeration must not depend on provider page
       // order. A provider reorder must retain the same 1,000 structures and
       // the same incomplete-enumeration receipt.
-      const puts = input.contracts.filter((contract) => contract.optionType === 'PUT' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
+      const puts = uniqueContractObservations(input.contracts.filter((contract) => contract.optionType === 'PUT'
+        && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax))
         .toSorted((a, b) => a.expiration.localeCompare(b.expiration) || a.strike - b.strike
           || a.optionSymbol.localeCompare(b.optionSymbol));
       outer: for (const shortPut of puts) for (const longPut of puts) {
@@ -825,7 +877,8 @@ function buildBranch(
         }
       }
     } else if (branch === 'THETA_RECOVERY' && input.stock !== null) {
-      const ccAlternatives = input.contracts.filter((contract) => contract.optionType === 'CALL' && contract.dte >= 1 && contract.dte <= 60)
+      const ccAlternatives = uniqueContractObservations(input.contracts.filter((contract) => contract.optionType === 'CALL'
+        && contract.dte >= 1 && contract.dte <= 60))
         .map((contract) => {
           const candidate = coveredCallCandidate(contract, input);
           return { ...candidate, candidateId: `THETA_RECOVERY:${contract.optionSymbol}:SELL_CC`,
@@ -833,7 +886,8 @@ function buildBranch(
         });
       raw = [stockActionCandidate('RECOVERY_WAIT', input), stockActionCandidate('SELL_STOCK', input), ...ccAlternatives];
     } else if (branch === 'THETA_CC' && input.stock !== null) {
-      raw = input.contracts.filter((contract) => contract.optionType === 'CALL' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
+      raw = uniqueContractObservations(input.contracts.filter((contract) => contract.optionType === 'CALL'
+        && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax))
         .map((contract) => coveredCallCandidate(contract, input));
     }
     // Counterfactual research records retain the contract and economics even
@@ -911,7 +965,10 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   // purpose: visible as considered, excluded from "successfully evaluated."
   const evaluated = applicable.filter((branch) => branch.evaluated
     && branch.evaluationState !== 'BLOCKED_MISSING_INPUT' && branch.evaluationState !== 'BRANCH_CONSTRUCTION_FAILED');
-  const globallyRanked = rankCandidates(branches.flatMap((branch) => branch.candidates));
+  // Each branch already computed exact same-branch/action dominance. Cross-
+  // branch dominance is deliberately undefined, so a second full Pareto pass
+  // here can only repeat the work and previously doubled large-chain cost.
+  const globallyRanked = branches.flatMap((branch) => branch.candidates).toSorted(candidateRankOrder);
   const feasible = globallyRanked.filter((candidate) => candidate.riskFeasible);
   // Shadow/research incompleteness stays visible in its branch receipt. It
   // cannot veto or relabel the bounded Conventional Paper decision.

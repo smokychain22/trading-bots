@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import test from 'node:test';
 import { featureFamilyAuthorityMatrix, providerCapabilityAuthorityMatrix,
-  validatePhase2MarketIntelligenceRegistry } from '../src/theta/phase2-market-intelligence-registry.js';
+  thetaStrategyFeatureManifest, validatePhase2MarketIntelligenceRegistry } from '../src/theta/phase2-market-intelligence-registry.js';
 import { thetaFeatureFamily } from '../src/theta/strategy-package.js';
 
 test('Phase-2 provider authority is complete and has one Alpaca Paper option-price authority',()=>{
@@ -40,4 +40,21 @@ test('matrix call-graph anchors exist in current source',()=>{
   for(const path of ['src/theta/alpaca-provider.ts','src/theta/optionomics-provider.ts',
     'src/execution/alpaca-execution-quote-source.ts','src/research/alpaca-command5a-observation-source.ts',
     'src/theta/pit-feature-materializer.ts'])assert.equal(existsSync(path),true,path);
+});
+
+test('every branch declares all 20 feature roles without promoting research to a hard gate', () => {
+  for (const [branch, manifest] of Object.entries(thetaStrategyFeatureManifest)) {
+    assert.deepEqual(Object.keys(manifest).toSorted(), [...thetaFeatureFamily.options].toSorted(), branch);
+    for (const feature of featureFamilyAuthorityMatrix) {
+      const role = manifest[feature.family];
+      assert.ok(role, `${branch}:${feature.family} is undeclared`);
+      if (feature.producerState === 'RESEARCH' || feature.producerState === 'PROVIDER_LIMITED') {
+        assert.notEqual(role, 'REQUIRED', `${branch}:${feature.family} is not a qualified required input`);
+      }
+    }
+  }
+  assert.equal(thetaStrategyFeatureManifest.THETA_CONVENTIONAL.CORRELATION, 'REQUIRED_WHEN_APPLICABLE');
+  assert.equal(thetaStrategyFeatureManifest.THETA_CONVENTIONAL.FLOW, 'RESEARCH_ONLY');
+  assert.equal(thetaStrategyFeatureManifest.THETA_RECOVERY.EXECUTION_QUALITY, 'UNCERTAINTY_ONLY');
+  assert.equal(thetaStrategyFeatureManifest.THETA_CC.EXECUTION_QUALITY, 'UNCERTAINTY_ONLY');
 });

@@ -59,6 +59,20 @@ test('shadow episode preserves both D legs and can never gain broker authority',
   assert.equal(first.decisionEvidence.kind === 'CANDIDATE' ? first.decisionEvidence.economics.maxLoss : null, 400);
 });
 
+test('shadow episode preserves the exact rank and the bounded-witness omission count', () => {
+  const subject: SeriousCandidateSubject = { ...candidateSubject,
+    candidate: { ...candidateSubject.candidate, paretoRank: 80,
+      dominatedBy: Array.from({ length: 32 }, (_, index) => `dominator-${index}`),
+      dominatedByOmittedCount: 47 } };
+  const receipt = buildShadowEpisodeContract({ subject, ...versions });
+  assert.equal(receipt.decisionEvidence.kind, 'CANDIDATE');
+  if (receipt.decisionEvidence.kind === 'CANDIDATE') {
+    assert.equal(receipt.decisionEvidence.paretoRank, 80);
+    assert.equal(receipt.decisionEvidence.dominatedBy.length, 32);
+    assert.equal(receipt.decisionEvidence.dominatedByOmittedCount, 47);
+  }
+});
+
 test('WAIT receives an auditable shadow identity without a fake contract', () => {
   const wait: SeriousWaitSubject = {
     subjectId: 'd'.repeat(64), kind: 'WAIT', snapshotId: 'snapshot-1',

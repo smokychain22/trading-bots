@@ -25,7 +25,20 @@ authority remains `management-action-frontier.ts`. H and D are research-only.
 | Invalid Paper cap escapes as an exception | The cap parser could throw before returning a typed plan blocker | Invalid cap is `PAPER_EVIDENCE_RISK_CAP_INVALID`. A genuine cap of zero remains `PAPER_EVIDENCE_QUANTITY_ZERO`. |
 | Correction cascade or duplicate authority | The [authority map](THETA_BRAIN_AUTHORITY_V1.md) and `tests/phase5-authority-structure.test.ts` define the known entry, management and mutation boundaries | Retain current owners. A comprehensive static consumer graph has not been certified, so this is not a blanket absence claim. |
 | Training-serving skew, selection bias, model feedback | No promoted entry EV model or resolved independent whole-chain population is available | Keep model outputs research-only. Persist T0, near misses and alternatives, then test PIT-equivalent features and OOS outcomes before promotion. |
+| Duplicate OCC input masquerades as two independent alternatives | The frontier counted the same exact contract twice, including in Q's second-best and D's pair denominator | Identical normalized observations now collapse by OCC symbol within each branch. Conflicting observations fail only the affected branch with `CONFLICTING_CONTRACT_OBSERVATIONS`, never an earned Paper WAIT. Tests cover Q and D. |
+| Decision hash cannot detect all raw-input tampering after deduplication | A repeated contract no longer changes the decision frontier, so frontier-hash-only T0 verification missed an added input copy | New v3 T0 bundles hash the frozen contract input multiset separately and reject tampering. Historical v2 bundles remain readable, but cannot claim the stronger input-multiset check. |
+| Missing universe size reported as zero | `zero-trade-diagnostic.ts` defaulted an absent diagnostic value to 0 | Missing or invalid observed universe size now stays null. A read-only diagnostic regression covers the actual projection path. |
+| Invalid management ledger aggregate becomes zero | Management assembly used zero fallbacks for five SQL aggregates despite the loader's `COALESCE` contract | Missing or malformed aggregate values now fail the assembly boundary with `MANAGEMENT_LEDGER_AGGREGATE_INVALID:<field>`. A true SQL zero remains zero. This is source-level protection, not current-worker proof. |
+| Quadratic dominance payload on broad chains | An offline 2,601-contract stress produced 3.38 million witness IDs, about 1.2 GB heap, and a roughly 16-second frontier | Exact Pareto count/rank remains intact while each candidate carries at most 32 sorted witness IDs plus an explicit omitted count. Objective vectors are reused, and the global pass no longer repeats branch-local dominance. Offline synthetic probes now completed at 2,601 / 5,000 / 10,000 contracts in about 0.57 / 1.12 / 3.01 seconds and about 161 / 176 / 313 MB heap. These are source-machine measurements, not market latency guarantees. |
 
-The four source corrections above address decision coherence. They do not
+The source-level [authority graph](THETA_BRAIN_AUTHORITY_GRAPH.json) and
+[failure-mode register](THETA_BRAIN_FAILURE_MODE_REGISTER.json) are review
+artifacts with CI checks. They do not prove current-worker reachability or
+empirical profitability. The per-strategy feature manifest is governance
+metadata consumed by the shadow registry, not a new entry/management gate.
+Action oscillation, quantitative signal overlap, complete consumer data-flow,
+and training-serving parity for a future promoted model remain open audits.
+
+These source corrections address decision coherence. They do not
 establish current-session L7 evidence, OPRA entitlement, empirical EV, a safe
 first Paper order, or live-money readiness.

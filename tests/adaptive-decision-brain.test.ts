@@ -144,6 +144,20 @@ test('strategy registry has five products and THETA_R remains a management route
   assert.equal(thetaRManagementRoute.executionAuthority, false);
 });
 
+test('shadow strategy inventory does not apply entry-only hard rules to stock management', () => {
+  const recovery = required(adaptiveStrategyRegistry.find((entry) => entry.branch === 'THETA_RECOVERY'));
+  const cc = required(adaptiveStrategyRegistry.find((entry) => entry.branch === 'THETA_CC'));
+  const q = required(adaptiveStrategyRegistry.find((entry) => entry.branch === 'THETA_CONVENTIONAL'));
+  for (const branch of [recovery, cc]) {
+    assert.deepEqual(branch.requiredEvidence, ['FRESH_BROKER_STATE', 'RECONCILED_LIFECYCLE']);
+    for (const entryOnly of ['FRESH_EXECUTABLE_BBO', 'ASSIGNMENT_CAPACITY', 'VALID_NONZERO_QUANTITY'])
+      assert.equal(branch.requiredEvidence.includes(entryOnly), false);
+    assert.equal(branch.optionalEvidence.includes('FLOW'), false);
+  }
+  assert.ok(q.requiredEvidence.includes('FRESH_EXECUTABLE_BBO'));
+  assert.equal(q.optionalEvidence.includes('FLOW'), false);
+});
+
 test('hard, applicability, economics, and uncertainty roles are explicit', () => {
   assert.equal(canonicalEvidencePolicyRoles.FRESH_BROKER_STATE, 'HARD_SAFETY');
   assert.equal(canonicalEvidencePolicyRoles.LIFECYCLE_STATE, 'STRATEGY_APPLICABILITY');

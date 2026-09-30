@@ -26,6 +26,7 @@ export type ShadowEpisodeDecisionEvidence =
     readonly sizing: SeriousCandidateDecision['sizing'];
     readonly paretoRank: number | null;
     readonly dominatedBy: readonly string[];
+    readonly dominatedByOmittedCount?: number;
     readonly entryEligibility: SeriousCandidateDecision['entryEligibility'] | null;
   }
   | {
@@ -162,6 +163,8 @@ export function buildShadowEpisodeContract(input: {
       },
       paretoRank: input.subject.candidate.paretoRank,
       dominatedBy: [...input.subject.candidate.dominatedBy],
+      ...(input.subject.candidate.dominatedByOmittedCount === undefined ? {}
+        : { dominatedByOmittedCount: input.subject.candidate.dominatedByOmittedCount }),
       entryEligibility: input.subject.candidate.entryEligibility === undefined
         ? null
         : {

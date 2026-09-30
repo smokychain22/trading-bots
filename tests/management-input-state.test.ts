@@ -65,6 +65,22 @@ test('unknown broker fill fees keep whole-chain economics unknown',()=>{
   assert.ok(state.unknownFields.includes('economics.fees'));
 });
 
+test('missing or malformed ledger aggregates never become known zero economics',()=>{
+  const fields=['open_stock_shares','realized_option_pnl','realized_stock_pnl','dividends','fees'] as const;
+  for (const field of fields) {
+    assert.throws(()=>assembleManagementInput({...base,[field]:null},{
+      managementInputSnapshotId:`invalid-${field}`,reconciliationSnapshotId:'recon-1',
+      observedAt:'2026-09-12T14:00:00.000Z',
+    }),new RegExp(`MANAGEMENT_LEDGER_AGGREGATE_INVALID:${field}`));
+  }
+  const zero=assembleManagementInput({...base,realized_option_pnl:'0',fees:'0'},{
+    managementInputSnapshotId:'valid-zero',reconciliationSnapshotId:'recon-1',
+    observedAt:'2026-09-12T14:00:00.000Z',
+  });
+  assert.equal(zero.economics.realizedOptionPnl,0);
+  assert.equal(zero.economics.fees,0);
+});
+
 test('stale account state and malformed numeric values fail closed',()=>{
   const state=assembleManagementInput({...base,account_as_of:null,bid:' ',ask:false},{
     managementInputSnapshotId:'input-stale',reconciliationSnapshotId:'recon-1',

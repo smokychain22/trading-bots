@@ -116,6 +116,98 @@ test('evaluates all five canonical branches exactly once and soft UNKNOWN eviden
   assert.equal(result.empiricalEconomicsReady, false);
 });
 
+test('duplicate copies of one exact broker contract cannot manufacture a second Q alternative', () => {
+  const one = contract();
+  const single = buildCanonicalStrategyFrontier({ ...base, contracts: [one], routing: routing(['THETA_Q']) });
+  const duplicated = buildCanonicalStrategyFrontier({ ...base, contracts: [one, one], routing: routing(['THETA_Q']) });
+  const q = duplicated.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  assert.equal(q?.candidateCount, 1);
+  assert.equal(q?.secondBestCandidateId, null);
+  assert.equal(duplicated.secondBestCandidateId, null);
+  assert.equal(duplicated.selectedCandidateId, single.selectedCandidateId);
+});
+
+test('conflicting observations for one Q contract fail the Q branch closed without becoming WAIT', () => {
+  const one = contract();
+  const conflicting = { ...one, bid: 1.9 };
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [one, conflicting],
+    routing: routing(['THETA_Q']) });
+  const q = result.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  assert.equal(q?.evaluationState, 'BRANCH_CONSTRUCTION_FAILED');
+  assert.ok(q?.routeReasons.includes('CONFLICTING_CONTRACT_OBSERVATIONS'));
+  assert.equal(result.primaryAction, 'SYSTEM_HOLD');
+  assert.equal(result.globalWaitEarned, false);
+});
+
+test('duplicate D contracts cannot inflate bounded spread pair enumeration', () => {
+  const shortPut = contract({ optionSymbol: 'AAPL261016P00195000', occSymbol: 'AAPL261016P00195000', strike: 195 });
+  const longPut = contract();
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [shortPut, longPut, shortPut, longPut],
+    routing: routing(['THETA_D']) });
+  const d = result.branches.find((branch) => branch.branch === 'THETA_DEFINED_RISK');
+  assert.equal(d?.candidateCount, 1);
+});
+
+test('research-only context changes cannot alter the Paper-facing Q action or quantity', () => {
+  const input = { ...base, contracts: [contract()], routing: routing(['THETA_Q']) };
+  const absent = buildCanonicalStrategyFrontier({ ...input, optionomicsContext: { state: 'PROVIDER_LIMITED' } });
+  const rich = buildCanonicalStrategyFrontier({ ...input, optionomicsContext: {
+    state: 'RESEARCH_ONLY', flow: 100_000, gex: -900_000, unusualActivity: true,
+  } });
+  assert.deepEqual({ action: absent.primaryAction, candidate: absent.selectedCandidateId, qty: absent.selectedQuantity },
+    { action: rich.primaryAction, candidate: rich.selectedCandidateId, qty: rich.selectedQuantity });
+  assert.notEqual(absent.contentHash, rich.contentHash, 'changed research evidence must remain visible in the receipt');
+});
+
+test('Q sizing never increases when any governed capacity decreases', () => {
+  const candidateId = 'THETA_CONVENTIONAL:AAPL261016P00190000';
+  const quantity = (overrides: Record<string, unknown>) => {
+    const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+      ...overrides });
+    return result.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates[0]?.sizing.quantity;
+  };
+  for (const cap of ['riskBudgetQtyCap', 'collateralQtyCap', 'concentrationQtyCap',
+    'assignmentCapacityQtyCap', 'tailRiskQtyCap', 'correlationQtyCap', 'liquidityQtyCap'] as const) {
+    let previous = -1;
+    for (let value = 0; value <= 6; value++) {
+      const current = quantity({ sizingPolicy: { ...base.sizingPolicy, [cap]: value } });
+      assert.ok(current !== undefined && current >= previous, `${cap} size increased after capacity decreased`);
+      previous = current;
+    }
+  }
+  for (const key of ['buyingPower', 'assignmentCapacityQty', 'brokerAllowedQty'] as const) {
+    let previous = -1;
+    for (const value of key === 'buyingPower' ? [0, 19_000, 38_000, 100_000] : [0, 1, 2, 10]) {
+      const current = quantity({ [key]: value });
+      assert.ok(current !== undefined && current >= previous, `${key} size increased after capacity decreased`);
+      previous = current;
+    }
+  }
+  assert.equal(quantity({ aegisNewRiskStateByCandidateId: { [candidateId]: 'HARD_VETO' } }), 0);
+  assert.ok((quantity({ aegisNewRiskStateByCandidateId: { [candidateId]: 'ALLOW_REDUCED' } }) ?? 0)
+    <= (quantity({ aegisNewRiskStateByCandidateId: { [candidateId]: 'ALLOW_FULL' } }) ?? 0));
+});
+
+test('large frontiers retain exact Pareto rank with bounded, deterministic dominance witnesses', () => {
+  const puts = Array.from({ length: 80 }, (_, index) => {
+    const strike = 150 + index / 2;
+    const optionSymbol = `AAPL261016P${String(Math.round(strike * 1000)).padStart(8, '0')}`;
+    return contract({ optionSymbol, occSymbol: optionSymbol, strike });
+  });
+  const run = (contracts: typeof puts) => buildCanonicalStrategyFrontier({ ...base, contracts,
+    routing: routing(['THETA_Q']) }).branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  const forward = run(puts);
+  const reversed = run(puts.toReversed());
+  const mostDominatedId = `THETA_CONVENTIONAL:${puts.at(-1)?.optionSymbol}`;
+  const candidate = forward?.candidates.find((item) => item.candidateId === mostDominatedId);
+  const reordered = reversed?.candidates.find((item) => item.candidateId === mostDominatedId);
+  assert.equal(candidate?.paretoRank, 80);
+  assert.equal(candidate?.dominatedBy.length, 32);
+  assert.equal(candidate?.dominatedByOmittedCount, 47);
+  assert.deepEqual(candidate?.dominatedBy, reordered?.dominatedBy);
+  assert.equal(candidate?.paretoRank, reordered?.paretoRank);
+});
+
 test('hold-strike evaluates 2-5 DTE near-expiry contracts without treating missing delta as a hard veto', () => {
   const nearExpiry = contract({ optionSymbol: 'AAPL260918P00200000', occSymbol: 'AAPL260918P00200000', strike: 200,
     expiration: '2026-09-18', delta: null, gamma: null, theta: null, vega: null, rho: null, iv: null, greeksSource: null });

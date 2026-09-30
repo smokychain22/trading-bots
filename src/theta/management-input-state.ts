@@ -240,13 +240,21 @@ export function assembleManagementInput(row: Row, input: {
   const entryCreditDebit = numeric(row.entry_credit_debit);
   const bid = numeric(row.bid);
   const ask = numeric(row.ask);
-  const stockShares = numeric(row.open_stock_shares) ?? 0;
+  // The loader's SQL COALESCE aggregates must produce numbers, including genuine zeroes.
+  // A missing or malformed aggregate is broken ledger evidence, never a known zero.
+  const requiredLedgerAggregate = (name: string, raw: unknown): number => {
+    const value = numeric(raw);
+    if (value === null) throw new Error(`MANAGEMENT_LEDGER_AGGREGATE_INVALID:${name}`);
+    return value;
+  };
+  const stockShares = requiredLedgerAggregate('open_stock_shares', row.open_stock_shares);
   const stockBasis = numeric(row.stock_basis_per_share);
   const stockMark = numeric(position.currentPrice);
-  const realizedOptionPnl = numeric(row.realized_option_pnl) ?? 0;
-  const realizedStockPnl = numeric(row.realized_stock_pnl) ?? 0;
-  const dividends = numeric(row.dividends) ?? 0;
-  const fees = row.unknown_fill_fees === true ? null : numeric(row.fees) ?? 0;
+  const realizedOptionPnl = requiredLedgerAggregate('realized_option_pnl', row.realized_option_pnl);
+  const realizedStockPnl = requiredLedgerAggregate('realized_stock_pnl', row.realized_stock_pnl);
+  const dividends = requiredLedgerAggregate('dividends', row.dividends);
+  const knownFees = requiredLedgerAggregate('fees', row.fees);
+  const fees = row.unknown_fill_fees === true ? null : knownFees;
   const optionMark = entryCreditDebit !== null && ask !== null && multiplier !== null && contracts !== null
     ? entryCreditDebit - ask * multiplier * contracts : null;
   const stockMtm = stockShares === 0 ? 0

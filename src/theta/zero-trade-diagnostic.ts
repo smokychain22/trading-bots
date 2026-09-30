@@ -110,7 +110,8 @@ const strings = (value: unknown): readonly string[] => Array.isArray(value)
 const record = (value: unknown): JsonRecord => value !== null && typeof value === 'object' && !Array.isArray(value)
   ? value as JsonRecord : {};
 
-const numeric = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : 0;
+const observedFiniteNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
 
 function increment(target: Record<string, number>, values: readonly string[]): void {
   for (const value of values) target[value] = (target[value] ?? 0) + 1;
@@ -293,7 +294,7 @@ export async function readZeroTradeDiagnostic(
         observedAt: new Date(row.observed_at).toISOString(),
         session: diagnostic.session ?? 'UNKNOWN',
         completeness: row.completeness_state,
-        universeSize: numeric(diagnostic.universeSize),
+        universeSize: observedFiniteNumber(diagnostic.universeSize),
         maxUnderlyings: row.max_underlyings,
         symbolsAttempted: row.symbols_attempted,
         symbolsCompleted: row.symbols_completed,

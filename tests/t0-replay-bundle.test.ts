@@ -204,15 +204,34 @@ test('T0 replay rejects duplicated, missing and tampered candidate inputs', () =
   const firstContract = bundle.contracts[0];
   assert.ok(firstContract !== undefined);
   assert.throws(() => replayFromT0Bundle({ ...bundle, contracts: [...bundle.contracts, firstContract] }),
-    /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
+    /T0_REPLAY_CONTRACT_INPUT_HASH_MISMATCH/);
   assert.throws(() => replayFromT0Bundle({ ...bundle, contracts: bundle.contracts.slice(1) }),
-    /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
+    /T0_REPLAY_CONTRACT_INPUT_HASH_MISMATCH/);
   assert.throws(() => replayFromT0Bundle({ ...bundle, strategyVersion: 'tampered-policy-version' }),
     /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
   assert.throws(() => replayFromT0Bundle({ ...bundle, openingCostPolicy: {
     commissionPerContract: 0.65, feesPerContract: 0.05,
     estimatedSlippagePerContract: 2, costModelVersion: 'tampered-cost-v2',
   } }), /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
+});
+
+test('new T0 bundles require an input hash while historical v2 bundles remain replayable', () => {
+  const bundle = buildT0ReplayBundle(realCycleInput);
+  assert.equal(bundle.contractVersion, 'theta-t0-replay-bundle-v3');
+  assert.match(bundle.inputContractsHash ?? '', /^[0-9a-f]{64}$/);
+  assert.throws(() => replayFromT0Bundle({ ...bundle, inputContractsHash: undefined }),
+    /T0_REPLAY_CONTRACT_INPUT_HASH_REQUIRED/);
+  const oldBundle = { ...bundle, contractVersion: 'theta-t0-replay-bundle-v2' as const,
+    inputContractsHash: undefined };
+  assert.equal(replayFromT0Bundle(oldBundle).contentHash, bundle.expectedFrontierContentHash);
+});
+
+test('T0 preserves an originally observed duplicate while the frontier counts one option idea', () => {
+  const one = contract();
+  const bundle = buildT0ReplayBundle({ ...realCycleInput, contracts: [one, one] });
+  assert.equal(bundle.contracts.length, 2);
+  const frontier = replayFromT0Bundle(bundle);
+  assert.equal(frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidateCount, 1);
 });
 
 test('T0 rejects future observations and unknown router strategies before replay', () => {

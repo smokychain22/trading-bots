@@ -1,0 +1,156 @@
+{
+  "contractVersion": "theta-brain-authority-graph-v1",
+  "scope": "SOURCE_CALL_GRAPH_AND_LOCKED_PAPER_AUTHORITY_NOT_EMPIRICAL_CERTIFICATION",
+  "nodes": [
+    {
+      "authorityId": "FUSION_SNAPSHOT",
+      "file": "src/market/fusion-snapshot.ts",
+      "function": "buildFusionSnapshot",
+      "authorityClass": "PRODUCTION_EVIDENCE",
+      "inputs": ["broker account", "positions", "market observations", "provider timing"],
+      "outputs": ["frozen snapshot", "content hash"],
+      "consumer": ["STRATEGY_APPLICABILITY", "MANAGEMENT_INPUT"],
+      "mayVeto": false, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "STRATEGY_APPLICABILITY",
+      "file": "bots/theta/quant/models/strategy_router.py",
+      "function": "route_strategies",
+      "authorityClass": "PRODUCTION_APPLICABILITY_ONLY",
+      "inputs": ["lifecycle", "account", "market context", "router policy"],
+      "outputs": ["per-family eligibility", "typed reasons"],
+      "consumer": ["STRATEGY_CANDIDATES"],
+      "mayVeto": true, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "STRATEGY_CANDIDATES",
+      "file": "src/theta/canonical-strategy-frontier.ts",
+      "function": "buildCanonicalStrategyFrontier",
+      "authorityClass": "PRODUCTION_ENUMERATION_WITH_RESEARCH_BRANCHES",
+      "inputs": ["routing", "qualified contracts", "stock inventory"],
+      "outputs": ["Q candidates", "H shadow candidates", "D shadow candidates", "A/C structural alternatives"],
+      "consumer": ["Q_ECONOMICS", "CANONICAL_ENTRY_SELECTION"],
+      "mayVeto": false, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "Q_ECONOMICS",
+      "file": "src/theta/new-risk-orchestrator.ts",
+      "function": "runNewRiskOrchestration",
+      "authorityClass": "SUBORDINATE_Q_ECONOMIC_RECEIPT",
+      "inputs": ["Q candidates", "costs", "broker/account evidence", "events"],
+      "outputs": ["economic OPEN/PASS/WAIT proposal", "selected Q proposal"],
+      "consumer": ["CANONICAL_ENTRY_SELECTION"],
+      "mayVeto": true, "mayRank": true, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "AEGIS_RISK_PERMISSION",
+      "file": "bots/theta/quant/models/aegis.py",
+      "function": "assess_aegis",
+      "authorityClass": "PRODUCTION_RISK_AUTHORITY",
+      "inputs": ["candidate-bound risk families", "versioned risk policy"],
+      "outputs": ["risk permission", "family reasons"],
+      "consumer": ["FINAL_QUANTITY", "CANONICAL_ENTRY_SELECTION", "MANAGEMENT_ACTION_FRONTIER"],
+      "mayVeto": true, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "FINAL_QUANTITY",
+      "file": "src/theta/canonical-strategy-frontier.ts",
+      "function": "structuralSizing",
+      "authorityClass": "PRODUCTION_FINAL_SIZING_AUTHORITY",
+      "inputs": ["broker capacity", "collateral", "assignment capacity", "policy caps", "AEGIS"],
+      "outputs": ["candidate quantity", "binding constraint"],
+      "consumer": ["CANONICAL_ENTRY_SELECTION", "PAPER_PLAN_ASSEMBLY"],
+      "mayVeto": true, "mayRank": false, "maySize": true, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "CANONICAL_ENTRY_SELECTION",
+      "file": "src/theta/canonical-strategy-frontier.ts",
+      "function": "buildCanonicalStrategyFrontier",
+      "authorityClass": "PRODUCTION_PAPER_ENTRY_SELECTOR_Q_ONLY",
+      "inputs": ["risk-feasible Q candidates", "Q economic receipt", "candidate quantity"],
+      "outputs": ["selected Q candidate or typed WAIT/HOLD", "selected quantity"],
+      "consumer": ["HANDOFF_VALIDATION", "PAPER_PLAN_ASSEMBLY"],
+      "mayVeto": true, "mayRank": true, "maySize": false, "maySelect": true, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "HANDOFF_VALIDATION",
+      "file": "src/theta/canonical-decision-authority.ts",
+      "function": "resolveCanonicalDecisionAuthority",
+      "authorityClass": "PRODUCTION_VALIDATOR_NOT_SELECTOR",
+      "inputs": ["canonical frontier", "subordinate receipt"],
+      "outputs": ["validated decision lineage"],
+      "consumer": ["PAPER_PLAN_ASSEMBLY", "decision persistence"],
+      "mayVeto": true, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "PAPER_PLAN_ASSEMBLY",
+      "file": "src/execution/master-paper-plan-assembly.ts",
+      "function": "assembleMasterPaperEvidencePlan",
+      "authorityClass": "PRODUCTION_HANDOFF_CONSUMER_NOT_SELECTOR",
+      "inputs": ["canonical selection", "quantity", "exact contract", "AEGIS", "Paper controls"],
+      "outputs": ["locked evidence plan or typed blocker"],
+      "consumer": ["PAPER_EXECUTION_CONTROL"],
+      "mayVeto": true, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "MANAGEMENT_INPUT",
+      "file": "src/theta/management-input-state.ts",
+      "function": "assembleManagementInput",
+      "authorityClass": "PRODUCTION_LIFECYCLE_EVIDENCE",
+      "inputs": ["reconciled open position", "whole-chain accounting", "timely candidate evidence"],
+      "outputs": ["typed management state"],
+      "consumer": ["MANAGEMENT_CANDIDATES", "MANAGEMENT_ACTION_FRONTIER"],
+      "mayVeto": false, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "MANAGEMENT_CANDIDATES",
+      "file": "src/theta/production-paper-management-candidate-source.ts",
+      "function": "discover",
+      "authorityClass": "PRODUCTION_CANDIDATE_PRODUCER_NOT_SELECTOR",
+      "inputs": ["open position", "Alpaca contracts", "fresh BBO", "event evidence"],
+      "outputs": ["roll", "sell covered call", "roll covered call alternatives"],
+      "consumer": ["MANAGEMENT_POLICY_EVIDENCE"],
+      "mayVeto": false, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "MANAGEMENT_POLICY_EVIDENCE",
+      "file": "src/theta/paper-bootstrap-management-policy.ts",
+      "function": "evaluatePaperBootstrapManagementPolicy",
+      "authorityClass": "SUBORDINATE_VERSIONED_POLICY_PROPOSAL",
+      "inputs": ["management input", "candidate alternatives", "bootstrap policy"],
+      "outputs": ["action utilities", "proposed action", "comparison evidence"],
+      "consumer": ["MANAGEMENT_ACTION_FRONTIER"],
+      "mayVeto": false, "mayRank": true, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "MANAGEMENT_ACTION_FRONTIER",
+      "file": "src/theta/management-action-frontier.ts",
+      "function": "buildManagementActionFrontier",
+      "authorityClass": "PRODUCTION_MANAGEMENT_SELECTOR",
+      "inputs": ["management input", "policy evidence", "lifecycle action set"],
+      "outputs": ["selected management action or typed hold", "second-best action"],
+      "consumer": ["PAPER_EXECUTION_CONTROL"],
+      "mayVeto": true, "mayRank": true, "maySize": false, "maySelect": true, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "PAPER_EXECUTION_CONTROL",
+      "file": "src/execution/paper-execution-authorization.ts",
+      "function": "resolveEffectivePaperExecutionControl",
+      "authorityClass": "PRODUCTION_EXECUTION_GATE_NOT_SELECTOR",
+      "inputs": ["owner controls", "execution locks", "plan"],
+      "outputs": ["effective locked or authorized control"],
+      "consumer": ["BROKER_MUTATION_AUTHORITY"],
+      "mayVeto": true, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": false
+    },
+    {
+      "authorityId": "BROKER_MUTATION_AUTHORITY",
+      "file": "src/execution/paper-order-coordinator.ts",
+      "function": "submit",
+      "authorityClass": "PRODUCTION_BROKER_MUTATION_OWNER_CURRENTLY_LOCKED",
+      "inputs": ["authorized persisted intent", "reconciled broker state", "execution gate"],
+      "outputs": ["broker order or blocked intent"],
+      "consumer": [],
+      "mayVeto": true, "mayRank": false, "maySize": false, "maySelect": false, "mayMutateBroker": true
+    }
+  ]
+}

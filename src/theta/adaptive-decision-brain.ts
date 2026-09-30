@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import type { CanonicalFrontierAction } from './canonical-strategy-frontier.js';
-import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
+import { canonicalThetaStrategySources, thetaHardRule, type ThetaStrategyBranch } from './strategy-package.js';
 import { buildCanonicalShadowComparison } from './canonical-shadow-comparison.js';
+import { thetaStrategyFeatureManifest } from './phase2-market-intelligence-registry.js';
 
 export const adaptiveDecisionBrainVersion = 'theta-adaptive-decision-brain-shadow-v4' as const;
 
@@ -110,14 +111,31 @@ const applicabilityByBranch: Readonly<Record<ThetaStrategyBranch, readonly strin
   THETA_CC: ['BROKER_CONFIRMED_COVERED_SHARES'],
 };
 
+// The strategy package lists the eleven governed hard-rule FAMILIES for
+// inventory. It is not an action-specific conjunction. Recovery and CC can
+// hold or reduce an existing exposure without an entry BBO, assignment
+// capacity, or nonzero new-risk quantity. Keep this shadow registry truthful;
+// the canonical action frontier still owns the actual per-action checks.
+const commonRequiredEvidenceByBranch: Readonly<Record<ThetaStrategyBranch, readonly string[]>> = {
+  THETA_CONVENTIONAL: thetaHardRule.options,
+  THETA_HOLD_STRIKE: ['SUPPORTED_SESSION', 'STANDARD_CONTRACT', 'KNOWN_MULTIPLIER',
+    'FRESH_BROKER_STATE', 'FRESH_EXECUTABLE_BBO', 'RECONCILED_LIFECYCLE', 'AEGIS_NOT_VETOED'],
+  THETA_DEFINED_RISK: ['SUPPORTED_SESSION', 'STANDARD_CONTRACT', 'KNOWN_MULTIPLIER',
+    'FRESH_BROKER_STATE', 'FRESH_EXECUTABLE_BBO', 'RECONCILED_LIFECYCLE', 'AEGIS_NOT_VETOED'],
+  THETA_RECOVERY: ['FRESH_BROKER_STATE', 'RECONCILED_LIFECYCLE'],
+  THETA_CC: ['FRESH_BROKER_STATE', 'RECONCILED_LIFECYCLE'],
+};
+
 export const adaptiveStrategyRegistry: readonly AdaptiveStrategyRegistryEntry[] = canonicalThetaStrategySources.map((source) => ({
   branch: source.branch,
   strategyVersion: source.strategyVersion,
   maturity: source.status,
   executionEnabled: source.executionEnabled,
   applicableAccountState: applicabilityByBranch[source.branch],
-  requiredEvidence: source.hardRules,
-  optionalEvidence: source.softFeatureFamilies,
+  requiredEvidence: commonRequiredEvidenceByBranch[source.branch],
+  optionalEvidence: Object.entries(thetaStrategyFeatureManifest[source.branch])
+    .filter(([, role]) => role === 'OPTIONAL_RANKING' || role === 'UNCERTAINTY_ONLY')
+    .map(([family]) => family),
   candidateGenerator: `canonical-strategy-frontier:${source.branch}`,
   economicObjectiveSet: [
     'AFTER_COST_EXPECTED_ECONOMICS', 'CAPITAL_DAYS', 'TAIL_BURDEN', 'ASSIGNMENT_RECOVERY_BURDEN',

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier, type CanonicalStrategyFrontierInput } from './canonical-strategy-frontier.js';
 import { jsonValueSchema } from '../market/fusion-snapshot.js';
@@ -32,7 +33,22 @@ import { strategyRoutingResponseSchema } from './strategy-router-contract.js';
 // next, obvious step once this exists, and is called out explicitly in the
 // Codex handoff rather than done silently here.
 export const t0ReplayBundlePayloadType = 'T0_REPLAY_BUNDLE' as const;
-export const t0ReplayBundleContractVersion = 'theta-t0-replay-bundle-v2' as const;
+export const t0ReplayBundleContractVersion = 'theta-t0-replay-bundle-v3' as const;
+
+// The decision frontier intentionally collapses identical contract copies.
+// Hash the frozen input multiset separately so replay can still detect an
+// added or removed copy without making a duplicate into a second candidate.
+// Sorting permits provider-order-independent T0 replay.
+function contractInputHash(contracts: readonly z.infer<typeof normalizedOptionContractSchema>[]): string {
+  const canonical = (value: unknown): string => {
+    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+    if (value !== null && typeof value === 'object') return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined).sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
+    return JSON.stringify(value);
+  };
+  return createHash('sha256').update(canonical(contracts.map((contract) => canonical(contract)).sort())).digest('hex');
+}
 
 const aegisStateSchema = z.enum([
   'ALLOW_FULL', 'ALLOW_REDUCED', 'HOLD_ONLY', 'HARD_VETO', 'DEFINED_RISK_ONLY', 'EMERGENCY_EXIT_ONLY',
@@ -88,11 +104,12 @@ export const canonicalOpeningCostPolicySchema = z.object({
 }).strict();
 
 export const t0ReplayBundleSchema = z.object({
-  contractVersion: z.literal(t0ReplayBundleContractVersion),
+  contractVersion: z.enum(['theta-t0-replay-bundle-v2', t0ReplayBundleContractVersion]),
   snapshotId: z.string().min(1),
   timestamp: z.string().min(1),
   strategyVersion: z.string().min(1),
   expectedFrontierContentHash: z.string().regex(/^[0-9a-f]{64}$/),
+  inputContractsHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   contracts: normalizedOptionContractSchema.array(),
   routing: strategyRoutingResponseSchema.nullable(),
   stock: stockSchema,
@@ -116,6 +133,8 @@ export const t0ReplayBundleSchema = z.object({
   optionsApprovedLevel: z.number().nullable().optional(),
   optionsTradingLevel: z.number().nullable().optional(),
 }).strict().superRefine((bundle, context) => {
+  if (bundle.contractVersion === t0ReplayBundleContractVersion && bundle.inputContractsHash === undefined)
+    context.addIssue({ code: 'custom', path: ['inputContractsHash'], message: 'T0_REPLAY_CONTRACT_INPUT_HASH_REQUIRED' });
   const decisionAt = Date.parse(bundle.timestamp);
   if (!Number.isFinite(decisionAt)) return;
   bundle.contracts.forEach((contract, index) => {
@@ -159,6 +178,7 @@ export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0Re
     contractVersion: t0ReplayBundleContractVersion,
     snapshotId: input.snapshotId, timestamp: input.timestamp, strategyVersion: input.strategyVersion,
     expectedFrontierContentHash,
+    inputContractsHash: contractInputHash(input.contracts),
     contracts: [...input.contracts], routing: input.routing, stock: input.stock,
     assignmentCapacityQty: input.assignmentCapacityQty, buyingPower: input.buyingPower ?? null,
     brokerAllowedQty: input.brokerAllowedQty,
@@ -199,6 +219,8 @@ export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0Re
  */
 export function replayFromT0Bundle(bundle: T0ReplayBundle): CanonicalStrategyFrontier {
   const parsed = t0ReplayBundleSchema.parse(bundle);
+  if (parsed.inputContractsHash !== undefined && contractInputHash(parsed.contracts) !== parsed.inputContractsHash)
+    throw new Error('T0_REPLAY_CONTRACT_INPUT_HASH_MISMATCH');
   const replayInput: CanonicalStrategyFrontierInput = {
     snapshotId: parsed.snapshotId, timestamp: parsed.timestamp, strategyVersion: parsed.strategyVersion,
     contracts: parsed.contracts, routing: parsed.routing, stock: parsed.stock,

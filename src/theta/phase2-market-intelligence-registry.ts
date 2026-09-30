@@ -1,6 +1,6 @@
-import { thetaFeatureFamily } from './strategy-package.js';
+import { thetaFeatureFamily, type ThetaStrategyBranch } from './strategy-package.js';
 
-export const phase2MarketIntelligenceRegistryVersion = 'theta-phase2-market-intelligence-registry-v1' as const;
+export const phase2MarketIntelligenceRegistryVersion = 'theta-phase2-market-intelligence-registry-v2' as const;
 
 export type PricingSuitability = 'MASTER_PAPER_EXECUTABLE_REFERENCE' | 'UNDERLYING_REFERENCE_ONLY' | 'NOT_PRICING_AUTHORITY';
 export type ResearchSuitability = 'QUALIFIED' | 'QUALIFIED_WITH_LIMITS' | 'NOT_APPLICABLE';
@@ -66,7 +66,10 @@ export const providerCapabilityAuthorityMatrix: readonly ProviderCapabilityAutho
     entitlement:'capability probe required',feed:'PROVIDER_EVENT_CONTEXT',requestSchema:'symbol + bounded date range/pagination',responseSchema:'NormalizedOptionomicsContextObservation',timestamp:'providerKnownAt/publishedAt/observedAt',retrievedAt:'request completion',units:'event identity and timestamps',freshness:'valid-through and coverage semantics',rateLimit:optionomicsRate,timeout:'bounded Optionomics request policy',retry:'bounded provider adapter retry only',fallback:'PROVIDER_LIMITED when negative assurance is absent',pricingSuitability:'NOT_PRICING_AUTHORITY',researchSuitability:'QUALIFIED_WITH_LIMITS',runtimeCaller:'theta-shadow-cycle/event normalizer',persistence:'event evidence receipt',consumer:'event policy, AEGIS context, management',state:'PROVIDER_LIMITED' },
 ]);
 
-export type FeatureRole = 'HARD_SAFETY' | 'STRATEGY_APPLICABILITY' | 'ECONOMIC_OBJECTIVE' | 'UNCERTAINTY_MODIFIER' | 'INFORMATIONAL' | 'RESEARCH_ONLY';
+/** Primary decision role. This is governance metadata, not another gate. */
+export type FeatureRole = 'HARD_SAFETY' | 'STRATEGY_APPLICABILITY' | 'STRUCTURAL_ECONOMICS'
+  | 'RISK_CAPACITY' | 'EXECUTION_QUALITY' | 'PORTFOLIO_CONTEXT' | 'UNCERTAINTY_MODIFIER'
+  | 'EMPIRICAL_SIGNAL' | 'RESEARCH_ONLY';
 export type FeatureProducerState = 'PRODUCTION' | 'SHADOW' | 'RESEARCH' | 'PROVIDER_LIMITED';
 export interface FeatureFamilyAuthority {
   readonly family: typeof thetaFeatureFamily.options[number];
@@ -82,27 +85,103 @@ export interface FeatureFamilyAuthority {
 const f=(family:FeatureFamilyAuthority['family'],role:FeatureRole,producerState:FeatureProducerState,producer:string,consumer:string,units:string,unknownBehavior:string):FeatureFamilyAuthority=>({family,role,producerState,producer,consumer,units,timestampSemantics:'observed_at + available_at + retrieved_at, all <= decisionAt for decision use',unknownBehavior});
 
 export const featureFamilyAuthorityMatrix: readonly FeatureFamilyAuthority[] = Object.freeze([
-  f('LIQUIDITY','HARD_SAFETY','PRODUCTION','Alpaca exact BBO + execution-quality','executability, AEGIS, sizing','USD/share, ratio','required current evidence blocks execution only'),
+  f('LIQUIDITY','EXECUTION_QUALITY','PRODUCTION','Alpaca exact BBO + execution-quality','executability, AEGIS, sizing','USD/share, ratio','required current evidence blocks execution only'),
   f('OWNERSHIP','STRATEGY_APPLICABILITY','PRODUCTION','ownership contract/account state','Q/H applicability and assignment decision','score/components','unknown applicability remains UNKNOWN'),
-  f('DRAWDOWN_RECOVERY','UNCERTAINTY_MODIFIER','SHADOW','PIT price/equity path + lifecycle evidence','management and recovery research','USD and decimal fraction','does not globally block new-risk Q'),
+  f('DRAWDOWN_RECOVERY','PORTFOLIO_CONTEXT','SHADOW','PIT price/equity path + lifecycle evidence','management and recovery research','USD and decimal fraction','does not globally block new-risk Q'),
   f('TREND','UNCERTAINTY_MODIFIER','PRODUCTION','Alpaca PIT bars/underlying features','regime and qualified soft evidence','slope/return','missing stays optional UNKNOWN'),
-  f('MOMENTUM','UNCERTAINTY_MODIFIER','SHADOW','Alpaca PIT bars/underlying features','shadow evaluation','decimal return','no Production veto'),
-  f('REALIZED_VOLATILITY','ECONOMIC_OBJECTIVE','SHADOW','Alpaca PIT bars','VRP and risk research','annualized decimal','no Production veto'),
+  f('MOMENTUM','RESEARCH_ONLY','SHADOW','Alpaca PIT bars/underlying features','shadow evaluation','decimal return','no Production veto'),
+  f('REALIZED_VOLATILITY','EMPIRICAL_SIGNAL','SHADOW','Alpaca PIT bars','VRP and risk research','annualized decimal','no Production veto'),
   f('IV','UNCERTAINTY_MODIFIER','PRODUCTION','Alpaca snapshot or qualified Optionomics observation','AEGIS IV stress and volatility context','decimal','required only for the specific IV stress assessment, maturity stays explicit'),
-  f('SKEW','UNCERTAINTY_MODIFIER','RESEARCH','qualified Optionomics chain','strategy-quality research','decimal IV difference','no Production veto'),
-  f('TERM_STRUCTURE','UNCERTAINTY_MODIFIER','RESEARCH','qualified Optionomics chain','strategy-quality and management research','decimal IV difference','no Production veto'),
+  f('SKEW','RESEARCH_ONLY','RESEARCH','qualified Optionomics chain','strategy-quality research','decimal IV difference','no Production veto'),
+  f('TERM_STRUCTURE','RESEARCH_ONLY','RESEARCH','qualified Optionomics chain','strategy-quality and management research','decimal IV difference','no Production veto'),
   f('VOLATILITY_SURFACE','RESEARCH_ONLY','RESEARCH','qualified Optionomics surface points','research export/modeling','decimal IV grid','no Production veto'),
-  f('FLOW','INFORMATIONAL','RESEARCH','qualified Optionomics flow','shadow diagnostics','provider-qualified units only','no Production veto'),
+  f('FLOW','RESEARCH_ONLY','RESEARCH','qualified Optionomics flow','shadow diagnostics','provider-qualified units only','no Production veto'),
   f('UNUSUAL_ACTIVITY','RESEARCH_ONLY','PROVIDER_LIMITED','Optionomics capability when entitled','research only','provider-defined','not present is provider-limited, never false'),
-  f('VOLUME_OPEN_INTEREST','ECONOMIC_OBJECTIVE','PRODUCTION','Alpaca volume + qualified Optionomics OI fallback','Q lattice/liquidity diagnostics','contracts','missing remains UNKNOWN and cannot be zero'),
+  f('VOLUME_OPEN_INTEREST','EXECUTION_QUALITY','PRODUCTION','Alpaca volume + qualified Optionomics OI fallback','Q lattice/liquidity diagnostics','contracts','missing remains UNKNOWN and cannot be zero'),
   f('EVENT_CONTEXT','HARD_SAFETY','PRODUCTION','normalized event/corporate-action evidence','entry safety, AEGIS, management','timestamps/distance sessions','missing required coverage fails safe with exact reason'),
-  f('SECTOR','STRATEGY_APPLICABILITY','PROVIDER_LIMITED','sector metadata provider not fully qualified','AEGIS applicability audit','classification','single-name/non-applicable distinguished from missing'),
+  f('SECTOR','PORTFOLIO_CONTEXT','PROVIDER_LIMITED','sector metadata provider not fully qualified','AEGIS applicability audit','classification','single-name/non-applicable distinguished from missing'),
   f('CORRELATION','HARD_SAFETY','PRODUCTION','synchronized Alpaca PIT returns','AEGIS when portfolio cluster is applicable','correlation coefficient','not applicable for absent comparison set'),
-  f('PORTFOLIO_EXPOSURE','HARD_SAFETY','PRODUCTION','Alpaca account/positions + account exposure','AEGIS and sizing','USD, shares, contracts, percent','required broker evidence fails safe'),
-  f('FUNDAMENTAL_QUALITY','INFORMATIONAL','PROVIDER_LIMITED','no qualified canonical provider','ownership research only','provider-defined','explicit provider-limited, no Production veto'),
+  f('PORTFOLIO_EXPOSURE','RISK_CAPACITY','PRODUCTION','Alpaca account/positions + account exposure','AEGIS and sizing','USD, shares, contracts, percent','required broker evidence fails safe'),
+  f('FUNDAMENTAL_QUALITY','RESEARCH_ONLY','PROVIDER_LIMITED','no qualified canonical provider','ownership research only','provider-defined','explicit provider-limited, no Production veto'),
   f('REGIME','STRATEGY_APPLICABILITY','PRODUCTION','PIT market/volatility/liquidity state','strategy applicability router','categorical','unknown applicability stays UNKNOWN, no fabricated regime'),
-  f('EXECUTION_QUALITY','HARD_SAFETY','PRODUCTION','Alpaca exact BBO + latency/freshness','finalist refresh and pre-submit handoff','USD/share, milliseconds, ratio','unqualified quote blocks that contract'),
+  f('EXECUTION_QUALITY','EXECUTION_QUALITY','PRODUCTION','Alpaca exact BBO + latency/freshness','finalist refresh and pre-submit handoff','USD/share, milliseconds, ratio','unqualified quote blocks that contract'),
 ]);
+
+/** One primary role for each of the 20 declared families. The matrix above is
+ * the existing producer/consumer authority, so this alias creates no second
+ * ranking or risk authority. */
+export const thetaBrainInformationRoleRegistry = featureFamilyAuthorityMatrix;
+
+export type StrategyFeatureUse = 'REQUIRED' | 'REQUIRED_WHEN_APPLICABLE' | 'OPTIONAL_RANKING' | 'UNCERTAINTY_ONLY'
+  | 'RESEARCH_ONLY' | 'IRRELEVANT';
+type FeatureFamily = typeof thetaFeatureFamily.options[number];
+type FeatureUseDeclaration = Readonly<Partial<Record<Exclude<StrategyFeatureUse, 'IRRELEVANT'>,
+  readonly FeatureFamily[]>>>;
+
+// Branch-wide requirements are deliberately narrow. An action-specific fact
+// (for example a stock quote for SELL_STOCK, but not RECOVERY_WAIT) belongs in
+// the management action frontier, never in a blanket branch requirement.
+const featureUseDeclarations: Readonly<Record<ThetaStrategyBranch, FeatureUseDeclaration>> = {
+  THETA_CONVENTIONAL: {
+    REQUIRED: ['LIQUIDITY', 'OWNERSHIP', 'VOLUME_OPEN_INTEREST', 'EVENT_CONTEXT',
+      'PORTFOLIO_EXPOSURE', 'EXECUTION_QUALITY'],
+    REQUIRED_WHEN_APPLICABLE: ['CORRELATION'],
+    OPTIONAL_RANKING: ['TREND'],
+    UNCERTAINTY_ONLY: ['DRAWDOWN_RECOVERY', 'IV', 'SECTOR', 'REGIME'],
+    RESEARCH_ONLY: ['MOMENTUM', 'REALIZED_VOLATILITY', 'SKEW', 'TERM_STRUCTURE',
+      'VOLATILITY_SURFACE', 'FLOW', 'UNUSUAL_ACTIVITY', 'FUNDAMENTAL_QUALITY'],
+  },
+  THETA_HOLD_STRIKE: {
+    REQUIRED: ['LIQUIDITY', 'OWNERSHIP', 'EVENT_CONTEXT', 'EXECUTION_QUALITY'],
+    UNCERTAINTY_ONLY: ['DRAWDOWN_RECOVERY', 'IV', 'PORTFOLIO_EXPOSURE', 'REGIME'],
+    RESEARCH_ONLY: ['TREND', 'MOMENTUM', 'REALIZED_VOLATILITY', 'SKEW',
+      'TERM_STRUCTURE', 'VOLATILITY_SURFACE', 'FLOW', 'UNUSUAL_ACTIVITY'],
+  },
+  THETA_DEFINED_RISK: {
+    REQUIRED: ['LIQUIDITY', 'EVENT_CONTEXT', 'EXECUTION_QUALITY'],
+    UNCERTAINTY_ONLY: ['IV', 'CORRELATION', 'PORTFOLIO_EXPOSURE', 'REGIME'],
+    RESEARCH_ONLY: ['REALIZED_VOLATILITY', 'SKEW', 'TERM_STRUCTURE',
+      'VOLATILITY_SURFACE', 'FLOW', 'UNUSUAL_ACTIVITY'],
+  },
+  THETA_RECOVERY: {
+    REQUIRED: ['OWNERSHIP', 'PORTFOLIO_EXPOSURE'],
+    UNCERTAINTY_ONLY: ['DRAWDOWN_RECOVERY', 'TREND', 'EVENT_CONTEXT', 'REGIME',
+      'EXECUTION_QUALITY'],
+    RESEARCH_ONLY: ['IV', 'REALIZED_VOLATILITY', 'SKEW', 'TERM_STRUCTURE',
+      'VOLATILITY_SURFACE', 'FLOW', 'FUNDAMENTAL_QUALITY'],
+  },
+  THETA_CC: {
+    REQUIRED: ['OWNERSHIP', 'PORTFOLIO_EXPOSURE'],
+    UNCERTAINTY_ONLY: ['LIQUIDITY', 'DRAWDOWN_RECOVERY', 'IV', 'EVENT_CONTEXT',
+      'REGIME', 'EXECUTION_QUALITY'],
+    RESEARCH_ONLY: ['REALIZED_VOLATILITY', 'SKEW', 'TERM_STRUCTURE',
+      'VOLATILITY_SURFACE', 'FLOW', 'UNUSUAL_ACTIVITY'],
+  },
+};
+
+const featureManifestFor = (declaration: FeatureUseDeclaration): Readonly<Record<FeatureFamily, StrategyFeatureUse>> => {
+  const roles = new Map<FeatureFamily, StrategyFeatureUse>();
+  for (const [role, families] of Object.entries(declaration) as
+    Array<[Exclude<StrategyFeatureUse, 'IRRELEVANT'>, readonly FeatureFamily[]]>) {
+    for (const family of families) {
+      if (roles.has(family)) throw new Error(`DUPLICATE_STRATEGY_FEATURE_ROLE:${family}`);
+      roles.set(family, role);
+    }
+  }
+  return Object.freeze(Object.fromEntries(thetaFeatureFamily.options.map((family) =>
+    [family, roles.get(family) ?? 'IRRELEVANT'])) as Record<FeatureFamily, StrategyFeatureUse>);
+};
+
+/** A read-only projection of the existing 20-family producer matrix. It does
+ * not rank candidates, veto a strategy, or promote research-only evidence. */
+export const thetaStrategyFeatureManifest: Readonly<Record<ThetaStrategyBranch,
+  Readonly<Record<FeatureFamily, StrategyFeatureUse>>>> = Object.freeze({
+    THETA_CONVENTIONAL: featureManifestFor(featureUseDeclarations.THETA_CONVENTIONAL),
+    THETA_HOLD_STRIKE: featureManifestFor(featureUseDeclarations.THETA_HOLD_STRIKE),
+    THETA_DEFINED_RISK: featureManifestFor(featureUseDeclarations.THETA_DEFINED_RISK),
+    THETA_RECOVERY: featureManifestFor(featureUseDeclarations.THETA_RECOVERY),
+    THETA_CC: featureManifestFor(featureUseDeclarations.THETA_CC),
+  });
 
 export function validatePhase2MarketIntelligenceRegistry(): readonly string[] {
   const issues:string[]=[];
