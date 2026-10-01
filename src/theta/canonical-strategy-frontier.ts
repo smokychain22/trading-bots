@@ -474,7 +474,13 @@ function structuralSizing(
   }
   if (candidateAegisState === null || ['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) {
     const exactReasons=input.aegisBindingReasonsByCandidateId?.[candidateId]?.filter((reason)=>reason.trim().length>0)??[];
-    return result(0, exactReasons[0] ?? (candidateAegisState === null ? 'AEGIS_UNKNOWN' : `AEGIS_${candidateAegisState}`),
+    // Per-candidate AEGIS assessments exist but not for this candidate: AEGIS was never asked (upstream Q/shortlist
+    // did not forward it). That is NOT_REACHED, distinct from AEGIS being asked and returning UNKNOWN. Both keep
+    // quantity 0 and the same fail-closed wait semantics.
+    const aegisNotReached = candidateAegisState === null && input.aegisNewRiskStateByCandidateId !== undefined
+      && !Object.hasOwn(input.aegisNewRiskStateByCandidateId, candidateId);
+    return result(0, exactReasons[0] ?? (candidateAegisState === null
+      ? (aegisNotReached ? 'AEGIS_NOT_REACHED_UPSTREAM' : 'AEGIS_UNKNOWN') : `AEGIS_${candidateAegisState}`),
       exactReasons.length>0?exactReasons:['AEGIS_DOES_NOT_PERMIT_NEW_RISK']);
   }
   if (candidateAegisState === 'ALLOW_REDUCED') {
@@ -1119,7 +1125,7 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const universeIncomplete = input.unevaluatedUnderlyingCount > 0;
   const sizingEvidenceUnknown = globallyRanked.filter((candidate) => candidate.branch === 'THETA_CONVENTIONAL'
     && candidate.riskFeasible &&
-    candidate.sizing.quantity === 0 && ['AEGIS_UNKNOWN', 'SIZING_POLICY_INCOMPLETE', 'SIZING_POLICY_INVALID',
+    candidate.sizing.quantity === 0 && ['AEGIS_UNKNOWN', 'AEGIS_NOT_REACHED_UPSTREAM', 'SIZING_POLICY_INCOMPLETE', 'SIZING_POLICY_INVALID',
       'COLLATERAL_INPUT_UNKNOWN', 'REDUCED_MULTIPLIER_UNKNOWN', 'UNKNOWN_STOCK_CAPACITY',
       'COVERED_SHARES_UNKNOWN', 'SIZING_CAPACITY_INVALID', 'STOCK_CAPACITY_INVALID']
       .includes(candidate.sizing.bindingConstraint));

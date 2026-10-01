@@ -395,6 +395,21 @@ test('unknown AEGIS or sizing evidence is SYSTEM_HOLD, not an earned economic GL
   }
 });
 
+test('a candidate AEGIS was never asked about is NOT_REACHED, distinct from AEGIS UNKNOWN, with identical fail-closed wait', () => {
+  const notReached = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+    aegisNewRiskStateByCandidateId: { 'THETA_CONVENTIONAL:OTHER261016P00100000': 'ALLOW_FULL' } });
+  const unknown = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+    aegisNewRiskStateByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': null } });
+  for (const result of [notReached, unknown]) {
+    assert.equal(result.primaryAction, 'SYSTEM_HOLD');
+    assert.equal(result.globalWaitEarned, false);
+    assert.equal(result.selectedQuantity, 0);
+  }
+  assert.ok(notReached.globalWaitReasons.includes('CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_NOT_REACHED_UPSTREAM'));
+  assert.ok(unknown.globalWaitReasons.includes('CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_UNKNOWN'));
+  assert.ok(!notReached.globalWaitReasons.includes('CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_UNKNOWN'));
+});
+
 test('a candidate-specific unknown AEGIS state never falls back to a permissive global state', () => {
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
     aegisNewRiskStateByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': null } });
