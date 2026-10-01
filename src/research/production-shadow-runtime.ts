@@ -63,6 +63,8 @@ export interface ProductionShadowScanReport {
 }
 
 export interface ObservationProcessingReport {readonly due:number;readonly observed:number;readonly missed:number;
+  /** Failed attempts that are still inside their observable window and stay PENDING for the next tick. */
+  readonly deferred:number;
   readonly shadowFilled:number;readonly shadowPartial:number;readonly shadowExpiredUnfilled:number;}
 
 export type ObservationMissReason='HOST_OFFLINE'|'PROVIDER_UNAVAILABLE'|'SESSION_ENDED'|'INVALID_CONTRACT'|'INVALID_QUOTE';
@@ -171,6 +173,10 @@ export function paperEntryEventEvidenceBlockers(
 
 /** A mark is only a valid observation of its target time within this window; older due jobs are unrecoverable. */
 export const observationFreshWindowSeconds=120;
+/** A failed attempt with at least this much window left is retried by the next marks tick instead of becoming MISSED. */
+export const observationRetryReserveSeconds=45;
+/** Interval of the read-only marks ticker; must stay well below the window so a mark is always attempted at least twice. */
+export const observationMarksTickIntervalSeconds=40;
 
 /** Fresh (still observable) jobs sort first so an old unrecoverable backlog can never starve them out of the batch. */
 export async function processDueExecutionObservations(input:{pool:Pool;alpaca:AlpacaProviderConfig;now:()=>string}):Promise<ObservationProcessingReport>{
@@ -185,7 +191,14 @@ export async function processDueExecutionObservations(input:{pool:Pool;alpaca:Al
     [observedAt,observationFreshWindowSeconds]);
   const store=new PostgresShadowEvidenceRuntimeStore(input.pool);
   const quoteStore=new PostgresPointInTimeEvidenceStore(input.pool); const virtualTrader=new PostgresShadowVirtualTrader(input.pool);
-  let observed=0,missed=0,shadowFilled=0,shadowPartial=0,shadowExpiredUnfilled=0;
+  let observed=0,missed=0,deferred=0,shadowFilled=0,shadowPartial=0,shadowExpiredUnfilled=0;
+  // A transient provider/quote failure while the mark is still observable must not destroy it: leave it PENDING.
+  const retryable=(row:{target_at:unknown}):boolean=>
+    (Date.parse(observedAt)-Date.parse(String(row.target_at)))/1000<=observationFreshWindowSeconds-observationRetryReserveSeconds;
+  const missOrDefer=async(row:{observation_job_id:unknown;target_at:unknown},reason:string):Promise<void>=>{
+    if(retryable(row)){deferred++;return;}
+    if(await store.markObservationMissed(String(row.observation_job_id),observedAt,reason)) missed++;
+  };
   const byUnderlyingAndType=new Map<string,typeof jobs.rows>();
   for(const row of jobs.rows){
     if(Date.parse(observedAt)-Date.parse(String(row.target_at))>observationFreshWindowSeconds*1000){
@@ -202,12 +215,11 @@ export async function processDueExecutionObservations(input:{pool:Pool;alpaca:Al
       for(const row of rows){
         const quote=result.snapshots.get(String(row.contract_symbol));
         if(quote===undefined){
-          const reason=missingObservationReason(false,result.complete);
-          if(await store.markObservationMissed(String(row.observation_job_id),observedAt,reason)) missed++;
+          await missOrDefer(row,missingObservationReason(false,result.complete));
           continue;
         }
         if(quote.bid===null||quote.ask===null||quote.bid<0||quote.ask<=0||quote.bid>quote.ask){
-          if(await store.markObservationMissed(String(row.observation_job_id),observedAt,missingObservationReason(true))) missed++;
+          await missOrDefer(row,missingObservationReason(true));
           continue;
         }
         const quoteId=String(row.observation_job_id);
@@ -227,10 +239,10 @@ export async function processDueExecutionObservations(input:{pool:Pool;alpaca:Al
       }
     }catch(error){
       const reason=classifyObservationFailure(error);
-      for(const row of rows) if(await store.markObservationMissed(String(row.observation_job_id),observedAt,reason)) missed++;
+      for(const row of rows) await missOrDefer(row,reason);
     }
   }
-  return {due:jobs.rowCount??0,observed,missed,shadowFilled,shadowPartial,shadowExpiredUnfilled};
+  return {due:jobs.rowCount??0,observed,missed,deferred,shadowFilled,shadowPartial,shadowExpiredUnfilled};
 }
 
 const productionPythonHost:string|undefined=process.env.VERCEL_ENV==='production'
