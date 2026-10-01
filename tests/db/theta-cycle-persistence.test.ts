@@ -78,7 +78,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       riskState: null, strategyRouterState: null,
       versions: { strategyVersion: 'test', featureVersion: 'test', riskLimitVersion: 'test', executionVersion: 'test', costModelVersion: 'test', dataVersion: 'test', modelVersions: {} },
       sourceProvenance: [
-        { provider: 'ALPACA', operationAlias: 'account', asOf: now, retrievedAt: now, state: 'GOOD', contentHash: hash('account'), feed: null, contractVersion: 'v2', truthRole: 'ACCOUNT', requiredForNewRisk: true },
+        { provider: 'ALPACA', operationAlias: 'account', asOf: null, retrievedAt: '2026-09-11T14:59:59.000Z', state: 'GOOD', contentHash: hash('account'), feed: null, contractVersion: 'v2', truthRole: 'ACCOUNT', requiredForNewRisk: true },
         { provider: 'ALPACA', operationAlias: 'contracts', asOf: now, retrievedAt: now, state: 'GOOD', contentHash: hash('contracts'), feed: null, contractVersion: 'v2', truthRole: 'CONTRACT', requiredForNewRisk: true },
         { provider: 'ALPACA', operationAlias: 'quotes', asOf: now, retrievedAt: now, state: 'GOOD', contentHash: hash('quotes'), feed: 'OPRA', contractVersion: 'v1', truthRole: 'QUOTE', requiredForNewRisk: true },
       ],
@@ -222,6 +222,11 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     const exported = await new PostgresDatasetExporter(pool).export({start:now,
       end:'2026-09-11T15:01:00.000Z',exportedAt:new Date().toISOString(),featureSetVersion:'test-v1'});
     assert.ok(exported.rowCounts.candidates > 0);
+    const provenance = exported.rows.candidates[0]?.providerProvenance as Array<Record<string, unknown>>;
+    const accountProvenance = provenance.find(row => row.operationAlias === 'account');
+    assert.equal(accountProvenance?.providerTimestamp, null, 'receipt time must not manufacture a provider timestamp');
+    assert.equal(accountProvenance?.asOf, '2026-09-11T14:59:59.000Z', 'SQL persistence and export retain the actual source receipt before decision freeze');
+    assert.equal(accountProvenance?.ingestionTimestamp, accountProvenance?.asOf);
     assert.equal(exported.rowCounts.entryChainLinks, 0, 'WAIT decisions and candidate scans cannot manufacture entry links');
   } finally { await pool.end(); }
 });

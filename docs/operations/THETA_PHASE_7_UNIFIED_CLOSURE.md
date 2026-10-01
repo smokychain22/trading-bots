@@ -1,5 +1,48 @@
 # THETA Phase 7 Unified Closure Receipt
 
+## Current-worker continuation, 2026-09-30 23:51 UTC
+
+Exact main `c12dc331dc4d2fbcfb6d93d6f8b15950e600e35e` passed CI
+`36792078352` and was installed as an immutable Windows release after bounded
+admission, AC/disk checks, zero-supervisor verification and locked controls.
+The real worker persisted five successful scope cycles: broker, lifecycle,
+management, observation and evidence. One active lease and GOOD reconciliation
+with zero positions/open orders were observed. The local supervisor reached
+ONLINE and persisted its recovery receipt. Database circuit was DB_HEALTHY.
+Market was closed. No candidate, AEGIS, sizing or finalist proof is claimed.
+
+Local archive projection wrote 1,961 research rows. ZSTD Parquet and DuckDB
+readback passed, pending compaction was zero, and storage watermark NORMAL.
+Archive traversal was PARTIAL_LIMIT_REACHED, not a complete backlog drain.
+Command-5A reported 9,336 unresolved jobs, 2,885 overdue, zero expired claims
+and zero retry-stalled jobs. Sixteen observations were deferred for market
+closure. These counts concern existing historical work, not new-release fills.
+
+The real export reached the strict empirical loader and failed with
+INGESTION_TIMESTAMP_BEFORE_AS_OF. The producer used decision freeze as a
+fallback as-of when a provider omitted its own timestamp, despite an earlier
+known receipt. The source fix uses that recorded receipt as the observation
+bound while preserving providerTimestamp=null. SQL persistence/export and
+strict-schema regression tests cover this path. Existing dataset hash
+`2c19ec90ec649a1603cab9722206d99213b3fa6e4c482643df565edbf1aa2e69`
+is preserved unchanged and unqualified. No retrospective timestamp correction,
+hash rewrite or empirical promotion is authorized by this source correction.
+
+The local health diagnostic initially queried incorrect execution-control
+column names and recorded POSTGRES_42703 after its successful worker reads.
+That diagnostic-only query was corrected using the existing schema. A fresh
+bounded SELECT receipt confirmed locked persisted controls with no pool error.
+This was not a worker, schema or strategy failure.
+
+Phase 7 remains open for current-release supported-session acceptance. The
+first Paper order remains owner-gated. Orders and broker mutations remain zero.
+
+The provenance correction passed four focused cases, the refreshed Phase-4
+222-case binding suite, full Node 3,338 passed / 16 skipped / zero failed,
+Python 1,267 passed, browser 23 passed, typecheck/lint/build, security/storage
+and four Windows recovery/deadline scripts. The new disposable SQL regression
+must execute in exact-SHA CI before integrating and aligning the worker again.
+
 ## Current continuation, 2026-09-30 23:36 UTC
 
 Phase 6 reviewed engineering is closed at source `5edd91dc37f58c80e2c3911aef4fcc14d28b79ee`,

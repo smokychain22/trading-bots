@@ -1,8 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Pool, PoolClient } from 'pg';
-import { alpacaQuoteSnapshotRow, deterministicRuntimeUuid, PostgresThetaCycleStore } from '../src/theta/postgres-theta-cycle-store.js';
+import { alpacaQuoteSnapshotRow, deterministicRuntimeUuid, PostgresThetaCycleStore, researchProvenanceAsOf } from '../src/theta/postgres-theta-cycle-store.js';
+import { providerProvenanceSchema } from '../src/research/point-in-time-evidence.js';
 import { normalizeOptionContract } from '../src/theta/option-contract.js';
+
+test('research provenance without provider time uses receipt before decision freeze without relaxing PIT rejection',()=>{
+  const decision='2026-09-30T13:30:35.318Z';
+  const receipt='2026-09-30T13:30:33.964Z';
+  const item={asOf:null,retrievedAt:receipt};
+  const provenance={source:'ALPACA',operationAlias:'account',providerTimestamp:null,
+    ingestionTimestamp:receipt,asOf:researchProvenanceAsOf(item,decision),version:'v2',state:'GOOD'};
+  assert.equal(providerProvenanceSchema.parse(provenance).asOf,receipt);
+  assert.equal(provenance.providerTimestamp,null);
+  assert.equal(item.asOf,null,'do not rewrite original source provenance');
+  assert.equal(providerProvenanceSchema.safeParse({...provenance,asOf:decision}).success,false,
+    'historical impossible chronology stays rejected');
+  assert.equal(researchProvenanceAsOf({...item,asOf:'2026-09-30T13:30:30Z'},decision),'2026-09-30T13:30:30Z');
+});
 
 test('runtime persistence IDs are deterministic UUIDs without exposing raw identifiers', () => {
   const first = deterministicRuntimeUuid('fusion:bot:hash');

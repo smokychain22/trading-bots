@@ -33,6 +33,11 @@ const optionomicsTemporalResearchPolicy = {
   maximumGapSeconds: 3_600,
 } as const;
 
+export function researchProvenanceAsOf(item:Record<string,JsonValue>,decisionTime:JsonValue|undefined):JsonValue|undefined {
+  // Receipt time is an observation bound, never a fabricated provider time.
+  return item.asOf ?? item.retrievedAt ?? decisionTime;
+}
+
 export interface ThetaCyclePersistenceContext {
   readonly botInstanceId: string;
   readonly universeVersionId: string | null;
@@ -1109,7 +1114,10 @@ export class PostgresThetaCycleStore {
       const item=jsonObject(raw);
       return { source:String(item.provider ?? 'UNKNOWN'),operationAlias:String(item.operationAlias ?? 'UNKNOWN'),
         providerTimestamp:item.asOf ?? null,ingestionTimestamp:item.retrievedAt ?? snapshot.decisionTimeUtc,
-        asOf:item.asOf ?? snapshot.decisionTimeUtc,version:String(item.contractVersion ?? 'UNKNOWN'),
+        // With no provider timestamp, the observed receipt is the as-of bound.
+        // A later decision freeze is not a source observation. Keep the absent
+        // provider timestamp null rather than inventing a provider publication.
+        asOf:researchProvenanceAsOf(item,snapshot.decisionTimeUtc),version:String(item.contractVersion ?? 'UNKNOWN'),
         state:String(item.state ?? 'UNKNOWN'),feed:item.feed ?? null,contentHash:item.contentHash ?? null };
     });
     const versions=snapshot.versions !== null && typeof snapshot.versions==='object' && !Array.isArray(snapshot.versions)
