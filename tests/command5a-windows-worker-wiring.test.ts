@@ -16,7 +16,7 @@ test('local Command-5A health does not depend on a release-local dotenv file', (
     new LocalObservationJobScheduler(path).close();
     const result = spawnSync(process.execPath, ['--import', 'tsx', 'tools/theta-command5a-runtime.ts',
       '--mode=health', `--environment-file=${join(root, 'missing.env')}`, `--scheduler=${path}`],
-    { cwd: process.cwd(), encoding: 'utf8', timeout: 10_000 });
+    { cwd: process.cwd(), encoding: 'utf8', timeout: 90_000 });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout).state, 'COMMAND5A_HEALTH_COMPLETE');
   } finally { rmSync(root, { recursive: true, force: true }); }

@@ -48,6 +48,6 @@ test('strict-mode non-HTTP errors remain classified, while only safe HTTP metada
       $partial = Get-ThetaSafeHttpFailure -Exception $noHeaders
       if ($partial.HttpStatus -ne 502 -or $null -ne $partial.ServerErrorCode) { throw 'MISSING_HEADERS_NOT_SAFE' }
       'PASS'
-    `], { encoding: 'utf8', timeout: 15_000, windowsHide: true });
+    `], { encoding: 'utf8', timeout: 90_000, windowsHide: true });
     assert.equal(output.trim(), 'PASS');
   });

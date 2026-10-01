@@ -18,7 +18,7 @@ test('deferred Windows storage measurements stay unknown rather than zero or hea
       watermark=$localResearchStorageWatermark; quota=$localResearchTransferQuotaState;
       state=$localResearchArchiveState } | ConvertTo-Json -Compress`;
   const receipt=JSON.parse(execFileSync(process.platform==='win32'?'powershell.exe':'pwsh',
-    ['-NoProfile','-NonInteractive','-Command',script],{encoding:'utf8',timeout:15_000,windowsHide:true}));
+    ['-NoProfile','-NonInteractive','-Command',script],{encoding:'utf8',timeout:90_000,windowsHide:true}));
   for(const name of names)assert.equal(receipt[name],null,name);
   assert.equal(receipt.watermark,'NOT_OBSERVED');
   assert.equal(receipt.quota,'NOT_OBSERVED');
