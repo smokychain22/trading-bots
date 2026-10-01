@@ -7,7 +7,7 @@ import {
   type ManagementActionExecutionEvidence, type ManagementFrontierAction,
   type ManagementPolicyActionValue, type ManagementPolicyEvidence,
 } from './management-action-frontier.js';
-import { buildCommonHorizonComparison, contractualCapitalDays, forwardContinuationCashFlow, sunkRealizedEconomics } from './common-horizon-economics.js';
+import { buildCommonHorizonComparison, contractualCapitalDays, forwardContinuationCashFlow, forwardRollCashFlow, sunkRealizedEconomics } from './common-horizon-economics.js';
 import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incremental-utility.js';
 import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './thesis-invalidation.js';
 import { buildRecoveryState, type BasisSource, type RecoveryState } from './recovery-state.js';
@@ -396,7 +396,7 @@ function valueForSingleRollCandidate(
   // this block -- forwardContinuationCashFlow only ever sees the two
   // current-quote dollar boundaries, so the old leg's realized P&L cannot
   // be silently re-added into this roll's forward comparison.
-  const forward = forwardContinuationCashFlow({ closeCostDollars: currentMark, openCreditDollars });
+  const forward = forwardRollCashFlow(currentMark, openCreditDollars);
   if (!forward.complete || forward.netCashFlow === null || !Number.isFinite(openCreditMidDollars))
     return { ...base, ...UNKNOWN_VALUE, reasons: ['ROLL_FORWARD_ECONOMICS_INVALID', ...forward.reasons] };
   const netCredit = forward.netCashFlow;
@@ -518,7 +518,7 @@ function valueForRollCcFromCandidates(
   const assessments = usable.map((candidate) => {
     const newCreditDollars = candidate.bid * candidate.multiplier * candidate.quantity;
     const newCreditMidDollars = (candidate.bid + candidate.ask) / 2 * candidate.multiplier * candidate.quantity;
-    const forward = forwardContinuationCashFlow({ closeCostDollars: currentMark, openCreditDollars: newCreditDollars });
+    const forward = forwardRollCashFlow(currentMark, newCreditDollars);
     const netRollCredit = forward.netCashFlow as number; // complete=true guaranteed: both legs known here
     const additionalUpsideDollars = finite(oldStrike)
       ? (candidate.strike - oldStrike) * candidate.multiplier * candidate.quantity : null;

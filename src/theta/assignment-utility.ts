@@ -1,5 +1,5 @@
 import type { ManagementInputState } from './management-input-state.js';
-import { forwardContinuationCashFlow } from './common-horizon-economics.js';
+import { forwardRollCashFlow } from './common-horizon-economics.js';
 
 export const assignmentUtilityVersion = 'theta-assignment-utility-v1' as const;
 
@@ -120,8 +120,11 @@ export function evaluateAssignmentUtility(
 
   if (rollCandidate === null || closeCostDollars === null) {
     assessments.push({ action: 'ROLL', forwardCashFlowDollars: null, utility: null, reasons: ['NO_IDENTIFIED_ROLL_TARGET'] });
+  } else if (rollCandidate.openCreditDollars === null) {
+    // A roll always has two legs: an unknown opening credit is UNKNOWN economics, never a zero credit.
+    assessments.push({ action: 'ROLL', forwardCashFlowDollars: null, utility: null, reasons: ['ROLL_OPEN_CREDIT_UNKNOWN'] });
   } else {
-    const forward = forwardContinuationCashFlow({ closeCostDollars, openCreditDollars: rollCandidate.openCreditDollars });
+    const forward = forwardRollCashFlow(closeCostDollars, rollCandidate.openCreditDollars);
     assessments.push({
       action: 'ROLL', forwardCashFlowDollars: forward.netCashFlow, utility: forward.netCashFlow,
       reasons: forward.complete ? [`DETERMINISTIC_NET_CREDIT_${(forward.netCashFlow as number).toFixed(2)}`] : ['ROLL_ECONOMICS_INCOMPLETE'],

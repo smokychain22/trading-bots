@@ -77,6 +77,18 @@ export function forwardContinuationCashFlow(inputs: ForwardContinuationInputs): 
   return { netCashFlow, complete: true, reasons };
 }
 
+/**
+ * A roll is ALWAYS two economic legs (close the old, open the new). Unlike the generic function above, whose null leg
+ * means "no such leg" for single-leg actions, a roll has no legitimate missing leg, so both dollar boundaries are
+ * required by type and by value: an unknown leg can never be defaulted to zero here.
+ */
+export function forwardRollCashFlow(closeCostDollars: number, openCreditDollars: number): ForwardContinuationResult {
+  if (!Number.isFinite(closeCostDollars) || !Number.isFinite(openCreditDollars) || closeCostDollars < 0 || openCreditDollars < 0) {
+    return { netCashFlow: null, complete: false, reasons: ['FORWARD_ROLL_CASH_FLOW_LEG_UNKNOWN_OR_INVALID'] };
+  }
+  return forwardContinuationCashFlow({ closeCostDollars, openCreditDollars });
+}
+
 export interface CommonHorizonComparison {
   readonly asOf: string;
   /** The furthest-out date any action under comparison could still be open through, used only as a

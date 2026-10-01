@@ -51,3 +51,13 @@ test('never fabricates recovery-horizon or downside-estimate fields on the assig
   assert.ok(comparison.assignmentState.dataCompleteness.missingUpstreamFields.includes('expected_recovery_horizon'));
   assert.ok(comparison.assignmentState.dataCompleteness.missingUpstreamFields.includes('stock_downside_estimate'));
 });
+
+test('a roll whose opening credit is unknown is UNKNOWN economics, never a zero credit that looks like a deterministic net debit', () => {
+  const comparison = evaluateAssignmentUtility(state(), 520, { openCreditDollars: null });
+  const roll = comparison.assessments.find((assessment) => assessment.action === 'ROLL');
+  assert.equal(roll?.forwardCashFlowDollars, null);
+  assert.equal(roll?.utility, null);
+  assert.ok(roll?.reasons.includes('ROLL_OPEN_CREDIT_UNKNOWN'));
+  assert.ok(!roll?.reasons.some((reason) => reason.startsWith('DETERMINISTIC_NET_CREDIT')));
+  assert.notEqual(comparison.best?.action, 'ROLL');
+});

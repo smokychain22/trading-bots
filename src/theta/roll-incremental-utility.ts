@@ -1,4 +1,4 @@
-import { forwardContinuationCashFlow } from './common-horizon-economics.js';
+import { forwardRollCashFlow } from './common-horizon-economics.js';
 
 export const rollIncrementalUtilityVersion = 'theta-roll-incremental-utility-v2' as const;
 
@@ -94,9 +94,7 @@ export function evaluateRollCandidates(
         rollIncrementalUtility: null, reasons: ['FORWARD_ECONOMICS_INCOMPLETE'],
       };
     }
-    const forward = forwardContinuationCashFlow({
-      closeCostDollars: oldLeg.closeCostDollars, openCreditDollars: candidate.openCreditDollars,
-    });
+    const forward = forwardRollCashFlow(oldLeg.closeCostDollars, candidate.openCreditDollars);
     const netCreditDollars = forward.netCashFlow;
     if (!forward.complete || netCreditDollars === null) return { candidate, netCreditDollars: null,
       incrementalCapitalDollars, daysExtended, rollIncrementalUtility: null, reasons: forward.reasons };

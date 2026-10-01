@@ -48,3 +48,15 @@ test('buildCommonHorizonComparison reports a null horizon anchor when no expirat
   );
   assert.equal(comparison.horizonAnchor, null);
 });
+
+test('forwardRollCashFlow requires both legs: an unknown or invalid leg is incomplete, never defaulted to zero', async () => {
+  const { forwardRollCashFlow } = await import('../src/theta/common-horizon-economics.js');
+  const good = forwardRollCashFlow(520, 900);
+  assert.equal(good.complete, true);
+  assert.equal(good.netCashFlow, 380);
+  for (const [close, open] of [[Number.NaN, 900], [520, Number.NaN], [Number.POSITIVE_INFINITY, 900], [-1, 900], [520, -1]] as const) {
+    const bad = forwardRollCashFlow(close, open);
+    assert.equal(bad.complete, false);
+    assert.equal(bad.netCashFlow, null);
+  }
+});
