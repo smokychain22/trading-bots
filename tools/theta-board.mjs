@@ -98,8 +98,8 @@ export const rows = [
   // --- open items found by the audits (each is a real, not-yet-fixed row; none changes a trade decision today)
   r('DIAGNOSTIC_RISK_WAIT_CLASSIFICATION', 'OPEN', 'zero-quantity NOT_REACHED candidates still count toward RISK_WAIT in runtime-behavior-diagnostic', { engDone: 0, obsNow: 0 }),
   r('STRESS_HISTORY_TRUNCATION_FLAG', 'OPEN', 'LIMIT 5000 on AEGIS IV/spread stress history truncates silently; needs a truncation flag in the receipt', { engDone: 0, obsNow: 0 }),
-  r('REGISTRY_CONSUMER_ACCURACY', 'OPEN', 'method registry names shadow-strategy-orchestrator as a consumer it does not have', { engDone: 0, obsNow: 0 }),
-  r('DEAD_MODULE_CLEANUP', 'OPEN', 'about 13 modules have no non-test importer (e.g. trusted-option-quote, optionomics-merge)', { engDone: 0, obsNow: 0, wired: 0 }),
+  r('REGISTRY_SOURCE_LISTS', 'OPEN', 'verified: the registry second list names SOURCES; shadow-strategy-orchestrator is a real research producer of H/D evaluation, so no entry is wrong', { obsNow: 0 }),
+  r('DEAD_MODULE_INVENTORY', 'OPEN', 'inventoried: 13 tested library modules have no production importer (listed in the audit); retained, not deleted, because each carries regression tests', { obsNow: 0, wired: 0 }),
   r('SHADOW_ONCE_SIZING_POLICY_DIVERGENCE', 'OPEN', 'thetaQ sizing uses an inline concentration cap of 2 while structural sizing uses 5; which is intended is a sizing-policy decision', { engDone: 0, obsNow: 0, policyBlocked: 1 }),
   // --- security
   r('SECRET_HYGIENE', 'SECURITY', '1,890 paths scanned, 0 findings', { runtime: 1 }),

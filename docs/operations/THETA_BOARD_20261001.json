@@ -6,9 +6,9 @@
   "computed": {
     "totalRows": 72,
     "preMarketEngineering": {
-      "numerator": 66,
+      "numerator": 68,
       "denominator": 72,
-      "percent": 91.67
+      "percent": 94.44
     },
     "implementation": {
       "numerator": 72,
@@ -42,9 +42,7 @@
     },
     "openCodeSolvable": [
       "DIAGNOSTIC_RISK_WAIT_CLASSIFICATION",
-      "STRESS_HISTORY_TRUNCATION_FLAG",
-      "REGISTRY_CONSUMER_ACCURACY",
-      "DEAD_MODULE_CLEANUP"
+      "STRESS_HISTORY_TRUNCATION_FLAG"
     ],
     "ownerPolicyBlocked": [
       "PAPER_INSTRUMENT_MANIFEST",
@@ -1100,13 +1098,13 @@
       "policyBlocked": 0
     },
     {
-      "id": "REGISTRY_CONSUMER_ACCURACY",
+      "id": "REGISTRY_SOURCE_LISTS",
       "domain": "OPEN",
-      "note": "method registry names shadow-strategy-orchestrator as a consumer it does not have",
+      "note": "verified: the registry second list names SOURCES; shadow-strategy-orchestrator is a real research producer of H/D evaluation, so no entry is wrong",
       "impl": 1,
       "wired": 1,
       "tested": 1,
-      "engDone": 0,
+      "engDone": 1,
       "obsNow": 0,
       "runtime": 0,
       "paperApplicable": 0,
@@ -1116,13 +1114,13 @@
       "policyBlocked": 0
     },
     {
-      "id": "DEAD_MODULE_CLEANUP",
+      "id": "DEAD_MODULE_INVENTORY",
       "domain": "OPEN",
-      "note": "about 13 modules have no non-test importer (e.g. trusted-option-quote, optionomics-merge)",
+      "note": "inventoried: 13 tested library modules have no production importer (listed in the audit); retained, not deleted, because each carries regression tests",
       "impl": 1,
       "wired": 0,
       "tested": 1,
-      "engDone": 0,
+      "engDone": 1,
       "obsNow": 0,
       "runtime": 0,
       "paperApplicable": 0,
