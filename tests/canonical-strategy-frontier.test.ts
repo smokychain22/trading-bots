@@ -666,3 +666,23 @@ test('unknown stock quantity keeps recovery and covered-call branches visible bu
     assert.equal(branch?.candidates.some((candidate) => candidate.executionAuthorized), false);
   }
 });
+
+test('covered-call quantity never exceeds floor(shares/multiplier): 0, 99, 100, 101, 199, 200, 250 shares', () => {
+  const call = contract({ optionType: 'CALL', optionSymbol: 'AAPL261016C00210000', occSymbol: 'AAPL261016C00210000',
+    strike: 210, delta: 0.25 });
+  const expectedMax: ReadonlyArray<readonly [number, number]> = [[0, 0], [99, 0], [100, 1], [101, 1], [199, 1], [200, 2], [250, 2]];
+  for (const [shares, maxContracts] of expectedMax) {
+    const result = buildCanonicalStrategyFrontier({
+      ...base, contracts: [call], routing: routing([]),
+      stock: { underlying: 'AAPL', shares, currentPrice: 200, brokerCostBasisPerShare: 205, wholeChainEconomicBasisPerShare: 202 },
+    });
+    const candidates = result.branches.find((item) => item.branch === 'THETA_CC')?.candidates ?? [];
+    if (shares === 0) { assert.equal(candidates.some((candidate) => candidate.sizing.quantity > 0), false); continue; }
+    assert.ok(candidates.length > 0, `CC candidates visible at ${shares} shares`);
+    for (const candidate of candidates) {
+      assert.ok(candidate.sizing.quantity <= maxContracts, `${shares} shares -> at most ${maxContracts} contracts, got ${candidate.sizing.quantity}`);
+      assert.ok(Number.isInteger(candidate.sizing.quantity) && candidate.sizing.quantity >= 0);
+      if (maxContracts === 0) assert.ok(candidate.hardBlockers.includes('INSUFFICIENT_COVERED_SHARES'), `${shares} shares is blocked`);
+    }
+  }
+});

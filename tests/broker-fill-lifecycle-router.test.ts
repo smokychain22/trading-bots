@@ -103,3 +103,27 @@ test('roll is one atomic close-old plus open-new application and preserves the o
     assert.equal(result.application.newEntryCreditDebit,350);
   }
 });
+
+test('a roll with a missing close fill, missing open fill, or unfilled leg yields a typed non-confirmed result, never zero economics',()=>{
+  const fill=(id:string,ch:string,price:number)=>({providerFillId:id,providerActivityRefHash:ch.repeat(64),quantity:1,pricePerShare:price,
+    occurredAt:'2026-09-14T14:31:00Z',fees:null});
+  const base={legKind:'SHORT_PUT' as const,chainId:'chain',decisionId:'decision',oldOptionLegId:'old',newOptionLegId:'new',
+    newOptionContractId:'new-contract',multiplier:100,oldEntryCreditDebit:200};
+  const filled=(fills:ReturnType<typeof fill>[])=>({orderStatus:'FILLED' as const,orderQuantity:1,fills});
+  for(const [label,close,open] of [
+    ['missing close fill',filled([]),filled([fill('o','d',3.5)])],
+    ['missing open fill',filled([fill('c','c',3)]),filled([])],
+    ['both missing',filled([]),filled([])],
+  ] as const){
+    const result=routeConfirmedRollPair({...base,close,open});
+    assert.notEqual(result.state,'CONFIRMED',label);
+    assert.equal(result.application,null,label);
+  }
+  const unfilled=routeConfirmedRollPair({...base,close:{orderStatus:'WORKING' as never,orderQuantity:1,fills:[fill('c','c',3)]},
+    open:filled([fill('o','d',3.5)])});
+  assert.equal(unfilled.application,null);
+  // Unknown (null) fees never alter or zero the premium-only realized loss; the loss stays preserved.
+  const confirmed=routeConfirmedRollPair({...base,close:filled([fill('c','c',3)]),open:filled([fill('o','d',3.5)])});
+  assert.equal(confirmed.state,'CONFIRMED');
+  if(confirmed.application?.eventKind==='OPTION_ROLL') assert.equal(confirmed.application.oldRealizedPnl,-100);
+});
