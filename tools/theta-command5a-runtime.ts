@@ -219,18 +219,20 @@ async function observe(): Promise<void> {
   const alpaca = alpacaConfig();
   const feeds = resolveCommand5aFeeds({ optionFeed: argument('--option-feed='),
     stockFeed: argument('--stock-feed=') });
+  const maximumTargetDelaySeconds = Number(argument('--max-target-delay-seconds=') ?? '900');
   const scheduler = new LocalObservationJobScheduler(schedulerPath);
   try {
     const source = new AlpacaCommand5aObservationSource(alpaca, {
       optionFeed: feeds.optionFeed,
       stockFeed: feeds.stockFeed,
       maximumResearchQuoteAgeSeconds: Number(argument('--max-research-quote-age-seconds=') ?? '900'),
-      maximumTargetDelaySeconds: Number(argument('--max-target-delay-seconds=') ?? '900'),
+      maximumTargetDelaySeconds,
     });
     const report = await runCommand5aLocalObservationWorker({ scheduler, source, spoolPath,
       claimedBy: `command5a:${hostname().replace(/[^A-Za-z0-9_.-]/g, '_')}:${process.pid}`,
       asOf: new Date().toISOString(), claimTtlSeconds: 180, limit: 16,
-      allowClosedSessionLatestMark: true, maximumAttempts: 3 });
+      allowClosedSessionLatestMark: true, maximumAttempts: 3,
+      priorityTargetWindowSeconds: maximumTargetDelaySeconds });
     process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_OBSERVATION_COMPLETE', ...report })}\n`);
   } finally { scheduler.close(); }
 }

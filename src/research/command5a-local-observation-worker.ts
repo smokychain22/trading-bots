@@ -104,6 +104,7 @@ export async function runCommand5aLocalObservationWorker(input: {
    */
   readonly allowClosedSessionLatestMark?: boolean;
   readonly maximumAttempts?: number;
+  readonly priorityTargetWindowSeconds?: number;
 }): Promise<Command5aObservationWorkerReport> {
   if (input.source.brokerAuthority !== false) throw new Error('COMMAND5A_OBSERVATION_SOURCE_AUTHORITY_INVALID');
   const maximumAttempts = input.maximumAttempts ?? 3;
@@ -115,6 +116,7 @@ export async function runCommand5aLocalObservationWorker(input: {
     claimedBy: input.claimedBy,
     claimTtlSeconds: input.claimTtlSeconds,
     limit: input.limit,
+    priorityTargetWindowSeconds: input.priorityTargetWindowSeconds,
   });
   const reasons = new Map<string, number>();
   const observationIds: string[] = [];

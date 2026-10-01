@@ -40,6 +40,7 @@ test('Windows owner schedules, observes, and matures Command-5A through the immu
   assert.match(command5aRuntime, /errorCode:\s*command5aSafeFailureCode\(error\)/);
   assert.match(command5aRuntime, /allowClosedSessionLatestMark:\s*true/);
   assert.match(command5aRuntime, /maximumAttempts:\s*3/);
+  assert.match(command5aRuntime, /priorityTargetWindowSeconds:\s*maximumTargetDelaySeconds/);
   assert.match(source, /command5aCensoredRetryExhausted/);
   assert.match(source, /Invoke-ThetaBoundedProcess[\s\S]{0,180}theta-command5a-runtime\.ts/);
   assert.match(source, /COMMAND5A_SCHEDULE_PROCESS_TIMEOUT/);

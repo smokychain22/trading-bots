@@ -145,6 +145,40 @@ test('claim boundary rejects malformed clocks and limits before querying the que
       /LOCAL_OBSERVATION_JOB_AS_OF_INVALID/);
     assert.throws(() => scheduler.claimDue({ asOf: '2026-09-25T14:45:00Z', claimedBy: 'worker-1',
       claimTtlSeconds: 30, limit: 0 }), /LOCAL_OBSERVATION_JOB_LIMIT_INVALID/);
+    assert.throws(() => scheduler.claimDue({ asOf: '2026-09-25T14:45:00Z', claimedBy: 'worker-1',
+      claimTtlSeconds: 30, priorityTargetWindowSeconds: 0 }),
+    /LOCAL_OBSERVATION_JOB_PRIORITY_WINDOW_INVALID/);
+  } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('fresh exact checkpoints are not starved behind an irrecoverable historical backlog', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
+  try {
+    const makeJob = (subjectId: string, decisionAt: string) => {
+      const jobs = buildStrategyLearningObservationSchedule({
+        subjectId, decisionAt, decisionSessionDate: '2026-09-25', expirationDate: null,
+        sessions: [{ date: '2026-09-25', openAt: '2026-09-25T13:30:00Z',
+          closeAt: '2026-09-25T20:00:00Z', source: 'ALPACA_CALENDAR' }],
+        policy: { version: 'theta-strategy-learning-horizons-v1', primaryCommonHorizon: '15M',
+          tradingDayTarget: 'SESSION_CLOSE' },
+      });
+      const job = jobs.find((candidate) => candidate.horizonCode === '15M');
+      assert.ok(job);
+      return job;
+    };
+    const historical = makeJob('b'.repeat(64), '2026-09-25T13:30:00Z');
+    const current = makeJob('c'.repeat(64), '2026-09-25T14:45:00Z');
+    scheduler.schedule({ job: historical, sourceSha: 'd'.repeat(40), workerSha: 'd'.repeat(40) });
+    scheduler.schedule({ job: current, sourceSha: 'd'.repeat(40), workerSha: 'd'.repeat(40) });
+
+    const first = scheduler.claimDue({ asOf: '2026-09-25T15:00:00Z', claimedBy: 'current-worker',
+      claimTtlSeconds: 30, limit: 1, priorityTargetWindowSeconds: 900 });
+    assert.equal(first[0]?.observationJobId, current.observationJobId);
+    const second = scheduler.claimDue({ asOf: '2026-09-25T15:00:00Z', claimedBy: 'backlog-worker',
+      claimTtlSeconds: 30, limit: 1, priorityTargetWindowSeconds: 900 });
+    assert.equal(second[0]?.observationJobId, historical.observationJobId,
+      'old work must continue draining after the current exact mark is protected');
   } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -393,6 +393,13 @@ export class LocalObservationJobScheduler {
     readonly claimedBy: string;
     readonly claimTtlSeconds: number;
     readonly limit?: number;
+    /**
+     * Prefer checkpoints that are still inside the provider's exact capture
+     * window. Older due work remains in the same bounded page after those
+     * jobs, so historical cleanup continues without making a current mark
+     * expire behind an irrecoverable backlog.
+     */
+    readonly priorityTargetWindowSeconds?: number;
   }): readonly LocalObservationJobReceipt[] {
     if (!SAFE_ID.test(input.claimedBy)) throw new Error('LOCAL_OBSERVATION_JOB_CLAIMER_INVALID');
     const asOfMs = Date.parse(input.asOf);
@@ -400,12 +407,25 @@ export class LocalObservationJobScheduler {
     if (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 128)) {
       throw new Error('LOCAL_OBSERVATION_JOB_LIMIT_INVALID');
     }
+    if (input.priorityTargetWindowSeconds !== undefined
+      && (!Number.isInteger(input.priorityTargetWindowSeconds)
+        || input.priorityTargetWindowSeconds < 1 || input.priorityTargetWindowSeconds > 86_400)) {
+      throw new Error('LOCAL_OBSERVATION_JOB_PRIORITY_WINDOW_INVALID');
+    }
     const limit = input.limit ?? 16;
     this.database.exec('BEGIN IMMEDIATE');
     try {
-      const rows = this.database.prepare(`SELECT * FROM observation_job
-        WHERE state IN ('PENDING','DUE','DEFERRED_PROVIDER','DEFERRED_MARKET','IN_PROGRESS')
-        ORDER BY target_at,observation_job_id LIMIT ?`).all(limit * 4) as unknown as JobRow[];
+      const priorityStart = input.priorityTargetWindowSeconds === undefined ? null
+        : new Date(asOfMs - input.priorityTargetWindowSeconds * 1_000).toISOString();
+      const rows = priorityStart === null
+        ? this.database.prepare(`SELECT * FROM observation_job
+          WHERE state IN ('PENDING','DUE','DEFERRED_PROVIDER','DEFERRED_MARKET','IN_PROGRESS')
+          ORDER BY target_at,observation_job_id LIMIT ?`).all(limit * 4) as unknown as JobRow[]
+        : this.database.prepare(`SELECT * FROM observation_job
+          WHERE state IN ('PENDING','DUE','DEFERRED_PROVIDER','DEFERRED_MARKET','IN_PROGRESS')
+          ORDER BY CASE WHEN target_at BETWEEN ? AND ? THEN 0 ELSE 1 END,
+            target_at,observation_job_id LIMIT ?`)
+          .all(priorityStart, new Date(asOfMs).toISOString(), limit * 4) as unknown as JobRow[];
       const claimed: LocalObservationJobReceipt[] = [];
       for (const row of rows) {
         if (claimed.length >= limit) break;
