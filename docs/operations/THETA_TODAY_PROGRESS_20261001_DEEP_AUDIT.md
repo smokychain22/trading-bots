@@ -254,3 +254,44 @@ n-1, ~2.6% at N=20), trend slope (OLS/mean vs SMA difference), max adverse gap (
 registered with version "pre-existing".
 Old incidents: 54 catalogued, 49 with an existing regression test, 5 without (2 documentation-only, 3 unverified: A/C false
 credit, THETA-O CC/roll tier, THETA-Q2 invariant 008); none observed to recur in the 13:32-18:43Z session.
+
+## RELEASE 6360f07 (2026-10-01 evening): shipped and verified
+
+Identity: main = origin/main = Production deployment (GitHub deployment 6794752810, success) = worker release = `6360f07996e7e579a8fa556c9b7ca4d72eeba444`.
+Exact-SHA CI on that SHA: run 36919556209 success (main push run 36923385143 started after the fast-forward). Worker: ONLINE, health SHA aligned,
+runtime SHA aligned, 1 supervisor, 1 ACTIVE lease, schema 067 COMPATIBLE, reconciliation GOOD (0 positions, 0 open orders), execution gate LOCKED,
+followers LOCKED, live NOT_AUTHORIZED, no order submission observed.
+
+Contents (runtime): fresh-first observation ordering; retry-instead-of-miss inside the window; read-only 40 s marks tick (`runtime-marks-cycle`);
+liquidity-ranked universe before the bound; AEGIS_NOT_REACHED_UPSTREAM label; roll cash flow total by type (found by the type checker: an assignment-utility
+roll with an unknown opening credit had been reported as a deterministic net credit); HTTP 408 -> PROVIDER_TIMEOUT; IV-stress underlying required;
+event-lookahead fail-loud; first-canary quantity named once.
+Contents (tests/tooling): whole-repo authority guards; sizing/AEGIS/metamorphic properties; whole-chain identities; ledger chain reconciliation; Alpaca failure
+matrix; Python<->TS serving parity (realized vol, trend slope, gap frequency, adverse gap); DB clientOrderId uniqueness; marks-tick PowerShell test;
+machine-readable board with a test that re-derives every percentage.
+
+Live verification already done after cutover: the first marks tick against Production returned HTTP OK with a status file (due 50, missed 50: the old backlog
+draining as designed while the market is closed; observed 0 is expected off-hours).
+
+## NEXT-SESSION ACCEPTANCE CHECKS (cannot be proven while the market is closed)
+1. marks ticker: 1M and 5M jobs created in the session show OBSERVED (not only MISSED); `marks-ticker.json` state OK; deferred > 0 only under provider hiccups.
+2. universe: discovery stage diagnostics show LIQUIDITY_PRERANK_RANKED with ~100 ranked symbols (not the arbitrary first 100); SPY rank 1.
+3. diagnostics: candidates AEGIS was never asked about show AEGIS_NOT_REACHED_UPSTREAM; genuine SPY concentration vetoes remain AEGIS_HARD_VETO.
+4. no new failed cycles; cycle period unchanged (~349 s); worker memory stable.
+5. still expected: 0 Paper-eligible candidates under the current manifest and account size (policy/account incompatibility), so no order.
+
+## BOARD (docs/operations/THETA_BOARD_20261001.json; every percentage re-derived by tests/theta-board.test.ts)
+72 capability rows (my enumeration of the capability areas audited this session, NOT the full TRD requirement list).
+Pre-market engineering 68/72 = 94.44%; implementation 72/72; tested 72/72; wiring 67/72; current-release runtime 42/46 observable-now rows = 91.3%
+(the 4 gaps are fixes that are deployed but not yet observed on real data); Paper operation 0/15; empirical validation 0/6; live excluded (not authorized).
+Open code-solvable rows (2): DIAGNOSTIC_RISK_WAIT_CLASSIFICATION (needs a new wait class, i.e. a CHECK-constraint migration 068 and schema-compat bump) and
+STRESS_HISTORY_TRUNCATION_FLAG (LIMIT 5000 history needs a truncation flag in the persisted assessment). Owner-policy rows (3): PAPER_INSTRUMENT_MANIFEST,
+OWNERSHIP_MODEL (relativeStrength circular gate), SHADOW_ONCE_SIZING_POLICY_DIVERGENCE (inline concentration cap 2 vs 5).
+
+## INVENTORIED, NOT DELETED: modules with no production importer (tested libraries)
+trusted-option-quote, optionomics-merge, optionomics-quote-proof, scheduling-policy, management-first-loop, database-health-circuit,
+database-resilient-observation-cycle, strategy-version-store, candidate-position-economics, decision-invalidation, strategy-route-receipt,
+postgres-trade-update-store, paper-bootstrap-candidate-source; tool-only: no-submit-decision-authority, runtime-system-truth;
+promoted-management-policy-provider and broker-lifecycle-application are referenced only by the wiring-audit tool (POLICY/RUNTIME unreachable by design today).
+Python models with no TypeScript bridge: cost_slippage_baseline, fill_probability_baseline, defined_risk_economics, theta_h_baseline (research);
+recovery_spec and severe_drawdown_spec are specifications whose fitted models cannot exist until real outcome data does.
