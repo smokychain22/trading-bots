@@ -78,6 +78,33 @@ def close_to_close_realized_volatility(
     return sqrt(variance) * sqrt(periods_per_year)
 
 
+def serving_parity_realized_volatility(
+    closes: Sequence[Optional[float]], window: int, periods_per_year: float = 252.0,
+) -> Optional[float]:
+    """The PRODUCTION definition, for training-serving parity.
+
+    src/theta/underlying-features.ts `computeRealizedVolatility` (the value the
+    serving path feeds to the regime/ownership models) uses the POPULATION
+    variance (divide by N) of the last `window` close-to-close log returns and
+    returns UNKNOWN when fewer than `window + 1` closes exist or any close in
+    the window is non-positive. `close_to_close_realized_volatility` above is the
+    SAMPLE (N-1) research baseline and differs by sqrt(N/(N-1)); any feature fed
+    to a model that will be served from TypeScript must use this function.
+    Locked to the TypeScript output by tests/fixtures/realized-volatility-parity.json.
+    """
+    if window < 1 or len(closes) <= window:
+        return None
+    tail = list(closes[len(closes) - window - 1:])
+    returns: List[float] = []
+    for previous, current in zip(tail, tail[1:]):
+        if not _finite_positive(previous) or not _finite_positive(current):
+            return None
+        returns.append(log(current / previous))  # type: ignore[arg-type]
+    mean = sum(returns) / len(returns)
+    variance = sum((value - mean) ** 2 for value in returns) / len(returns)
+    return sqrt(variance) * sqrt(periods_per_year)
+
+
 def parkinson_realized_volatility(
     highs: Sequence[Optional[float]], lows: Sequence[Optional[float]],
     periods_per_year: float = 252.0, min_periods: int = 2,
