@@ -86,3 +86,51 @@ Discovery funnel (latest cycle): 101 assets (`CLIENT_ASSET_BOUND_REACHED`, asset
 exchange filter -> 72 with usable bars -> 10 optionability checks -> 9 optionable. Scan champions SPY, KORU, one
 challenger (ZSL) with maximumAdditionalFullScans=1. Narrow by design (bounded scan); the 101-asset client bound is a
 possible truncation risk for universe breadth and is queued for review (not changed today).
+
+## ACCOUNT FIT (measured, read-only GET of Alpaca Paper account)
+status ACTIVE; equity 99,999.96; cash 99,999.96; options buying power 99,999.96; stock buying power 399,999.84;
+long market value 0; options level 3. Policy (`paper-bootstrap-runtime-policy.ts`, aegis block): ticker concentration
+cap 15% of equity, hard veto at cap x 1.5 = 22.5%.
+- Per-underlying soft cap = $15,000; hard veto threshold = $22,499.99.
+- CSP collateral = strike x 100 (single multiplier; SPY261106P00715000 -> 715 x 100 = 71,500 = 71.5% of equity,
+  3.2x the hard threshold). No unit error: dollars, decimal fraction, one 100x multiplier.
+- A put can pass hard veto only if strike <= $224.99; full size only if strike <= $149.99. SPY trades near $715, so
+  a compliant SPY put would need a strike ~69% out of the money (premium/liquidity effectively zero).
+  CAN_ANY_SPY_CONTRACT_FIT = NO (bound proof; exact listed-strike min not enumerated).
+- Instruments that WOULD fit by capital: share price below ~$225 (IYM, KORU, ZSL class), but they fail the bootstrap
+  manifest gate (see root cause). Hence ACCOUNT_UNIVERSE_COMPATIBILITY = INCOMPATIBLE for Q Paper entries today.
+- Semantics: AEGIS `_threshold_assessment` defines value >= soft x hardMultiplier as HARD_VETO. The repo already has
+  a distinct class `STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE` (strategy-account-policy-compatibility.ts); sizing is 0
+  either way, risk protection is identical. Surfacing that class in the runtime diagnostic is a P2 diagnostic item.
+
+## Universe pipeline defect (code-solvable, real)
+`fetchTradableAssets` (alpaca-provider.ts:378) downloads the FULL /v2/assets list, then `tradableOnly.slice(0,
+maxAssets)` runs BEFORE liquidity ranking. Production passes maxCandidateAssets=100 (production-shadow-runtime.ts:307,
+database-independent-shadow-observation.ts:212; the one-shot tool uses 500). The "best universe" is therefore the
+first ~100 tradable assets in provider order plus pinned requiredSymbols (SPY/KORU champions), not a ranked set.
+Exchange filtering also happens after the bound. Fix design (post-close, needs a governed release): apply the
+exchange filter before bounding and rotate a deterministic window across cycles, or rank on a cheap pre-signal.
+Not wired today: bars cost scales with asset count, and widening the universe has no effect until the instrument
+gate below is resolved.
+
+## Circular instrument gate (architecture finding)
+`relativeStrength` is never computed from data. `theta-shadow-cycle.ts:1969` hard-assigns identity 0 only when the
+instrument is a manifest-approved NON_COMPANY_FUND, otherwise null. Chain: not in manifest -> relativeStrength null ->
+StructuralQuality UNKNOWN -> bootstrap unknown-set not allowed -> never Q-eligible -> never accumulates Paper
+evidence -> never promotable. Additionally the manifest classification drives company-event applicability, so
+fixing relative strength alone would not make a non-manifest symbol tradable.
+
+## INSTRUMENT_PROMOTION_CONTRACT (proposal for owner review; nothing enabled)
+To add an instrument to `paperInstrumentClassificationManifest` require, each as a versioned, source-controlled item:
+1. Identity: ticker, asset class, exchange, Alpaca tradable+optionable (listed puts present, standard deliverable).
+2. Classification authority: official issuer/exchange document hash (NON_COMPANY_FUND vs OPERATING_COMPANY) with
+   effectiveAt/reviewedAt, as for SPY. Operating companies additionally need positive earnings-date evidence.
+3. Structural quality: a computed, point-in-time relative-strength feature (benchmark SPY, defined window and scale)
+   so StructuralQuality is known without hard-coding identity 0; scale/winsorization declared as policy.
+4. Product-risk review: leveraged/inverse/volatility products (e.g. KORU 3x, ZSL -2x) need an explicit policy
+   because path decay, gap risk and assignment into a decaying product break the Wheel assumptions. Not
+   recommended without that review.
+5. Liquidity evidence: option OI/volume/spread distribution over a defined lookback meeting the Q floors.
+6. Capital fit: minimum-compliant collateral < per-underlying hard cap at current equity (strike x 100 < $22.5k).
+7. Event policy: macro/corporate-action coverage state CLEAR-able, not UNKNOWN.
+Status: DEFER_OWNER_POLICY. Cheap collateral alone is not a reason to approve.
