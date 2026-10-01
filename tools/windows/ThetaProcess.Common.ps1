@@ -137,3 +137,37 @@ function Get-ThetaBoundedFailureCode {
   }
   return $null
 }
+
+function Invoke-ThetaMarksTick {
+  <#
+  One read-only counterfactual-marks tick. Counterfactual quote marks are valid only within a short window of their
+  target time, but the full runtime cycle runs about every six minutes, so this tick is issued on its own cadence.
+  It carries no order surface and records only a secret-free status file (never the token or response body).
+  Returns $true on an HTTP success and $false on any failure.
+  #>
+  param(
+    [Parameter(Mandatory)][string]$Endpoint,
+    [Parameter(Mandatory)][hashtable]$Headers,
+    [Parameter(Mandatory)][string]$StatusPath,
+    [int]$TimeoutSeconds = 30
+  )
+  $tickHeaders = $Headers.Clone()
+  $tickHeaders['X-Theta-Operation'] = 'runtime-marks-cycle'
+  $observedAt = (Get-Date).ToUniversalTime().ToString('o')
+  # Strict-mode safe: an absent count stays UNKNOWN (null) and never throws or becomes zero.
+  $count = { param($object, $name)
+    $property = if ($null -eq $object) { $null } else { $object.PSObject.Properties[$name] }
+    if ($null -eq $property -or $null -eq $property.Value) { $null } else { [int]$property.Value } }
+  try {
+    $result = Invoke-RestMethod -Method Post -Uri $Endpoint -Headers $tickHeaders -TimeoutSec $TimeoutSeconds
+    @{ observedAt=$observedAt; state='OK'; due=(& $count $result 'due'); observed=(& $count $result 'observed');
+       missed=(& $count $result 'missed'); deferred=(& $count $result 'deferred'); brokerMutations=0 } |
+      ConvertTo-Json | Set-Content -LiteralPath $StatusPath -Encoding utf8
+    return $true
+  } catch {
+    $failure = Get-ThetaSafeHttpFailure -Exception $_.Exception
+    @{ observedAt=$observedAt; state='FAILED'; httpStatus=$failure.HttpStatus; serverErrorCode=$failure.ServerErrorCode;
+       brokerMutations=0 } | ConvertTo-Json | Set-Content -LiteralPath $StatusPath -Encoding utf8
+    return $false
+  }
+}

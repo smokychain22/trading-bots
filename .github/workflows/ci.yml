@@ -61,6 +61,7 @@ jobs:
           ./tests/windows/theta-backup-digest-v2.test.ps1
           ./tests/windows/theta-postgres-tool-deadline.test.ps1
           ./tests/windows/theta-bounded-process.test.ps1
+          ./tests/windows/theta-marks-tick.test.ps1
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - name: Browser evidence

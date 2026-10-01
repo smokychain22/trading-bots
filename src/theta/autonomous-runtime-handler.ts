@@ -14,6 +14,7 @@ import { customerStoreFromPool } from '../customer/customer-store.js';
 import { PostgresOperatorControlStore } from '../customer/operator-control.js';
 import { verifyStoredMasterPaperConnection } from '../customer/master-paper-runtime.js';
 import { classifyRuntimeExecutionGate, PostgresRuntimeCycleStore, runAutonomousRuntimeCycle, safeRuntimeFailure } from './autonomous-runtime.js';
+import { processDueExecutionObservations } from '../research/production-shadow-runtime.js';
 import { PostgresWorkerRuntimeStore } from '../worker/postgres-worker-runtime-store.js';
 import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from './optionomics-quote-qualification-runtime.js';
 import { persistOptionomicsCapabilityQualification, qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
@@ -72,7 +73,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_DB_PROBE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'RISK_POLICY_EMPIRICAL_STUDY' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'ALPACA_CORPORATE_ACTION_CAPTURE' | 'CANONICAL_EVENT_EXPORT' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_EVENT_REVISION_INSPECT' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_DB_PROBE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_MARKS_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'RISK_POLICY_EMPIRICAL_STUDY' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'ALPACA_CORPORATE_ACTION_CAPTURE' | 'CANONICAL_EVENT_EXPORT' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_EVENT_REVISION_INSPECT' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -83,6 +84,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'runtime-lifecycle-cycle') return 'RUNTIME_LIFECYCLE_CYCLE';
   if (value === 'runtime-management-cycle') return 'RUNTIME_MANAGEMENT_CYCLE';
   if (value === 'runtime-observation-cycle') return 'RUNTIME_OBSERVATION_CYCLE';
+  if (value === 'runtime-marks-cycle') return 'RUNTIME_MARKS_CYCLE';
   if (value === 'runtime-evidence-cycle') return 'RUNTIME_EVIDENCE_CYCLE';
   if (value === 'runtime-zero-trade-diagnostic') return 'RUNTIME_ZERO_TRADE_DIAGNOSTIC';
   if (value === 'risk-policy-empirical-study') return 'RISK_POLICY_EMPIRICAL_STUDY';
@@ -588,7 +590,8 @@ application_name: 'theta-corporate-action-capture' });
     if (operation === 'RUNTIME_CYCLE' || operation === 'RUNTIME_DB_PROBE'
       || operation === 'RUNTIME_CORE_CYCLE' || operation === 'RUNTIME_BROKER_CYCLE'
       || operation === 'RUNTIME_LIFECYCLE_CYCLE' || operation === 'RUNTIME_MANAGEMENT_CYCLE'
-      || operation === 'RUNTIME_OBSERVATION_CYCLE' || operation === 'RUNTIME_EVIDENCE_CYCLE') {
+      || operation === 'RUNTIME_OBSERVATION_CYCLE' || operation === 'RUNTIME_MARKS_CYCLE'
+      || operation === 'RUNTIME_EVIDENCE_CYCLE') {
       const compatibility = await inspectRuntimeSchemaCompatibility(runtimePool, {
         sourceSha: process.env.VERCEL_GIT_COMMIT_SHA,
         workerSha: localIdentity.kind === 'VALID' ? localIdentity.identity.buildSha : null,
@@ -631,6 +634,25 @@ application_name: 'theta-corporate-action-capture' });
         return;
       }
       send(response, 200, { database: 'REACHABLE', lease: 'OWNED', executionGate: 'LOCKED',
+        brokerMutations: 0, ordersSubmitted: 0 });
+      return;
+    }
+    if (operation === 'RUNTIME_MARKS_CYCLE') {
+      if (localIdentity.kind !== 'VALID') {
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
+        return;
+      }
+      // A high-frequency, read-only marks tick: it only records due counterfactual quote observations. It never
+      // registers the worker, never acquires or extends the master lease, never rewrites worker cycle state and
+      // has no broker mutation surface. It is accepted only while this worker already owns the primary lease.
+      const owner = await workerStore.activeLeaseOwner(new Date().toISOString());
+      if (owner !== localIdentity.identity.workerId) {
+        send(response, 409, { error: 'marks_tick_requires_primary_lease', executionGate: 'LOCKED' });
+        return;
+      }
+      const master = await new PostgresRuntimeCycleStore(runtimePool).resolveMasterContext(environment);
+      const marks = await processDueExecutionObservations({ pool: runtimePool, alpaca: master.alpaca, now: () => new Date().toISOString() });
+      send(response, 200, { ...marks, operation: 'RUNTIME_MARKS_CYCLE', executionGate: 'LOCKED',
         brokerMutations: 0, ordersSubmitted: 0 });
       return;
     }

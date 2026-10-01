@@ -67,6 +67,36 @@ try {
   $databaseCircuitState = 'DB_HEALTHY'
   $databaseRecoveryRequiredSuccesses = 4
   $databaseRecoveryProbeIntervalSeconds = 30
+  # Counterfactual quote marks are only valid within 120 seconds of their target, while the full runtime cycle takes
+  # about six minutes. A read-only thread job therefore polls due marks every 40 seconds. It cannot reach an order
+  # surface, never acquires the lease (the server accepts it only for the current primary owner), and a failure or
+  # missing ThreadJob support only delays learning marks: it can never change a Production decision.
+  $marksTickIntervalSeconds = 40
+  $marksStatusFile = Join-Path $stateRoot 'marks-ticker.json'
+  $marksTickerJob = $null
+  try {
+    if (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue) {
+      $marksTickerJob = Start-ThreadJob -Name 'theta-marks-ticker' -ArgumentList @(
+        (Join-Path $PSScriptRoot 'ThetaProcess.Common.ps1'), [string]$runtime.endpoint, $token, [string]$runtime.workerId,
+        [string]$env:COMPUTERNAME, [string]$runtime.buildSha, $stopFile, $marksStatusFile, $marksTickIntervalSeconds) -ScriptBlock {
+        param($commonPath, $endpoint, $bearer, $workerId, $hostId, $buildSha, $stop, $statusPath, $interval)
+        $ErrorActionPreference = 'Continue'
+        . $commonPath
+        $failures = 0
+        while (!(Test-Path -LiteralPath $stop)) {
+          $tickHeaders = @{ Authorization = "Bearer $bearer"; 'X-Theta-Worker-Id'=$workerId;
+            'X-Theta-Host-Id'=$hostId; 'X-Theta-Build-Sha'=$buildSha }
+          if (Invoke-ThetaMarksTick -Endpoint $endpoint -Headers $tickHeaders -StatusPath $statusPath) { $failures = 0 }
+          else { $failures++ }
+          $delay = if ($failures -eq 0) { $interval } else { [Math]::Min(300, $interval * [Math]::Pow(2, [Math]::Min($failures, 3))) }
+          for ($elapsed = 0; $elapsed -lt $delay; $elapsed++) {
+            if (Test-Path -LiteralPath $stop) { break }
+            Start-Sleep -Seconds 1
+          }
+        }
+      }
+    }
+  } catch { $marksTickerJob = $null }
   while (!(Test-Path -LiteralPath $stopFile)) {
     $headers = @{ Authorization = "Bearer $token"; 'X-Theta-Worker-Id'=$runtime.workerId;
       'X-Theta-Host-Id'=$env:COMPUTERNAME; 'X-Theta-Build-Sha'=$runtime.buildSha }
@@ -777,6 +807,12 @@ try {
   # A contender that never owned the supervisor cannot release its lease or
   # overwrite its status. This also covers exit 23 during a cutover race.
   if ($owned) {
+    try {
+      if ($null -ne $marksTickerJob) {
+        Stop-Job -Job $marksTickerJob -ErrorAction SilentlyContinue
+        Remove-Job -Job $marksTickerJob -Force -ErrorAction SilentlyContinue
+      }
+    } catch {}
     try {
       if ($token.Length -ge 32) {
         $headers = @{ Authorization="Bearer $token"; 'X-Theta-Worker-Id'=$runtime.workerId;
