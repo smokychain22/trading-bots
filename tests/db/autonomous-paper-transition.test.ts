@@ -82,8 +82,14 @@ const ownerScope = { testSeed: true, firstCanaryMaximumQuantity: 1, automaticLoc
   autonomousPaperAfterAcceptedCanaryAuthorized: true, followerExecution: 'LOCKED', liveMoneyAuthorized: false };
 const neverBroker = new Proxy({}, { get: () => { throw new Error('BROKER_MUST_NOT_BE_TOUCHED'); } });
 
+// The shared CI database globs every tests/db file with the generic URL, so this
+// test runs only against its own dedicated, freshly migrated disposable database.
+const dedicatedDatabase = (() => {
+  try { return new URL(process.env.TEST_DATABASE_URL ?? '').pathname === '/theta_autonomous_transition_ci'; } catch { return false; }
+})();
+
 test('real disposable PostgreSQL: accepted first canary promotes to autonomous Master Paper without lifting any other gate', {
-  skip: !process.env.TEST_DATABASE_URL,
+  skip: !dedicatedDatabase,
 }, async () => {
   const connectionString = process.env.TEST_DATABASE_URL;
   assert.ok(connectionString);
