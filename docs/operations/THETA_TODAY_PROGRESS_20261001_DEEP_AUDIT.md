@@ -160,3 +160,24 @@ temporary tamper files removed. Conclusion: WAIT decisions DO support archive ca
   eventLookaheadDays `?? 0`; research-only Python `t0_bundle_adapter.py:68`, `flow.py:76`, `fill_probability_baseline
   .py:73,100`, `theta_q_baseline.py:447` (ownership_score or 0.0 in sort key). Limits: ternary/destructuring
   defaults not swept.
+
+## Command-5A / observation pipeline (measured; REAL current-release defect found and fixed in source)
+Postgres `research.theta_execution_observation_job` today: 1,808 jobs created; 74 MISSED (HOST_OFFLINE, pre-cutover
+host downtime), 1,226 PENDING with target already passed (190 s to 5.2 h overdue), 508 PENDING future, **0 OBSERVED
+today** (last OBSERVED ever: 2026-09-18; 150 total vs 140,971 MISSED). Old backlog: 13,230 PENDING overdue; the worker
+closes ~500/h of them as MISSED (`OBSERVATION_MISSED_NO_ACTIVE_WORKER`, 3,500 today, avg lag ~6.8 days).
+Root cause: `processDueExecutionObservations` (production-shadow-runtime.ts, called from autonomous-runtime
+MARKET_STATE_REFRESH) selected `ORDER BY target_at LIMIT 50` (oldest first) and only observes jobs within 120 s of
+target. The 13k-job unrecoverable backlog therefore starved every fresh job past its window. The earlier "fresh
+priority" fix (e228baf) covered the separate local SQLite Command-5A scheduler, not this Postgres path.
+Fix (commit pending, not deployed): still-observable jobs sort first (`target_at > now - 120 s` DESC), backlog still
+drains at 50/tick as explicit MISSED; window constant shared; regression test `tests/due-observation-priority.test.ts`;
+SQL validated read-only on the real schema. Caveat: whether tick cadence is short enough to land inside the 120 s
+window for 1M/5M targets is UNVERIFIED; the fix removes starvation but cannot create marks for jobs whose tick comes
+later than 120 s after target. Deploy needs the governed release path (CI + evidence regeneration), post-close.
+
+## Source fixes on branch claude/theta-codex-continuation-20261001 (local, unpushed, undeployed)
+1. 03b8324 AEGIS_NOT_REACHED_UPSTREAM label (diagnostic truth; same fail-closed behavior).
+2. Fresh-first Postgres observation ordering (above).
+Both need: full Node/Python/browser/Windows/DB validation, governed evidence regeneration (touched hash-bound files),
+exact-SHA CI, then one governed cutover after market close. Not done yet.
