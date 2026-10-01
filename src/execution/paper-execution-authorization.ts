@@ -6,6 +6,8 @@ import type { FirstCanaryAcceptanceReceipt } from './first-canary-acceptance.js'
 export const masterPaperAuthorizationConfirmation = 'AUTHORIZE_MASTER_THETA_PAPER_MANAGEMENT_ONLY' as const;
 export const firstPaperCanaryActivationConfirmation = 'ACTIVATE_ONE_MASTER_THETA_PAPER_CANARY' as const;
 export const fullPaperExecutionLockConfirmation = 'LOCK_ALL_THETA_PAPER_EXECUTION' as const;
+/** The only quantity the first Paper canary may submit and the only filled quantity that can complete it. */
+export const firstPaperCanaryQuantity = 1 as const;
 export const ownerMasterPaperAutonomySource = 'OWNER_DIRECTIVE_2026_10_01_MASTER_PAPER_AUTONOMY' as const;
 export const autonomousMasterPaperAuditAction = 'ACTIVATE_AUTONOMOUS_MASTER_PAPER' as const;
 
@@ -359,7 +361,7 @@ export class PostgresPaperExecutionAuthorizationStore{
           WHERE p.authority_kind='NEW_RISK' AND p.execution_order_intent_id IS NOT NULL) AS broker_order_count,
         EXISTS(SELECT 1 FROM trade.order_intent oi JOIN trade.broker_order bo USING(order_intent_id)
           WHERE oi.order_intent_id=$1 AND oi.execution_account_id=$2 AND oi.client_order_id=$3
-            AND oi.quantity=1 AND oi.status='FILLED') AS accepted_order_exists
+            AND oi.quantity=${firstPaperCanaryQuantity} AND oi.status='FILLED') AS accepted_order_exists
         FROM ops.paper_execution_control pec
         JOIN ops.paper_execution_authorization_event pae
           ON pae.authorization_event_id=pec.authorization_event_id

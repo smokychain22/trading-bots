@@ -54,6 +54,8 @@ export class AlpacaProviderError extends Error {
 const classifyErrorStatus = (status: number): AlpacaErrorClass => {
   if (status === 401 || status === 403) return status === 403 ? 'NOT_ENTITLED' : 'INVALID_AUTH';
   if (status === 429) return 'RATE_LIMITED';
+  // 408 Request Timeout is a transient server-side timeout, not a caller error that retrying cannot fix.
+  if (status === 408) return 'PROVIDER_TIMEOUT';
   if (status >= 500) return 'SERVER_ERROR';
   return 'INVALID_REQUEST';
 };

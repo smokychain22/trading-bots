@@ -362,13 +362,14 @@ export class PostgresAegisIvStressStore {
 export async function refreshAegisIvStress(input: {
   readonly pool: Pool;
   readonly optionomics: OptionomicsProviderConfig;
-  readonly underlying?: string;
+  /** Required: a silent default underlying could attach one symbol's IV evidence to another. */
+  readonly underlying: string;
   readonly decisionAsOf: string;
   /** For live reads, freeze decision time after the provider response is observed. */
   readonly freezeDecisionAsOf?: () => string;
   readonly policy?: AegisIvStressPolicy;
 }): Promise<AegisIvStressRefreshResult> {
-  const underlying = (input.underlying ?? 'SPY').toUpperCase();
+  const underlying = input.underlying.toUpperCase();
   const outcome = await fetchOptionomicsContextObservation(input.optionomics, 'METRICS', underlying);
   if (outcome.kind === 'REQUEST_ERROR') return {
     state: 'PROVIDER_ERROR', assessment: null,

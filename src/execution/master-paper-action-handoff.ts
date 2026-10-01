@@ -9,6 +9,7 @@ import { executionAuthorizationTiers, type ExecutionAuthorizationTier, type Pape
 import { paperEntrySafetyPolicyReceiptSchema, verifyPaperEntrySafetyPolicyReceipt, type PaperEntrySafetyPolicyReceipt } from '../theta/paper-entry-safety-policy.js';
 import { aegisAssessmentIdentitySchema, verifyAegisAssessmentIdentity, type AegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
 import { paperBootstrapRuntimePolicy } from '../theta/paper-bootstrap-runtime-policy.js';
+import { firstPaperCanaryQuantity } from './paper-execution-authorization.js';
 import { parseOccOptionSymbol } from '../theta/account-exposure.js';
 
 export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v4' as const;
@@ -90,7 +91,7 @@ export const masterPaperActionPlanSchema = z.object({
   if(plan.quantity!==plan.paperEvidenceQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MISMATCH'});
   if(plan.paperEvidenceQuantity>plan.canonicalQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MAY_NOT_INCREASE'});
   if(plan.paperEvidenceQuantity>plan.paperEvidenceRiskCap)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_RISK_CAP_EXCEEDED'});
-  if(plan.decisionAuthority==='NEW_RISK'&&plan.executionTier==='PAPER_EVIDENCE'&&plan.firstCanaryCompleted!==true&&plan.quantity>1)
+  if(plan.decisionAuthority==='NEW_RISK'&&plan.executionTier==='PAPER_EVIDENCE'&&plan.firstCanaryCompleted!==true&&plan.quantity>firstPaperCanaryQuantity)
     context.addIssue({code:'custom',message:'FIRST_PAPER_CANARY_QUANTITY_MUST_BE_ONE'});
   if(plan.decisionAuthority==='NEW_RISK'&&(plan.managementInputSnapshotId!==null||plan.managementActionFrontierId!==null))
     context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MAY_NOT_REFERENCE_MANAGEMENT_AUTHORITY'});

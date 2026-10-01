@@ -37,7 +37,7 @@ test('locked worker survives a real schema-064 IV persistence failure without br
         PAPER_PAUSE_NEW_ORDERS: 'true', THETA_PYTHON_EXECUTABLE: process.execPath,
       });
       const runner = async (): Promise<AutonomousRuntimeReport> => {
-        const iv = await refreshAegisIvStress({ pool, decisionAsOf: '2026-09-23T00:00:02.000Z',
+        const iv = await refreshAegisIvStress({ pool, underlying: 'SPY', decisionAsOf: '2026-09-23T00:00:02.000Z',
           optionomics: { apiBase: 'https://optionomics.ai', email: 'test@example.invalid',
             apiToken: 'test-only', maxRetryAttempts: 1,
             now: () => '2026-09-23T00:00:01.000Z',

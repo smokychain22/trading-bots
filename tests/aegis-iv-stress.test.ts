@@ -131,7 +131,7 @@ test('missing persistence schema becomes an explicit AEGIS blocker without throw
     date: '2026-09-22', symbol: 'SPY', metrics: { atm_iv: 0.2 },
   }), { status: 200, headers: { 'content-type': 'application/json' } });
   const result = await refreshAegisIvStress({
-    pool,
+    pool, underlying: 'SPY',
     optionomics: {
       apiBase: 'https://optionomics.ai', email: 'owner@example.test', apiToken: 'secret-not-returned',
       fetchImpl, now: () => '2026-09-23T00:00:00.000Z', maxRetryAttempts: 1,
@@ -167,11 +167,11 @@ test('live IV read freezes decision time after provider observation, while histo
       {status:200,headers:{'content-type':'application/json'}}),
     now:()=>'2026-09-23T00:00:01.000Z', maxRetryAttempts:1,
   };
-  const historical = await refreshAegisIvStress({pool,optionomics,
+  const historical = await refreshAegisIvStress({pool,optionomics,underlying:'SPY',
     decisionAsOf:'2026-09-23T00:00:00.000Z'});
   assert.equal(historical.state,'INVALID');
   assert.equal(historical.reason,'CURRENT_EVIDENCE_AFTER_DECISION');
-  const live = await refreshAegisIvStress({pool,optionomics,
+  const live = await refreshAegisIvStress({pool,optionomics,underlying:'SPY',
     decisionAsOf:'2026-09-23T00:00:00.000Z',freezeDecisionAsOf:()=>'2026-09-23T00:00:02.000Z'});
   assert.equal(live.state,'OBSERVATION_UNKNOWN');
   assert.equal(live.reason,'OPTIONOMICS_IV_PROVIDER_ASOF_UNAVAILABLE');

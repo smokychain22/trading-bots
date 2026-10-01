@@ -20,7 +20,8 @@ async function classify(operation: () => Promise<unknown>): Promise<{ errorClass
 
 test('HTTP failure matrix: every status maps to a typed class that is never an empty/successful read', async () => {
   const expected: ReadonlyArray<readonly [number, AlpacaErrorClass]> = [
-    [400, 'INVALID_REQUEST'], [401, 'INVALID_AUTH'], [403, 'NOT_ENTITLED'], [404, 'INVALID_REQUEST'], [422, 'INVALID_REQUEST'],
+    [400, 'INVALID_REQUEST'], [401, 'INVALID_AUTH'], [403, 'NOT_ENTITLED'], [404, 'INVALID_REQUEST'], [408, 'PROVIDER_TIMEOUT'],
+    [422, 'INVALID_REQUEST'],
     [429, 'RATE_LIMITED'], [500, 'SERVER_ERROR'], [502, 'SERVER_ERROR'], [503, 'SERVER_ERROR'], [504, 'SERVER_ERROR'],
   ];
   for (const [code, errorClass] of expected) {

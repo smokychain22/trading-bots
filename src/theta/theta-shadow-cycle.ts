@@ -1103,8 +1103,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
     const contextFamilies = dueOptionomicsContextFamilies(config, decisionTime);
     if (contextFamilies.length > 0) {
+      // Families are only due when a policy exists; a missing lookahead must fail loudly, never collapse to a
+      // zero-day window that returns no events and reads as "no event risk".
+      const eventLookaheadDays = config.optionomicsContextPolicy?.eventLookaheadDays;
+      if (eventLookaheadDays === undefined || !Number.isInteger(eventLookaheadDays) || eventLookaheadDays < 1) {
+        throw new Error('OPTIONOMICS_EVENT_LOOKAHEAD_POLICY_REQUIRED');
+      }
       const eventTo = new Date(decisionTime);
-      eventTo.setUTCDate(eventTo.getUTCDate() + (config.optionomicsContextPolicy?.eventLookaheadDays ?? 0));
+      eventTo.setUTCDate(eventTo.getUTCDate() + eventLookaheadDays);
       const contextOutcomes: Awaited<ReturnType<typeof fetchOptionomicsContextObservation>>[] = [];
       // Sequential calls respect the provider's shared account allowance.
       // Each GET still has its own bounded 429 policy in the adapter.
