@@ -241,7 +241,11 @@ test('the universe-asset bound is honestly reported when truncated', async () =>
   const alpaca: AlpacaProviderConfig = { tradingApiBase: 'https://paper-api.alpaca.markets', marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'K', apiSecret: 'S', fetchImpl };
   const result = await discoverRealUniverse(alpaca, baseDiscoveryConfig({ maxCandidateAssets: 3 }), () => NOW);
   assert.equal(result.funnel.assetsTruncatedByBound, true);
-  assert.equal(result.funnel.assetsDiscovered, 3);
+  // assetsDiscovered is the honest provider total (5), no longer the post-bound count; ranking was unavailable here
+  // (no snapshot mock), so the degradation is visible rather than posing as a liquidity ranking.
+  assert.equal(result.funnel.assetsDiscovered, 5);
+  assert.ok(result.blockers.includes('UNIVERSE_LIQUIDITY_PRERANK_UNAVAILABLE'));
+  assert.equal(result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'SOURCE_ASSETS')?.providerState, 'PARTIAL');
 });
 
 test('required Paper bootstrap symbol survives both asset and optionability client bounds', async () => {

@@ -708,6 +708,56 @@ export interface StockBarsResult {
   readonly providerZeroVwapCount: number; // optional VWAP unavailable, required OHLCV still validated
 }
 
+export interface StockSnapshotLiquidity {
+  readonly price: number;
+  readonly dollarVolume: number;
+}
+
+/**
+ * One multi-symbol Alpaca snapshot sweep used only to RANK a large asset list before bounding it. A symbol with no
+ * usable daily bar is simply absent from the result (UNKNOWN), never ranked as zero. This is a research-ranking
+ * signal and grants no execution authority.
+ */
+export async function fetchStockSnapshotLiquidity(
+  config: AlpacaProviderConfig,
+  symbols: readonly string[],
+  options: { readonly batchSize: number; readonly concurrency: number; readonly feed?: 'iex' | 'sip' },
+): Promise<{ readonly liquidity: ReadonlyMap<string, StockSnapshotLiquidity>; readonly failedBatches: number; readonly totalBatches: number }> {
+  if (!Number.isInteger(options.batchSize) || options.batchSize < 1 || !Number.isInteger(options.concurrency) || options.concurrency < 1) {
+    throw new AlpacaProviderError('INVALID_REQUEST', null, 'Snapshot ranking batch bounds must be positive integers.');
+  }
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const batches: string[][] = [];
+  for (let i = 0; i < symbols.length; i += options.batchSize) batches.push(symbols.slice(i, i + options.batchSize) as string[]);
+  const liquidity = new Map<string, StockSnapshotLiquidity>();
+  let failedBatches = 0;
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < batches.length) {
+      const batch = batches[next++] as string[];
+      try {
+        const url = new URL('/v2/stocks/snapshots', config.marketDataApiBase);
+        url.search = new URLSearchParams({ symbols: batch.join(','), feed: options.feed ?? 'iex' }).toString();
+        const body = providerRow(await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs), '/v2/stocks/snapshots');
+        for (const [symbol, raw] of Object.entries(body)) {
+          if (raw === null || typeof raw !== 'object') continue;
+          const row = raw as Record<string, unknown>;
+          // The previous completed session is a stable full-day measure; the current bar is partial intraday.
+          const bar = (row.prevDailyBar ?? row.dailyBar) as Record<string, unknown> | undefined;
+          if (bar === undefined || bar === null || typeof bar !== 'object') continue;
+          const close = asNumberOrNull(bar.c), volume = asNumberOrNull(bar.v);
+          if (close === null || volume === null || close <= 0 || volume < 0) continue;
+          liquidity.set(symbol.toUpperCase(), { price: close, dollarVolume: close * volume });
+        }
+      } catch {
+        failedBatches += 1; // symbols of a failed batch stay UNKNOWN; the caller decides how to degrade
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(options.concurrency, Math.max(1, batches.length)) }, () => worker()));
+  return { liquidity, failedBatches, totalBatches: batches.length };
+}
+
 export async function fetchStockBars(config: AlpacaProviderConfig, params: FetchStockBarsParams, receivedAt: string): Promise<StockBarsResult> {
   assertPaginationBounds(params.maxPages);
   const fetchImpl = config.fetchImpl ?? fetch;

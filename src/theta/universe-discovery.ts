@@ -1,4 +1,4 @@
-import { AlpacaProviderError, fetchOptionContracts, fetchStockBars, fetchTradableAssets, type AlpacaProviderConfig } from './alpaca-provider.js';
+import { AlpacaProviderError, fetchOptionContracts, fetchStockBars, fetchStockSnapshotLiquidity, fetchTradableAssets, type AlpacaProviderConfig } from './alpaca-provider.js';
 import type { HistoricalBar } from './underlying-history.js';
 import type { UnderlyingCandidateInput } from './universe-policy.js';
 
@@ -129,18 +129,54 @@ export async function discoverRealUniverse(
   let assetsDiscovered = 0;
   let assetsTruncatedByBound = false;
   let filteredSymbols: string[] = [];
+  let exchangeNotAllowedCount = 0;
+  let prerankCutCount = 0;
+  let prerankUnrankedCount = 0;
+  let prerankState: 'NOT_NEEDED' | 'RANKED' | 'PARTIAL' | 'UNAVAILABLE_DETERMINISTIC_PREFIX' = 'NOT_NEEDED';
   let exchangeFilterDurationMs = 0;
   const stageDiagnostics: UniverseDiscoveryStageDiagnostic[] = [];
   const assetsStarted = performance.now();
   try {
-    const assetsResult = await fetchTradableAssets(alpaca, config.maxCandidateAssets, config.requiredSymbols);
+    // The provider list is in arbitrary (not liquidity) order: bounding it BEFORE ranking would make the "best"
+    // universe an arbitrary first-N sample. Fetch the complete list, apply the exchange filter, then rank by a cheap
+    // snapshot sweep and only then apply the bound.
+    const assetsResult = await fetchTradableAssets(alpaca, Number.MAX_SAFE_INTEGER, config.requiredSymbols);
     assetsDiscovered = assetsResult.assets.length;
-    assetsTruncatedByBound = !assetsResult.complete;
     const filterStarted = performance.now();
-    filteredSymbols = assetsResult.assets
+    const exchangeEligible = assetsResult.assets
       .filter((a) => config.allowedExchanges === null || (a.exchange !== null && config.allowedExchanges.includes(a.exchange)))
       .map((a) => a.symbol)
       .filter((symbol) => symbol.length > 0);
+    exchangeNotAllowedCount = assetsDiscovered - exchangeEligible.length;
+    const requiredUpper = new Set((config.requiredSymbols ?? []).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean));
+    if (exchangeEligible.length <= config.maxCandidateAssets) {
+      filteredSymbols = exchangeEligible;
+    } else {
+      assetsTruncatedByBound = true;
+      const ranking = await fetchStockSnapshotLiquidity(alpaca, exchangeEligible, { batchSize: 400, concurrency: 4 });
+      const rankable = exchangeEligible.filter((symbol) => ranking.liquidity.has(symbol.toUpperCase()));
+      if (ranking.liquidity.size === 0 || ranking.failedBatches === ranking.totalBatches) {
+        // Ranking unavailable: degrade to a deterministic prefix, visibly, never as if it were a liquidity ranking.
+        blockers.push('UNIVERSE_LIQUIDITY_PRERANK_UNAVAILABLE');
+        prerankState = 'UNAVAILABLE_DETERMINISTIC_PREFIX';
+        filteredSymbols = [...exchangeEligible].sort().slice(0, config.maxCandidateAssets);
+      } else {
+        prerankState = ranking.failedBatches > 0 ? 'PARTIAL' : 'RANKED';
+        if (ranking.failedBatches > 0) blockers.push('UNIVERSE_LIQUIDITY_PRERANK_PARTIAL');
+        filteredSymbols = [...rankable].sort((a, b) =>
+          (ranking.liquidity.get(b.toUpperCase())?.dollarVolume ?? 0) - (ranking.liquidity.get(a.toUpperCase())?.dollarVolume ?? 0)
+          || a.localeCompare(b)).slice(0, config.maxCandidateAssets);
+        prerankUnrankedCount = exchangeEligible.length - rankable.length;
+      }
+      const selected = new Set(filteredSymbols.map((symbol) => symbol.toUpperCase()));
+      for (const symbol of exchangeEligible) {
+        if (requiredUpper.has(symbol.toUpperCase()) && !selected.has(symbol.toUpperCase())) {
+          filteredSymbols.push(symbol);
+          selected.add(symbol.toUpperCase());
+        }
+      }
+      prerankCutCount = exchangeEligible.length - filteredSymbols.length;
+    }
     exchangeFilterDurationMs = Math.max(0, Math.round(performance.now() - filterStarted));
   } catch (error) {
     blockers.push(`UNIVERSE_ASSETS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
@@ -158,12 +194,16 @@ export async function discoverRealUniverse(
   const assetsAfterExchangeFilter = filteredSymbols.length;
   stageDiagnostics.push({ stage: 'SOURCE_ASSETS', inputCount: assetsDiscovered, outputCount: assetsDiscovered,
     rejectedCount: 0, durationMs: Math.max(0, Math.round(performance.now() - assetsStarted)),
-    providerState: assetsTruncatedByBound ? 'PARTIAL' : assetsDiscovered === 0 ? 'VALID_EMPTY' : 'READY',
-    reasonCounts: assetsTruncatedByBound ? { CLIENT_ASSET_BOUND_REACHED: 1 } : {} });
+    providerState: assetsDiscovered === 0 ? 'VALID_EMPTY'
+      : prerankState === 'PARTIAL' || prerankState === 'UNAVAILABLE_DETERMINISTIC_PREFIX' ? 'PARTIAL' : 'READY',
+    reasonCounts: assetsTruncatedByBound ? { CLIENT_ASSET_BOUND_REACHED: 1, [`LIQUIDITY_PRERANK_${prerankState}`]: 1 } : {} });
   stageDiagnostics.push({ stage: 'EXCHANGE_FILTER', inputCount: assetsDiscovered, outputCount: assetsAfterExchangeFilter,
     rejectedCount: assetsDiscovered - assetsAfterExchangeFilter, durationMs: exchangeFilterDurationMs,
     providerState: assetsAfterExchangeFilter === 0 ? 'VALID_EMPTY' : 'READY',
-    reasonCounts: assetsDiscovered === assetsAfterExchangeFilter ? {} : { EXCHANGE_NOT_ALLOWED_OR_UNKNOWN: assetsDiscovered - assetsAfterExchangeFilter } });
+    reasonCounts: {
+      ...(exchangeNotAllowedCount > 0 ? { EXCHANGE_NOT_ALLOWED_OR_UNKNOWN: exchangeNotAllowedCount } : {}),
+      ...(prerankCutCount > 0 ? { LIQUIDITY_PRERANK_NOT_SELECTED: prerankCutCount } : {}),
+      ...(prerankUnrankedCount > 0 ? { LIQUIDITY_PRERANK_NO_SNAPSHOT_UNKNOWN: prerankUnrankedCount } : {}) } });
 
   const barsEnd = receivedAt;
   const barsStart = new Date(decisionMillis - config.barsLookbackDays * 86_400_000).toISOString();
