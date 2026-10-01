@@ -181,3 +181,76 @@ later than 120 s after target. Deploy needs the governed release path (CI + evid
 2. Fresh-first Postgres observation ordering (above).
 Both need: full Node/Python/browser/Windows/DB validation, governed evidence regeneration (touched hash-bound files),
 exact-SHA CI, then one governed cutover after market close. Not done yet.
+
+## ENGINEERING PASS 2 (measured; commits c84b3db onward on claude/theta-codex-continuation-20261001)
+
+### SPY capital fit, exact (archived cycle e9f4b10f, source c3d8868, 2,619 enumerated SPY puts, DTE 4-60)
+Equity 99,999.96; ticker cap 15% ($15,000); hard veto at x1.5 ($22,499.99). Collateral = strike x 100 (single multiplier;
+SPY261120P00706000 -> 706 x 100 = $70,600). Cheapest enumerated put: strike $300 -> $30,000 (30.0% of equity, bid 0.02,
+delta -0.0014, economically void). MIN / MEDIAN / MAX collateral = $30,000 / $75,200 / $100,000.
+CAN_ANY_SPY_PUT_FIT_CURRENT_POLICY = NO (proved on the full enumerated chain). Classification: ACCOUNT_POLICY_INCOMPATIBILITY.
+Equity needed for the cheapest Q-valid SPY put ($37,500, strike 375) to clear the hard threshold: >= $166,667; full size: >= $250,000.
+
+### Q sensitivity (offline, same corpus, Production untouched)
+Gate funnel at baseline (DTE 25-60, |delta|<=0.5, OI>=50, volume>=10, bid and ask>0, spread<=15%, quote age<=30 s):
+2,619 -> 961 (DTE) -> 643 (delta) -> 550 (OI) -> 392 (volume) -> 392 (two-sided quote) -> 363 (spread) -> 363 (age).
+363 SPY puts pass every liquidity/structural gate. Perturbing OI 10..100, volume 1..20, spread 10%..50%, age 15..120 s,
+delta 0.35..0.8, DTE 7..30 keeps the qualifying count between 252 and 666. Relaxing ALL liquidity gates: 639 qualify, 0 fit capital.
+Equity scenarios (liquidity baseline): x1.25 -> 0 fit the hard threshold; x1.5 -> 0; x2 -> 6; x3 -> 99 (6 full size); x4.7 -> 363 (152 full size).
+VERDICT: SPY inactivity is ACCOUNT_SCALE (collateral vs concentration cap), not Q liquidity strictness (Q_TOO_STRICT = NO).
+Non-SPY symbols are blocked by the instrument manifest (policy), not by liquidity.
+
+### Universe ranking: real defect, fixed in source (c84b3db)
+Alpaca /v2/assets returned 13,515 tradable assets (12,916 on NYSE/NASDAQ/ARCA/BATS) in ARBITRARY order (KORU is #2) and
+discovery bounded to the first 100 BEFORE ranking: a 0.7% arbitrary sample; SPY/KORU survived only as pinned requiredSymbols.
+Fix: full list -> exchange filter -> multi-symbol snapshot sweep (33 calls, 0 failures, 3.4 s live) -> rank by prior-day dollar
+volume -> bound 100 -> bars/optionability. Live check: SPY rank 1, NVDA 2, AAPL 5, IWM 8; 56 of the top 100 have collateral
+below $22.5k per contract. KORU ranks 944 and IYM 3,722 (IEX volume), so they leave the discovered 100 unless pinned.
+Regression fixtures at 99/100/101/500/1000, order independence, outage degradation (visible blocker), required-symbol retention.
+Approved-instrument policy untouched (SPY only), so Paper Q behavior is unchanged; research breadth improves.
+
+### Ownership components (evidence: 152 decision receipts; SPY receipt inspected field by field)
+LiquidityQuality: stock avg volume + option OI + option volume + spread. The underlying-level assessment has no option inputs
+-> UNKNOWN by design; the candidate-level assessment supplies them. REQUIRED by Q bootstrap.
+StructuralQuality: MA20/50/200 rel, MA slope, relativeStrength. relativeStrength is supplied (value 0, identity) ONLY for
+manifest-approved funds (theta-shadow-cycle.ts:1969) -> UNKNOWN for every other symbol. REQUIRED by Q bootstrap.
+RecoveryQuality: needs a historical recovery-duration model ("real recovery model not yet fit") -> UNKNOWN for all.
+ALLOWED unknown in Paper bootstrap. TailQuality: proxy, known for all; REQUIRED. EventAdjustment: event-distance inputs are
+hard-null in the production path -> UNKNOWN for all; ALLOWED unknown (event safety is governed by CompanyEventPaperPolicy).
+Q intentionally requires ownership suitability because a CSP can end in assignment (UNIV-003). Minimum bootstrap evidence =
+Liquidity + Structural + Tail known; Recovery/Event may be unknown.
+CIRCULAR DEPENDENCY CONFIRMED: not in manifest -> no relativeStrength -> StructuralQuality UNKNOWN -> bootstrap-ineligible ->
+no Paper evidence -> never promotable. Proper separation (DEFER_OWNER_POLICY, not implemented): compute relativeStrength from
+point-in-time bars vs a declared benchmark/window/scale for ANY symbol (ranking evidence), with approval remaining a separate
+manifest decision.
+
+### Command-5A cadence (measured; the fix is infrastructure and is deferred)
+Full worker cycle period (51 gaps): avg 349 s, p50 284 s, p95 360 s, min 119 s. The Postgres observation step runs once per
+cycle. Job target offsets from job creation: 1M -24..+34 s, 5M 216..274 s, 30M 1716..1774 s, EOD 3369..23216 s. Window = 120 s.
+The next tick after job creation is roughly one cycle later (~250-350 s): 1M RELIABLE=NO (lag ~220-380 s, structurally
+unreachable); 5M RELIABLE=NO (phase dependent, at best ~120/349 = 34%); 30M RELIABLE=NO (~34%).
+The fresh-first ordering fix (2e5af4b) removes starvation but cannot create sub-cycle timing. A real fix needs a dedicated
+marks-only tick (<= 30 s) that is lease-safe against the main cycle; not implemented because the Windows supervisor serialises
+requests under the request lease. Top infra item for the next governed release.
+
+### Validation state (branch head cda96d1; CI run 36913155268 pending when written)
+Local: Node 3,393 tests / 3,376 pass / 0 fail / 17 DB-gated skips; Python 1,267 OK; lint 0; build OK; security scan 1,876 paths
+0 findings; storage policy PASS; 4 Windows PowerShell tests PASS; 23 browser tests PASS.
+Phases 2-6 executed-test evidence was regenerated through the governed generators (no hand edits); Phase 2 requirement 2.4
+(disposable-DB bound) still needs the exact-SHA CI import after CI is green.
+New regression/guard tests: AEGIS not-reached label; fresh-first observation order; universe ranking (99/100/101/500/1000);
+covered-call share boundary (0/99/100/101/199/200/250); roll missing-leg typed result; whole-repo authority guards (order mutation,
+coordinator construction, management and entry selectors, sizing, max(1)); order-intent transition invariants (CANCEL_REQUESTED);
+DB-level clientOrderId uniqueness.
+Authority census: ENTRY = buildCanonicalStrategyFrontier (1 implementation); MANAGEMENT = buildManagementActionFrontier (1
+implementation, 3 declared callers); SIZING = structuralSizing (1); BROKER MUTATION = PaperOrderCoordinator -> AlpacaPaperBrokerAdapter
+(1 call-site file, 1 HTTP-mutation file); AEGIS = Python assess_aegis (policy math) with TS adapters.
+Brain: 21 layers defined, 18 reachable (0-17), layers 18-20 research/readiness. 32 registry methods: 16 PRODUCTION-locked,
+3 SHADOW, 13 RESEARCH_ONLY; 3 are contract-only/unconsumed (ADAPTIVE_ECONOMIC_STRATEGY_SWITCHING, ENTRY_PROFITABILITY_MODEL,
+MANAGED_EPISODE_DISTRIBUTION_MODEL); WHOLE_CHAIN_ACCOUNTING is labelled PRODUCTION L6 but no worker import path was found (verify).
+Features: 20 canonical families (TS enum == Python CANONICAL_FAMILIES); about 4 reach Production decisions; 13 research-only;
+2 blocked (SECTOR, FUNDAMENTAL_QUALITY: no provider). Training-serving skew: realized volatility (TS population variance vs Python
+n-1, ~2.6% at N=20), trend slope (OLS/mean vs SMA difference), max adverse gap (no Python producer). OWNERSHIP/REGIME are
+registered with version "pre-existing".
+Old incidents: 54 catalogued, 49 with an existing regression test, 5 without (2 documentation-only, 3 unverified: A/C false
+credit, THETA-O CC/roll tier, THETA-Q2 invariant 008); none observed to recur in the 13:32-18:43Z session.
