@@ -89,7 +89,7 @@ test('real disposable PostgreSQL: accepted first canary promotes to autonomous M
   assert.ok(connectionString);
   const url = new URL(connectionString);
   assert.ok(['127.0.0.1', 'localhost', ''].includes(url.hostname), 'Disposable local database only');
-  assert.ok(['/trading_bots'].includes(url.pathname), 'DISPOSABLE_TEST_DATABASE_REQUIRED');
+  assert.ok(['/theta_autonomous_transition_ci'].includes(url.pathname), 'DISPOSABLE_TEST_DATABASE_REQUIRED');
   const pool = new Pool({ connectionString: url.toString(), max: 4 });
   const admin = await pool.connect();
   try {
