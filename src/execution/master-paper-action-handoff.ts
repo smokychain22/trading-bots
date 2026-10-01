@@ -40,6 +40,7 @@ export interface ApprovedMasterPaperActionPlan {
   readonly paperEvidenceRiskCap: number;
   readonly paperEvidenceCapReason: PaperEvidenceSizing['paperEvidenceCapReason'];
   readonly executionTier: ExecutionAuthorizationTier;
+  readonly firstCanaryCompleted?:boolean;
   readonly multiplier: number;
   readonly confirmedCoveredShares?: number;
   readonly action: ThetaOrderAction;
@@ -74,6 +75,7 @@ export const masterPaperActionPlanSchema = z.object({
   paperEvidenceQuantity:z.number().int().nonnegative(),paperEvidenceRiskCap:z.number().int().nonnegative(),
   paperEvidenceCapReason:z.enum(['PAPER_EVIDENCE_RISK_CAP','CANONICAL_QUANTITY_LOWER','QUANTITY_ZERO']),
   executionTier:z.enum(executionAuthorizationTiers),multiplier:z.number().int().positive(),confirmedCoveredShares:z.number().int().nonnegative().optional(),
+  firstCanaryCompleted:z.boolean().optional(),
   action:z.enum(['OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK']),
   economicBoundary:z.number().positive().finite(),economicsRemainPositive:z.boolean(),expectedAfterCostEv:z.number().finite().nullable(),
   empiricalEconomicsReady:z.boolean(),selectedByCanonicalAuthority:z.boolean(),hardValidityPassed:z.boolean(),
@@ -88,7 +90,7 @@ export const masterPaperActionPlanSchema = z.object({
   if(plan.quantity!==plan.paperEvidenceQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MISMATCH'});
   if(plan.paperEvidenceQuantity>plan.canonicalQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MAY_NOT_INCREASE'});
   if(plan.paperEvidenceQuantity>plan.paperEvidenceRiskCap)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_RISK_CAP_EXCEEDED'});
-  if(plan.decisionAuthority==='NEW_RISK'&&plan.executionTier==='PAPER_EVIDENCE'&&plan.quantity>1)
+  if(plan.decisionAuthority==='NEW_RISK'&&plan.executionTier==='PAPER_EVIDENCE'&&plan.firstCanaryCompleted!==true&&plan.quantity>1)
     context.addIssue({code:'custom',message:'FIRST_PAPER_CANARY_QUANTITY_MUST_BE_ONE'});
   if(plan.decisionAuthority==='NEW_RISK'&&(plan.managementInputSnapshotId!==null||plan.managementActionFrontierId!==null))
     context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MAY_NOT_REFERENCE_MANAGEMENT_AUTHORITY'});

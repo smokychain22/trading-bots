@@ -25,6 +25,7 @@ export interface MasterPaperPlanAssemblyInput {
   readonly openPositionSymbols: readonly string[];
   readonly openOrderSymbols: readonly string[];
   readonly paperEvidenceRiskCap: number;
+  readonly firstCanaryCompleted:boolean;
   readonly modeledRoundTripCostPerContract: number | null;
   readonly now: string;
   readonly decisionExpiresAt: string;
@@ -139,7 +140,8 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
     return { state: 'BLOCKED', plan: null, blockers: [...new Set(blockers)] };
   }
 
-  const sizing = applyPaperEvidenceRiskCap(frontier.selectedQuantity, Math.min(input.paperEvidenceRiskCap, 1));
+  const sizing = applyPaperEvidenceRiskCap(frontier.selectedQuantity,
+    input.firstCanaryCompleted?input.paperEvidenceRiskCap:Math.min(input.paperEvidenceRiskCap,1));
   if (sizing.paperEvidenceQuantity === 0) {
     return { state: 'BLOCKED', plan: null, blockers: ['PAPER_EVIDENCE_QUANTITY_ZERO'] };
   }
@@ -176,6 +178,7 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
       quantity: sizing.paperEvidenceQuantity,
       ...sizing,
       executionTier: 'PAPER_EVIDENCE',
+      firstCanaryCompleted:input.firstCanaryCompleted,
       multiplier,
       action: 'OPEN_CSP',
       economicBoundary,

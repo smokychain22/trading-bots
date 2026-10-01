@@ -44,7 +44,7 @@ import {
 } from '../database/local-forensic-recovery.js';
 import {
   firstPaperCanaryActivationConfirmation, masterPaperAuthorizationConfirmation,
-  PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl,
+  ownerMasterPaperAutonomySource,PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl,
 } from '../execution/paper-execution-authorization.js';
 import { PostgresBrokerReconciliationStore, runReadOnlyBrokerReconciliation } from '../execution/broker-reconciliation-worker.js';
 import { fetchMarketClock, fetchOptionContracts, fetchOptionSnapshots } from './alpaca-provider.js';
@@ -181,7 +181,7 @@ export default async function autonomousRuntimeHandler(
     runtimePool ??= createRuntimePostgresPool(environment.DATABASE_URL);
     const control=await new PostgresPaperExecutionAuthorizationStore(runtimePool).authorizeManagementOnly({
       confirmation:masterPaperAuthorizationConfirmation,authorizedAt:new Date().toISOString(),
-      sourceRef:'OWNER_DIRECTIVE_2026_09_17_MASTER_THETA_PAPER',
+      sourceRef:ownerMasterPaperAutonomySource,
     });
     send(response,200,{accountRole:'MASTER_THETA_PAPER',environment:'PAPER',
       masterManagementAuthorized:control.masterExecutionEnabled,newRiskPaused:control.pauseNewOrders,
@@ -211,7 +211,7 @@ export default async function autonomousRuntimeHandler(
       now:()=>at});
     const receipt=await new PostgresPaperExecutionAuthorizationStore(runtimePool).activateFirstPaperCanary({
       confirmation:firstPaperCanaryActivationConfirmation,activatedAt:at,
-      sourceRef:'OWNER_DIRECTIVE_X3_FIRST_PAPER_CANARY',evidence:{
+      sourceRef:ownerMasterPaperAutonomySource,evidence:{
         brokerAccountStatus:reconciliation.accountStatus,brokerPositionCount:reconciliation.positionCount,
         brokerOpenOrderCount:reconciliation.openOrderCount,brokerLocalOnlyIntentCount:reconciliation.localOnlyIntentCount,
         marketOpen:reconciliation.marketOpen,calendarSessionConfirmed:reconciliation.calendarSessionConfirmed,

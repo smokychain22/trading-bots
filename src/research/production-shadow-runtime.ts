@@ -13,6 +13,7 @@ import { PostgresPointInTimeEvidenceStore } from './point-in-time-evidence.js';
 import { ensureMasterShadowContext } from './master-shadow-context.js';
 import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './postgres-shadow-virtual-trader.js';
 import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-assembly.js';
+import { isAutonomousMasterPaperAccepted } from '../execution/paper-execution-authorization.js';
 import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
 import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, type RuntimeBehaviorDiagnostic,
   type RuntimeFirstPaperSymbolEvidence, type RuntimeReadOnlyPreSubmitProof } from '../theta/runtime-behavior-diagnostic.js';
@@ -260,6 +261,10 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   if(input.readOnlyPreSubmitPreview===true&&(input.environment.MASTER_PAPER_EXECUTION_ENABLED
     ||input.environment.FOLLOWER_PAPER_EXECUTION_ENABLED||!input.environment.PAPER_PAUSE_NEW_ORDERS))
     throw new Error('READ_ONLY_PRE_SUBMIT_PREVIEW_REQUIRES_ALL_EXECUTION_LOCKS');
+  // Durable accepted-canary audit record, not a mutable control-row text field:
+  // the temporary one-contract cap lifts only after a complete accepted receipt
+  // and cannot flip back because of an unrelated later control update.
+  const firstCanaryCompleted=await isAutonomousMasterPaperAccepted(input.pool);
   if(process.env.VERCEL_ENV==='production'){
     // This is deliberately independent of the encrypted master credential.
     // A local dotenv success or broker reconciliation cannot prove that the
@@ -513,6 +518,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         openOrderSymbols:orders.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
           &&typeof (value as Record<string,unknown>).symbol==='string'?[String((value as Record<string,unknown>).symbol)]:[]),
         paperEvidenceRiskCap:input.environment.PAPER_EVIDENCE_RISK_CAP,
+        firstCanaryCompleted,
         modeledRoundTripCostPerContract:n(assumptions.totalModeledCostPerContract),now:planNow,decisionExpiresAt});
       if(assembled.state==='READY'){
         if(runtimePlanEnqueueEnabled&&await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,

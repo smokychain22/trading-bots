@@ -38,13 +38,14 @@ import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.
 import { PostgresP2EEvidenceStore } from './p2e-evidence-store.js';
 import { PostgresOperatorControlStore } from '../customer/operator-control.js';
 import {
-  PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl,
+  isAutonomousMasterPaperAccepted, PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl,
 } from '../execution/paper-execution-authorization.js';
 import { createPaperBootstrapManagementPolicyProvider } from './paper-bootstrap-management-policy.js';
 import { ProductionPaperManagementCandidateSource } from './production-paper-management-candidate-source.js';
 import type { SchedulerCheckpointRecord } from './persistence-repositories.js';
 import { PostgresExecutionEvidenceStore } from '../execution/postgres-execution-evidence-store.js';
 import { persistConfirmedFillTca } from '../execution/confirmed-fill-tca.js';
+import { reconcileFirstCanaryAcceptance } from '../execution/postgres-first-canary-acceptance.js';
 import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
@@ -247,9 +248,14 @@ export class PostgresRuntimeCycleStore {
     return result.rows[0]?.ready===true;
   }
 
+  /** True before the first broker order, and permanently true once the first
+   * canary has been fully accepted. A prior order alone must never keep the
+   * Master Paper lane locked forever; only an accepted-canary audit record lifts
+   * the single-canary lane, and it removes nothing but that lane. */
   async firstCanarySubmissionAvailable():Promise<boolean>{
     const result=await this.pool.query(`SELECT count(*)::int AS count FROM trade.broker_order`);
-    return Number(result.rows[0]?.count??0)===0;
+    if(Number(result.rows[0]?.count??0)===0)return true;
+    return isAutonomousMasterPaperAccepted(this.pool);
   }
 
   async markNearMissesTriggered(
@@ -525,6 +531,11 @@ export async function runAutonomousRuntimeCycle(
         const tca=await persistConfirmedFillTca(pool,master.connectionId,reconciliation.observedAt);
         if(tca.failed>0)return degraded('TCA_EVIDENCE_PERSISTENCE_FAILURE',retryAt);
         if(tca.missing>0)return degraded('TCA_EVIDENCE_MISSING',retryAt);
+        if(master.executionAccountId!==null){
+          const canary=await reconcileFirstCanaryAcceptance({pool,broker:master.executionBroker,
+            executionAccountId:master.executionAccountId,asOf:reconciliation.observedAt});
+          if(canary.state==='FAILED')return degraded(canary.receipt?.blockers[0]??'FIRST_CANARY_ACCEPTANCE_FAILED',retryAt);
+        }
         return lifecycle.unresolved>0||fills.unresolved>0 ? degraded('BROKER_LIFECYCLE_FACTS_UNRESOLVED',retryAt) : succeeded();
       }
       if (jobType === 'PENDING_ORDER_MANAGEMENT') {
@@ -599,7 +610,7 @@ export async function runAutonomousRuntimeCycle(
             if(result.execution.submittedNow)masterPaperOrdersSubmitted+=1;
             if(disposition==='TERMINAL')await planStore.terminal(plan.actionPlanId,result.execution.orderIntentId,at);
             else await planStore.submitted(plan.actionPlanId,result.execution.orderIntentId,at);
-            if(result.execution.submittedNow&&plan.decisionAuthority==='NEW_RISK'){
+            if(result.execution.submittedNow&&plan.decisionAuthority==='NEW_RISK'&&plan.firstCanaryCompleted!==true){
               const persistedLock=await new PostgresPaperExecutionAuthorizationStore(pool)
                 .lockNewRiskAfterFirstCanary(at);
               if(!persistedLock)return degraded('FIRST_CANARY_RUNTIME_LOCKED_PERSISTED_CONTROL_PENDING',retryAt);

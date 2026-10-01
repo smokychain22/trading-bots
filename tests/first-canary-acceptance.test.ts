@@ -7,11 +7,12 @@ const at = '2026-09-21T14:35:00.000Z';
 const good = <T>(value: T): Evidence<T> => ({ state:'GOOD', value, source:'ALPACA_PAPER', asOf:at });
 const input = (): FirstCanaryAcceptanceInput => ({
   asOf:at,
-  expected:{ executionAccountId:'master-paper-account',occContract:'AAPL261016P00150000',side:'sell',positionIntent:'sell_to_open',quantity:1,clientOrderId:'theta-canary-1' },
+  expected:{ orderIntentId:'order-intent-1',executionAccountId:'master-paper-account',occContract:'AAPL261016P00150000',side:'sell',positionIntent:'sell_to_open',quantity:1,clientOrderId:'theta-canary-1' },
   persistence:{ decisionPersisted:good(true),orderIntentPersisted:good(true),idempotencyReserved:good(true),deterministicClientOrderId:good(true) },
   broker:{ executionAccountId:good('master-paper-account'),occContract:good('AAPL261016P00150000'),side:good('sell'),positionIntent:good('sell_to_open'),
     requestedQuantity:good(1),filledQuantity:good(1),clientOrderId:good('theta-canary-1'),orderState:good('FILLED'),acknowledgementObserved:good(true),duplicateEconomicExposureCount:good(1) },
-  evidence:{ reconciliationComplete:good(true),tcaPersisted:good(true),lifecycleApplied:good(true),newRiskRelocked:good(true),managementEnabled:good(true),
+  evidence:{ reconciliationComplete:good(true),tcaPersisted:good(true),lifecycleApplied:good(true),managementRegistered:good(true),
+    futureObservationsScheduled:good(true),newRiskRelocked:good(true),managementEnabled:good(true),
     followerMutationCount:good(0),liveMutationCount:good(0) },
 });
 
@@ -67,4 +68,13 @@ test('a first canary larger than one contract is rejected even when broker quant
   });
   assert.equal(receipt.status,'FAILED');
   assert.ok(receipt.blockers.includes('FIRST_PAPER_CANARY_QUANTITY_MUST_BE_ONE'));
+});
+
+test('a filled canary cannot activate without management ownership and future observations',()=>{
+  const base=input();
+  const receipt=buildFirstCanaryAcceptanceReceipt({...base,evidence:{...base.evidence,
+    managementRegistered:good(false),futureObservationsScheduled:good(false)}});
+  assert.equal(receipt.status,'FAILED');
+  assert.ok(receipt.blockers.includes('MANAGEMENT_REGISTERED_FALSE'));
+  assert.ok(receipt.blockers.includes('FUTURE_OBSERVATIONS_SCHEDULED_FALSE'));
 });

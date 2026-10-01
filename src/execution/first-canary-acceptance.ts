@@ -8,6 +8,7 @@ export type CanaryBrokerState = 'ACKNOWLEDGED' | 'WORKING' | 'PARTIAL' | 'FILLED
 export interface FirstCanaryAcceptanceInput {
   readonly asOf: string;
   readonly expected: {
+    readonly orderIntentId: string;
     readonly executionAccountId: string;
     readonly occContract: string;
     readonly side: 'sell';
@@ -37,6 +38,8 @@ export interface FirstCanaryAcceptanceInput {
     readonly reconciliationComplete: Evidence<boolean>;
     readonly tcaPersisted: Evidence<boolean>;
     readonly lifecycleApplied: Evidence<boolean>;
+    readonly managementRegistered: Evidence<boolean>;
+    readonly futureObservationsScheduled: Evidence<boolean>;
     readonly newRiskRelocked: Evidence<boolean>;
     readonly managementEnabled: Evidence<boolean>;
     readonly followerMutationCount: Evidence<number>;
@@ -116,6 +119,8 @@ export function buildFirstCanaryAcceptanceReceipt(input: FirstCanaryAcceptanceIn
     if (filledQuantity !== input.expected.quantity) blockers.push('FILLED_QUANTITY_NOT_COMPLETE');
     requireTrue(input.evidence.tcaPersisted, 'TCA_PERSISTED', blockers);
     requireTrue(input.evidence.lifecycleApplied, 'LIFECYCLE_APPLIED', blockers);
+    requireTrue(input.evidence.managementRegistered, 'MANAGEMENT_REGISTERED', blockers);
+    requireTrue(input.evidence.futureObservationsScheduled, 'FUTURE_OBSERVATIONS_SCHEDULED', blockers);
   } else if (state === 'REJECTED') {
     if (filledQuantity !== 0) blockers.push('REJECTED_ORDER_HAS_FILL');
     blockers.push('BROKER_ORDER_REJECTED');

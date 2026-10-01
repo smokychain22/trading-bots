@@ -56,7 +56,7 @@ const input=(overrides:Partial<MasterPaperPlanAssemblyInput>={}):MasterPaperPlan
     persistedCandidateId,
   }),
   entrySafetyPolicy,
-  openPositionSymbols:[],openOrderSymbols:[],paperEvidenceRiskCap:1,modeledRoundTripCostPerContract:1.70,
+  openPositionSymbols:[],openOrderSymbols:[],paperEvidenceRiskCap:1,firstCanaryCompleted:false,modeledRoundTripCostPerContract:1.70,
   now:'2026-09-14T14:00:01.000Z',decisionExpiresAt:'2026-09-14T14:00:46.000Z',...overrides,
 });
 
@@ -83,6 +83,17 @@ test('the first Paper evidence plan remains capped at one contract even if a bro
   assert.equal(result.plan.quantity,1);
   assert.equal(result.plan.paperEvidenceRiskCap,1);
   assert.equal(result.plan.paperEvidenceCapReason,'PAPER_EVIDENCE_RISK_CAP');
+});
+
+test('an accepted first canary removes only the temporary one-contract cap and preserves canonical sizing',()=>{
+  const result=assembleMasterPaperEvidencePlan(input({paperEvidenceRiskCap:3,firstCanaryCompleted:true}));
+  assert.equal(result.state,'READY');
+  if(result.state!=='READY')return;
+  assert.equal(result.plan.firstCanaryCompleted,true);
+  assert.equal(result.plan.canonicalQuantity,3);
+  assert.equal(result.plan.paperEvidenceQuantity,3);
+  assert.equal(result.plan.quantity,3);
+  assert.equal(result.plan.paperEvidenceRiskCap,3);
 });
 
 test('global WAIT creates no action plan',()=>{

@@ -1,10 +1,41 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
+import type { FirstCanaryAcceptanceReceipt } from './first-canary-acceptance.js';
 
 export const masterPaperAuthorizationConfirmation = 'AUTHORIZE_MASTER_THETA_PAPER_MANAGEMENT_ONLY' as const;
 export const firstPaperCanaryActivationConfirmation = 'ACTIVATE_ONE_MASTER_THETA_PAPER_CANARY' as const;
 export const fullPaperExecutionLockConfirmation = 'LOCK_ALL_THETA_PAPER_EXECUTION' as const;
+export const ownerMasterPaperAutonomySource = 'OWNER_DIRECTIVE_2026_10_01_MASTER_PAPER_AUTONOMY' as const;
+export const autonomousMasterPaperAuditAction = 'ACTIVATE_AUTONOMOUS_MASTER_PAPER' as const;
+
+/** The one durable, restart-safe record that a first Paper canary was fully
+ * accepted. It is an immutable audit row written inside the same transaction as
+ * the control change, so no later lock/unlock cycle can erase the fact and no
+ * `changed_by` text convention is trusted. */
+export async function isAutonomousMasterPaperAccepted(pool:Pick<Pool,'query'>):Promise<boolean>{
+  const result=await pool.query(`SELECT EXISTS(SELECT 1 FROM copy.operator_audit_event
+    WHERE action=$1 AND result='ACCEPTED') AS accepted`,[autonomousMasterPaperAuditAction]);
+  return result.rows[0]?.accepted===true;
+}
+
+export type TechnicalSessionState = 'PENDING_PHASE7_ACCEPTANCE'|'ACCEPTED';
+export type PaperExecutionState = 'LOCKED_WAITING_FOR_TECHNICAL_ACCEPTANCE'|'FIRST_CANARY_ARMED'
+  |'FIRST_CANARY_SUBMITTED'|'FIRST_CANARY_RECONCILED'|'AUTONOMOUS_PAPER_ACTIVE';
+
+export function classifyPaperExecutionState(input:{
+  readonly ownerPermissionGranted:boolean;
+  readonly technicalSessionState:TechnicalSessionState;
+  readonly priorBrokerOrderCount:number;
+  readonly firstCanaryAccepted:boolean;
+  readonly pauseNewOrders:boolean;
+}):PaperExecutionState{
+  if(!input.ownerPermissionGranted||input.technicalSessionState!=='ACCEPTED')
+    return 'LOCKED_WAITING_FOR_TECHNICAL_ACCEPTANCE';
+  if(input.priorBrokerOrderCount===0)return input.pauseNewOrders?'LOCKED_WAITING_FOR_TECHNICAL_ACCEPTANCE':'FIRST_CANARY_ARMED';
+  if(!input.firstCanaryAccepted)return 'FIRST_CANARY_SUBMITTED';
+  return input.pauseNewOrders?'FIRST_CANARY_RECONCILED':'AUTONOMOUS_PAPER_ACTIVE';
+}
 
 export interface FirstPaperCanaryActivationEvidence {
   readonly brokerAccountStatus:string|null;
@@ -188,8 +219,11 @@ export class PostgresPaperExecutionAuthorizationStore{
         authorization_event_id,account_role,environment,master_submission_authorized,
         follower_submission_authorized,live_money_authorized,authorization_scope_json,directive_hash,authorized_at)
         VALUES($1,'MASTER_THETA_PAPER','PAPER',true,false,false,$2::jsonb,$3,$4)`,[eventId,
-        JSON.stringify({actions:['MANAGE_EXISTING_EXPOSURE','PREPARE_NEW_RISK'],newEntriesRemainPaused:true,
-          followerExecution:'LOCKED',liveMoneyAuthorized:false}),directiveHash,input.authorizedAt]);
+        JSON.stringify({actions:['OPEN','CLOSE','MANAGE','ROLL','LET_EXPIRE','ACCEPT_ASSIGNMENT','RECOVERY',
+          'SELL_STOCK','SELL_CC','CLOSE_CC','ROLL_CC','CALL_AWAY','CANCEL_REPLACE','RECONCILE'],
+          newEntriesRemainPaused:true,firstCanaryMaximumQuantity:1,
+          autonomousPaperAfterAcceptedCanaryAuthorized:true,followerExecution:'LOCKED',liveMoneyAuthorized:false}),
+        directiveHash,input.authorizedAt]);
       await client.query(`UPDATE ops.paper_execution_control SET pause_new_orders=true,
         master_execution_enabled=true,follower_execution_enabled=false,authorization_event_id=$1,
         changed_by='OWNER_DIRECTIVE_PAPER_ONLY',changed_at=$2 WHERE singleton=true`,[eventId,input.authorizedAt]);
@@ -266,7 +300,8 @@ export class PostgresPaperExecutionAuthorizationStore{
         live_money_authorized,authorization_scope_json,directive_hash,authorized_at)
         VALUES($1,'MASTER_THETA_PAPER','PAPER',true,false,false,$2::jsonb,$3,$4)`,[eventId,
         JSON.stringify({actions:['ONE_FIRST_CANARY','MANAGE_EXISTING_EXPOSURE'],newEntriesRemainPaused:false,
-          automaticLockAfterFirstBrokerOrder:true,followerExecution:'LOCKED',liveMoneyAuthorized:false}),
+          firstCanaryMaximumQuantity:1,automaticLockAfterFirstBrokerOrder:true,
+          autonomousPaperAfterAcceptedCanaryAuthorized:true,followerExecution:'LOCKED',liveMoneyAuthorized:false}),
         directiveHash,input.activatedAt]);
       await client.query(`UPDATE ops.paper_execution_control SET pause_new_orders=false,master_execution_enabled=true,
         follower_execution_enabled=false,authorization_event_id=$1,changed_by='OWNER_DIRECTIVE_FIRST_PAPER_CANARY',changed_at=$2
@@ -294,10 +329,77 @@ export class PostgresPaperExecutionAuthorizationStore{
       SET pause_new_orders=true,changed_by='AUTOMATIC_FIRST_CANARY_LOCK',changed_at=$1
       WHERE pec.singleton=true AND pec.pause_new_orders=false
         AND EXISTS(SELECT 1 FROM trade.broker_order)
+        AND NOT EXISTS(SELECT 1 FROM copy.operator_audit_event
+          WHERE action='ACTIVATE_AUTONOMOUS_MASTER_PAPER' AND result='ACCEPTED')
         AND EXISTS(SELECT 1 FROM ops.paper_execution_authorization_event pae
           WHERE pae.authorization_event_id=pec.authorization_event_id
             AND pae.authorization_scope_json @> '{"automaticLockAfterFirstBrokerOrder":true}'::jsonb)
       RETURNING pec.singleton`,[lockedAt]);
     return (result.rowCount??0)===1;
+  }
+
+  /** Removes only the temporary first-canary new-risk pause. The immutable
+   * owner scope and a complete accepted canary receipt are both required.
+   * Normal sizing, AEGIS, quote, reconciliation, idempotency, follower, and
+   * live-money gates remain unchanged. */
+  async activateAutonomousPaperAfterAcceptedCanary(input:{
+    readonly acceptance:FirstCanaryAcceptanceReceipt;readonly activatedAt:string;
+  }):Promise<PersistedPaperExecutionControl>{
+    const receipt=input.acceptance;
+    if(receipt.status!=='ACCEPTED'||receipt.blockers.length!==0||receipt.pending.length!==0
+      ||receipt.expected.quantity!==1||receipt.broker.filledQuantity.state!=='GOOD'
+      ||receipt.broker.filledQuantity.value!==1)
+      throw new Error('FIRST_CANARY_ACCEPTANCE_REQUIRED');
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('theta-master-paper-authorization'))`);
+      const state=await client.query(`SELECT pec.pause_new_orders,pec.master_execution_enabled,
+        pec.follower_execution_enabled,pec.authorization_event_id::text,
+        pae.authorization_scope_json,
+        (SELECT count(DISTINCT p.execution_order_intent_id)::int FROM trade.master_paper_action_plan p
+          WHERE p.authority_kind='NEW_RISK' AND p.execution_order_intent_id IS NOT NULL) AS broker_order_count,
+        EXISTS(SELECT 1 FROM trade.order_intent oi JOIN trade.broker_order bo USING(order_intent_id)
+          WHERE oi.order_intent_id=$1 AND oi.execution_account_id=$2 AND oi.client_order_id=$3
+            AND oi.quantity=1 AND oi.status='FILLED') AS accepted_order_exists
+        FROM ops.paper_execution_control pec
+        JOIN ops.paper_execution_authorization_event pae
+          ON pae.authorization_event_id=pec.authorization_event_id
+        WHERE pec.singleton=true FOR UPDATE OF pec`,[
+        receipt.expected.orderIntentId,
+        receipt.expected.executionAccountId,receipt.expected.clientOrderId,
+      ]);
+      if(state.rowCount!==1)throw new Error('PAPER_EXECUTION_CONTROL_MISSING');
+      const row=state.rows[0] as Record<string,unknown>;
+      const scope=row.authorization_scope_json as Record<string,unknown>|null;
+      if(row.pause_new_orders!==true||row.master_execution_enabled!==true||row.follower_execution_enabled!==false)
+        throw new Error('FIRST_CANARY_RELOCKED_CONTROL_REQUIRED');
+      if(scope?.autonomousPaperAfterAcceptedCanaryAuthorized!==true)
+        throw new Error('AUTONOMOUS_PAPER_OWNER_AUTHORIZATION_MISSING');
+      if(Number(row.broker_order_count)!==1||row.accepted_order_exists!==true)
+        throw new Error('FIRST_CANARY_DATABASE_IDENTITY_MISMATCH');
+      await client.query(`INSERT INTO copy.operator_audit_event(operator_subject,action,target_type,target_id,
+        request_id,result,metadata_json,occurred_at)
+        SELECT 'THETA_RUNTIME','ACTIVATE_AUTONOMOUS_MASTER_PAPER','ORDER_INTENT',$1,$2,'ACCEPTED',$3::jsonb,$4
+        WHERE NOT EXISTS(SELECT 1 FROM copy.operator_audit_event WHERE request_id=$2)`,[
+        receipt.expected.orderIntentId,receipt.contentHash,JSON.stringify({
+          receiptVersion:receipt.receiptVersion,receiptHash:receipt.contentHash,status:receipt.status,
+          paperOnly:true,firstCanaryQuantity:receipt.expected.quantity,followerMutationCount:0,liveMutationCount:0,
+          normalSizingPreserved:true,
+        }),input.activatedAt]);
+      await client.query(`UPDATE ops.paper_execution_control SET pause_new_orders=false,
+        master_execution_enabled=true,follower_execution_enabled=false,
+        changed_by='AUTOMATIC_ACCEPTED_FIRST_CANARY',changed_at=$1 WHERE singleton=true`,[input.activatedAt]);
+      return {pauseNewOrders:false,masterExecutionEnabled:true,followerExecutionEnabled:false,
+        authorizationEventId:String(row.authorization_event_id)};
+    },{verifyCommitted:async(pool,outcome)=>{
+      const verified=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT pause_new_orders,
+        master_execution_enabled,follower_execution_enabled,authorization_event_id::text
+        FROM ops.paper_execution_control WHERE singleton=true`));
+      const row=verified.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.pause_new_orders!==false||row.master_execution_enabled!==true||row.follower_execution_enabled!==false
+        ||row.authorization_event_id!==outcome.authorizationEventId)
+        throw new Error('AUTONOMOUS_PAPER_ACTIVATION_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
   }
 }

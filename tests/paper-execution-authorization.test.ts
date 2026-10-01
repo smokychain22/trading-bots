@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
-  firstPaperCanaryActivationBlockers, fullyLockedPaperExecutionControl, resolveEffectivePaperExecutionControl,
+  classifyPaperExecutionState,firstPaperCanaryActivationBlockers, fullyLockedPaperExecutionControl, resolveEffectivePaperExecutionControl,
 } from '../src/execution/paper-execution-authorization.js';
 
 const persisted={pauseNewOrders:true,masterExecutionEnabled:true,followerExecutionEnabled:false,
@@ -94,4 +94,27 @@ test('first canary activation cannot bypass the environment pause or required sc
   const blockers=firstPaperCanaryActivationBlockers({...valid,
     runtime:{...valid.runtime,environmentPauseNewOrders:true},database:{...valid.database,migrationHead:'062_policy_neutral_risk_evidence',requiredSchemaBaselinePresent:false}});
   assert.deepEqual(blockers,['ENVIRONMENT_NEW_ENTRY_PAUSE_ACTIVE','PRODUCTION_SCHEMA_BASELINE_061_MISSING']);
+});
+
+test('Paper execution state keeps permission separate from technical acceptance and canary reconciliation',()=>{
+  assert.equal(classifyPaperExecutionState({ownerPermissionGranted:true,technicalSessionState:'PENDING_PHASE7_ACCEPTANCE',
+    priorBrokerOrderCount:0,firstCanaryAccepted:false,pauseNewOrders:true}),'LOCKED_WAITING_FOR_TECHNICAL_ACCEPTANCE');
+  assert.equal(classifyPaperExecutionState({ownerPermissionGranted:true,technicalSessionState:'ACCEPTED',
+    priorBrokerOrderCount:0,firstCanaryAccepted:false,pauseNewOrders:false}),'FIRST_CANARY_ARMED');
+  assert.equal(classifyPaperExecutionState({ownerPermissionGranted:true,technicalSessionState:'ACCEPTED',
+    priorBrokerOrderCount:1,firstCanaryAccepted:false,pauseNewOrders:true}),'FIRST_CANARY_SUBMITTED');
+  assert.equal(classifyPaperExecutionState({ownerPermissionGranted:true,technicalSessionState:'ACCEPTED',
+    priorBrokerOrderCount:1,firstCanaryAccepted:true,pauseNewOrders:true}),'FIRST_CANARY_RECONCILED');
+  assert.equal(classifyPaperExecutionState({ownerPermissionGranted:true,technicalSessionState:'ACCEPTED',
+    priorBrokerOrderCount:1,firstCanaryAccepted:true,pauseNewOrders:false}),'AUTONOMOUS_PAPER_ACTIVE');
+});
+
+test('accepted-canary runtime wiring is read-only until its governed database transition',()=>{
+  const evaluator=readFileSync('src/execution/postgres-first-canary-acceptance.ts','utf8');
+  const runtime=readFileSync('src/theta/autonomous-runtime.ts','utf8');
+  assert.match(runtime,/reconcileFirstCanaryAcceptance/);
+  assert.match(evaluator,/getOrderByClientOrderId/);
+  assert.match(evaluator,/getOrders\('all'\)/);
+  assert.doesNotMatch(evaluator,/\.submitOrder\(|\.replaceOrder\(|\.cancelOrder\(/);
+  assert.match(evaluator,/activateAutonomousPaperAfterAcceptedCanary/);
 });

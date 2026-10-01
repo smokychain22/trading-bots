@@ -119,6 +119,10 @@ jobs:
         run: |
           createdb -h 127.0.0.1 -U trading_bots theta_runtime_fault_ci
           npx tsx --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tools/theta-test-evidence-reporter.mjs --test-reporter-destination=.ci-test-evidence/disposable-faults.jsonl tests/db/runtime-postgres-faults.test.ts
+      - name: Test accepted-canary autonomous Paper transition in disposable PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgresql://trading_bots:ci-only-password@127.0.0.1:5432/trading_bots
+        run: npx tsx --test --test-concurrency=1 tests/db/autonomous-paper-transition.test.ts
       - name: Preserve sanitized disposable-database executed test identities
         if: always()
         uses: actions/upload-artifact@v4
