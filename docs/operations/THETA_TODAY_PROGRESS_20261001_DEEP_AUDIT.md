@@ -134,3 +134,29 @@ To add an instrument to `paperInstrumentClassificationManifest` require, each as
 6. Capital fit: minimum-compliant collateral < per-underlying hard cap at current equity (strike x 100 < $22.5k).
 7. Event policy: macro/corporate-action coverage state CLEAR-able, not UNKNOWN.
 Status: DEFER_OWNER_POLICY. Cheap collateral alone is not a reason to approve.
+
+## WAIT replay / archive (executed, current release real data)
+Cycle `a1855957-adf6-45ba-9157-b51bbbca5682` (decision 2026-10-01T18:43:39Z, SYSTEM_HOLD, source c3d8868): captured
+read-only from `trade.fusion_snapshot` (238,587-byte gzip archive, sha256 d80a2a5b...). `--historical` provider-free
+replay from the immutable release worktree: state SAME_SOURCE_REPRODUCED, frontier hash 7c1f6c4e... identical,
+action SYSTEM_HOLD, selected=null, 62 input contracts, providerRequests=0, brokerMutations=0, 6 methods executed
+all real-input-eligible. Negative control: one byte flipped in a copy of the archive -> replay threw (rejected);
+temporary tamper files removed. Conclusion: WAIT decisions DO support archive capture + replay (no trade needed).
+
+## Census results (read-only agents, spot-verified where noted)
+- Security sweep: 660 files (last 60 commits + docs/), SECRET_FINDINGS=0, PRIVATE_DATA_FINDINGS=0; .env* ignored,
+  only .env.example tracked with empty credential values. Advisory: CI Postgres password is plain text in ci.yml on
+  loopback service container (throwaway). 64-hex strings are hashes by context (not each verified).
+- Broker mutation authority: single. Only `AlpacaPaperBrokerAdapter` (broker.ts:320/325/330) sends order
+  POST/PATCH/DELETE, and only `PaperOrderCoordinator` calls it. Guard test `phase5-authority-structure` greps only
+  5 files (gap D6: should scan all of src/).
+- Entry selection: `buildCanonicalStrategyFrontier` is canonical. Residual duplicate producers (subordinate, quantity/
+  candidate overridden by frontier): `decision-assembly.ts` winner, Python `compute_sizing`, cross-symbol frontier
+  `researchPick`. Management selection has no structural guard test (gap D5). AEGIS has multiple input writers
+  (local-aegis-risk-history, candidateStressAegisOverrides); must be verified tighten-only (open).
+- False-value sweep (grep-based, ~78 TS + ~12 PY hits): no unsafe default in the live trade path. Verified:
+  `common-horizon-economics.ts:73` treats a null leg as 0, but its only roll caller (`roll-incremental-utility.ts:91`)
+  rejects either null leg first -> guarded, latent API hazard only. Unverified/low: `theta-shadow-cycle.ts:1107`
+  eventLookaheadDays `?? 0`; research-only Python `t0_bundle_adapter.py:68`, `flow.py:76`, `fill_probability_baseline
+  .py:73,100`, `theta_q_baseline.py:447` (ownership_score or 0.0 in sort key). Limits: ternary/destructuring
+  defaults not swept.
