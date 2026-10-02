@@ -55,6 +55,20 @@
       "CURRENT_STATUS": "MITIGATED_NOT_ELIMINATED: heartbeat and early detection shipped on the branch; confirmation requires a governed backup that completes.",
       "PRODUCTION_MUTATION": "NONE",
       "FIX_NOTE": "3158c61: heartbeat keeps the keeper active and records its death; a later commit adds Assert-ThetaSnapshotKeeperAlive, which fails the backup immediately after the dump with the real cause"
+    },
+    {
+      "INCIDENT_ID": "INC-20261003-DB-RECOVERY-PROBE",
+      "DATE": "2026-10-03",
+      "AFFECTED_RELEASE": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "FAILED_CYCLE_COUNT": 1,
+      "PAYLOAD_MIN_BYTES": 0,
+      "PAYLOAD_MAX_BYTES": 0,
+      "SUMMARY": "After one transient POSTGRES_57P03 (database cannot accept connections) at 20:41:47Z the Windows worker entered database recovery mode and never left it: no worker cycle ran from 20:41Z until a supervisor restart at about 00:00Z next day. Every recovery probe returned HTTP 503 POSTGRES_CHECKED_OUT_CLIENT_LOST while the database itself was healthy.",
+      "ROOT_CAUSE": "withRuntimePostgresClient passed operations a discard() callback that set the same flag used to detect a lost connection, so discard() after a SUCCESSFUL SELECT 1 made the function throw POSTGRES_CHECKED_OUT_CLIENT_LOST. The runtime-db-probe handler calls discard() on purpose (each recovery proof must use a brand-new connection), so the probe could never succeed, the four-success recovery requirement could never be met, and the circuit stayed open. The path had never been exercised against a real outage.",
+      "FIX_SHA": "c6ff078901b886a45d31ba54c0bee46335aa8671",
+      "REGRESSION_TEST": "tests/runtime-postgres-client.test.ts",
+      "CURRENT_STATUS": "WORKER_RESTARTED_FIX_ON_BRANCH_NOT_DEPLOYED: the supervisor restart restored cycles; until the fix is deployed any further database error would wedge the worker again, so deployment is required before the next market session.",
+      "PRODUCTION_MUTATION": "NONE (supervisor stop/start only; execution gate LOCKED throughout, zero broker mutations)"
     }
   ]
 }

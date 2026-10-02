@@ -12,25 +12,25 @@
     ]
   },
   "computed": {
-    "totalRows": 88,
+    "totalRows": 89,
     "preMarketEngineering": {
-      "numerator": 85,
-      "denominator": 88,
-      "percent": 96.59
+      "numerator": 86,
+      "denominator": 89,
+      "percent": 96.63
     },
     "implementation": {
-      "numerator": 88,
-      "denominator": 88,
+      "numerator": 89,
+      "denominator": 89,
       "percent": 100
     },
     "wiring": {
-      "numerator": 82,
-      "denominator": 88,
-      "percent": 93.18
+      "numerator": 83,
+      "denominator": 89,
+      "percent": 93.26
     },
     "tested": {
-      "numerator": 88,
-      "denominator": 88,
+      "numerator": 89,
+      "denominator": 89,
       "percent": 100
     },
     "currentReleaseRuntime": {
@@ -59,12 +59,12 @@
       "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 25,
+      "SOURCE_ONLY": 26,
       "NOT_OBSERVABLE_YET": 21,
       "DEPLOYED_NOT_YET_OBSERVED": 29,
       "CURRENT_RELEASE_REAL_OBSERVED": 13
     },
-    "unreleasedRowCount": 19,
+    "unreleasedRowCount": 20,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -1516,6 +1516,25 @@
       "unreleased": 0,
       "observedAtRelease": null,
       "releaseStatus": "NOT_OBSERVABLE_YET"
+    },
+    {
+      "id": "DB_RECOVERY_PROBE",
+      "domain": "OPERATIONS",
+      "note": "recovery probe could never succeed (discard treated as a lost client); worker stayed deferred from 20:41Z until restarted; fixed on the branch, not deployed",
+      "impl": 1,
+      "wired": 1,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "WORKER_MUTATION_FENCE",
