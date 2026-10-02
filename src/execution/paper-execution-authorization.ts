@@ -80,6 +80,12 @@ export interface FirstPaperCanaryDatabaseEvidence {
   readonly requiredSchemaBaselinePresent:boolean;
 }
 
+/** A database aggregate is a count only when it is a finite non-negative integer; anything else is UNKNOWN (null), never zero. */
+export function exactNonNegativeInteger(value:unknown):number|null{
+  const parsed=typeof value==='number'?value:typeof value==='string'&&value.trim()!==''?Number(value):Number.NaN;
+  return Number.isInteger(parsed)&&parsed>=0?parsed:null;
+}
+
 export function firstPaperCanaryActivationBlockers(input:{readonly activatedAt:string;
   readonly runtime:FirstPaperCanaryActivationEvidence;readonly database:FirstPaperCanaryDatabaseEvidence}):readonly string[]{
   const {runtime,database}=input,blockers:string[]=[];
@@ -278,20 +284,26 @@ export class PostgresPaperExecutionAuthorizationStore{
         FROM ops.paper_execution_control pec WHERE pec.singleton=true FOR UPDATE`);
       if(state.rowCount!==1)throw new Error('PAPER_EXECUTION_CONTROL_MISSING');
       const row=state.rows[0] as Record<string,unknown>;
-      const priorBrokerOrderCount=Number(row.broker_order_count??0);
+      // An absent/non-numeric aggregate is UNKNOWN evidence, never "zero prior orders / zero active intents": a renamed column or a
+      // driver returning null must block activation instead of clearing the blockers below.
+      const counts={brokerOrder:exactNonNegativeInteger(row.broker_order_count),activeIntent:exactNonNegativeInteger(row.active_intent_count),
+        master:exactNonNegativeInteger(row.master_count),masterSelfCopy:exactNonNegativeInteger(row.master_self_copy_count)};
+      const priorBrokerOrderCount=counts.brokerOrder??0;
+      const unknownCounts=Object.values(counts).some((value)=>value===null);
       const latestCompleteScanAt=typeof row.latest_complete_scan_at==='string'?row.latest_complete_scan_at:null;
       const migrationHead=typeof row.migration_head==='string'?row.migration_head:null;
       const blockers=firstPaperCanaryActivationBlockers({activatedAt:input.activatedAt,runtime:input.evidence,database:{
         managementAuthorized:row.master_execution_enabled===true&&row.authorization_event_id!=null,
         followerExecutionEnabled:row.follower_execution_enabled===true,priorBrokerOrderCount,
-        activeIntentCount:Number(row.active_intent_count??0),masterCount:Number(row.master_count??0),
-        masterSelfCopyCount:Number(row.master_self_copy_count??0),quoteReady:row.quote_ready===true,
+        activeIntentCount:counts.activeIntent??0,masterCount:counts.master??0,
+        masterSelfCopyCount:counts.masterSelfCopy??0,quoteReady:row.quote_ready===true,
         latestCompleteScanAt,migrationHead,requiredSchemaBaselinePresent:row.required_schema_baseline_present===true,
       }});
       const common={accountRole:'MASTER_THETA_PAPER' as const,brokerHost:'https://paper-api.alpaca.markets' as const,
         paperOnly:true as const,followerExecutionLocked:true as const,liveMoneyAuthorized:false as const,
         priorBrokerOrderCount,latestCompleteScanAt,migrationHead};
-      if(blockers.length>0)return {ready:false,activated:false,blockers:[...new Set(blockers)],...common};
+      const allBlockers=unknownCounts?[...blockers,'ACTIVATION_COUNT_EVIDENCE_UNKNOWN']:blockers;
+      if(allBlockers.length>0)return {ready:false,activated:false,blockers:[...new Set(allBlockers)],...common};
       const directiveHash=createHash('sha256').update(JSON.stringify({accountRole:'MASTER_THETA_PAPER',environment:'PAPER',
         scope:'ONE_FIRST_CANARY_THEN_AUTOMATIC_NEW_RISK_LOCK',sourceRef:input.sourceRef})).digest('hex');
       const existing=await client.query(`SELECT authorization_event_id FROM ops.paper_execution_authorization_event

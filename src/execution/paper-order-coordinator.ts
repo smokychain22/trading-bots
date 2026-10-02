@@ -93,11 +93,33 @@ function assertBrokerSnapshotMatches(intent: PersistedPaperOrderIntent, order: B
 /** Time after a decision window during which an ambiguous submission that is absent at the broker still counts as unresolved. */
 export const absentUnknownSubmissionGraceMs = 120_000;
 
+/**
+ * Thrown by a MutationFence BEFORE any state change or broker contact: the caller no longer owns the right to mutate (its request
+ * window is nearly over, or its plan claim was lost). Nothing was sent; the intent stays READY and a later owner decides.
+ */
+export class MutationFenceLostError extends Error {
+  readonly reason: string;
+  constructor(reason: string) {
+    super(`MUTATION_FENCE_LOST:${reason}`);
+    this.name = 'MutationFenceLostError';
+    this.reason = reason;
+  }
+}
+
+/**
+ * Last-moment ownership check immediately before an intent leaves READY. A server invocation can outlive the client that called
+ * it (the client times out earlier than the platform limit and the next cycle starts), so two invocations can overlap; the
+ * intent compare-and-swap and the unique client order id already stop a duplicate of ONE intent, and the fence additionally stops
+ * a stalled invocation from starting NEW mutations it no longer owns. It must throw MutationFenceLostError to refuse.
+ */
+export type MutationFence = (operation: 'SUBMIT' | 'REPLACE', orderIntentId: string) => Promise<void>;
+
 export class PaperOrderCoordinator {
   constructor(
     private readonly broker: PaperBrokerAdapter,
     private readonly store: PaperOrderStore,
     private readonly control: PaperExecutionControl,
+    private readonly fence: MutationFence | null = null,
   ) {}
 
   async prepare(input: PrepareIntentInput): Promise<PersistedPaperOrderIntent> {
@@ -134,6 +156,7 @@ export class PaperOrderCoordinator {
       operation: 'SUBMIT',
     });
     assertValidOrderIntentTransition(intent.status, 'SUBMITTING');
+    if (this.fence !== null) await this.fence('SUBMIT', orderIntentId);
     await this.store.transitionIntent(orderIntentId, intent.status, 'SUBMITTING');
     await this.store.recordAttempt({
       orderIntentId,
@@ -309,6 +332,7 @@ export class PaperOrderCoordinator {
       accountKind: this.broker.accountKind, environment: this.broker.environment,
       clientOrderId: replacement.request.client_order_id, quantity: replacement.request.qty,
     });
+    if (this.fence !== null) await this.fence('REPLACE', replacement.orderIntentId);
     await this.store.transitionIntent(replacement.orderIntentId, 'READY', 'SUBMITTING');
     await this.store.recordAttempt({ orderIntentId: replacement.orderIntentId, attemptNo: 1, requestedAt: gate.now,
       requestPayloadHash: hashBrokerPayload(replacement.request), responseStatus: null,

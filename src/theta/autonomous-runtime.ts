@@ -26,7 +26,8 @@ import { applyConfirmedFillLifecycle } from '../execution/postgres-broker-fill-l
 import { planNoLongerCurrent, PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
 import { AlpacaExecutionQuoteSource } from '../execution/alpaca-execution-quote-source.js';
 import { PostgresPaperOrderStore } from '../execution/postgres-paper-order-store.js';
-import { PaperOrderCoordinator } from '../execution/paper-order-coordinator.js';
+import { MutationFenceLostError, PaperOrderCoordinator, type MutationFence } from '../execution/paper-order-coordinator.js';
+import { allFences, requestWindowFence } from '../execution/mutation-fence.js';
 import { MasterPaperExecutionOrchestrator } from '../execution/master-paper-execution-orchestrator.js';
 import {
   MasterPaperActionHandoff, classifyMasterPaperActionExecution, paperBootstrapPreSubmitQuoteAgePolicy,
@@ -444,6 +445,8 @@ export async function runAutonomousRuntimeCycle(
   const allowedJobTypes=new Set(jobTypesForScope(scope));
   const correlationId = `theta-runtime:${bucket}:${scope.toLowerCase()}`;
   const workerInstance = `${process.env.VERCEL_REGION ?? 'local'}:${randomUUID()}`;
+  const requestStartedAtMs = Date.now();
+  const windowFence = requestWindowFence(requestStartedAtMs);
   const cycleStore = new PostgresRuntimeCycleStore(pool);
   if (!await cycleStore.begin(correlationId, workerInstance, now.toISOString())) {
     return {
@@ -588,7 +591,7 @@ export async function runAutonomousRuntimeCycle(
         const store=new PostgresPaperOrderStore(pool,master.executionAccountId);
         const coordinator=new PaperOrderCoordinator(master.executionBroker,store,{
           masterEnabled:masterExecutionEnabled,followerEnabled:false,
-          pauseNewOrders});
+          pauseNewOrders},windowFence);
         const recovered=await coordinator.recoverAfterRestart();
         if(recovered.some((item)=>!item.resolved))return degraded('AMBIGUOUS_ORDER_REQUIRES_READ_ONLY_RECONCILIATION',retryAt);
         const active=await store.activeIntents();
@@ -665,8 +668,14 @@ export async function runAutonomousRuntimeCycle(
             return degraded(code,retryAt);
           }
         }
+        // Immediately before the intent leaves READY: the request window is still open AND this invocation still holds the
+        // unexpired claim on the exact plan (a stalled invocation whose claim was reclaimed must not start a mutation).
+        const claimFence:MutationFence=async()=>{
+          const held=await planStore.verifyBeforeSubmit(plan.actionPlanId,plan,workerInstance);
+          if(!held.ok)throw new MutationFenceLostError(held.mismatches[0]??'PLAN_CLAIM_NOT_HELD');
+        };
         const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(pool,master.executionAccountId),{
-          masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders});
+          masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders},allFences(windowFence,claimFence));
         const handoff=new MasterPaperActionHandoff(new AlpacaExecutionQuoteSource(master.alpaca),
           new MasterPaperExecutionOrchestrator(coordinator,new PostgresExecutionEvidenceStore(pool)),
           paperBootstrapPreSubmitQuoteAgePolicy,undefined,new AlpacaStockInventorySource(master.alpaca));
@@ -692,6 +701,11 @@ export async function runAutonomousRuntimeCycle(
           await planStore.wait(plan.actionPlanId,result.blockers,retryAt,at);
           return degraded(result.blockers[0]??result.state,retryAt);
         }catch(error){
+          if(error instanceof MutationFenceLostError){
+            // Nothing was sent and the intent is still READY: release the plan for whichever invocation owns it next.
+            await planStore.wait(plan.actionPlanId,[error.message],retryAt,new Date().toISOString());
+            return degraded('MUTATION_FENCE_LOST',retryAt);
+          }
           const failure=safeRuntimeFailure(error);
           if(isRetryableExternalExecutionFailure(error)){
             await planStore.wait(plan.actionPlanId,[failure.code],retryAt,new Date().toISOString());
