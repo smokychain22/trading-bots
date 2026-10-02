@@ -22,7 +22,7 @@ import { writeFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const boardAsOf = {
-  deployedRelease: '6b20d713f697fc8ab70e0a223c3a51908c9fcc80',
+  deployedRelease: '637c7acf04962a1ccc0ddc370cf3cc0b92ea160d',
   priorObservedRelease: 'c3d8868265426d870e50352b06d8d252c68a16c9',
   note: 'rows describe the continuation branch head; runtime flags describe observation at the deployed release only',
   runtimeSourcePaths: ['src/', 'api/', 'bots/theta/quant/', 'tools/windows/', 'package.json'],
@@ -117,13 +117,11 @@ const rawRows = [
   r('ERROR_SANITIZATION', 'SECURITY', 'credentials never in provider errors (tested)', { runtime: 1 }),
 ];
 
-// Fresh observations made against the deployed release (runtime-truth receipt after the 6b20d71 cutover, 2026-10-02 08:56Z).
+// Fresh observations made against the deployed release (runtime-truth receipt after the 637c7ac cutover, 2026-10-02 11:23Z).
 const observedAtDeployed = new Set(['ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
   'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE']);
 // Rows whose runtime source changed after the deployed release: committed, not released.
-const unreleasedIds = new Set(['ENTRY_SELECTION_FRONTIER', 'STRUCTURAL_SIZING', 'MANAGEMENT_ACTION_FRONTIER', 'ROLL_ECONOMICS', 'RECOVERY_DECISION',
-  'COVERED_CALL_MANAGEMENT', 'CAPITAL_BUDGET', 'AEGIS_TWELVE_FAMILIES', 'Q_CANDIDATE_LATTICE', 'FINALIST_QUOTE_REFRESH', 'WHOLE_CHAIN_ACCOUNTING',
-  'PAPER_ORDER_COORDINATOR', 'PROFIT_MANAGEMENT', 'LOSS_MANAGEMENT', 'ASSIGNMENT_HANDLING', 'H_SHADOW', 'D_SHADOW', 'C_COVERED_CALL']);
+const unreleasedIds = new Set([]);
 
 export const rows = rawRows.map((row) => {
   const everObserved = Boolean(row.runtime);

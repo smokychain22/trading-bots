@@ -226,3 +226,4 @@ test('covered-call close is compiled as BUY_TO_CLOSE against the exact current c
   assert.equal(compiled.legs[0]?.optionType,'CALL');
   assert.equal(compiled.legs[0]?.canonicalQuantity,2);
 });
+
