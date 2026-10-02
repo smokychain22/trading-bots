@@ -1,6 +1,6 @@
 {
   "asOf": {
-    "deployedRelease": "6360f07996e7e579a8fa556c9b7ca4d72eeba444",
+    "deployedRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
     "priorObservedRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
     "note": "rows describe the continuation branch head; runtime flags describe observation at the deployed release only",
     "runtimeSourcePaths": [
@@ -56,12 +56,12 @@
       "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 13,
-      "NOT_OBSERVABLE_YET": 18,
-      "DEPLOYED_NOT_YET_OBSERVED": 35,
+      "SOURCE_ONLY": 6,
+      "NOT_OBSERVABLE_YET": 22,
+      "DEPLOYED_NOT_YET_OBSERVED": 38,
       "CURRENT_RELEASE_REAL_OBSERVED": 8
     },
-    "unreleasedRowCount": 7,
+    "unreleasedRowCount": 0,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -86,7 +86,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6360f07996e7e579a8fa556c9b7ca4d72eeba444",
+      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -503,9 +503,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "AEGIS_NOT_REACHED_SEMANTICS",
@@ -541,9 +541,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "STRUCTURAL_SIZING",
@@ -579,9 +579,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "COMMON_HORIZON_COMPARISON",
@@ -636,9 +636,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "PROFIT_MANAGEMENT",
@@ -769,9 +769,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "ORDER_INTENT_STATE_MACHINE",
@@ -884,7 +884,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6360f07996e7e579a8fa556c9b7ca4d72eeba444",
+      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -941,7 +941,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6360f07996e7e579a8fa556c9b7ca4d72eeba444",
+      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1150,7 +1150,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6360f07996e7e579a8fa556c9b7ca4d72eeba444",
+      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1169,7 +1169,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6360f07996e7e579a8fa556c9b7ca4d72eeba444",
+      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1188,7 +1188,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6360f07996e7e579a8fa556c9b7ca4d72eeba444",
+      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1207,7 +1207,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6360f07996e7e579a8fa556c9b7ca4d72eeba444",
+      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1264,7 +1264,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6360f07996e7e579a8fa556c9b7ca4d72eeba444",
+      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1282,9 +1282,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "STRESS_HISTORY_TRUNCATION_FLAG",
@@ -1301,9 +1301,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "REGISTRY_REACHABILITY_GUARD",
