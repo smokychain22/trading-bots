@@ -418,6 +418,35 @@ function Invoke-ThetaSql {
   }
 }
 
+function Initialize-ThetaSnapshotHeartbeat {
+  if ('ThetaSnapshotHeartbeat' -as [type]) { return }
+  Add-Type -TypeDefinition @"
+using System;
+using System.Diagnostics;
+using System.Threading;
+public sealed class ThetaSnapshotHeartbeat {
+  private readonly Process process; private readonly Timer timer; private readonly object gate = new object();
+  private bool stopped;
+  public string FailureMessage { get; private set; }
+  public ThetaSnapshotHeartbeat(Process keeper, int seconds) {
+    process = keeper;
+    timer = new Timer(Tick, null, seconds * 1000, seconds * 1000);
+  }
+  private void Tick(object state) {
+    lock (gate) {
+      if (stopped || FailureMessage != null) return;
+      try {
+        if (process.HasExited) { FailureMessage = "KEEPER_EXITED_code=" + process.ExitCode + "_at=" + DateTime.UtcNow.ToString("o"); return; }
+        process.StandardInput.WriteLine("SELECT 1;");
+        process.StandardInput.Flush();
+      } catch (Exception ex) { FailureMessage = ex.GetType().Name + "_at=" + DateTime.UtcNow.ToString("o"); }
+    }
+  }
+  public void Stop() { lock (gate) { stopped = true; } timer.Dispose(); }
+}
+"@
+}
+
 function Start-ThetaExportedSnapshot {
   param([Parameter(Mandatory)][object]$Connection)
   if ($Connection.Host -eq 'wsl-socket') { throw 'EXPORTED_SNAPSHOT_NATIVE_CONNECTION_REQUIRED' }
@@ -446,7 +475,13 @@ function Start-ThetaExportedSnapshot {
     if (-not $lineTask.Wait(30000)) { throw 'BACKUP_SNAPSHOT_KEEPER_TIMEOUT' }
     $line = $lineTask.Result
     if ($line -notmatch '^THETA_SNAPSHOT:([0-9A-Fa-f-]+)$') { throw 'BACKUP_SNAPSHOT_ID_INVALID' }
-    return [pscustomobject]@{ Process=$process; SnapshotId=$Matches[1] }
+    # The keeper is otherwise silent for the whole multi-hour dump. A long-idle connection can be reaped by a network
+    # device, which drops the exported snapshot and fails every later digest query (observed 2026-10-03: a 2h07m dump
+    # completed, then "snapshot ... does not exist"). A trivial query every 30 s inside the same transaction keeps the
+    # session active and records the first write failure so a dead keeper is diagnosable instead of silent.
+    Initialize-ThetaSnapshotHeartbeat
+    $heartbeat = [ThetaSnapshotHeartbeat]::new($process, 30)
+    return [pscustomobject]@{ Process=$process; SnapshotId=$Matches[1]; Heartbeat=$heartbeat }
   } catch {
     if (-not $process.HasExited) { $process.Kill() }
     $process.Dispose()
@@ -458,6 +493,10 @@ function Stop-ThetaExportedSnapshot {
   param([object]$Keeper)
   if ($null -eq $Keeper) { return }
   $process = $Keeper.Process
+  if ($null -ne $Keeper.Heartbeat) {
+    $Keeper.Heartbeat.Stop()
+    if ($Keeper.Heartbeat.FailureMessage) { Write-Warning "BACKUP_SNAPSHOT_KEEPER_HEARTBEAT_FAILED:$($Keeper.Heartbeat.FailureMessage)" }
+  }
   try {
     if (-not $process.HasExited) {
       $process.StandardInput.WriteLine('ROLLBACK;')
