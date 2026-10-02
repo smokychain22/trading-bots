@@ -155,6 +155,7 @@ test('one-sided and stale exact quotes remain typed missing observations, never 
   for (const scenario of [
     { quote: { bp: 2.2, ap: null, t: new Date().toISOString() }, reason: 'ASK_MISSING' },
     { quote: { bp: 2.2, ap: 2.3, t: '2026-01-01T00:00:00.000Z' }, reason: 'QUOTE_STALE' },
+    { quote: { bp: 2.2, ap: 2.3, t: new Date(Date.now() + 3_600_000).toISOString() }, reason: 'PROVIDER_TIMESTAMP_INVALID', state: 'INVALID' },
   ]) {
     const fetchImpl: typeof fetch = async (request) => {
       const url = new URL(request instanceof Request ? request.url : request.toString());
@@ -168,7 +169,7 @@ test('one-sided and stale exact quotes remain typed missing observations, never 
     { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60,
       maximumTargetDelaySeconds: 100_000_000 });
     const receipt = await source.observe(inputs());
-    assert.equal(receipt.state, 'MISSING');
+    assert.equal(receipt.state, (scenario as { state?: string }).state ?? 'MISSING');
     assert.equal(receipt.reasonCode, scenario.reason);
     assert.equal(receipt.quotes.length, 0);
   }

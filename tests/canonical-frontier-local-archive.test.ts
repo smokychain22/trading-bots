@@ -190,3 +190,31 @@ test('bounded archive runs drain oldest unspooled frontiers instead of repeating
     try { assert.equal(spool.stats().totalBatchCount, 2); } finally { spool.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('the complete candidate list stays in the archive at 300 / 2619 / 5000 contracts: exact rows, linear size, reproducible hash', () => {
+  const sizes = [300, 2619, 5000];
+  const bytesPerRow: number[] = [];
+  for (const size of sizes) {
+    const one = frontier();
+    const firstBranch = one.branches[0];
+    const firstCandidate = firstBranch?.candidates[0];
+    assert.ok(firstBranch && firstCandidate);
+    const candidates = Array.from({ length: size }, (_, index) => ({ ...firstCandidate, candidateId: `${firstCandidate.candidateId}-${index}` }));
+    const { contentHash: ignored, ...withoutHash } = one;
+    void ignored;
+    const base = { ...withoutHash, branches: [{ ...firstBranch, candidateCount: size, candidates }], selectedCandidateId: candidates[0]?.candidateId ?? null };
+    const expanded = { ...base, contentHash: canonicalStrategyFrontierContentHash(base) };
+    // the full frontier hash is the same after a JSON round trip (persistence drops undefined fields)
+    const roundTripped = JSON.parse(JSON.stringify(expanded)) as CanonicalStrategyFrontier;
+    assert.equal(canonicalStrategyFrontierContentHash((({ contentHash, ...rest }) => (void contentHash, rest))(roundTripped)), expanded.contentHash);
+    const batch = canonicalFrontierResearchBatch(expanded, { frontier_id: '55555555-5555-4555-8555-555555555555',
+      fusion_snapshot_id: '66666666-6666-4666-8666-666666666666', observed_at: expanded.timestamp, content_hash: expanded.contentHash }, 'a'.repeat(40));
+    const rows = batch.receiptInput.payload as Array<{ candidate: { candidateId: string } }>;
+    assert.equal(rows.length, size);
+    assert.equal(new Set(rows.map((row) => row.candidate.candidateId)).size, size);
+    bytesPerRow.push(Buffer.byteLength(JSON.stringify(rows)) / size);
+  }
+  // linear, not quadratic: per-row size is essentially constant across a 17x range of chain sizes
+  const spread = Math.max(...bytesPerRow) / Math.min(...bytesPerRow);
+  assert.ok(spread < 1.05, `archive row size drifts with chain size: ${bytesPerRow.join(', ')}`);
+});
