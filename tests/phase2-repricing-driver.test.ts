@@ -197,24 +197,29 @@ test('late fill: reconciliation sees FILLED first, so no replacement and no canc
   assert.equal(h.store.closed.length, 0);
 });
 
-test('partial fill: repricing continues on the remainder; at the end it is left resting, never cancelled into a partial disposal', async () => {
+test('partial fill: a part-filled order is NEVER replaced or cancelled by the driver (its fills stay on the original intent); it rests as a DAY order', async () => {
   const h = await harness();
   const first = [...h.broker.orders.keys()][0] as string;
   h.broker.fill(first, 40);
-  assert.equal((await onlyOutcome(h, 6))?.kind, 'REPLACED', 'qty stays the original total; the broker counts the filled part');
-  assert.equal(h.broker.orders.get([...h.broker.orders.keys()].at(-1) as string)?.qty, 100);
-  assert.equal((await onlyOutcome(h, 12))?.kind, 'REPLACED');
-  const end = await onlyOutcome(h, 18);
-  assert.deepEqual([end?.kind, end?.kind === 'LEFT_WORKING' && end.reason], ['LEFT_WORKING', 'PARTIAL_FILL_ORDER_LEFT_WORKING']);
+  for (const seconds of [6, 12, 18, 24]) {
+    const outcome = await onlyOutcome(h, seconds);
+    assert.deepEqual([outcome?.kind, outcome?.kind === 'LEFT_WORKING' && outcome.reason], ['LEFT_WORKING', 'PARTIAL_FILL_ORDER_LEFT_WORKING']);
+  }
+  assert.deepEqual(h.broker.calls, ['submit:190.10'], 'no replace, no cancel: the original broker order keeps all executions');
+  assert.equal([...h.intents.intents.values()].length, 1);
+  assert.equal(h.store.closed.length, 0);
   assert.equal(repriceReasonClass.PARTIAL_FILL_ORDER_LEFT_WORKING, 'OWNER_POLICY');
-  assert.equal(h.broker.calls.includes('cancel'), false);
-  // floor unreachable while part filled: also left resting at its last bounded price
+  // the floor becoming unreachable changes nothing for a part-filled order either
   const low = await harness();
   low.broker.fill([...low.broker.orders.keys()][0] as string, 10);
   low.quote.bid = 188; low.quote.ask = 188.1;
   const rested = await onlyOutcome(low, 6);
   assert.deepEqual([rested?.kind, rested?.kind === 'LEFT_WORKING' && rested.reason], ['LEFT_WORKING', 'PARTIAL_FILL_ORDER_LEFT_WORKING']);
   assert.equal(low.broker.calls.includes('cancel'), false);
+  // an integrity failure still stops trading on the plan, even for a part-filled order
+  const tampered = await harness(); tampered.store.integrity = false;
+  tampered.broker.fill([...tampered.broker.orders.keys()][0] as string, 10);
+  assert.equal((await onlyOutcome(tampered, 6))?.kind, 'CANCELED');
 });
 
 test('cancel race: a fill that lands during cancellation is a late fill, the plan is not closed', async () => {

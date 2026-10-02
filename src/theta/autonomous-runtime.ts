@@ -624,7 +624,7 @@ export async function runAutonomousRuntimeCycle(
         if(plan===null)return skipped(pauseNewOrders?'NO_APPROVED_MANAGEMENT_ACTION_PLAN':'NO_APPROVED_MASTER_ACTION_PLAN');
         {
           // Re-verify the sealed economic payload immediately before the handoff can reach the coordinator.
-          const integrity=await planStore.verifyBeforeSubmit(plan.actionPlanId,plan);
+          const integrity=await planStore.verifyBeforeSubmit(plan.actionPlanId,plan,workerInstance);
           if(!integrity.ok){
             // PLAN_NO_LONGER_CURRENT (REQUIRES_NEW_DECISION) is a superseded decision, not tampering; everything else is integrity.
             const code=integrity.mismatches.length===1&&integrity.mismatches[0]===planNoLongerCurrent?planNoLongerCurrent:'PLAN_INTEGRITY_MISMATCH';

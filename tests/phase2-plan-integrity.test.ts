@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import type { Pool, PoolClient } from 'pg';
-import { actionPlanContentHash, planIntegrityMismatch, verifyActionPlanRow, type ActionPlanRowForIntegrity } from '../src/execution/action-plan-integrity.js';
+import { actionPlanContentHash, managementDecisionIsCurrent, planIntegrityMismatch, verifyActionPlanRow, type ActionPlanRowForIntegrity } from '../src/execution/action-plan-integrity.js';
 import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from '../src/execution/master-paper-action-handoff.js';
 import { PostgresMasterPaperActionPlanStore } from '../src/execution/postgres-master-paper-action-plan-store.js';
 
@@ -132,12 +132,15 @@ test('verifyBeforeSubmit proves the stored row is still the claimed plan and is 
     const client = new Scripted(async (sql) => sql.includes('trade.economic_chain') ? { rows: [chainRow], rowCount: 1 }
       : { rows: row === null ? [] : [row], rowCount: row === null ? 0 : 1 });
     const pool = { connect: async () => (client as unknown as PoolClient), query: async () => ({ rows: row === null ? [] : [row], rowCount: row === null ? 0 : 1 }) } as unknown as Pool;
-    return new PostgresMasterPaperActionPlanStore(pool).verifyBeforeSubmit(plan.actionPlanId, claimed);
+    return new PostgresMasterPaperActionPlanStore(pool).verifyBeforeSubmit(plan.actionPlanId, claimed, 'worker-1', NOW);
   };
-  const stored = { ...ipColumns(sealed()), status: 'CLAIMED' };
+  const stored = { ...ipColumns(sealed()), status: 'CLAIMED', claimed_by: 'worker-1', claim_expires_at: '2026-10-13T14:02:00.000Z' };
   assert.deepEqual(await run(stored), { ok: true, mismatches: [] });
   assert.equal((await run(null)).ok, false);
   assert.deepEqual((await run({ ...stored, status: 'READY' })).mismatches, ['PLAN_NOT_CLAIMED']);
+  // the claim must still be held by this worker and unexpired (a reclaimed plan must not be submitted twice)
+  assert.deepEqual((await run({ ...stored, claimed_by: 'worker-2' })).mismatches, ['PLAN_CLAIM_NOT_HELD']);
+  assert.deepEqual((await run({ ...stored, claim_expires_at: '2026-10-13T13:59:00.000Z' })).mismatches, ['PLAN_CLAIM_NOT_HELD']);
   const mutated = { ...plan, quantity: 500 };
   assert.equal((await run({ ...stored, ...ipColumns(sealed(mutated, { content_hash: actionPlanContentHash(plan) })) })).ok, false, 'stored payload mutated after claim');
   // the in-memory claimed plan differs from what is stored (tampered between claim and submit)
@@ -156,4 +159,18 @@ test('verifyBeforeSubmit proves the stored row is still the claimed plan and is 
 test('replaying the same plan is deterministic: identical hash, identical canonical payload', () => {
   assert.equal(actionPlanContentHash(plan), actionPlanContentHash(JSON.parse(JSON.stringify(plan))));
   assert.notEqual(actionPlanContentHash(plan), actionPlanContentHash({ ...plan, economicBoundary: 190.01 }));
+});
+
+test('roll second leg: ROLL_DECISION is the expected current state after the close leg filled; the first leg and a closed chain never are', () => {
+  const current = (legSequence: number, chainState: string | null, planState: string | null, chainClosed = false) =>
+    managementDecisionIsCurrent({ legSequence, chainClosed, chainState, planState });
+  assert.equal(current(1, 'CC_OPEN', 'CC_OPEN'), true);
+  assert.equal(current(2, 'CC_OPEN', 'CC_OPEN'), true, 'close leg not yet applied');
+  assert.equal(current(2, 'ROLL_DECISION', 'CC_OPEN'), true, 'close leg filled and applied: open leg proceeds');
+  assert.equal(current(2, 'ROLL_DECISION', 'CSP_OPEN'), true);
+  assert.equal(current(1, 'ROLL_DECISION', 'CC_OPEN'), false, 'a single-leg decision that finds ROLL_DECISION has been superseded');
+  assert.equal(current(2, 'CC_OPEN', 'CSP_OPEN'), false);
+  assert.equal(current(2, 'ROLL_DECISION', 'CC_OPEN', true), false, 'closed chain');
+  assert.equal(current(2, 'ROLL_DECISION', null), false, 'unknown decision lifecycle is never assumed current');
+  assert.equal(current(1, null, 'CC_OPEN'), false);
 });

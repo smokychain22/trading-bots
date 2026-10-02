@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import { brokerOrderIntentState } from './broker-order-state.js';
-import { planIntegritySelectColumns, planIntegrityRowFromAliases, verifyActionPlanRow } from './action-plan-integrity.js';
+import { managementDecisionIsCurrent, planIntegritySelectColumns, planIntegrityRowFromAliases, verifyActionPlanRow } from './action-plan-integrity.js';
 import type { StockInventorySource } from './alpaca-stock-inventory-source.js';
 import { paperBootstrapPreSubmitQuoteAgePolicy, prepareMasterPaperAction, type ApprovedMasterPaperActionPlan,
   type ExecutionOptionQuoteSource } from './master-paper-action-handoff.js';
@@ -138,7 +138,8 @@ async function repriceOne(deps: RepriceDependencies, candidate: RepriceCandidate
     } catch { return blocked('ORDER_STATE_UNKNOWN', ['CANCEL_FAILED_RECONCILE_BEFORE_RETRY']); }
     const state = after === null ? null : brokerOrderIntentState(after);
     if (state === 'FILLED') return leftWorking('LATE_FILL_DURING_CANCEL');
-    if (state !== 'CANCELED' && state !== 'EXPIRED' && state !== 'REJECTED' && state !== 'CANCEL_REQUESTED' && state !== 'PARTIAL') {
+    if (state === 'PARTIAL') return blocked('ORDER_STATE_NOT_REPRICEABLE', ['CANCEL_NOT_COMPLETED_PARTIAL_FILL']);
+    if (state !== 'CANCELED' && state !== 'EXPIRED' && state !== 'REJECTED' && state !== 'CANCEL_REQUESTED') {
       return blocked('ORDER_STATE_UNKNOWN', ['CANCEL_RESULT_UNKNOWN']);
     }
     if (state === 'CANCEL_REQUESTED') return blocked('ORDER_STATE_NOT_REPRICEABLE', ['CANCEL_PENDING']);
@@ -159,17 +160,19 @@ async function repriceOne(deps: RepriceDependencies, candidate: RepriceCandidate
   if (terminalStates.has(state)) return leftWorking('ORDER_ALREADY_TERMINAL');
   if (!workingStates.has(state)) return blocked('ORDER_STATE_NOT_REPRICEABLE', [state]);
   const partiallyFilled = broker.filledQty > 0;
+  // A part-filled order is NEVER replaced: the fills belong to the original broker order, a replacement would carry only the
+  // later fills, and neither intent would then satisfy the one-intent-fully-filled rule the lifecycle router needs, stranding
+  // the ledger. It rests at its last bounded price (DAY order) until it fills or the session ends, and terminal-partial
+  // accounting runs on the original intent. Partial-position accounting beyond that is OWNER_POLICY.
+  if (partiallyFilled) return leftWorking('PARTIAL_FILL_ORDER_LEFT_WORKING');
 
   // 3. Wait interval (persisted last action time, so a duplicate trigger or restart cannot double-step).
   const elapsed = Date.parse(at) - Date.parse(candidate.lastActionAt);
   if (!Number.isFinite(elapsed) || elapsed < 0) return blocked('ORDER_STATE_UNKNOWN', ['LAST_ACTION_TIME_INVALID']);
   if (elapsed < plan.pricingPolicy.waitIntervalMs) return leftWorking('NOT_DUE_WAIT_INTERVAL');
 
-  // 4. Attempts exhausted: the bounded concession sequence is over. A part-filled order is left resting at its last bounded
-  //    price rather than manufacturing a partial disposal by cancelling it (partial-position accounting is OWNER_POLICY).
-  if (candidate.attemptsSoFar >= plan.pricingPolicy.maxAttempts) {
-    return partiallyFilled ? leftWorking('PARTIAL_FILL_ORDER_LEFT_WORKING') : cancelOrder('MAX_ATTEMPTS_REACHED');
-  }
+  // 4. Attempts exhausted: the bounded concession sequence is over (part-filled orders never get here, see above).
+  if (candidate.attemptsSoFar >= plan.pricingPolicy.maxAttempts) return cancelOrder('MAX_ATTEMPTS_REACHED');
   if (deps.marketOpen !== true) return blocked('MARKET_CLOSED');
   if (candidate.limitPrice === null || !Number.isFinite(candidate.limitPrice) || candidate.limitPrice <= 0) return blocked('ORDER_STATE_UNKNOWN', ['PREVIOUS_LIMIT_UNKNOWN']);
 
@@ -215,7 +218,7 @@ async function repriceOne(deps: RepriceDependencies, candidate: RepriceCandidate
 
   if (prepared.state === 'PRICE_REJECTED') {
     const economic = prepared.blockers.map(economicReasonFor).find((reason) => reason !== null) ?? null;
-    if (economic !== null) return partiallyFilled ? leftWorking('PARTIAL_FILL_ORDER_LEFT_WORKING') : cancelOrder(economic);
+    if (economic !== null) return cancelOrder(economic);
     return blocked('QUOTE_UNAVAILABLE', prepared.blockers);
   }
   if (prepared.state === 'NO_QUOTE' || prepared.state === 'QUOTE_REJECTED') return blocked('QUOTE_UNAVAILABLE', prepared.blockers);
@@ -255,7 +258,7 @@ export class PostgresManagementRepriceStore implements RepriceStore {
          ec.closed_at AS chain_closed_at, ec.lifecycle_state::text AS chain_state, mis.lifecycle_state::text AS plan_state
        FROM trade.order_intent oi
        JOIN trade.master_paper_action_plan p ON p.decision_id=oi.decision_id AND p.execution_account_id=oi.execution_account_id
-         AND p.authority_kind='MANAGEMENT' AND p.plan_json->>'action'=oi.theta_action
+         AND p.authority_kind='MANAGEMENT' AND p.plan_json->>'action'=oi.theta_action AND p.status='SUBMITTED'
        JOIN trade.economic_chain ec ON ec.chain_id=oi.chain_id
        LEFT JOIN trade.management_input_snapshot mis ON mis.management_input_snapshot_id=p.management_input_snapshot_id
        WHERE oi.execution_account_id=$1 AND oi.status::text IN ('SUBMITTED','ACKNOWLEDGED','PARTIAL')
@@ -279,8 +282,8 @@ export class PostgresManagementRepriceStore implements RepriceStore {
         attemptsSoFar: Math.max(Number(attempts.intents), Number(attempts.max_attempt_no)),
         lastActionAt: toIso(attempts.last_action_at), actionPlanId: String(raw.plan_row_id),
         plan: integrity.ok ? integrity.plan : null, integrityMismatches: integrity.mismatches,
-        decisionStillCurrent: raw.chain_closed_at === null && raw.plan_state !== null && raw.plan_state !== undefined
-          && String(raw.chain_state) === String(raw.plan_state),
+        decisionStillCurrent: managementDecisionIsCurrent({ legSequence: Number(raw.ip_leg_sequence), chainClosed: raw.chain_closed_at !== null,
+          chainState: raw.chain_state == null ? null : String(raw.chain_state), planState: raw.plan_state == null ? null : String(raw.plan_state) }),
       });
     }
     return candidates;

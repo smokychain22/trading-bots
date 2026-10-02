@@ -5,7 +5,7 @@ import { managementOrderActions, type ManagementDecisionDraft } from './manageme
 import { masterPaperActionPlanSchema, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
 import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import { verifyAegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
-import { actionPlanContentHash, planIntegrityMismatch, planIntegrityRowFromAliases, planIntegritySelectColumns, verifyActionPlanRow } from './action-plan-integrity.js';
+import { actionPlanContentHash, managementDecisionIsCurrent, planIntegrityMismatch, planIntegrityRowFromAliases, planIntegritySelectColumns, verifyActionPlanRow } from './action-plan-integrity.js';
 
 export const planNoLongerCurrent='PLAN_NO_LONGER_CURRENT' as const;
 const integrityColumns=planIntegritySelectColumns;
@@ -289,8 +289,8 @@ export class PostgresMasterPaperActionPlanStore {
   }
 
   /** Re-reads the stored row immediately before submit and proves it is still exactly the claimed, approved plan. */
-  async verifyBeforeSubmit(actionPlanId:string,claimed:ApprovedMasterPaperActionPlan):Promise<{readonly ok:boolean;readonly mismatches:readonly string[]}>{
-    const read=await withRuntimePostgresReadRetry(this.pool,(client)=>client.query(`SELECT ${integrityColumns},p.status
+  async verifyBeforeSubmit(actionPlanId:string,claimed:ApprovedMasterPaperActionPlan,workerId:string,now:string=new Date().toISOString()):Promise<{readonly ok:boolean;readonly mismatches:readonly string[]}>{
+    const read=await withRuntimePostgresReadRetry(this.pool,(client)=>client.query(`SELECT ${integrityColumns},p.status,p.claimed_by,p.claim_expires_at
       FROM trade.master_paper_action_plan p WHERE p.action_plan_id=$1`,[actionPlanId]));
     const row=read.value.rows[0] as Record<string,unknown>|undefined;
     if(row===undefined)return {ok:false,mismatches:['PLAN_ROW_MISSING']};
@@ -298,6 +298,8 @@ export class PostgresMasterPaperActionPlanStore {
     if(!integrity.ok)return {ok:false,mismatches:integrity.mismatches};
     if(actionPlanContentHash(integrity.plan)!==actionPlanContentHash(claimed))return {ok:false,mismatches:['CLAIMED_PLAN_DIFFERS_FROM_STORED']};
     if(row.status!=='CLAIMED')return {ok:false,mismatches:['PLAN_NOT_CLAIMED']};
+    // The claim must still belong to THIS worker and be unexpired: a stalled worker whose claim was reclaimed must not also submit.
+    if(row.claimed_by!==workerId||!(Date.parse(String(row.claim_expires_at))>Date.parse(now)))return {ok:false,mismatches:['PLAN_CLAIM_NOT_HELD']};
     if(claimed.decisionAuthority==='MANAGEMENT'){
       // The management decision must still be the current one for its chain: the chain is open and still in the lifecycle
       // state the decision was made in. Otherwise the decision is superseded and a NEW management decision is required.
@@ -306,8 +308,9 @@ export class PostgresMasterPaperActionPlanStore {
         LEFT JOIN trade.management_input_snapshot mis ON mis.management_input_snapshot_id=$2 WHERE ec.chain_id=$1`,
       [claimed.chainId,claimed.managementInputSnapshotId]));
       const current=chain.value.rows[0] as Record<string,unknown>|undefined;
-      if(current===undefined||current.closed_at!==null||current.plan_state===null||current.plan_state===undefined
-        ||String(current.chain_state)!==String(current.plan_state))return {ok:false,mismatches:[planNoLongerCurrent]};
+      if(current===undefined||!managementDecisionIsCurrent({legSequence:claimed.legSequence,chainClosed:current.closed_at!==null,
+        chainState:current.chain_state==null?null:String(current.chain_state),
+        planState:current.plan_state==null?null:String(current.plan_state)}))return {ok:false,mismatches:[planNoLongerCurrent]};
     }
     return {ok:true,mismatches:[]};
   }

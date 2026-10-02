@@ -53,6 +53,18 @@ export const planIntegrityRowFromAliases = (row: Record<string, unknown>): Actio
   leg_sequence: row.ip_leg_sequence, depends_on_action_plan_id: row.ip_depends_on_action_plan_id,
 });
 
+/**
+ * Is the management decision still the current one for its chain? The chain must be open and in the lifecycle state the decision
+ * was made in. A ROLL has two legs: the open leg (leg_sequence > 1) only becomes claimable after the close leg is FILLED, and the
+ * fill lifecycle then moves the chain to ROLL_DECISION, so for that leg ROLL_DECISION is the expected, current state.
+ */
+export function managementDecisionIsCurrent(input: { readonly legSequence: number; readonly chainClosed: boolean;
+  readonly chainState: string | null; readonly planState: string | null }): boolean {
+  if (input.chainClosed || input.chainState === null || input.planState === null) return false;
+  if (input.chainState === input.planState) return true;
+  return input.legSequence > 1 && input.chainState === 'ROLL_DECISION';
+}
+
 export type ActionPlanIntegrityResult =
   | { readonly ok: true; readonly plan: ApprovedMasterPaperActionPlan; readonly mismatches: readonly [] }
   | { readonly ok: false; readonly plan: null; readonly mismatches: readonly string[] };

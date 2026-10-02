@@ -52,6 +52,21 @@ CREATE TRIGGER reject_master_paper_action_plan_economic_mutation
 -- RECOVERY_ACTION_RACE / MGMT-CROSS-CYCLE-DUP at the database boundary: at most one pre-submit management plan per chain and
 -- leg position. Two simultaneous publications for one chain (for example SELL_STOCK and SELL_CC) cannot both become
 -- READY/CLAIMED/WAITING_GATE. SUBMITTED plans are excluded: from then on the order intent in-flight guard owns the chain.
+-- Pre-existing duplicates would make the unique index fail and leave the database unmigrated. Keep the newest pre-submit
+-- management plan per chain and leg and quarantine the older ones (a quarantined pre-submit plan can never execute). Safe and
+-- idempotent: on a clean database this updates nothing.
+WITH ranked AS (
+  SELECT action_plan_id,
+         row_number() OVER (PARTITION BY plan_json ->> 'chainId', leg_sequence ORDER BY created_at DESC, action_plan_id DESC) AS rn
+  FROM trade.master_paper_action_plan
+  WHERE authority_kind = 'MANAGEMENT' AND status IN ('READY', 'CLAIMED', 'WAITING_GATE')
+)
+UPDATE trade.master_paper_action_plan p
+   SET status = 'QUARANTINED', last_blockers_json = '["MIGRATION_068_DUPLICATE_PRESUBMIT_PLAN"]'::jsonb,
+       claimed_by = NULL, claimed_at = NULL, claim_expires_at = NULL, updated_at = now()
+  FROM ranked
+ WHERE p.action_plan_id = ranked.action_plan_id AND ranked.rn > 1;
+
 CREATE UNIQUE INDEX IF NOT EXISTS ux_master_paper_action_plan_management_chain_leg_presubmit
   ON trade.master_paper_action_plan ((plan_json ->> 'chainId'), leg_sequence)
   WHERE authority_kind = 'MANAGEMENT' AND status IN ('READY', 'CLAIMED', 'WAITING_GATE');
