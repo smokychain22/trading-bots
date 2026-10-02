@@ -403,5 +403,5 @@ test('P2-08 lineage: DECISION -> PLAN -> ORDER_INTENT -> CLIENT_ORDER_ID are det
   const intents = [...h.intents.intents.values()];
   assert.equal(intents.length, 2);
   assert.ok(intents.every((intent) => intent.decisionId === stockPlan.decisionId && intent.chainId === stockPlan.chainId && intent.action === 'SELL_STOCK'));
-  await assert.rejects(h.coordinator.replace(intents[1]!.orderIntentId, { ...(second.command as object), orderIntentId: id(97), decisionId: id(96) } as never, second.command.gate), /REPLACEMENT_LINEAGE_MISMATCH/);
+  await assert.rejects(h.coordinator.replace((intents[1] as { orderIntentId: string }).orderIntentId, { ...(second.command as object), orderIntentId: id(97), decisionId: id(96) } as never, second.command.gate), /REPLACEMENT_LINEAGE_MISMATCH/);
 });

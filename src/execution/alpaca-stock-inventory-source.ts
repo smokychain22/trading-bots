@@ -21,16 +21,16 @@ export interface StockInventorySource {
 export class AlpacaStockInventorySource implements StockInventorySource {
   constructor(private readonly alpaca: AlpacaProviderConfig, private readonly clock: () => string = () => new Date().toISOString()) {}
 
-  async readStockInventory(symbol: string, _now: string): Promise<StockInventoryRead> {
+  async readStockInventory(symbol: string): Promise<StockInventoryRead> {
     const receivedAt = this.clock();
     const [positions, orders] = await Promise.all([fetchPositions(this.alpaca, receivedAt), fetchOpenOrders(this.alpaca, receivedAt)]);
     const rows = positions.filter((position) => position.symbol === symbol);
     const equity = rows.filter((position) => position.assetClass === 'us_equity' || position.assetClass === null);
     let inventory: BrokerStockInventoryEvidence;
     if (equity.length > 1) inventory = { state: 'UNKNOWN', quantity: null, observedAt: null, reason: 'BROKER_POSITION_QUANTITY_INVALID' };
-    else if (equity.length === 0) inventory = { state: 'KNOWN', quantity: 0, observedAt: receivedAt, reason: null };
+    else if (equity[0] === undefined) inventory = { state: 'KNOWN', quantity: 0, observedAt: receivedAt, reason: null };
     else {
-      const row = equity[0]!;
+      const row = equity[0];
       const side = row.side?.toLowerCase() ?? null;
       if (row.quantity === null || !Number.isFinite(row.quantity)) {
         inventory = { state: 'UNKNOWN', quantity: null, observedAt: null, reason: 'BROKER_POSITION_QUANTITY_INVALID' };
