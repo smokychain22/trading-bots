@@ -60,7 +60,9 @@ test('replaying the same approved command reconciles by client_order_id and subm
 
 test('an unresolved prior submission blocks a different new order', async () => {
   const { runtime, store } = setup();
-  const unresolved = command();
+  // a RECENT ambiguous submission (inside its decision window plus grace): older ones are expired by recoverAfterRestart once proven absent
+  const recent = command();
+  const unresolved = command({ executionEvidence: { ...recent.executionEvidence, decisionExpiresAt: new Date(Date.now() + 60_000).toISOString() } });
   await store.insertIntent({ ...unresolved, status: 'UNKNOWN_SUBMISSION', brokerOrderId: null });
   const next = command({ orderIntentId: '44444444-4444-4444-8444-444444444444',
     request: { ...unresolved.request, client_order_id: 'theta-open-2' } });
