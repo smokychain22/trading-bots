@@ -625,10 +625,10 @@
         "tests/theta-shadow-cycle.test.ts",
         "tests/database-health-circuit.test.ts"
       ],
-      "CLOSURE_STATE": "CLOSED_ENGINEERING",
-      "BLOCKER_CLASS": "NONE_ENGINEERING",
+      "CLOSURE_STATE": "EVIDENCE_INVALIDATED",
+      "BLOCKER_CLASS": "EXECUTED_REQUIREMENT_NOT_PROVEN",
       "CODE_SOLVABLE": true,
-      "CURRENT_STATUS": "CLOSED_ENGINEERING",
+      "CURRENT_STATUS": "EVIDENCE_INVALIDATED",
       "CONFIG_SOLVABLE": false,
       "OFFLINE_TESTABLE": true,
       "CURRENT_MARKET_REQUIRED": false,
@@ -702,14 +702,7 @@
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
         "artifactHash": "8d008c58aa9aeb24c3eaad6acdb3a198e93e8c79c1b3cc92e97b2a7819644484"
       },
-      "RUNTIME_EVIDENCE": "Executed disposable PostgreSQL evidence. Deployed current-worker behavior remains separately unproven.",
-      "DISPOSABLE_DB_EVIDENCE": {
-        "artifactPath": "docs/operations/evidence/THETA_PHASE2_DISPOSABLE_CI.json",
-        "artifactHash": "e0da8df35bda5cbe7fe7fbebdb4d107b1d43cd82fd38b6a3d1714691d30de463",
-        "ciRun": "36985694766",
-        "sourceSha": "d9a0156a46531e357a6d32e73a29d701ffe0b48a",
-        "requirementId": "2.4.FRESH_CYCLE"
-      }
+      "RUNTIME_EVIDENCE": "Executed disposable PostgreSQL evidence. Deployed current-worker behavior remains separately unproven."
     },
     {
       "ID": "2.5.CAPABILITIES",
@@ -2673,8 +2666,8 @@
   },
   "PHASE2_TOTAL": 25,
   "PHASE2_CODE_SOLVABLE": 21,
-  "PHASE2_CODE_SOLVABLE_COMPLETE": 21,
-  "PHASE2_CODE_SOLVABLE_REMAINING": 0,
+  "PHASE2_CODE_SOLVABLE_COMPLETE": 20,
+  "PHASE2_CODE_SOLVABLE_REMAINING": 1,
   "phase2EngineeringState": "CLOSED_REVIEWED_ENGINEERING",
   "phase2CurrentWorkerProof": "PENDING_REVIEWED_RELEASE_INTEGRATION",
   "checkpoint": {
