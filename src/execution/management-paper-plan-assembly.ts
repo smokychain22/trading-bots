@@ -330,6 +330,8 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
   if (input.executionLegs.length !== required.length
     || input.executionLegs.some((leg, index) => leg.action !== required[index])) blockers.push('MANAGEMENT_EXECUTION_LEG_SEQUENCE_INVALID');
   const netCommitted = new Map<number, number>();
+  // Free sellable shares per SELL_STOCK leg, computed once by freeSellableShares() (the single authority) and reused when the plan is sealed.
+  const freeSellable = new Map<number, number>();
   // P-A: a chain with an unreconciled terminal partial stock exit may not sell or cover shares. Absent evidence is UNKNOWN.
   const exitFreeze = input.stockExitFreeze ?? { state: 'UNKNOWN' as const };
   for (const [index, leg] of input.executionLegs.entries()) {
@@ -382,7 +384,7 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
         ? 'STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK' : free.reason === 'COMMITTED_SHORT_CALLS_UNKNOWN'
           ? 'COMMITTED_SHORT_CALLS_UNKNOWN:SELL_STOCK' : 'STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:BROKER_UNAVAILABLE');
       else if ((free.freeShares as number) < leg.canonicalQuantity) blockers.push('STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK');
-      else netCommitted.set(index, input.committedShortCallContracts as number);
+      else { netCommitted.set(index, input.committedShortCallContracts as number); freeSellable.set(index, free.freeShares as number); }
     }
     if (leg.action !== 'SELL_STOCK' && !input.optionsCapabilityVerified) blockers.push(`OPTIONS_CAPABILITY_NOT_VERIFIED:${leg.action}`);
     if (opensRisk.has(leg.action) && !['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState ?? '')) {
@@ -449,7 +451,7 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
         accountLedgerShares: input.state.accountStockLedgerShares as number } : {}),
       ...(leg.action === 'SELL_STOCK' ? { brokerConfirmedShares: input.state.brokerStockInventory?.quantity as number,
         accountLedgerShares: input.state.accountStockLedgerShares as number,
-        freeSellableShares: (input.state.brokerStockInventory?.quantity as number) - 100 * (input.committedShortCallContracts as number) } : {}),
+        freeSellableShares: freeSellable.get(index) as number } : {}),
       action: leg.action,
       economicBoundary: leg.economicBoundary,
       economicsRemainPositive: leg.economicsRemainPositive,
