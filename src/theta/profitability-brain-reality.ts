@@ -89,10 +89,12 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
     ['bots/theta/quant/models/strategy_router.py', 'src/theta/new-risk-orchestrator.ts']),
   method('CONVENTIONAL_CANDIDATE_ENUMERATION', 'CANDIDATE_ENUMERATION', 'PRODUCTION_LOCKED', 6,
     ['bots/theta/quant/models/theta_q_lattice.py', 'src/theta/canonical-strategy-frontier.ts']),
+  // The enumeration RUNS inside the canonical frontier (the last source is the runtime caller); the research
+  // orchestrator is a separate offline producer that no deployed code imports.
   method('HOLD_STRIKE_CANDIDATE_ENUMERATION', 'CANDIDATE_ENUMERATION', 'RESEARCH_ONLY', 6,
-    ['src/theta/canonical-strategy-frontier.ts', 'src/research/shadow-strategy-orchestrator.ts']),
+    ['src/research/shadow-strategy-orchestrator.ts', 'src/theta/canonical-strategy-frontier.ts']),
   method('DEFINED_RISK_CANDIDATE_ENUMERATION', 'CANDIDATE_ENUMERATION', 'RESEARCH_ONLY', 6,
-    ['src/theta/canonical-strategy-frontier.ts', 'src/research/shadow-strategy-orchestrator.ts']),
+    ['src/research/shadow-strategy-orchestrator.ts', 'src/theta/canonical-strategy-frontier.ts']),
   method('DEFINED_RISK_LOCKED_MULTI_LEG_PLAN', 'EXECUTION', 'RESEARCH_ONLY', 6,
     ['src/research/defined-risk-locked-plan.ts', 'src/theta/canonical-strategy-frontier.ts',
       'src/theta/postgres-theta-cycle-store.ts'],

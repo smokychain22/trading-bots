@@ -108,7 +108,7 @@ export const methodInventory: readonly DeepSystemInventoryRow[] = profitabilityB
 
 const strategySourceFile: Readonly<Record<(typeof fiveStrategyRealityMatrix)[number]['branch'], string>> = {
   THETA_CONVENTIONAL: 'bots/theta/quant/models/theta_q_lattice.py',
-  THETA_HOLD_STRIKE: 'src/research/shadow-strategy-orchestrator.ts',
+  THETA_HOLD_STRIKE: 'src/theta/canonical-strategy-frontier.ts',
   THETA_DEFINED_RISK: 'src/theta/canonical-strategy-frontier.ts',
   THETA_RECOVERY: 'src/theta/production-paper-management-candidate-source.ts',
   THETA_CC: 'src/theta/production-paper-management-candidate-source.ts',
