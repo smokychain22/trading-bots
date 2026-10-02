@@ -760,3 +760,129 @@ test('P2-11: prepareMasterPaperAction returns a typed state (never throws) for e
     }
   }
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// P2-02 SELL_STOCK_FLOOR_LIVENESS: SAME_DECISION_REPRICE keeps the sealed floor; NEW_MANAGEMENT_DECISION re-bases it on fresh
+// evidence; a cancelled plan is never resurrected and an old decision does not stay blocked forever.
+// ---------------------------------------------------------------------------------------------------------------------
+
+test('P2-02: a falling market ends the old decision (sealed floor untouched) and the next scan makes a NEW decision with a re-based floor', async () => {
+  const before = sellStockState(stockRead({ bid: 190, ask: 190.1 }));
+  const first = await flow(before, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: 0, managementActionFrontierId: UUID(8) });
+  assert.equal(first.assembled?.state, 'READY');
+  if (first.assembled?.state !== 'READY') return;
+  const planA = first.assembled.plans[0] as ApprovedMasterPaperActionPlan;
+  assert.equal(planA.economicBoundary, 190);
+  // SAME_DECISION: the market is one cent under the sealed floor - the old plan can only be cancelled, never lowered
+  const sameDecision = await prepareMasterPaperAction(planA, { getCurrentQuote: async () => stockQuote(189.9, 189.99) }, T_NEAR, true, undefined, () => T_NEAR,
+    { async readStockInventory() { return { inventory: { state: 'KNOWN', quantity: 100, observedAt: T_NEAR, reason: null }, committedShortCallContracts: 0 }; } });
+  assert.equal(sameDecision.state, 'PRICE_REJECTED');
+  assert.deepEqual(sameDecision.blockers, ['ADAPTIVE_LIMIT_ECONOMIC_BOUNDARY_UNREACHABLE']);
+  assert.equal(planA.economicBoundary, 190, 'the sealed plan is immutable');
+
+  // while the first order still works, no second decision for the chain may be assembled
+  const working = [{ source: 'ORDER_INTENT' as const, id: UUID(70), decisionId: planA.decisionId }];
+  const after = sellStockState(stockRead({ bid: 188, ask: 188.1 }));
+  const blocked = await flow(after, { AAPL: stockQuote(188, 188.1) }, { committedShortCallContracts: 0, managementActionFrontierId: UUID(88), chainInFlight: { state: 'KNOWN', entries: working } });
+  assert.equal(blocked.assembled?.state, 'BLOCKED');
+  assert.deepEqual(blocked.assembled?.blockers, ['MANAGEMENT_EQUIVALENT_ORDER_IN_FLIGHT']);
+  // after the driver cancelled the order the guard is clear: NEW_MANAGEMENT_DECISION with a freshly computed floor
+  const fresh = await flow(after, { AAPL: stockQuote(188, 188.1) }, { committedShortCallContracts: 0, managementActionFrontierId: UUID(88), chainInFlight: { state: 'KNOWN', entries: [] } });
+  assert.equal(fresh.assembled?.state, 'READY');
+  if (fresh.assembled?.state !== 'READY') return;
+  const planB = fresh.assembled.plans[0] as ApprovedMasterPaperActionPlan;
+  assert.notEqual(planB.decisionId, planA.decisionId, 'a new decision id');
+  assert.notEqual(planB.actionPlanId, planA.actionPlanId, 'a new plan, the old one is never reused');
+  assert.equal(planB.economicBoundary, 188, 'floor re-based on fresh authoritative evidence');
+  assert.equal(fresh.prepared[0]?.state, 'READY_TO_SUBMIT');
+  assert.equal(planA.economicBoundary, 190, 'the cancelled decision keeps its original floor');
+});
+
+test('P2-02: the action can change between scans - SELL_STOCK to WAIT and WAIT to SELL_STOCK - and WAIT never yields an executable limit', async () => {
+  const sells = sellStockState(stockRead());
+  assert.equal(decide(sells).frontier.selectedAction, 'SELL_STOCK');
+  // economics no longer favour selling (no opportunity cost, no thesis failure): the policy waits, no leg compiles
+  const waits = { ...managed({ lifecycle: 'RECOVERY_WAIT', observedAt: T_NEAR, stockRead: stockRead() }) };
+  const waitDecision = decide(waits);
+  assert.notEqual(waitDecision.frontier.selectedAction, 'SELL_STOCK');
+  assert.equal(compileManagementExecutionLegDirectives(waits, waitDecision.frontier).state, 'NO_BROKER_ACTION');
+  assert.equal(waitDecision.frontier.actions.find((a) => a.action === 'SELL_STOCK')?.executionEvidence?.economicsRemainPositive, false);
+  // and back again when the forward economics change
+  assert.equal(decide(sellStockState(stockRead())).frontier.selectedAction, 'SELL_STOCK');
+});
+
+test('P2-02: every decision gets its own deterministic identity, so a re-planned decision can never collide with a cancelled one', async () => {
+  const state = sellStockState(stockRead());
+  const one = await flow(state, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: 0, managementActionFrontierId: UUID(8) });
+  const same = await flow(state, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: 0, managementActionFrontierId: UUID(8) });
+  const next = await flow(state, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: 0, managementActionFrontierId: UUID(9) });
+  if (one.assembled?.state !== 'READY' || same.assembled?.state !== 'READY' || next.assembled?.state !== 'READY') throw new Error('plans expected');
+  assert.equal(one.assembled.plans[0]?.actionPlanId, same.assembled.plans[0]?.actionPlanId, 'replay of one decision is identical (idempotent)');
+  assert.notEqual(one.assembled.plans[0]?.actionPlanId, next.assembled.plans[0]?.actionPlanId);
+  assert.notEqual(one.assembled.plans[0]?.decisionId, next.assembled.plans[0]?.decisionId);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// P2-09 RECOVERY_ACTION_RACE: SELL_STOCK vs SELL_CC on the same chain or on sibling chains. Exactly one consistent
+// share-commitment state may win; ambiguity fails closed; terminal commitments release.
+// ---------------------------------------------------------------------------------------------------------------------
+
+test('P2-09: a SELL_STOCK plan and a SELL_CC plan can never both be in flight for one chain (in-flight guard, both orders of arrival)', async () => {
+  const recovery = managed({ lifecycle: 'RECOVERY_WAIT', observedAt: T_NEAR, shares: '100' });
+  const sellStockPlanEntry = { state: 'KNOWN' as const, entries: [{ source: 'ACTION_PLAN' as const, id: UUID(71), decisionId: UUID(72) }] };
+  // SELL_STOCK exists first, then a covered call is proposed for the same chain
+  const ccAfterStock = assembleSellCc(recovery, 0, sellStockPlanEntry as never);
+  assert.equal(ccAfterStock.state, 'BLOCKED');
+  assert.deepEqual(ccAfterStock.blockers, ['MANAGEMENT_EQUIVALENT_ORDER_IN_FLIGHT']);
+  // a covered call is already working (order intent), then SELL_STOCK proposes all the shares
+  const ccWorking = { state: 'KNOWN' as const, entries: [{ source: 'ORDER_INTENT' as const, id: UUID(73), decisionId: UUID(74) }] };
+  const stockAfterCc = await flow(sellStockState(stockRead()), { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: 1, chainInFlight: ccWorking });
+  assert.equal(stockAfterCc.assembled?.state, 'BLOCKED');
+  assert.ok(stockAfterCc.assembled?.blockers.includes('MANAGEMENT_EQUIVALENT_ORDER_IN_FLIGHT'));
+  assert.ok(stockAfterCc.assembled?.blockers.includes('STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK'), 'and the committed call also forbids the sale');
+  assert.deepEqual(stockAfterCc.prepared, []);
+});
+
+test('P2-09: sibling chains on one underlying - a published covered-call plan on chain B forbids chain A selling shares, until B releases it', async () => {
+  const commitments = (plans: { id: string; status: string }[]) => ({ query: async (sql: string) => ({ rows:
+    /broker_reconciliation_snapshot/.test(sql) ? [{ observed_at: '2026-10-13T13:59:00.000Z' }] : /trade\.fill/.test(sql) ? []
+      : /broker_position_snapshot/.test(sql) ? [] : /master_paper_action_plan/.test(sql)
+        ? plans.filter((p) => ['READY', 'CLAIMED', 'WAITING_GATE'].includes(p.status)).map((p) => ({ id: p.id, symbol: 'AAPL261120C00205000', quantity: 1 })) : [] }) });
+  const read = (plans: { id: string; status: string }[]) => readCommittedShortCallContracts(commitments(plans) as never,
+    { executionAccountId: UUID(9), reconciliationSnapshotId: UUID(2), underlying: 'AAPL', externalOrUnknownCount: 0 });
+  const chainA = sellStockState(stockRead(), { chain: 4 });
+  for (const status of ['READY', 'CLAIMED', 'WAITING_GATE']) {
+    const committed = await read([{ id: 'ccB', status }]);
+    assert.equal(committed, 1, status);
+    const attempt = await flow(chainA, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: committed });
+    assert.equal(attempt.assembled?.state, 'BLOCKED', status);
+    assert.ok(attempt.assembled?.blockers.includes('STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK'), status);
+  }
+  // chain B's plan became terminal (cancelled / expired / quarantined): capacity is released and the sale may proceed
+  for (const status of ['TERMINAL', 'QUARANTINED']) {
+    const committed = await read([{ id: 'ccB', status }]);
+    assert.equal(committed, 0, status);
+    const released = await flow(chainA, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: committed });
+    assert.equal(released.assembled?.state, 'READY', status);
+  }
+  // unknown commitment (read error / external broker facts) is ambiguity: fail closed, never a sale
+  const unknown = await flow(chainA, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: null });
+  assert.equal(unknown.assembled?.state, 'BLOCKED');
+  assert.ok(unknown.assembled?.blockers.includes('COMMITTED_SHORT_CALLS_UNKNOWN:SELL_STOCK'));
+});
+
+test('P2-09: sibling chain B covers its own call with its own shares, so a stock plan on chain A does not block it, and neither plan can over-commit shares', () => {
+  const chainB = managed({ lifecycle: 'RECOVERY_WAIT', observedAt: T_NEAR, shares: '100', chain: 14 });
+  // chain B's covered call is covered by chain B's own 100 shares; the stock sale on chain A (its own shares) is a different inventory
+  assert.equal(assembleSellCc(chainB, 0).state, 'READY');
+  // but if chain B would need more cover than it owns, the account-net rule blocks it regardless of chain A
+  assert.equal(assembleSellCc(chainB, 1).state, 'BLOCKED');
+});
+
+test('P2-09: the claim path is race-safe at the database boundary (pre-submit uniqueness per chain/leg and SKIP LOCKED claims are asserted in the DB suite)', () => {
+  const store = readFileSync(new URL('../src/execution/postgres-master-paper-action-plan-store.ts', import.meta.url), 'utf8');
+  assert.match(store, /FOR UPDATE OF p SKIP LOCKED/);
+  const migration = readFileSync(new URL('../migrations/068_action_plan_integrity.sql', import.meta.url), 'utf8');
+  assert.match(migration, /ux_master_paper_action_plan_management_chain_leg_presubmit/);
+  assert.match(migration, /WHERE authority_kind = 'MANAGEMENT' AND status IN \('READY', 'CLAIMED', 'WAITING_GATE'\)/);
+});

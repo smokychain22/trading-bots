@@ -51,7 +51,7 @@ test('every non-terminal publication state counts, terminal states release deter
   for (const status of ['SUBMITTED', 'TERMINAL', 'QUARANTINED']) {
     assert.equal(await read({ plans: [{ id: 'p', status, action: 'OPEN_CC', symbol: CALL_A, quantity: 1 }] }), 0, `plan ${status} is represented by its order intent or released`);
   }
-  for (const status of ['READY', 'SUBMITTING', 'SUBMITTED', 'WORKING', 'PARTIALLY_FILLED', 'CANCEL_REQUESTED', 'UNKNOWN_SUBMISSION', 'RECONCILING']) {
+  for (const status of ['READY', 'SUBMITTING', 'SUBMITTED', 'ACKNOWLEDGED', 'PARTIAL', 'CANCEL_REQUESTED', 'UNKNOWN_SUBMISSION', 'RECONCILING']) {
     assert.equal(await read({ intents: [{ id: 'i', status, symbol: CALL_A, side: 'sell', intent: 'sell_to_open', quantity: 2 }] }), 2, `intent ${status}`);
   }
   for (const status of terminalOrderIntentStates) {

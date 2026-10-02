@@ -373,3 +373,35 @@ test('PostgresManagementRepriceStore and the stale-READY sweep issue well-formed
   assert.match(sweep?.sql ?? '', /status::text='READY'/);
   assert.match(sweep?.sql ?? '', /NOT EXISTS \(SELECT 1 FROM trade\.broker_order/);
 });
+
+test('P2-08 lineage: DECISION -> PLAN -> ORDER_INTENT -> CLIENT_ORDER_ID are deterministic, and a replay creates no second broker order', async () => {
+  const h = await harness();
+  const inventory = knownInventory();
+  const source = { getCurrentQuote: async () => stockQuote(190, 190.1, T0) };
+  const first = await prepareMasterPaperAction(stockPlan, source, T0, true, undefined, () => T0, inventory);
+  const second = await prepareMasterPaperAction(stockPlan, source, T0, true, undefined, () => T0, inventory);
+  assert.ok(first.command && second.command);
+  assert.equal(first.command.orderIntentId, second.command.orderIntentId);
+  assert.equal(first.command.request.client_order_id, second.command.request.client_order_id);
+  assert.equal(first.command.decisionId, stockPlan.decisionId);
+  assert.equal(first.command.chainId, stockPlan.chainId);
+  assert.equal(first.command.action, stockPlan.action);
+  assert.equal(first.command.underlyingId, stockPlan.underlyingId);
+  // replaying the identical command executes nothing new
+  await new MasterPaperExecutionOrchestrator(h.coordinator).execute(second.command);
+  assert.equal(h.broker.calls.filter((call) => call.startsWith('submit')).length, 1);
+  assert.equal([...h.intents.intents.values()].length, 1);
+  // a different decision (or a later pricing attempt) is a different order identity, never an alias of the first
+  const otherDecision = await prepareMasterPaperAction({ ...stockPlan, decisionId: id(99), actionPlanId: id(98), actionGroupId: id(98) }, source, T0, true, undefined, () => T0, inventory);
+  assert.notEqual(otherDecision.command?.orderIntentId, first.command.orderIntentId);
+  assert.notEqual(otherDecision.command?.request.client_order_id, first.command.request.client_order_id);
+  const laterAttempt = await prepareMasterPaperAction({ ...stockPlan, pricingAttempt: 1, previousLimit: 190.1 }, source, T0, true, undefined, () => T0, inventory);
+  assert.notEqual(laterAttempt.command?.orderIntentId, first.command.orderIntentId);
+  assert.notEqual(laterAttempt.command?.request.client_order_id, first.command.request.client_order_id);
+  // a replacement stays inside the lineage of the original (same decision, action and chain) - the coordinator rejects anything else
+  await h.tick(6);
+  const intents = [...h.intents.intents.values()];
+  assert.equal(intents.length, 2);
+  assert.ok(intents.every((intent) => intent.decisionId === stockPlan.decisionId && intent.chainId === stockPlan.chainId && intent.action === 'SELL_STOCK'));
+  await assert.rejects(h.coordinator.replace(intents[1]!.orderIntentId, { ...(second.command as object), orderIntentId: id(97), decisionId: id(96) } as never, second.command.gate), /REPLACEMENT_LINEAGE_MISMATCH/);
+});

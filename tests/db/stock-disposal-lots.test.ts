@@ -97,6 +97,17 @@ test('multi-lot stock disposal and call-away: every open lot is disposed with it
     const events = await pool.query(`SELECT stock_lot_id::text AS id, shares::float8 AS shares FROM trade.assignment_event WHERE option_leg_id=$1 ORDER BY stock_lot_id`, [callLeg]);
     assert.equal(events.rows.reduce((sum, row) => sum + row.shares, 0), 200, 'assigned shares allocated exactly once across the lots');
 
+    // --- lineage: a disposal can never touch another chain's lot, and a rejected application leaves both chains untouched
+    const [e, f] = [randomUUID(), randomUUID()];
+    const chainE = await makeChain('RECOVERY_WAIT', [[e, 100, 50]]);
+    const chainF = await makeChain('RECOVERY_WAIT', [[f, 100, 50]]);
+    await assert.rejects(() => store.apply({ eventKind: 'STOCK_DISPOSAL' as const, evidenceKey: hash('cross-chain-' + chainF), chainId: chainF, occurredAt: now, decisionId: null,
+      providerActivityRefHash: null, stockLotId: e, disposedPricePerShare: 49, realizedStockPnl: -100 }), /OPEN_STOCK_LOT_NOT_FOUND/);
+    assert.deepEqual((await lotRows(chainE)).map((r) => r.disposed_at), [null]);
+    assert.deepEqual((await lotRows(chainF)).map((r) => r.disposed_at), [null]);
+    assert.equal((await state(chainE)).lifecycle_state, 'RECOVERY_WAIT');
+    assert.equal((await state(chainF)).lifecycle_state, 'RECOVERY_WAIT');
+
     // --- the two orchestrator queries (aggregated open lots) compile and run against the migrated schema
     const none = '00000000-0000-0000-0000-000000000000';
     const fillReport = await applyConfirmedFillLifecycle(pool, none, now);
