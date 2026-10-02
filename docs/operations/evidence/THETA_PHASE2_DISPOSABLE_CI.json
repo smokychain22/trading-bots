@@ -1,9 +1,9 @@
 {
   "version": "theta-phase2-disposable-ci-evidence-v1",
-  "sourceSha": "7bb483126a8b5625726193797e3679bfee2178b4",
-  "ciRun": "36998314945",
-  "ciUrl": "https://github.com/smokychain22/trading-bots/actions/runs/36998314945",
-  "observedAt": "2026-10-02T11:03:14.265Z",
+  "sourceSha": "3633ec5b91920d95cdf9afb789d4ba7b403ea6a3",
+  "ciRun": "36999653283",
+  "ciUrl": "https://github.com/smokychain22/trading-bots/actions/runs/36999653283",
+  "observedAt": "2026-10-02T11:16:43.930Z",
   "scope": "DISPOSABLE_DATABASE_NOT_PRODUCTION",
   "currentWorkerProven": false,
   "brokerMutations": 0,
@@ -32,7 +32,7 @@
         ]
       },
       "artifact": "disposable-faults.jsonl",
-      "rawArtifactSha256": "6d1838390de21bf30c80319843ead88af40968bdfb98365ad4f461dc2382dce4",
+      "rawArtifactSha256": "e27cbaa7e176ed8663a681effa6a6b3f0bf15c0dc24c3732c716b89f927f41d2",
       "result": {
         "requirementId": "2.2.FAULT_MATRIX",
         "reviewedBehavior": "Actual disposable PostgreSQL exercises statement timeout, checked-out and idle backend termination, transaction rollback and expired queue handoff. Every stage checks complete drain and no idle transaction. No Production fault is injected.",
@@ -54,42 +54,42 @@
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "server statement timeout retains SQLSTATE 57014, never acquisition timeout",
             "state": "PASS",
-            "durationMs": 90.761902,
+            "durationMs": 87.284741,
             "line": 44
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "backend termination during a checked-out query is contained and the next client is fresh",
             "state": "PASS",
-            "durationMs": 16.794301,
+            "durationMs": 12.693554,
             "line": 59
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "transaction error rolls back with no leaked transaction or client",
             "state": "PASS",
-            "durationMs": 10.69893,
+            "durationMs": 7.565554,
             "line": 79
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "expired queued acquisition never invokes work and late client handoff is released",
             "state": "PASS",
-            "durationMs": 54.440433,
+            "durationMs": 53.450168,
             "line": 87
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "idle backend termination is reported without an unhandled emitter error",
             "state": "PASS",
-            "durationMs": 11.520314,
+            "durationMs": 9.152086,
             "line": 102
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "real local PostgreSQL fault containment releases clients and distinguishes query failure from acquisition",
             "state": "PASS",
-            "durationMs": 187.876592,
+            "durationMs": 172.860886,
             "line": 24
           }
         ]
@@ -115,7 +115,7 @@
         ]
       },
       "artifact": "disposable-persistence.jsonl",
-      "rawArtifactSha256": "30260efbc30dffbf31911e226c6a0edcb1e430e73dbfc9da71130872ef2846e3",
+      "rawArtifactSha256": "06faf4a409de6299f030f4a51ab3684b2064654c4211404660d2e9ad83ecdb90",
       "result": {
         "requirementId": "2.4.FRESH_CYCLE",
         "reviewedBehavior": "Actual runAutonomousRuntimeCycle BROKER scope persists good reconciliation, injects a GET-only broker account 503 and recovers with new reads, correlation and persisted snapshot in real disposable PostgreSQL. Checks zero orders and drained pool. Does not prove deployed recovery or market evidence.",
@@ -138,12 +138,12 @@
             "file": "tests/db/customer-persistence.test.ts",
             "name": "real disposable PostgreSQL preserves user limits, master role and tenant isolation",
             "state": "PASS",
-            "durationMs": 349.852429,
+            "durationMs": 327.346351,
             "line": 12
           }
         ]
       }
     }
   ],
-  "artifactHash": "d8ac84d344eed04eb1a491aa65c98cba7278d303efc64d4d76648bef25de1694"
+  "artifactHash": "4e6627c308c5aa1140fe04f250541b4f8e795f497d3be13cd1713525759be378"
 }
