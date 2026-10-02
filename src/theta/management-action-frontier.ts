@@ -146,7 +146,7 @@ function evaluateAction(input: ManagementInputState, action: ManagementFrontierA
   }
   if (action === 'SELL_STOCK' && input.economics.stockMarkPerShare === null) blockers.push('EXECUTABLE_STOCK_PRICE_UNKNOWN');
   // Selling the shares under a short call on this chain would leave an uncovered short call.
-  if (action === 'SELL_STOCK' && input.contract.optionType === 'CALL' && (input.contract.contracts ?? 0) > 0) {
+  if (action === 'SELL_STOCK' && input.contract.optionType === 'CALL' && (input.contract.contracts === null || input.contract.contracts > 0)) {
     blockers.push('SHORT_CALL_OPEN_AGAINST_SHARES');
   }
   const optionOtm = input.market.spot !== null && input.contract.strike !== null && input.contract.optionType !== null

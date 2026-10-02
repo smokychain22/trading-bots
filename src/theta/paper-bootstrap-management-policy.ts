@@ -52,7 +52,7 @@ function sellStockExecutionEvidence(state: ManagementInputState, utility: number
   }
   const shares = state.economics.openStockShares;
   if (!Number.isSafeInteger(shares) || shares <= 0) return { evidence: null, reason: 'STOCK_EXECUTION_EVIDENCE_UNKNOWN_SHARES_NOT_WHOLE_POSITIVE' };
-  if (state.contract.optionType === 'CALL' && (state.contract.contracts ?? 0) > 0) {
+  if (state.contract.optionType === 'CALL' && (state.contract.contracts === null || state.contract.contracts > 0)) {
     return { evidence: null, reason: 'STOCK_EXECUTION_EVIDENCE_BLOCKED_SHORT_CALL_OPEN' };
   }
   return {

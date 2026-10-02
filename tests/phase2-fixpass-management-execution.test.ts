@@ -300,6 +300,9 @@ test('SELL_STOCK must never be possible while a covered call is short against th
   const forced = { ...managed({ lifecycle: 'RECOVERY_WAIT', observedAt: T_NEAR, stockRead: stockRead() }), ...sellStockPolicyFields,
     contract: { ...managed({ lifecycle: 'CC_OPEN' }).contract } };
   assert.ok(buildManagementActionFrontier(forced).actions.find((a) => a.action === 'SELL_STOCK')?.blockers.includes('SHORT_CALL_OPEN_AGAINST_SHARES'));
+  // an open call whose contract count is UNKNOWN blocks the sale too (null is not "zero calls")
+  const unknownCount = { ...forced, contract: { ...forced.contract, contracts: null } };
+  assert.ok(buildManagementActionFrontier(unknownCount).actions.find((a) => a.action === 'SELL_STOCK')?.blockers.includes('SHORT_CALL_OPEN_AGAINST_SHARES'));
   assert.equal(decide(forced).frontier.actions.find((a) => a.action === 'SELL_STOCK')?.executionEvidence, null);
   // account layer: sibling short calls / pending sell-to-open on the underlying block; unknown blocks
   const state = sellStockState(stockRead());

@@ -29,6 +29,8 @@ export async function persistConfirmedFillTca(pool:Pool,connectionId:string,asOf
         const multiplier=intent.instrument_type==='STOCK'?1:numeric(intent.multiplier);
         const first=fills.rows[0],last=fills.rows.at(-1);
         if(!first||!last||quantity!==Number(intent.quantity)||quantity<=0||multiplier===null){report.missing++;continue;}
+        const fillPrice=fills.rows.reduce((sum,row)=>sum+Number(row.quantity)*Number(row.price_per_share),0)/quantity;
+        if(!Number.isFinite(fillPrice)||fillPrice<=0){report.missing++;continue;}
         const quotes=await pool.query(`SELECT * FROM trade.execution_price_event
           WHERE order_intent_id=$1 AND event_type IN ('INITIAL_LIMIT','ARRIVAL','REPLACEMENT')
             AND event_time <= $2 AND received_at <= $2 AND provider_timestamp <= $2
@@ -41,7 +43,7 @@ export async function persistConfirmedFillTca(pool:Pool,connectionId:string,asOf
         const tca=buildTransactionCostAnalysis({side:String(intent.side).toUpperCase().startsWith('BUY')?'BUY':'SELL',
           quantity,multiplier,decision:{bid:Number(reference.bid),ask:Number(reference.ask),at:iso(reference.event_time)},
           arrival:{bid:Number(arrival.bid),ask:Number(arrival.ask),at:iso(arrival.event_time)},
-          fill:{price:fills.rows.reduce((sum,row)=>sum+Number(row.quantity)*Number(row.price_per_share),0)/quantity,
+          fill:{price:fillPrice,
             bid:null,ask:null,at:iso(last.filled_at)},
           limitAttempts:Math.max(1,...quotes.rows.map(row=>Number(row.attempt_no??1))),fees,
           estimatedMarketImpact:null,postFillMove:{},quoteProvider:String(reference.provider),
