@@ -6,16 +6,54 @@
       "DATE": "2026-10-02",
       "AFFECTED_RELEASE": "97665fbfd49adac33e0efd6b4a7a92f363f8be69",
       "FAILED_CYCLE_COUNT": 32,
-      "FAILED_CYCLE_COUNT_NOTE": "32 FAILED evidence cycles counted from the Production cycle table between 13:31:28Z and 18:19:37Z; an externally estimated figure of 29 differs by cycles counted at a different boundary and is not used",
       "PAYLOAD_MIN_BYTES": 809367,
       "PAYLOAD_MAX_BYTES": 1021149,
       "POLICY_LIMIT_BYTES": 786432,
       "ROOT_CAUSE": "adaptiveShadowDecision.shadowComparison.excluded and candidateEligibility were per-candidate lists inside the queryable frontier projection (about 300 bytes per contract); a full SPY chain (about 2.9k puts) pushed the projection over the 768 KiB inline policy -> CANONICAL_FRONTIER_POLICY_PAYLOAD_TOO_LARGE -> HTTP 503 -> evidence cycle not persisted",
       "FIX_SHA": "a5d8711078740ee65be30e3586ba49a04c89e23c",
-      "FIX_PROPERTIES": ["exact total counts", "exact reason counts", "complete-list hash", "explicit truncation state (storageState BOUNDED_PROJECTION_FULL_LIST_IN_COMPRESSED_CYCLE_ARCHIVE + truncated flag)", "bounded queryable projection (constant ~55 KB)", "complete evidence in the compressed cycle archive"],
+      "FIX_PROPERTIES": [
+        "exact total counts",
+        "exact reason counts",
+        "complete-list hash",
+        "explicit truncation state (storageState BOUNDED_PROJECTION_FULL_LIST_IN_COMPRESSED_CYCLE_ARCHIVE + truncated flag)",
+        "bounded queryable projection (constant ~55 KB)",
+        "complete evidence in the compressed cycle archive"
+      ],
       "REGRESSION_TEST": "tests/phase3-frontier-projection-bound.test.ts",
       "CURRENT_STATUS": "FIXED_DEPLOYED_POST_FIX_RUNTIME_OBSERVED: deployed 2026-10-02 18:18Z; three complete full-chain SPY scans persisted from 18:26Z with no payload error. Candidate-level detail of the 32 failed cycles was never persisted and is classified LOST_DUE_TO_CONFIRMED_RUNTIME_DEFECT (not unknown market evidence).",
-      "RELATED_IMPACT": "Command-5A marks missed with HOST_OFFLINE during the outage window"
+      "RELATED_IMPACT": "Command-5A marks missed with HOST_OFFLINE during the outage window",
+      "SOURCE_COMMIT_COUNT": 29,
+      "PRODUCTION_QUERY_COUNT": 32,
+      "PRODUCTION_QUERY_COUNT_2026_10_01": 1,
+      "COUNT_RECONCILIATION": {
+        "WHY_DIFFERENT": "The fix commit message (a5d8711) recorded 29 payload-overflow failures on 2026-10-02, which is exactly the number of CANONICAL_FRONTIER_POLICY_PAYLOAD_TOO_LARGE cycles invoked up to 17:53:00Z, when the cause was diagnosed. Three more cycles failed at 18:01:44Z, 18:10:31Z and 18:19:37Z before the fix took over, giving 32 in the Production table for 2026-10-02. One further failure on 2026-10-01 (789,309 bytes at 13:59:32Z) is outside both counts.",
+        "EVIDENCE_SOURCE_SOURCE_COUNT": "git commit message a5d8711 (written during diagnosis)",
+        "EVIDENCE_SOURCE_PRODUCTION_COUNT": "read-only query of ops.runtime_worker_cycle (status=FAILED, error_code like CANONICAL_FRONTIER_POLICY_PAYLOAD_TOO_LARGE%), run 2026-10-03",
+        "FAILURE_TIMES_UTC_LAST_FIVE": [
+          "17:34:32",
+          "17:43:33",
+          "17:53:00",
+          "18:01:44",
+          "18:10:31",
+          "18:19:37"
+        ],
+        "OTHER_FAILURES_2026_10_02": "one POSTGRES_57P03 (database starting up) at 20:41:47Z, unrelated to the payload defect"
+      }
+    },
+    {
+      "INCIDENT_ID": "INC-20261003-DR-SNAPSHOT-KEEPER",
+      "DATE": "2026-10-03",
+      "AFFECTED_RELEASE": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "FAILED_CYCLE_COUNT": 0,
+      "PAYLOAD_MIN_BYTES": 0,
+      "PAYLOAD_MAX_BYTES": 0,
+      "SUMMARY": "The governed pre-migration verified backup (backup 2026-10-02_183040-c54f8cb8) completed its 2h07m dump, then failed before any database mutation at the first digest query with: snapshot does not exist (CRITICAL_DIGEST_QUERY_FAILED:trade.decision). Production stayed at schema 067.",
+      "ROOT_CAUSE": "The exported snapshot is held by one idle psql session in an open transaction for the whole dump. That session disappeared between 20:37:50Z (dump complete) and 20:42:00Z (failure). Two candidate causes, not distinguishable from the persisted evidence: (1) a long-idle connection reaped on the network path; (2) a transient server-side connectivity event: ops.runtime_worker_cycle recorded a POSTGRES_57P03 (cannot_connect_now) failure at 20:41:47Z, 13 s before the backup failed. The server idle_in_transaction_session_timeout is 1 day and pg_postmaster_start_time is unchanged (2026-09-22), so an idle-transaction timeout and a full restart are ruled out.",
+      "FIX_SHA": "3158c61 (heartbeat keeps the keeper active and records its death) and the Assert-ThetaSnapshotKeeperAlive commit (fails the backup immediately after the dump with the real cause)",
+      "FIX_LIMITS": "The heartbeat addresses cause (1) only. It cannot keep a snapshot alive across a server-side connection loss (cause 2). A keeper that dies during a multi-hour dump still forces a rerun; the new assertion makes that failure immediate and explicit. Possible further hardening (not yet implemented): run the digest queries and the schema dump before the long custom dump so the snapshot only needs to survive minutes.",
+      "REGRESSION_TEST": "tests/windows/theta-snapshot-heartbeat.test.ps1",
+      "CURRENT_STATUS": "MITIGATED_NOT_ELIMINATED: heartbeat and early detection shipped on the branch; confirmation requires a governed backup that completes.",
+      "PRODUCTION_MUTATION": "NONE"
     }
   ]
 }
