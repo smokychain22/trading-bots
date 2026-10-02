@@ -886,3 +886,30 @@ test('P2-09: the claim path is race-safe at the database boundary (pre-submit un
   assert.match(migration, /ux_master_paper_action_plan_management_chain_leg_presubmit/);
   assert.match(migration, /WHERE authority_kind = 'MANAGEMENT' AND status IN \('READY', 'CLAIMED', 'WAITING_GATE'\)/);
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// SELL_STOCK_ECONOMICS_SEMANTICS: for a stock exit `economicsRemainPositive` means INCREMENTAL UTILITY VERSUS WAIT is positive. It is
+// not "the sale realizes a profit", and there is no sell-only-above-basis rule.
+// ---------------------------------------------------------------------------------------------------------------------
+
+test('SELL_STOCK economicsRemainPositive is incremental utility vs WAIT, independent of basis or realized P&L (no sunk-cost rule, no forced sale)', () => {
+  const evidenceFor = (state: ManagementInputState) =>
+    decide(state).evidence?.actionValues.find((v) => v.action === 'SELL_STOCK')?.executionEvidence;
+  // a LOSING sale (basis 195, bid 190) whose forward utility beats WAIT is positive
+  const losing = sellStockState(stockRead({ bid: 190, ask: 190.1 }));
+  assert.equal(losing.economics.stockBasisPerShare, 195);
+  assert.equal(evidenceFor(losing)?.economicsRemainPositive, true);
+  // a PROFITABLE sale (bid far above basis) with no forward advantage over WAIT is NOT positive: no forced sale
+  const winningNoReason = { ...managed({ lifecycle: 'RECOVERY_WAIT', observedAt: T_NEAR, stockRead: stockRead({ bid: 250, ask: 250.1 }), mark: 250 }) };
+  assert.equal(evidenceFor(winningNoReason)?.economicsRemainPositive, false);
+  assert.equal(decide(winningNoReason).frontier.selectedAction === 'SELL_STOCK', false);
+  // changing the basis (any realized history) never changes the flag: utility is forward-looking
+  const lowBasis = { ...losing, economics: { ...losing.economics, stockBasisPerShare: 100 } };
+  assert.equal(evidenceFor(lowBasis)?.economicsRemainPositive, evidenceFor(losing)?.economicsRemainPositive);
+  const unknownBasis = { ...losing, economics: { ...losing.economics, stockBasisPerShare: null } };
+  assert.equal(evidenceFor(unknownBasis)?.economicsRemainPositive, true, 'unknown basis never blocks a rational sale');
+  // the evidence never claims expected value
+  const sell = evidenceFor(losing);
+  assert.equal(sell?.expectedAfterCostEv, null);
+  assert.equal(sell?.empiricalEconomicsReady, false);
+});

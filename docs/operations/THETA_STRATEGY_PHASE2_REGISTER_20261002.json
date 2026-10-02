@@ -1,8 +1,8 @@
 {
   "computed": {
-    "PHASE2_TOTAL": 64,
-    "PASS": 45,
-    "OWNER_POLICY": 9,
+    "PHASE2_TOTAL": 80,
+    "PASS": 59,
+    "OWNER_POLICY": 11,
     "PROVIDER_LIMITED": 1,
     "FUTURE_MARKET": 2,
     "FUTURE_PAPER": 4,
@@ -634,12 +634,248 @@
     {
       "ID": "STOCK-DISPOSAL-LOT-COVERAGE",
       "DOMAIN": "CHAIN",
-      "SOURCE": "broker-fill-lifecycle-router.ts, postgres-broker-fill-lifecycle-orchestrator.ts",
+      "SOURCE": "stock-lot-allocation.ts, broker-fill-lifecycle-router.ts, postgres-lifecycle-application-store.ts",
       "CANONICAL_AUTHORITY": "whole-chain accounting",
-      "CURRENT_BEHAVIOR": "a stock sale is recorded only when exactly one open lot is sold in full; otherwise UNKNOWN (no cross-lot basis blending)",
+      "CURRENT_BEHAVIOR": "a sale or call-away is allocated across EVERY open lot with each lot basis; full position exact; chain closes only with no open lot left",
       "EXPECTED_BEHAVIOR": "same",
       "TEST": [
+        "tests/phase2-chain-stock-disposal.test.ts",
+        "tests/db/stock-disposal-lots.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "MULTI_LOT_DISPOSAL",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "src/execution/stock-lot-allocation.ts",
+      "CANONICAL_AUTHORITY": "sum of allocated lot P&L = chain realized stock P&L",
+      "CURRENT_BEHAVIOR": "sum(allocated)=disposed; no negative lot; proceeds and basis allocated once; 250 shares never land on one 100-share lot; fills of another chain never touch these lots",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-chain-stock-disposal.test.ts",
+        "tests/db/stock-disposal-lots.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "MULTI_LOT_PARTIAL_POSITION_DISPOSAL",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "stock-lot-allocation.ts (policy parameter), lot ledger",
+      "CANONICAL_AUTHORITY": "owner policy",
+      "CURRENT_BEHAVIOR": "no repository authority picks lots or splits a lot for a partial position (FIFO / LIFO / specific / weighted); the allocator accepts a policy but the ledger cannot split a lot without redesigning dividend and assignment attribution; result is UNKNOWN, never a guess",
+      "EXPECTED_BEHAVIOR": "owner chooses the lot-selection policy and approves the lot-split accounting",
+      "TEST": [
         "tests/phase2-chain-stock-disposal.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "PARTIAL_FILL_STOCK_EXIT",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "management-order-repricing.ts",
+      "CANONICAL_AUTHORITY": "owner policy",
+      "CURRENT_BEHAVIOR": "a part-filled stock exit is left resting at its last bounded price, never cancelled into a partial disposal that the ledger cannot record",
+      "EXPECTED_BEHAVIOR": "owner policy for partial position accounting (see MULTI_LOT_PARTIAL_POSITION_DISPOSAL)",
+      "TEST": [
+        "tests/phase2-repricing-driver.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "REPRICING_DRIVER",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "src/execution/management-order-repricing.ts, autonomous-runtime PENDING_ORDER_MANAGEMENT",
+      "CANONICAL_AUTHORITY": "adaptive-limit-policy.ts bounded concessions",
+      "CURRENT_BEHAVIOR": "pricingAttempt is rebuilt from persisted rows (intents and price events), never reset by restart, retry, reconciliation or replace; bounded concessions; cancel at the floor or max attempts",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-repricing-driver.test.ts",
+        "tests/db/management-reprice-store.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SELL_STOCK_FLOOR_LIVENESS",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "management-order-repricing.ts, plan assembly, in-flight guard",
+      "CANONICAL_AUTHORITY": "SAME_DECISION_REPRICE vs NEW_MANAGEMENT_DECISION",
+      "CURRENT_BEHAVIOR": "the sealed floor is never lowered inside a decision; an unreachable floor cancels and closes the plan so the next scan makes a new decision with a re-based floor; no repeated identical blocked plan",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-fixpass-management-execution.test.ts",
+        "tests/phase2-repricing-driver.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "PRE_SUBMIT_QUOTE_AGE_CONTRACT",
+      "DOMAIN": "EXECUTION",
+      "SOURCE": "paper-bootstrap-runtime-policy.ts quoteAge, master-paper-action-handoff.ts",
+      "CANONICAL_AUTHORITY": "theta-quote-freshness-contract-v1",
+      "CURRENT_BEHAVIOR": "decision evidence 30 s, plan windows 45 s (new risk) and 30 s (management), submit cap 45 s applied as min(cap, window left); each a named registered value with invariants",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/presession-configuration-registry.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "BROKER_LEDGER_SHARE_RECONCILIATION",
+      "DOMAIN": "EXECUTION",
+      "SOURCE": "stock-share-reconciliation.ts, alpaca-stock-inventory-source.ts, handoff",
+      "CANONICAL_AUTHORITY": "two share truths",
+      "CURRENT_BEHAVIOR": "a stock sale needs ledger == broker shares at scan time AND a fresh broker read at submit time; mismatch or unknown is a typed block, never a ledger-only order",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-share-reconciliation.test.ts",
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "FREE_SELLABLE_SHARES",
+      "DOMAIN": "EXECUTION",
+      "SOURCE": "stock-share-reconciliation.ts freeSellableShares",
+      "CANONICAL_AUTHORITY": "never naked",
+      "CURRENT_BEHAVIOR": "free = reconciled shares - 100 x committed short-call contracts; unknown or over-committed fails closed; the sale needs the whole position free",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-share-reconciliation.test.ts",
+        "tests/phase2-short-call-commitments.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SELL_STOCK_QUANTITY",
+      "DOMAIN": "EXECUTION",
+      "SOURCE": "compileManagementExecutionLegDirectives, plan schema",
+      "CANONICAL_AUTHORITY": "whole shares",
+      "CURRENT_BEHAVIOR": "integer, > 0, equals broker-confirmed and ledger shares, no fractional shares, zero is a valid outcome",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "ACTION_PLAN_INTEGRITY",
+      "DOMAIN": "EXECUTION",
+      "SOURCE": "action-plan-integrity.ts, postgres-master-paper-action-plan-store.ts, migration 068",
+      "CANONICAL_AUTHORITY": "sealed economic payload",
+      "CURRENT_BEHAVIOR": "plan hash and denormalized columns verified at claim and before submit; economic columns immutable in the database; terminal states final; mutated plan quarantined, no order",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-plan-integrity.test.ts",
+        "tests/db/plan-integrity.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "PLAN_ORDER_FILL_LINEAGE",
+      "DOMAIN": "EXECUTION",
+      "SOURCE": "command assembly, coordinator, lifecycle application",
+      "CANONICAL_AUTHORITY": "decision -> plan -> intent -> client order -> broker order -> fill -> lifecycle event -> lot allocation",
+      "CURRENT_BEHAVIOR": "deterministic intent and client order ids, replay creates no second order, replacements stay in the decision lineage, a disposal cannot touch another chain lot",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-repricing-driver.test.ts",
+        "tests/db/stock-disposal-lots.test.ts",
+        "tests/db/order-intent-client-order-id-unique.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "RECOVERY_ACTION_RACE",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "in-flight guard, committed short-call reader, migration 068 uniqueness",
+      "CANONICAL_AUTHORITY": "one consistent share-commitment state",
+      "CURRENT_BEHAVIOR": "SELL_STOCK and SELL_CC cannot both be in flight for a chain; sibling chains see published call plans; one pre-submit management plan per chain and leg in the database",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-fixpass-management-execution.test.ts",
+        "tests/db/plan-integrity.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SHORT_CALL_COMMITMENT_GUARD",
+      "DOMAIN": "EXECUTION",
+      "SOURCE": "management-chain-inflight.ts readCommittedShortCallContracts",
+      "CANONICAL_AUTHORITY": "never naked",
+      "CURRENT_BEHAVIOR": "positions, working orders, READY/CLAIMED/WAITING_GATE call plans and post-snapshot fills count; terminal states release; unknown fails closed",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-short-call-commitments.test.ts",
+        "tests/db/management-chain-inflight.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SELL_STOCK_LIMIT_ROUNDING",
+      "DOMAIN": "EXECUTION",
+      "SOURCE": "adaptive-limit-policy.ts",
+      "CANONICAL_AUTHORITY": "limit inside the BBO and past the sealed floor",
+      "CURRENT_BEHAVIOR": "sub-tick quotes cancel with a typed reason; every policy-decidable quote yields PLACE, REPLACE or CANCEL, never an assembly exception",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/adaptive-limit-policy.test.ts",
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SELL_STOCK_ECONOMICS_SEMANTICS",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "paper-bootstrap-management-policy.ts sellStockExecutionEvidence",
+      "CANONICAL_AUTHORITY": "incremental utility versus WAIT",
+      "CURRENT_BEHAVIOR": "economicsRemainPositive for a stock exit means incremental utility versus RECOVERY_WAIT is positive, not that the sale realizes a profit; unrelated to basis",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "PHASE2_DISPOSABLE_CI_EVIDENCE",
+      "DOMAIN": "EVIDENCE",
+      "SOURCE": "THETA_PHASE2_DISPOSABLE_CI.json",
+      "CANONICAL_AUTHORITY": "exact-SHA disposable PostgreSQL run",
+      "CURRENT_BEHAVIOR": "requirement 2.4 is bound to a CI artifact whose source hashes match the release sources",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-completion-register.test.ts"
       ],
       "STATUS": "PASS",
       "SOLVABILITY": "FIXED_THIS_PHASE",

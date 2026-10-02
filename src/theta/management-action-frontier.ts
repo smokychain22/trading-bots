@@ -41,6 +41,11 @@ export interface ManagementActionExecutionEvidence {
    * forward utility beats HOLD" -- it is NOT a claim of positive after-cost EV (`expectedAfterCostEv` stays null and
    * `empiricalEconomicsReady` false).
    */
+  /**
+   * READ AS: INCREMENTAL_UTILITY_VS_BASELINE_IS_POSITIVE. For CLOSE_FULL / CLOSE_CC it compares the close against HOLD; for
+   * SELL_STOCK it compares the sale against RECOVERY_WAIT on common forward economics. It is NOT "expected profit > 0", NOT a
+   * realized-P&L test, and there is no sell-only-above-basis rule. A tie (utility 0) is false, so a stock sale is never forced.
+   */
   readonly economicsRemainPositive: boolean;
   readonly expectedAfterCostEv: number | null;
   readonly empiricalEconomicsReady: boolean;
