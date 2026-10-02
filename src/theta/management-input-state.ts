@@ -268,7 +268,10 @@ export function assembleManagementInput(row: Row, input: {
   const stockMtm = stockShares === 0 ? 0
     : stockBasis !== null && stockMark !== null ? (stockMark - stockBasis) * stockShares : null;
   const hasOpenOption = contractSymbol !== null && contracts !== null && contracts > 0;
-  const wholeChainPnl = (!hasOpenOption || optionMark !== null) && stockMtm !== null && fees !== null
+  // No dividend writer exists, so a chain that ever held stock cannot prove its dividends: the stored COALESCE zero is
+  // "none recorded", not "none occurred". A closed leg without a realized P&L is likewise broken ledger evidence.
+  const ledgerComplete = row.unknown_closed_leg_pnl !== true && row.has_stock_lots !== true;
+  const wholeChainPnl = ledgerComplete && (!hasOpenOption || optionMark !== null) && stockMtm !== null && fees !== null
     ? realizedOptionPnl + (optionMark ?? 0) + realizedStockPnl + stockMtm + dividends - fees : null;
   const expiration = text(row.expiration_date)?.slice(0, 10) ?? null;
   const spot = stockMark ?? numeric(snapshot.underlyingState && object(snapshot.underlyingState).last);
@@ -497,7 +500,7 @@ export class PostgresManagementInputStore {
         oc.strike,oc.expiration_date,oc.multiplier,
         oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.retrieved_at AS quote_retrieved_at,oq.feed,oq.quality AS quote_quality,
         totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,
-        totals.realized_stock_pnl,totals.dividends,totals.fees,totals.unknown_fill_fees,
+        totals.realized_stock_pnl,totals.dividends,totals.fees,totals.unknown_fill_fees,totals.unknown_closed_leg_pnl,totals.has_stock_lots,
         a.account_snapshot_id,a.buying_power,a.options_buying_power,a.as_of AS account_as_of,
         a.retrieved_at AS account_retrieved_at,fs.fusion_snapshot_id,fs.snapshot_json,fs.content_hash AS fusion_content_hash,
         latest_decision.ownership AS management_ownership,
@@ -565,6 +568,9 @@ export class PostgresManagementInputStore {
           COALESCE((SELECT sum(s.realized_pnl) FROM trade.stock_lot s WHERE s.chain_id=ec.chain_id),0) AS realized_stock_pnl,
           COALESCE((SELECT sum(d.amount_per_share*s.shares) FROM trade.dividend_event d JOIN trade.stock_lot s ON s.stock_lot_id=d.stock_lot_id WHERE s.chain_id=ec.chain_id),0) AS dividends,
           COALESCE((SELECT sum(f.amount) FROM trade.fee_event f WHERE f.chain_id=ec.chain_id),0) AS fees,
+          EXISTS(SELECT 1 FROM trade.option_leg cl WHERE cl.chain_id=ec.chain_id AND cl.closed_at IS NOT NULL
+            AND cl.realized_pnl IS NULL) AS unknown_closed_leg_pnl,
+          EXISTS(SELECT 1 FROM trade.stock_lot hs WHERE hs.chain_id=ec.chain_id) AS has_stock_lots,
           EXISTS(SELECT 1 FROM trade.fill fi JOIN trade.broker_order bo ON bo.broker_order_id=fi.broker_order_id
             JOIN trade.order_intent oi ON oi.order_intent_id=bo.order_intent_id WHERE oi.chain_id=ec.chain_id AND fi.fees IS NULL) AS unknown_fill_fees
         FROM trade.option_leg l WHERE l.chain_id=ec.chain_id

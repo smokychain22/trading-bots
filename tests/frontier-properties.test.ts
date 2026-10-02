@@ -117,3 +117,17 @@ test('metamorphic: contract order, identical duplicates and provider ordering ne
   assert.equal(duplicated.selected, reference.selected);
   assert.equal(duplicated.quantity, reference.quantity, 'identical duplicates cannot amplify quantity');
 });
+
+test('an AEGIS hold caused by an UNKNOWN required input is never an earned WAIT, while a genuine veto remains one', () => {
+  const id = 'THETA_CONVENTIONAL:AAPL261016P00190000';
+  const run = (state: 'HOLD_ONLY' | 'HARD_VETO', reasons: readonly string[]) => buildCanonicalStrategyFrontier({
+    ...base, aegisNewRiskStateByCandidateId: { [id]: state }, aegisBindingReasonsByCandidateId: { [id]: reasons },
+    contracts: [contract()], routing: routing(['THETA_Q']) } as never);
+  const unknownHold = run('HOLD_ONLY', ['LIQUIDITY:SPREAD_WIDENING_UNKNOWN']);
+  assert.equal(unknownHold.selectedQuantity, 0);
+  assert.equal(unknownHold.globalWaitEarned, false, 'unknown required evidence cannot earn a WAIT');
+  assert.equal(unknownHold.primaryAction, 'SYSTEM_HOLD');
+  const veto = run('HARD_VETO', ['UNDERLYING:UNDERLYING_SEVERELY_EXCEEDED']);
+  assert.equal(veto.selectedQuantity, 0);
+  assert.equal(veto.globalWaitEarned, true, 'a real risk veto is an earned WAIT');
+});

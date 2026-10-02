@@ -15,7 +15,7 @@ import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './
 import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-assembly.js';
 import { isAutonomousMasterPaperAccepted } from '../execution/paper-execution-authorization.js';
 import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
-import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, type RuntimeBehaviorDiagnostic,
+import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, summarizeSizingZero, type RuntimeBehaviorDiagnostic,
   type RuntimeFirstPaperSymbolEvidence, type RuntimeReadOnlyPreSubmitProof } from '../theta/runtime-behavior-diagnostic.js';
 import { buildUniverseBreadthShadowPlan } from './strategy-quality-shadow-diagnostics.js';
 import type { BrokerReconciliationResult } from '../execution/broker-reconciliation-worker.js';
@@ -628,6 +628,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const session=distinctSessions.length===1?distinctSessions[0]??'UNKNOWN':distinctSessions.length>1?'MIXED' as const
     :input.reconciliation.marketOpen===true&&input.reconciliation.calendarSessionConfirmed===true?'OPEN' as const
       :input.reconciliation.marketOpen===false?'CLOSED' as const:'UNKNOWN' as const;
+  const sizingZero=summarizeSizingZero(entryCandidates);
   const antiParalysisFindings=deriveAntiParalysisFindings({
     candidateHardBlockers:entryCandidates.map((candidate)=>candidate.hardBlockers),strategyReachability:strategyDiagnostics,
   });
@@ -677,6 +678,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     softRankedCount:entryBranches.reduce((total,branch)=>total+branch.softRanked,0),
     dataInsufficientCount:entryBranches.reduce((total,branch)=>total+branch.dataInsufficient,0),
     quantityZeroCount:entryCandidates.filter((candidate)=>candidate.sizing.quantity===0).length,
+    riskEvaluatedZeroCount:sizingZero.riskEvaluatedZeroCount,sizingZeroBreakdown:sizingZero.breakdown,
     aegisVetoCount:scan.results.filter((member)=>member.cycle?.orchestration?.aegis?.newRiskState==='HARD_VETO').length,
     nearMissCount:strategyFrontiers.filter((frontier)=>frontier.nearMissCandidateId!==null).length,
     softEconomicRejectionCount:rejectedCandidates.filter((candidate)=>candidate.riskFeasible

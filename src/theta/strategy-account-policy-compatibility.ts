@@ -59,7 +59,7 @@ export function assessStrategyAccountPolicyCompatibility(input: {
     || capital === null || !Number.isFinite(capital) || capital <= 0
     || input.exposure.cspCollateralRequired === null || input.exposure.stockInventoryValue === null
     || input.exposure.pendingOpeningCapitalAtRisk === null || input.exposure.pendingAssignmentCollateral === null
-    || longValue === null || (input.exposure.unclassifiedPositionSymbols?.length ?? 0) > 0) {
+    || longValue === null || input.exposure.unclassifiedPositionSymbols === undefined || input.exposure.unclassifiedPositionSymbols.length > 0) {
     return {
       ...base, state: 'UNKNOWN', accountFeasible: null, minimumTickerConcentrationPct: null,
       policyLimitPct: input.policy?.maxTickerConcentrationPct ?? null,

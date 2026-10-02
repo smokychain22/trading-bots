@@ -386,7 +386,7 @@ export function deriveCandidateInclusiveAegisInputs(
     && exposure.pendingOpeningCapitalAtRisk !== null && exposure.pendingAssignmentCollateral !== null
     && recoveryInventoryValue !== null && Number.isFinite(recoveryInventoryValue) && recoveryInventoryValue >= 0
     && exposure.unparsedOptionSymbols.length === 0 && exposure.unclassifiedOpenOrderIds.length === 0
-    && (exposure.unclassifiedPositionSymbols?.length ?? 0) === 0;
+    && exposure.unclassifiedPositionSymbols !== undefined && exposure.unclassifiedPositionSymbols.length === 0;
   if (!baseKnown) unknownReasons.push('ACCOUNT_OR_CURRENT_EXPOSURE_INCOMPLETE');
   if (openOrders.length !== exposure.openOrderCount) unknownReasons.push('PENDING_ORDER_SNAPSHOT_MISMATCH');
   if (exposure.unclassifiedOpenOrderIds.length > 0) unknownReasons.push('PENDING_ORDER_INTENT_NOT_CLASSIFIED');

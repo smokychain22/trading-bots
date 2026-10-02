@@ -491,6 +491,13 @@ function structuralSizing(
   return result(quantity, bindingConstraint, quantity === 0 ? ['QUANTITY_ZERO_VALID'] : ['STRUCTURAL_SIZING_COMPUTED']);
 }
 
+const unknownCodedReason = /(^|:)[A-Z0-9_]*_UNKNOWN$/;
+/** True when AEGIS held the candidate only because required inputs were UNKNOWN (every exact binding reason is *_UNKNOWN). */
+function aegisHoldIsMissingEvidence(input: CanonicalStrategyFrontierInput, candidateId: string): boolean {
+  const reasons = input.aegisBindingReasonsByCandidateId?.[candidateId]?.filter((reason) => reason.trim().length > 0) ?? [];
+  return reasons.length > 0 && reasons.every((reason) => unknownCodedReason.test(reason));
+}
+
 function aegisStateFor(input: CanonicalStrategyFrontierInput, candidateId: string): CanonicalStrategyFrontierInput['aegisNewRiskState'] {
   if (input.aegisNewRiskStateByCandidateId !== undefined &&
     Object.hasOwn(input.aegisNewRiskStateByCandidateId, candidateId)) {
@@ -528,7 +535,10 @@ function commonEvidence(contract: NormalizedOptionContract, input: CanonicalStra
   if (!contract.executable) unknownEvidence.push(`EXECUTION_QUOTE_REQUIRED:${contract.nonExecutableReason ?? 'UNKNOWN'}`);
   const candidateAegisState = aegisStateFor(input, candidateId);
   if (candidateAegisState === null) unknownEvidence.push('AEGIS_STATE_UNKNOWN');
-  else if (['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) hardBlockers.push(`AEGIS_${candidateAegisState}`);
+  // A HOLD_ONLY whose every binding reason is an UNKNOWN required input is missing evidence, not a risk finding.
+  else if (candidateAegisState === 'HOLD_ONLY' && aegisHoldIsMissingEvidence(input, candidateId)) {
+    unknownEvidence.push('AEGIS_REQUIRED_INPUT_UNKNOWN');
+  } else if (['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) hardBlockers.push(`AEGIS_${candidateAegisState}`);
   if (input.eventState === null) unknownEvidence.push('EVENT_STATE_UNKNOWN');
   else softEvidence.push(`EVENT_STATE:${input.eventState}`);
   if (contract.iv === null) unknownEvidence.push('IV_UNKNOWN');
@@ -1125,10 +1135,13 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const universeIncomplete = input.unevaluatedUnderlyingCount > 0;
   const sizingEvidenceUnknown = globallyRanked.filter((candidate) => candidate.branch === 'THETA_CONVENTIONAL'
     && candidate.riskFeasible &&
-    candidate.sizing.quantity === 0 && ['AEGIS_UNKNOWN', 'AEGIS_NOT_REACHED_UPSTREAM', 'SIZING_POLICY_INCOMPLETE', 'SIZING_POLICY_INVALID',
+    candidate.sizing.quantity === 0 && (['AEGIS_UNKNOWN', 'AEGIS_NOT_REACHED_UPSTREAM', 'SIZING_POLICY_INCOMPLETE', 'SIZING_POLICY_INVALID',
       'COLLATERAL_INPUT_UNKNOWN', 'REDUCED_MULTIPLIER_UNKNOWN', 'UNKNOWN_STOCK_CAPACITY',
       'COVERED_SHARES_UNKNOWN', 'SIZING_CAPACITY_INVALID', 'STOCK_CAPACITY_INVALID']
-      .includes(candidate.sizing.bindingConstraint));
+      .includes(candidate.sizing.bindingConstraint)
+      // An AEGIS family reason such as LIQUIDITY:SPREAD_WIDENING_UNKNOWN means a required input was unknown, so the
+      // zero is missing evidence, not an economic or risk finding: it must not be able to earn a GLOBAL_WAIT.
+      || unknownCodedReason.test(candidate.sizing.bindingConstraint)));
   const paperBranch = branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
   const paperBranchEvaluated = paperBranch?.applicable === true && paperBranch.evaluationState === 'EVALUATED';
   const qEvaluationRequired = input.thetaQCandidateEvaluationByOptionSymbol !== undefined || decision !== undefined;

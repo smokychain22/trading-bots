@@ -165,7 +165,7 @@ export class PostgresWholeChainComponentsRepository {
     const originalPuts = legs.filter((row) => row.side === 'SHORT' && row.option_type === 'PUT'
       && row.rolled_from_option_leg_id == null);
     const initialPutPremium = this.singlePremium(originalPuts, asOf, 'INITIAL_PUT_LEG_MISSING_OR_AMBIGUOUS');
-    const putCloseCosts = this.putCloseCosts(legs, asOf);
+    const putCloseCosts = this.putCloseCosts(legs, assignments, expirations, asOf);
 
     const rolledPuts = legs.filter((row) => row.side === 'SHORT' && row.option_type === 'PUT'
       && row.rolled_from_option_leg_id != null);
@@ -242,8 +242,11 @@ export class PostgresWholeChainComponentsRepository {
     return value === null ? unknownField(asOf, [invalidReason], [evidenceSource]) : knownField(value, asOf, [evidenceSource]);
   }
 
-  private putCloseCosts(rows: readonly Row[],asOf:string):WholeChainEvidenceField<number>{
+  private putCloseCosts(rows: readonly Row[],assignments: readonly Row[],expirations: readonly Row[],
+    asOf:string):WholeChainEvidenceField<number>{
     const puts=rows.filter((row)=>row.side==='SHORT'&&row.option_type==='PUT');
+    const assignmentLegs=new Set(assignments.filter((row)=>row.option_type==='PUT').map((row)=>String(row.option_leg_id)));
+    const expirationLegs=new Set(expirations.map((row)=>String(row.option_leg_id)));
     const evidenceSource=source('trade.option_leg + trade.option_partial_close_realization',
       ['close_price_per_share','quantity','close_reason','partial_closing_debit'],puts,'option_leg_id','closed_at');
     const costs=puts.map((row)=>{
@@ -253,7 +256,12 @@ export class PostgresWholeChainComponentsRepository {
         return close===null||quantity===null||multiplier===null?null:close*quantity*multiplier;
       }
       if(reason==='ROLLED')return 0;
-      return partial;
+      // A leg still open at asOf has incurred no close cost yet. A CLOSED leg must prove its terminal event:
+      // an unrecognised or unproven close reason is UNKNOWN, never a known zero close cost.
+      if(row.closed_at==null)return partial;
+      if(reason==='EXPIRE_OTM'&&expirationLegs.has(String(row.option_leg_id)))return partial;
+      if(reason==='ASSIGNED'&&assignmentLegs.has(String(row.option_leg_id)))return partial;
+      return null;
     });
     return costs.every((value):value is number=>value!==null)
       ?knownField(sum(costs),asOf,[evidenceSource])
@@ -327,8 +335,8 @@ export class PostgresWholeChainComponentsRepository {
           return unknownField(asOf, ['COVERED_CALL_CLOSE_COST_INCOMPLETE'], [callSource]);
         }
         costs.push(close * quantity * multiplier);
-      } else if (reason === 'EXPIRE_OTM' && expirationLegs.has(legId)) costs.push(0);
-      else if (reason === 'ASSIGNED' && assignmentLegs.has(legId)) costs.push(0);
+      } else if (reason === 'EXPIRE_OTM' && expirationLegs.has(legId)) costs.push(number(row.partial_closing_debit) ?? 0);
+      else if (reason === 'ASSIGNED' && assignmentLegs.has(legId)) costs.push(number(row.partial_closing_debit) ?? 0);
       else return unknownField(asOf, ['COVERED_CALL_TERMINAL_EVIDENCE_INCOMPLETE'], [callSource]);
     }
     return knownField(sum(costs), asOf, [callSource]);

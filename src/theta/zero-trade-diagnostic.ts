@@ -113,6 +113,11 @@ const record = (value: unknown): JsonRecord => value !== null && typeof value ==
 const observedFiniteNumber = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
 
+/** v6+ rows record how many zero-quantity candidates were actually risk/sizing-evaluated; older rows fall back to the historical column. */
+export const riskEvaluatedZeroOf = (row: { readonly quantity_zero_count: number; readonly diagnostic_json?: unknown }): number =>
+  observedFiniteNumber(record(row.diagnostic_json).riskEvaluatedZeroCount) ?? row.quantity_zero_count;
+
+
 function increment(target: Record<string, number>, values: readonly string[]): void {
   for (const value of values) target[value] = (target[value] ?? 0) + 1;
 }
@@ -304,7 +309,9 @@ export async function readZeroTradeDiagnostic(
         hardRejectedCount: row.hard_rejected_count,
         softRankedCount: row.soft_ranked_count,
         dataInsufficientCount: row.data_insufficient_count,
-        quantityZeroCount: row.quantity_zero_count,
+        quantityZeroCount: riskEvaluatedZeroOf(row),
+        quantityZeroAllCount: row.quantity_zero_count,
+        sizingZeroBreakdown: record(diagnostic.sizingZeroBreakdown),
         aegisVetoCount: row.aegis_veto_count,
         nearMissCount: row.near_miss_count,
         actionPlansReady: row.action_plans_ready,
@@ -345,12 +352,13 @@ export async function readZeroTradeDiagnostic(
       hardRejected: sum.hardRejected + row.hard_rejected_count,
       softRanked: sum.softRanked + row.soft_ranked_count,
       dataInsufficient: sum.dataInsufficient + row.data_insufficient_count,
-      quantityZero: sum.quantityZero + row.quantity_zero_count,
+      quantityZero: sum.quantityZero + riskEvaluatedZeroOf(row),
+      quantityZeroAll: sum.quantityZeroAll + row.quantity_zero_count,
       aegisVeto: sum.aegisVeto + row.aegis_veto_count,
       nearMiss: sum.nearMiss + row.near_miss_count,
       actionPlansReady: sum.actionPlansReady + row.action_plans_ready,
     }), { candidates:0,feasible:0,selected:0,hardRejected:0,softRanked:0,dataInsufficient:0,
-      quantityZero:0,aegisVeto:0,nearMiss:0,actionPlansReady:0 });
+      quantityZero:0,quantityZeroAll:0,aegisVeto:0,nearMiss:0,actionPlansReady:0 });
     const executionRow = execution.rows[0] ?? { action_plans:0,order_intents:0,broker_orders:0,fills:0 };
     const actionReadyCycles = cycleRows.filter((row) => row.waitClassification === 'ACTION_READY').length;
     const providerBlockedCycles = cycleRows.filter((row) => row.providerBlockers.length > 0).length;

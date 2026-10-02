@@ -8,7 +8,7 @@ import type { UniverseBreadthShadowPlan } from '../research/strategy-quality-sha
 import type { UniverseDiscoveryFunnel } from './universe-discovery.js';
 import type { FirstPaperRuntimeTelemetry } from './first-paper-runtime-telemetry.js';
 
-export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v5' as const;
+export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v6' as const;
 
 export interface RuntimeReadOnlyPreSubmitProof {
   readonly symbol: string;
@@ -121,7 +121,12 @@ export interface RuntimeBehaviorDiagnosticInput {
   readonly hardRejectedCount: number;
   readonly softRankedCount: number;
   readonly dataInsufficientCount: number;
+  /** Every zero-quantity entry candidate, whatever the cause (historical v5 meaning; kept for compatibility). */
   readonly quantityZeroCount: number;
+  /** Zero-quantity candidates whose sizing/AEGIS stage actually ran and said no. Absent on pre-v6 inputs. */
+  readonly riskEvaluatedZeroCount?: number;
+  /** Exact cause of each zero-quantity entry candidate. Absent on pre-v6 inputs. */
+  readonly sizingZeroBreakdown?: Readonly<Record<string, number>>;
   readonly aegisVetoCount: number;
   readonly nearMissCount: number;
   readonly softEconomicRejectionCount: number;
@@ -157,6 +162,64 @@ export interface RuntimeBehaviorDiagnostic extends RuntimeBehaviorDiagnosticInpu
 const quoteBlocker = (value: string): boolean => /QUOTE|BBO|OPRA|ORDER_PRICING|ENTITLEMENT/.test(value);
 const riskBlocker = (value: string): boolean => /AEGIS|QUANTITY|ACCOUNT|ASSIGNMENT|COLLATERAL|CONCENTRATION|CONFLICT|BUYING_POWER/.test(value);
 
+export type SizingZeroCause =
+  | 'Q_REJECTED_UPSTREAM' | 'AEGIS_NOT_REACHED' | 'AEGIS_HARD_VETO' | 'AEGIS_HOLD_ONLY' | 'AEGIS_CAPACITY_ZERO'
+  | 'AEGIS_REQUIRED_UNKNOWN' | 'AEGIS_RISK_FAMILY_BLOCK' | 'SIZING_EVIDENCE_UNKNOWN' | 'STRUCTURAL_SIZING_ZERO'
+  | 'BRANCH_NOT_APPLICABLE' | 'NO_EXECUTABLE_CANDIDATE';
+
+/** Causes where the risk/sizing stage actually ran (or was required and could not) and the answer was zero. */
+export const riskEvaluatedZeroCauses: ReadonlySet<SizingZeroCause> = new Set<SizingZeroCause>([
+  'AEGIS_HARD_VETO', 'AEGIS_HOLD_ONLY', 'AEGIS_CAPACITY_ZERO', 'AEGIS_REQUIRED_UNKNOWN', 'AEGIS_RISK_FAMILY_BLOCK',
+  'SIZING_EVIDENCE_UNKNOWN', 'STRUCTURAL_SIZING_ZERO',
+]);
+
+/** Hard-blocker labels that mean "this candidate was never evaluated", not "a rule rejected it". */
+const nonEvaluationMarker = /^THETA_Q_(NOT_EVALUATED|NOT_SENT_UPSTREAM|EVALUATION_STATE_MISSING)|^ROUTER_NOT_APPLICABLE/;
+const qUpstreamRejection = /^THETA_Q_(NOT_EVALUATED|NOT_SENT_UPSTREAM|EVALUATION_STATE_MISSING|ACTION_INFEASIBLE|INFEASIBLE)/;
+const sizingEvidenceUnknownBindings: ReadonlySet<string> = new Set([
+  'SIZING_POLICY_INCOMPLETE', 'SIZING_POLICY_INVALID', 'COLLATERAL_INPUT_UNKNOWN', 'REDUCED_MULTIPLIER_UNKNOWN',
+  'UNKNOWN_STOCK_CAPACITY', 'COVERED_SHARES_UNKNOWN', 'SIZING_CAPACITY_INVALID', 'STOCK_CAPACITY_INVALID',
+]);
+
+/** Why a zero-quantity entry candidate is zero. Returns null when the quantity is not zero. */
+export function classifySizingZero(candidate: {
+  readonly hardBlockers: readonly string[];
+  readonly sizing: { readonly quantity: number; readonly bindingConstraint: string };
+}): SizingZeroCause | null {
+  if (candidate.sizing.quantity !== 0) return null;
+  const binding = candidate.sizing.bindingConstraint;
+  const blockers = candidate.hardBlockers;
+  if (binding === 'ROUTER_NOT_APPLICABLE') return 'BRANCH_NOT_APPLICABLE';
+  if (blockers.some((blocker) => qUpstreamRejection.test(blocker))) return 'Q_REJECTED_UPSTREAM';
+  if (blockers.includes('AEGIS_HARD_VETO') || blockers.includes('AEGIS_EMERGENCY_EXIT_ONLY')) return 'AEGIS_HARD_VETO';
+  if (blockers.includes('AEGIS_HOLD_ONLY')) return 'AEGIS_HOLD_ONLY';
+  if (blockers.includes('NO_ASSIGNMENT_CAPACITY')) return 'AEGIS_CAPACITY_ZERO';
+  if (binding === 'AEGIS_NOT_REACHED_UPSTREAM') return 'AEGIS_NOT_REACHED';
+  if (binding === 'AEGIS_UNKNOWN' || binding === 'AEGIS_STATE_UNKNOWN') return 'AEGIS_REQUIRED_UNKNOWN';
+  if (sizingEvidenceUnknownBindings.has(binding)) return 'SIZING_EVIDENCE_UNKNOWN';
+  if (/_UNKNOWN$/.test(binding)) return 'AEGIS_REQUIRED_UNKNOWN';
+  if (/^(PER_TRADE|UNDERLYING|SECTOR|CORRELATION|PORTFOLIO|INVENTORY|ASSIGNMENT|RECOVERY|LIQUIDITY|EXECUTION|PROVIDER|SYSTEM):/.test(binding)) {
+    return 'AEGIS_RISK_FAMILY_BLOCK';
+  }
+  if (blockers.length > 0) return 'NO_EXECUTABLE_CANDIDATE';
+  return 'STRUCTURAL_SIZING_ZERO';
+}
+
+export function summarizeSizingZero(candidates: readonly {
+  readonly hardBlockers: readonly string[];
+  readonly sizing: { readonly quantity: number; readonly bindingConstraint: string };
+}[]): { readonly breakdown: Readonly<Record<string, number>>; readonly riskEvaluatedZeroCount: number } {
+  const breakdown: Record<string, number> = {};
+  let riskEvaluatedZeroCount = 0;
+  for (const candidate of candidates) {
+    const cause = classifySizingZero(candidate);
+    if (cause === null) continue;
+    breakdown[cause] = (breakdown[cause] ?? 0) + 1;
+    if (riskEvaluatedZeroCauses.has(cause)) riskEvaluatedZeroCount += 1;
+  }
+  return { breakdown: Object.fromEntries(Object.entries(breakdown).sort(([a], [b]) => a.localeCompare(b))), riskEvaluatedZeroCount };
+}
+
 export function deriveAntiParalysisFindings(input: {
   readonly candidateHardBlockers: readonly (readonly string[])[];
   readonly strategyReachability: readonly {
@@ -165,7 +228,7 @@ export function deriveAntiParalysisFindings(input: {
   }[];
 }): readonly string[] {
   const otherwiseValid=input.candidateHardBlockers.filter((blockers)=>blockers.length<=1);
-  const gates=[...new Set(otherwiseValid.flatMap((blockers)=>blockers))];
+  const gates=[...new Set(otherwiseValid.flatMap((blockers)=>blockers))].filter((gate)=>!nonEvaluationMarker.test(gate));
   return [
     ...gates.filter((gate)=>otherwiseValid.length>0
       &&otherwiseValid.filter((blockers)=>blockers.length===1&&blockers[0]===gate).length/otherwiseValid.length>0.9)
@@ -192,7 +255,7 @@ export function classifyRuntimeBehavior(input: RuntimeBehaviorDiagnosticInput): 
   else if (input.providerBlockers.length > 0 || (input.completeness !== 'COMPLETE' && input.completeness !== 'DATA_INSUFFICIENT')) waitClassification = 'DATA_WAIT';
   else if (input.completeness === 'DATA_INSUFFICIENT' || input.candidateCount === 0) waitClassification = 'NO_OPPORTUNITY';
   else if (blockers.some(quoteBlocker)) waitClassification = 'QUOTE_WAIT';
-  else if (input.aegisVetoCount > 0 || input.quantityZeroCount > 0 || blockers.some(riskBlocker)) waitClassification = 'RISK_WAIT';
+  else if (input.aegisVetoCount > 0 || (input.riskEvaluatedZeroCount ?? input.quantityZeroCount) > 0 || blockers.some(riskBlocker)) waitClassification = 'RISK_WAIT';
   else if (input.antiParalysisFindings.length > 0) waitClassification = 'POSSIBLE_LOGIC_PARALYSIS';
   else if (input.globalWaitEarned) waitClassification = 'HEALTHY_WAIT';
   else if (input.feasibleCandidateCount > 0 && input.selectedCandidateCount === 0) waitClassification = 'OVERSTRICT_POLICY_WAIT';
@@ -203,6 +266,7 @@ export function classifyRuntimeBehavior(input: RuntimeBehaviorDiagnosticInput): 
     `OVERTRADING_STATE_${overtradingState}`,
     ...input.globalWaitReasons,
     ...blockers,
+    ...Object.entries(input.sizingZeroBreakdown ?? {}).map(([cause, count]) => `SIZING_ZERO_CAUSE:${cause}:${count}`),
     ...(input.feasibleCandidateCount > 0 ? ['FEASIBLE_CANDIDATE_OBSERVED'] : []),
     ...(input.nearMissCount > 0 ? ['NEAR_MISS_OBSERVED'] : []),
     ...input.antiParalysisFindings,
