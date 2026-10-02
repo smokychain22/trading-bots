@@ -14,9 +14,9 @@
   "computed": {
     "totalRows": 89,
     "preMarketEngineering": {
-      "numerator": 86,
+      "numerator": 87,
       "denominator": 89,
-      "percent": 96.63
+      "percent": 97.75
     },
     "implementation": {
       "numerator": 89,
@@ -48,9 +48,7 @@
       "denominator": 6,
       "percent": 0
     },
-    "openCodeSolvable": [
-      "MIGRATION_068_STATUS"
-    ],
+    "openCodeSolvable": [],
     "ownerPolicyBlocked": [
       "PAPER_INSTRUMENT_MANIFEST",
       "OWNERSHIP_MODEL",
@@ -1596,11 +1594,11 @@
     {
       "id": "MIGRATION_068_STATUS",
       "domain": "PHASE3",
-      "note": "migration committed and rehearsed on a disposable database; NOT applied to Production (governed verified-backup run in progress)",
+      "note": "applied to Production 2026-10-02T23:31:08Z through the governed verified-backup path; head, trigger, partial unique index and ledger verified read-only; 15-minute soak PASS",
       "impl": 1,
       "wired": 1,
       "tested": 1,
-      "engDone": 0,
+      "engDone": 1,
       "obsNow": 0,
       "runtime": 0,
       "paperApplicable": 0,

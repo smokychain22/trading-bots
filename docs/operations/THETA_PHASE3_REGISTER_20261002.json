@@ -1,15 +1,15 @@
 {
   "computed": {
     "PHASE3_TOTAL": 58,
-    "PASS": 41,
+    "PASS": 42,
     "PROVIDER_LIMITED": 2,
     "OWNER_POLICY": 3,
     "FUTURE_MARKET": 0,
     "FUTURE_PAPER": 5,
     "EMPIRICAL_ONLY": 2,
     "NOT_APPLICABLE": 4,
-    "CODE_SOLVABLE_REMAINING": 1,
-    "OBSERVED_TODAY": 18
+    "CODE_SOLVABLE_REMAINING": 0,
+    "OBSERVED_TODAY": 19
   },
   "rows": [
     {
@@ -342,12 +342,12 @@
       ],
       "RUNTIME_DEPENDENCY": "worker claim path",
       "DB_DEPENDENCY": "master_paper_action_plan",
-      "CURRENT_STATUS": "CODE_SOLVABLE",
-      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
       "PAPER_STATUS": "NOT_EXERCISED",
-      "BLOCKER": "governed Production run in progress (backup phase)",
-      "SOLVABILITY": "GOVERNED_RUN_IN_PROGRESS",
-      "NEXT_ACTION": "verify trigger and index in Production after the governed run"
+      "BLOCKER": "none: applied 2026-10-02T23:31:08Z through the governed verified-backup path (restore-verified backup 2026-10-02_205959-a5c31af2); head 068_action_plan_integrity, trigger reject_master_paper_action_plan_economic_mutation enabled, partial unique index ux_master_paper_action_plan_management_chain_leg_presubmit present, ledger row present, 15-minute soak PASS, post-migration backup still running",
+      "SOLVABILITY": "APPLIED_AND_VERIFIED_IN_PRODUCTION",
+      "NEXT_ACTION": "none (confirm the post-migration backup completes)"
     },
     {
       "ID": "P3-018",
