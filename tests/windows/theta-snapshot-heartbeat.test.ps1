@@ -20,3 +20,20 @@ $dead = New-Echo; $dead.Kill(); $dead.WaitForExit()
 $hb2 = [ThetaSnapshotHeartbeat]::new($dead, 1); Start-Sleep -Seconds 2; $hb2.Stop()
 if ($hb2.FailureMessage -notmatch '^KEEPER_EXITED') { throw 'DEAD_KEEPER_NOT_RECORDED' }
 'THETA_SNAPSHOT_HEARTBEAT_TEST=PASS'
+
+# A dead keeper (exited, or its heartbeat recorded a failure) must fail the backup with the real cause before any digest runs.
+$liveKeeper = [pscustomobject]@{ Process = (New-Echo); Heartbeat = $null }
+Assert-ThetaSnapshotKeeperAlive $liveKeeper
+$liveKeeper.Process.Kill(); $liveKeeper.Process.WaitForExit()
+$failed = $false
+try { Assert-ThetaSnapshotKeeperAlive $liveKeeper } catch { $failed = ($_.Exception.Message -match '^BACKUP_SNAPSHOT_KEEPER_DIED:exited') }
+if (-not $failed) { throw 'EXITED_KEEPER_NOT_DETECTED' }
+$aliveButHeartbeatFailed = [pscustomobject]@{ Process = (New-Echo); Heartbeat = [pscustomobject]@{ FailureMessage = 'IOException_at=x' } }
+$failed = $false
+try { Assert-ThetaSnapshotKeeperAlive $aliveButHeartbeatFailed } catch { $failed = ($_.Exception.Message -match '^BACKUP_SNAPSHOT_KEEPER_DIED:IOException') }
+$aliveButHeartbeatFailed.Process.Kill()
+if (-not $failed) { throw 'HEARTBEAT_FAILURE_NOT_DETECTED' }
+$failed = $false
+try { Assert-ThetaSnapshotKeeperAlive $null } catch { $failed = ($_.Exception.Message -eq 'BACKUP_SNAPSHOT_KEEPER_MISSING') }
+if (-not $failed) { throw 'MISSING_KEEPER_NOT_DETECTED' }
+'THETA_SNAPSHOT_KEEPER_ASSERT_TEST=PASS'

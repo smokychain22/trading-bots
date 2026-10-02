@@ -489,6 +489,15 @@ function Start-ThetaExportedSnapshot {
   }
 }
 
+function Assert-ThetaSnapshotKeeperAlive {
+  param([object]$Keeper)
+  if ($null -eq $Keeper) { throw 'BACKUP_SNAPSHOT_KEEPER_MISSING' }
+  # The digest queries that follow a dump need the keeper's exported snapshot. A dead keeper means every digest would fail minutes
+  # later (or, worse, read a different snapshot), so fail the backup here with the real cause.
+  if ($Keeper.Process.HasExited) { throw "BACKUP_SNAPSHOT_KEEPER_DIED:exited code=$($Keeper.Process.ExitCode)" }
+  if ($null -ne $Keeper.Heartbeat -and $Keeper.Heartbeat.FailureMessage) { throw "BACKUP_SNAPSHOT_KEEPER_DIED:$($Keeper.Heartbeat.FailureMessage)" }
+}
+
 function Stop-ThetaExportedSnapshot {
   param([object]$Keeper)
   if ($null -eq $Keeper) { return }

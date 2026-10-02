@@ -102,7 +102,9 @@ try {
   Log 'CONSISTENT_SOURCE_SNAPSHOT_ACQUIRED'
   Invoke-VerifiedDumpWithRetry -Arguments @('--format=custom','--snapshot',$script:ThetaBackupSnapshotId,'--file',(Get-ThetaPgFilePath $archive $source),'--dbname',$source.Database) -OutputPath $archive -Label 'CUSTOM_DUMP'
   $customDumpComplete = $true
+  Assert-ThetaSnapshotKeeperAlive $snapshotKeeper
   Invoke-VerifiedDumpWithRetry -Arguments @('--schema-only','--snapshot',$script:ThetaBackupSnapshotId,'--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) -OutputPath $schema -Label 'SCHEMA_DUMP' -AllowPreConnectionRetry
+  Assert-ThetaSnapshotKeeperAlive $snapshotKeeper
   Log 'DUMP_COMPLETE'
   $dumpComplete = $true
   $inventorySql = @'
