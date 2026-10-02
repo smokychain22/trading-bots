@@ -4,9 +4,13 @@ Phase 2).
 One entry per (family, version) actually implemented this session --
 every producer's own `version=` default string, registered here exactly
 once, so a `FeatureResult` claiming a version absent from this registry
-is rejected. This is the enforcement point that prevents an old, retired
-formula's output from silently being treated as current, or a typo'd
-version string from silently passing through undetected.
+is rejected BY `assert_registered_version`. Enforcement status: that check
+runs in tests/quant/test_feature_definitions_registry.py against every
+producer, NOT inside FeatureResult construction or the deployed runtime, so
+it guards the research/build path only. Consumers named below are research
+or test callers unless stated otherwise; the deployed runtime computes its
+production features in TypeScript (golden-vector locked), not through this
+package.
 """
 
 from dataclasses import dataclass
@@ -30,17 +34,17 @@ class FeatureDefinition:
 _REGISTRY_ENTRIES: Tuple[FeatureDefinition, ...] = (
     FeatureDefinition("TREND_MA_SLOPE", "TREND", "trend-ma-slope-v1", "fractional_change_per_window",
         "internal bar series", "reads only closes[:as_of_index+1]", "STALE if bars_since_last > policy",
-        "trailing MA slope between two windows", "regime_adapter.py (regime_v0.classify)", "DERIVED_FROM_OBSERVED"),
+        "trailing MA slope between two windows", "regime_adapter.py (research/test only; not on the deployed path)", "DERIVED_FROM_OBSERVED"),
     FeatureDefinition("MOMENTUM_HORIZON_RETURN", "MOMENTUM", "momentum-horizon-return-v1", "fractional_return",
         "internal bar series", "reads only closes[:as_of_index+1]", "STALE if bars_since_last > policy",
         "simple return over N bars", "none yet", "DERIVED_FROM_OBSERVED"),
     FeatureDefinition("REALIZED_VOL_CLOSE_TO_CLOSE", "REALIZED_VOLATILITY", "realized-vol-close-to-close-v1",
         "annualized_stdev", "internal bar series", "windowed slice ending at as_of_index",
         "STALE if bars_since_last > policy", "annualized close-to-close sample stdev",
-        "regime_adapter.py (regime_v0.classify)", "DERIVED_FROM_OBSERVED"),
+        "regime_adapter.py (research/test only; not on the deployed path)", "DERIVED_FROM_OBSERVED"),
     FeatureDefinition("IV_PROVIDER_OBSERVED", "IV", "iv-provider-observed-v1", "implied_volatility_annualized",
         "OPTIONOMICS", "as_of vs provider_timestamp", "STALE if age exceeds max_quote_age_seconds",
-        "passthrough of real provider IV", "skew.py, term_structure.py, volatility_surface.py", "MARKET_OBSERVED"),
+        "passthrough of real provider IV", "skew.py, term_structure.py, volatility_surface.py (research only)", "MARKET_OBSERVED"),
     FeatureDefinition("SKEW_RISK_REVERSAL_25D", "SKEW", "skew-risk-reversal-25d-v1", "iv_difference",
         "internal derived from iv.py", "same-expiry, per-observation IV freshness upstream", "n/a (composes upstream staleness)",
         "call IV - put IV at 25-delta", "none yet", "DERIVED_FROM_OBSERVED (RESEARCH_BASELINE classification, see skew.py)"),
@@ -91,7 +95,7 @@ _REGISTRY_ENTRIES: Tuple[FeatureDefinition, ...] = (
     # work -- registered here for bundle completeness, not re-derived.
     FeatureDefinition("OWNERSHIP_V0", "OWNERSHIP", "pre-existing", "ownership_score", "internal derived",
         "pre-existing module's own PIT contract", "pre-existing module's own freshness policy",
-        "see models/ownership_v0.py", "canonical_strategy_frontier.ts (app layer)", "pre-existing"),
+        "see models/ownership_v0.py", "src/theta/canonical-strategy-frontier.ts (app layer)", "pre-existing"),
     FeatureDefinition("REGIME_V0", "REGIME", "pre-existing", "regime_axes", "internal derived",
         "pre-existing module's own PIT contract", "pre-existing module's own freshness policy",
         "see models/regime_v0.py, now fed by regime_adapter.py", "app layer + this session's regime_adapter.py",

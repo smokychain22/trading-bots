@@ -1,0 +1,173 @@
+{
+  "computed": {
+    "PHASE1_TOTAL_ROWS": 18,
+    "PASS": 13,
+    "EXTERNAL_POLICY": 1,
+    "EXTERNAL_PROVIDER": 1,
+    "FUTURE_DATA": 3,
+    "PHASE1_CODE_SOLVABLE_REMAINING": 0,
+    "DEFERRED_PHASE2": 3
+  },
+  "rows": [
+    {
+      "id": "RELEASE_IDENTITY_VERIFIED",
+      "class": "PASS",
+      "evidence": [
+        "tools/theta-runtime-truth.ts"
+      ],
+      "note": "main = origin/main = deployed = worker; one lease; schema 067; reconciliation GOOD; 0 positions, 0 orders"
+    },
+    {
+      "id": "BOARD_RELEASE_METADATA_TRUTH",
+      "class": "PASS",
+      "evidence": [
+        "tests/theta-board.test.ts"
+      ],
+      "note": "deployedRelease, observedAtRelease and the unreleased-runtime-change flag are re-derived; stale metadata fails the test"
+    },
+    {
+      "id": "DIAGNOSTIC_RISK_WAIT_CLASSIFICATION",
+      "class": "PASS",
+      "evidence": [
+        "tests/runtime-behavior-sizing-zero.test.ts",
+        "tests/db/runtime-behavior-diagnostic.test.ts"
+      ],
+      "note": "NOT_REACHED / unknown / structural zeros are no longer counted as risk waits; existing schema sufficed, no migration"
+    },
+    {
+      "id": "STRESS_HISTORY_TRUNCATION_FLAG",
+      "class": "PASS",
+      "evidence": [
+        "tests/stress-history-completeness.test.ts"
+      ],
+      "note": "limit+1 probe, boundary 0/1/4999/5000/5001, a truncated read withholds the cold-start exception"
+    },
+    {
+      "id": "WHOLE_CHAIN_LEDGER_COMPLETENESS",
+      "class": "PASS",
+      "evidence": [
+        "tests/phase1-ledger-and-exposure-truth.test.ts",
+        "tests/db/whole-chain-components-repository.test.ts",
+        "tests/lifecycle-ledger-chain.test.ts"
+      ],
+      "note": "unknown close costs and stock lots keep the chain UNKNOWN; realized losses and cash flows are persisted and cannot disappear"
+    },
+    {
+      "id": "EXPOSURE_CLASSIFICATION_UNKNOWN",
+      "class": "PASS",
+      "evidence": [
+        "tests/phase1-ledger-and-exposure-truth.test.ts"
+      ],
+      "note": "a missing unclassified-position list is UNKNOWN, never zero"
+    },
+    {
+      "id": "UNKNOWN_DRIVEN_AEGIS_HOLD_NOT_A_WAIT",
+      "class": "PASS",
+      "evidence": [
+        "tests/frontier-properties.test.ts"
+      ],
+      "note": "a hold caused by an unknown required input is SYSTEM_HOLD; a genuine veto stays an earned WAIT"
+    },
+    {
+      "id": "AEGIS_INPUT_WRITER_CONFLICTS_ZERO",
+      "class": "PASS",
+      "evidence": [
+        "bots/theta/tests/quant/test_aegis_pairwise_monotonicity.py",
+        "tests/architecture-authority-guards.test.ts"
+      ],
+      "note": "base inputs fail-closed; candidate overrides tighten-only; one Python authority"
+    },
+    {
+      "id": "REGISTRY_CONSUMER_ACCURACY",
+      "class": "PASS",
+      "evidence": [
+        "tests/registry-reachability.test.ts"
+      ],
+      "note": "every runtime-reachable registry claim sits inside the deployed import closure"
+    },
+    {
+      "id": "DEAD_REQUIRED_ZERO",
+      "class": "PASS",
+      "evidence": [
+        "tests/architecture-authority-guards.test.ts"
+      ],
+      "note": "no required module is unreferenced; the duplicate legacy trade-update store is quarantined by a guard"
+    },
+    {
+      "id": "AUTHORITY_GUARDS_ONE_EACH",
+      "class": "PASS",
+      "evidence": [
+        "tests/architecture-authority-guards.test.ts"
+      ],
+      "note": "entry, management, sizing, AEGIS and broker mutation each have exactly one authority"
+    },
+    {
+      "id": "TRAINING_SERVING_PARITY",
+      "class": "PASS",
+      "evidence": [
+        "tests/serving-features-parity.test.ts",
+        "tests/realized-volatility-parity.test.ts",
+        "bots/theta/tests/quant/test_serving_features_parity.py",
+        "bots/theta/tests/quant/test_realized_volatility_parity.py"
+      ],
+      "note": "TypeScript and Python agree on shared golden fixtures"
+    },
+    {
+      "id": "SEMANTIC_FALSE_VALUE_SWEEP",
+      "class": "PASS",
+      "evidence": [
+        "tests/phase1-ledger-and-exposure-truth.test.ts",
+        "tests/frontier-properties.test.ts"
+      ],
+      "note": "unsafe false zero/false/clear sites found by the sweep are fixed and pinned"
+    },
+    {
+      "id": "RELATIVE_STRENGTH_FORMULA_BENCHMARK_SCALE",
+      "class": "EXTERNAL_POLICY",
+      "evidence": [],
+      "note": "no canonical definition exists; minimum owner decision: benchmark, window and scale of relativeStrength; no instrument approval is implied"
+    },
+    {
+      "id": "WHOLE_CHAIN_FEE_SCHEDULE",
+      "class": "EXTERNAL_PROVIDER",
+      "evidence": [],
+      "note": "Alpaca supplies no per-fill fees; fees stay UNKNOWN until an owner-attested fee schedule exists"
+    },
+    {
+      "id": "WHOLE_CHAIN_DIVIDENDS",
+      "class": "FUTURE_DATA",
+      "evidence": [],
+      "note": "no stock lot exists, so no dividend can be observed; the chain stays UNKNOWN (fail-closed)"
+    },
+    {
+      "id": "MANAGEMENT_AND_PAPER_OPERATION_OBSERVATION",
+      "class": "FUTURE_DATA",
+      "evidence": [],
+      "note": "needs a real Paper position; none exists"
+    },
+    {
+      "id": "EMPIRICAL_VALIDATION_AND_CALIBRATION",
+      "class": "FUTURE_DATA",
+      "evidence": [],
+      "note": "needs resolved outcomes; none exist"
+    },
+    {
+      "id": "SIZING_CAP_2_VS_5",
+      "class": "DEFERRED_PHASE2",
+      "evidence": [],
+      "note": "shadow-once inline cap 2 vs structural 5; sizing policy decision, not touched in Phase 1"
+    },
+    {
+      "id": "INSTRUMENT_APPROVAL_EXPANSION",
+      "class": "DEFERRED_PHASE2",
+      "evidence": [],
+      "note": "owner decision; not performed here"
+    },
+    {
+      "id": "Q_TUNING",
+      "class": "DEFERRED_PHASE2",
+      "evidence": [],
+      "note": "not performed here"
+    }
+  ]
+}

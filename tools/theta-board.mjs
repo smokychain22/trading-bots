@@ -6,26 +6,33 @@
 //   impl      source implemented                  wired    reached from the canonical production path (or its declared shadow path)
 //   tested    deterministic regression coverage   engDone  no known code-solvable defect remains in this row
 //   obsNow    row can be observed on real data without an open position/order (denominator for the runtime percentage)
-//   runtime   observed on real data in the DEPLOYED release (c3d8868) - not source-only
+//   runtime   derived: observed on real data AT the deployed release recorded in boardAsOf (observedAtRelease === deployedRelease)
 //   paperApplicable / paper   row needs an actual Paper position/order to be exercised / has been exercised
 //   empApplicable / emp       row needs resolved outcomes to be validated / has been validated
 //   policyBlocked             remaining gap is an owner-policy decision (not code-solvable); counted separately
 //
-// Deployed release at the time of writing: c3d8868265426d870e50352b06d8d252c68a16c9. Fixes made after it are `engDone`
-// but not `runtime` until deployed and observed.
+// releaseStatus (derived, one per row):
+//   SOURCE_ONLY                    not wired, or changed after the deployed release (committed, not yet released)
+//   NOT_OBSERVABLE_YET             needs a position, an order or resolved outcomes that do not exist
+//   DEPLOYED_NOT_YET_OBSERVED      deployed and observable, but not yet observed on real data at THIS release
+//   CURRENT_RELEASE_REAL_OBSERVED  observed on real data at the deployed release
+// Fixes made after the deployed release are `engDone` but SOURCE_ONLY until released; tests/theta-board.test.ts re-derives
+// the unreleased flag from git so a stale release record fails.
 import { writeFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const boardAsOf = {
-  deployedRelease: 'c3d8868265426d870e50352b06d8d252c68a16c9',
-  note: 'rows describe the continuation branch head; runtime flags describe the deployed release only',
+  deployedRelease: '6360f07996e7e579a8fa556c9b7ca4d72eeba444',
+  priorObservedRelease: 'c3d8868265426d870e50352b06d8d252c68a16c9',
+  note: 'rows describe the continuation branch head; runtime flags describe observation at the deployed release only',
+  runtimeSourcePaths: ['src/', 'api/', 'bots/theta/quant/', 'tools/windows/', 'package.json'],
 };
 
 // id, domain, note, flags
 const r = (id, domain, note, f) => ({ id, domain, note, impl: 1, wired: 1, tested: 1, engDone: 1, obsNow: 1, runtime: 0,
   paperApplicable: 0, paper: 0, empApplicable: 0, emp: 0, policyBlocked: 0, ...f });
 
-export const rows = [
+const rawRows = [
   // --- providers and data
   r('ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'PROVIDERS', 'typed failure matrix; live reconciliation GOOD', { runtime: 1 }),
   r('ALPACA_MARKET_CLOCK_CALENDAR', 'PROVIDERS', 'session gating observed all session', { runtime: 1 }),
@@ -96,10 +103,12 @@ export const rows = [
   r('CI_PIPELINE', 'OPERATIONS', 'exact-SHA CI, disposable Postgres steps', { runtime: 1 }),
   r('RELEASE_CUTOVER_GOVERNANCE', 'OPERATIONS', 'immutable release worktree, SHA alignment', { runtime: 1 }),
   // --- open items found by the audits (each is a real, not-yet-fixed row; none changes a trade decision today)
-  r('DIAGNOSTIC_RISK_WAIT_CLASSIFICATION', 'OPEN', 'zero-quantity NOT_REACHED candidates still count toward RISK_WAIT in runtime-behavior-diagnostic', { engDone: 0, obsNow: 0 }),
-  r('STRESS_HISTORY_TRUNCATION_FLAG', 'OPEN', 'LIMIT 5000 on AEGIS IV/spread stress history truncates silently; needs a truncation flag in the receipt', { engDone: 0, obsNow: 0 }),
+  r('DIAGNOSTIC_RISK_WAIT_CLASSIFICATION', 'PHASE1', 'sizing zeros classified by cause; only risk-evaluated zeros count as RISK_WAIT; v6 diagnostic, no migration', { obsNow: 0 }),
+  r('STRESS_HISTORY_TRUNCATION_FLAG', 'PHASE1', 'limit+1 completeness record in both stress assessments; truncated read withholds the cold-start exception', { obsNow: 0 }),
+  r('REGISTRY_REACHABILITY_GUARD', 'PHASE1', 'registry runtime claims must sit inside the deployed import closure; research->production edges pinned', { wired: 0, obsNow: 0 }),
+  r('WHOLE_CHAIN_FEES_DIVIDENDS_INPUT', 'PHASE1', 'fees (provider supplies none) and dividends (no stock lot) stay UNKNOWN by design; needs a fee-schedule attestation', { obsNow: 0, policyBlocked: 1 }),
   r('REGISTRY_SOURCE_LISTS', 'OPEN', 'verified: the registry second list names SOURCES; shadow-strategy-orchestrator is a real research producer of H/D evaluation, so no entry is wrong', { obsNow: 0 }),
-  r('DEAD_MODULE_INVENTORY', 'OPEN', 'inventoried: 13 tested library modules have no production importer (listed in the audit); retained, not deleted, because each carries regression tests', { obsNow: 0, wired: 0 }),
+  r('DEAD_MODULE_INVENTORY', 'OPEN', 'inventoried: tested library modules with no production importer are classified LIBRARY / FUTURE; the duplicate legacy trade-update store is quarantined by a guard test; no required module is dead', { obsNow: 0, wired: 0 }),
   r('SHADOW_ONCE_SIZING_POLICY_DIVERGENCE', 'OPEN', 'thetaQ sizing uses an inline concentration cap of 2 while structural sizing uses 5; which is intended is a sizing-policy decision', { engDone: 0, obsNow: 0, policyBlocked: 1 }),
   // --- security
   r('SECRET_HYGIENE', 'SECURITY', '1,890 paths scanned, 0 findings', { runtime: 1 }),
@@ -107,6 +116,23 @@ export const rows = [
   r('AUTHORITY_GUARDS', 'SECURITY', 'whole-repo mutation/selector/sizing guard tests', { runtime: 1 }),
   r('ERROR_SANITIZATION', 'SECURITY', 'credentials never in provider errors (tested)', { runtime: 1 }),
 ];
+
+// Fresh observations made against the deployed release (runtime-truth receipt, 2026-10-02 08:33Z).
+const observedAtDeployed = new Set(['ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
+  'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE']);
+// Rows whose runtime source changed after the deployed release: committed, not released.
+const unreleasedIds = new Set(['DIAGNOSTIC_RISK_WAIT_CLASSIFICATION', 'STRESS_HISTORY_TRUNCATION_FLAG', 'WHOLE_CHAIN_ACCOUNTING', 'AEGIS_TWELVE_FAMILIES',
+  'ENTRY_SELECTION_FRONTIER', 'MANAGEMENT_ACTION_FRONTIER', 'CAPITAL_BUDGET']);
+
+export const rows = rawRows.map((row) => {
+  const everObserved = Boolean(row.runtime);
+  const observedAtRelease = !everObserved ? null : observedAtDeployed.has(row.id) ? boardAsOf.deployedRelease : boardAsOf.priorObservedRelease;
+  const unreleased = unreleasedIds.has(row.id) ? 1 : 0;
+  const runtime = observedAtRelease === boardAsOf.deployedRelease && !unreleased ? 1 : 0;
+  const releaseStatus = !row.wired || unreleased ? 'SOURCE_ONLY' : !row.obsNow ? 'NOT_OBSERVABLE_YET'
+    : runtime ? 'CURRENT_RELEASE_REAL_OBSERVED' : 'DEPLOYED_NOT_YET_OBSERVED';
+  return { ...row, runtime, unreleased, observedAtRelease, releaseStatus };
+});
 
 const count = (predicate) => rows.filter(predicate).length;
 const pct = (num, den) => (den === 0 ? null : Math.round((num / den) * 10000) / 100);
@@ -128,6 +154,9 @@ export function computeBoard() {
     empiricalValidation: metric(emp.filter((row) => row.emp).length, emp.length),
     openCodeSolvable: rows.filter((row) => !row.engDone && !row.policyBlocked).map((row) => row.id),
     ownerPolicyBlocked: rows.filter((row) => row.policyBlocked).map((row) => row.id),
+    releaseStatusCounts: Object.fromEntries(['SOURCE_ONLY', 'NOT_OBSERVABLE_YET', 'DEPLOYED_NOT_YET_OBSERVED', 'CURRENT_RELEASE_REAL_OBSERVED']
+      .map((status) => [status, rows.filter((row) => row.releaseStatus === status).length])),
+    unreleasedRowCount: rows.filter((row) => row.unreleased).length,
     liveGraduation: { numerator: 0, denominator: null, percent: null, note: 'not authorized; excluded from every denominator' },
   };
 }

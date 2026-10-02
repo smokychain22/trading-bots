@@ -76,3 +76,38 @@ test('structuralSizing has exactly one definition and no max(1) quantity floor e
   const offenders = decisionFiles.filter((path) => /Math\.max\(\s*1\s*,[^)]*(quantity|qty)/i.test(source(path))).map(rel);
   assert.deepEqual(offenders, [], 'a forced minimum quantity of one is forbidden');
 });
+
+test('production decision directories import only a pinned set of research modules (a new research->production edge is a reviewed change)', () => {
+  const pinned = ['aegis-stress-baseline-maturity', 'branch-research-readiness', 'canonical-event-export', 'cross-strategy-common-horizon-contract',
+    'defined-risk-locked-plan', 'point-in-time-evidence', 'production-shadow-runtime', 'profit-taking-experiment', 'risk-policy-empirical-study',
+    'shadow-evidence-runtime', 'strategy-quality-shadow-diagnostics', 'theta-entry-model-readiness'];
+  const found = new Set<string>();
+  const dirs = ['src/theta', 'src/execution', 'src/worker'].flatMap((dir) => walk(join(root, dir), ['.ts']));
+  for (const path of [...dirs, join(root, 'src', 'index.ts')]) {
+    for (const match of source(path).matchAll(/from\s+'(?:\.\.?\/)+research\/([^']+?)\.js'/g)) found.add(match[1] as string);
+  }
+  assert.deepEqual([...found].sort(), [...pinned].sort());
+});
+
+test('AEGIS has one Python authority; only the declared TypeScript callers invoke the bridge', () => {
+  const callers = filesMatching(/aegis_contract\.py/, walk(join(root, 'src'), ['.ts']));
+  assert.deepEqual(callers, ['src/research/production-shadow-runtime.ts',
+    'src/theta/database-independent-shadow-observation.ts', 'src/theta/theta-shadow-once.ts']);
+});
+
+test('the production base AEGIS inputs are fail-closed: every measure is null and every applicability is REQUIRED until real evidence derives otherwise', () => {
+  const text = source(join(root, 'src', 'research', 'production-shadow-runtime.ts'));
+  const block = text.slice(text.indexOf('aegisInputs:{'), text.indexOf('aegisInputs:{') + 700);
+  for (const key of ['tickerConcentrationPct', 'sectorConcentrationPct', 'correlationClusterExposurePct', 'portfolioCapitalAtRiskPct',
+    'inventoryCapacityUsedPct', 'assignmentCapacityUsedPct', 'recoveryCapacityUsedPct', 'liquidityAcceptable', 'executionQualityAcceptable',
+    'providerState', 'stressGapDetected', 'stressIvShockDetected', 'stressSpreadWideningDetected']) {
+    assert.match(block, new RegExp(`${key}:null`), `${key} must start UNKNOWN (null), never a permissive value`);
+  }
+  assert.match(block, /stressIvShockApplicability:'REQUIRED'/);
+  assert.doesNotMatch(block, /PAPER_COLD_START_NOT_APPLICABLE|NOT_APPLICABLE/, 'the loosening marker is applied only per candidate from valid current evidence');
+});
+
+test('the duplicate legacy trade-update store has no production importer (quarantined; the live path is the coordinator store)', () => {
+  assert.deepEqual(filesMatching(/postgres-trade-update-store(?:\.js)?['"]/, [...walk(join(root, 'src'), ['.ts']), ...walk(join(root, 'api'), ['.ts']),
+    ...walk(join(root, 'tools'), ['.ts', '.mjs'])]), []);
+});
