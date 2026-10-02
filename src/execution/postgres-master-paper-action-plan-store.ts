@@ -36,12 +36,45 @@ function assertNewRiskAegisLineage(row:Record<string,unknown>,plan:ApprovedMaste
   }
 }
 
+/**
+ * NEW-RISK ENTRY pending-exposure guard (exported for tests). Ids of any OTHER entry plan for the same contract that is still
+ * READY / CLAIMED / WAITING_GATE inside its decision window, or any entry order intent for it that is not terminal.
+ */
+export async function readEquivalentEntryInFlight(client:{query:(text:string,values?:unknown[])=>Promise<{rows:unknown[]}>},
+  input:{readonly executionAccountId:string;readonly decisionId:string;readonly optionContractId:string;readonly at:string}):Promise<readonly string[]>{
+  const result=await client.query(`SELECT id FROM (
+    SELECT p.action_plan_id::text AS id FROM trade.master_paper_action_plan p
+     WHERE p.execution_account_id=$1 AND p.decision_id<>$2 AND p.status IN ('READY','CLAIMED','WAITING_GATE')
+       AND p.plan_json->>'action'='OPEN_CSP' AND p.plan_json->>'optionContractId'=$3
+       AND (p.plan_json->>'decisionExpiresAt')::timestamptz > $5::timestamptz
+    UNION ALL
+    SELECT oi.order_intent_id::text AS id FROM trade.order_intent oi
+     WHERE oi.execution_account_id=$1 AND oi.decision_id<>$2 AND oi.theta_action='OPEN_CSP'
+       AND oi.option_contract_id::text=$3 AND oi.status::text <> ALL($4::text[])) conflicts LIMIT 5`,
+  [input.executionAccountId,input.decisionId,input.optionContractId,['FILLED','CANCELED','REJECTED','EXPIRED'],input.at]);
+  return (result.rows as Record<string,unknown>[]).map((row)=>String(row.id));
+}
+
 export class PostgresMasterPaperActionPlanStore {
   constructor(private readonly pool:Pool){}
 
   async enqueue(raw:ApprovedMasterPaperActionPlan,createdAt:string,chain?:{
     readonly botInstanceId:string;readonly underlyingId:string;
   }):Promise<boolean>{
+    return (await this.enqueueWithDisposition(raw,createdAt,chain)).inserted;
+  }
+
+  /**
+   * NEW-RISK ENTRY duplicate guard (resting-order pending exposure). A DAY entry order that has not filled yet is exactly what the
+   * next scan sees again: a new decision id (so a new plan row) for the SAME contract. While another entry plan for the same
+   * contract is READY / CLAIMED / WAITING_GATE, or an entry order intent for it is still non-terminal (including one the broker
+   * snapshot used by the scan cannot show yet), a second economically identical entry is NOT enqueued. It becomes enqueueable
+   * again as soon as the first order is terminal (filled, expired at the close, cancelled), i.e. the next session. Entry
+   * repricing as a fill-rate enhancement is deliberately not built here (OWNER_POLICY / EMPIRICAL).
+   */
+  async enqueueWithDisposition(raw:ApprovedMasterPaperActionPlan,createdAt:string,chain?:{
+    readonly botInstanceId:string;readonly underlyingId:string;
+  }):Promise<{readonly inserted:boolean;readonly disposition:'ENQUEUED'|'REPLAY'|'EQUIVALENT_ENTRY_IN_FLIGHT';readonly conflictingIds:readonly string[]}>{
     const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
     const contentHash=hash(plan);
     return withRuntimePostgresTransaction(this.pool,async(client)=>{
@@ -70,6 +103,15 @@ export class PostgresMasterPaperActionPlanStore {
       if(String(row.aegis_action)!==plan.aegisState)throw new Error('ACTION_PLAN_AEGIS_MISMATCH');
       if(row.aegis_input_origin!=='DERIVED_FROM_REAL')throw new Error('ACTION_PLAN_AEGIS_REAL_INPUT_LINEAGE_MISSING');
       assertNewRiskAegisLineage(row,plan);
+      if(plan.action==='OPEN_CSP'&&plan.optionContractId!==null){
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`entry:${plan.executionAccountId}:${plan.optionContractId}`]);
+        const equivalent=await readEquivalentEntryInFlight(client,{executionAccountId:plan.executionAccountId,decisionId:plan.decisionId,
+          optionContractId:plan.optionContractId,at:createdAt});
+        if(equivalent.length>0){
+          return {inserted:false,disposition:'EQUIVALENT_ENTRY_IN_FLIGHT' as const,
+            conflictingIds:equivalent};
+        }
+      }
       if(chain!==undefined){
         if(chain.underlyingId!==plan.underlyingId)throw new Error('ACTION_PLAN_CHAIN_UNDERLYING_MISMATCH');
         await client.query(`INSERT INTO trade.economic_chain(chain_id,bot_instance_id,underlying_id,lifecycle_state,opened_at)
@@ -78,8 +120,9 @@ export class PostgresMasterPaperActionPlanStore {
       }
       const inserted=await this.insertPlan(client,plan,contentHash,createdAt);
       if(inserted)await this.event(plan.actionPlanId,'READY',createdAt,null,client);
-      return inserted;
-    },{verifyCommitted:async(pool)=>this.verifyPlanGroup(pool,[{plan,contentHash}])});
+      return {inserted,disposition:(inserted?'ENQUEUED':'REPLAY') as 'ENQUEUED'|'REPLAY',conflictingIds:[] as readonly string[]};
+    },{verifyCommitted:async(pool,outcome)=>outcome.disposition==='EQUIVALENT_ENTRY_IN_FLIGHT'
+      ?true:this.verifyPlanGroup(pool,[{plan,contentHash}])});
   }
 
   /** Persist a selected management decision and all execution legs atomically.

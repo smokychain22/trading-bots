@@ -150,8 +150,8 @@ export class PaperOrderCoordinator {
       brokerOrder = await this.broker.submitOrder(intent.request, authorization);
     } catch (error) {
       if (!(error instanceof AlpacaPaperBrokerError) || error.category !== 'AMBIGUOUS_NETWORK') {
-        await this.store.updateAttempt(orderIntentId, 1, { responseStatus: error instanceof AlpacaPaperBrokerError ? String(error.httpStatus ?? error.category) : 'ERROR', timeoutFlag: false, reconcileBeforeRetry: false });
-        await this.store.transitionIntent(orderIntentId, 'SUBMITTING', 'REJECTED');
+        const found = await this.settleDefiniteMutationFailure(orderIntentId, error);
+        if (found !== null) return found;
         throw error;
       }
       await this.store.updateAttempt(orderIntentId, 1, { responseStatus: null, timeoutFlag: true, reconcileBeforeRetry: true });
@@ -166,12 +166,47 @@ export class PaperOrderCoordinator {
     return brokerOrder;
   }
 
+  /**
+   * A definite (non-ambiguous) failure of a SUBMIT/REPLACE mutation while the intent is SUBMITTING. 429 (not processed) and
+   * 409/422 (possibly "client_order_id must be unique", i.e. the order may ALREADY exist) are reconciled by client order id
+   * BEFORE the intent is called REJECTED, so a live broker order can never sit behind a REJECTED intent and a retry can never
+   * mint a second economically identical order. If the reconciliation read itself fails, the intent becomes
+   * UNKNOWN_SUBMISSION (restart-recoverable). Returns the broker order when one exists; null after marking REJECTED.
+   */
+  private async settleDefiniteMutationFailure(orderIntentId: string, error: unknown): Promise<BrokerOrderSnapshot | null> {
+    const broker = error instanceof AlpacaPaperBrokerError ? error : null;
+    const status = broker === null ? 'ERROR' : String(broker.httpStatus ?? broker.category);
+    const mustReconcile = broker !== null && (broker.category === 'RATE_LIMITED'
+      || (broker.category === 'BROKER_REJECTED' && (broker.httpStatus === 409 || broker.httpStatus === 422)));
+    await this.store.updateAttempt(orderIntentId, 1, { responseStatus: status, timeoutFlag: false, reconcileBeforeRetry: mustReconcile });
+    if (mustReconcile) {
+      const intent = await this.store.getIntent(orderIntentId);
+      if (intent === null) throw new Error('Order intent disappeared during submission failure handling.');
+      let existing: BrokerOrderSnapshot | null;
+      try {
+        existing = await this.broker.getOrderByClientOrderId(intent.request.client_order_id);
+      } catch {
+        await this.store.transitionIntent(orderIntentId, 'SUBMITTING', 'UNKNOWN_SUBMISSION');
+        throw error;
+      }
+      if (existing !== null) {
+        await this.syncBrokerSnapshot(orderIntentId, existing);
+        return existing;
+      }
+    }
+    await this.store.transitionIntent(orderIntentId, 'SUBMITTING', 'REJECTED');
+    return null;
+  }
+
   async syncBrokerSnapshot(orderIntentId: string, brokerOrder: BrokerOrderSnapshot): Promise<OrderIntentState> {
     const intent = await this.store.getIntent(orderIntentId);
     if (intent === null) throw new Error('Order intent cannot be synchronized before persistence.');
     assertBrokerSnapshotMatches(intent, brokerOrder);
-    const brokerState = brokerOrderIntentState(brokerOrder);
+    let brokerState = brokerOrderIntentState(brokerOrder);
     if (brokerState === null) throw new Error('BROKER_ORDER_STATUS_UNKNOWN');
+    // CANCEL_REQUESTED has no direct edge to EXPIRED/REJECTED; an unfilled order that ends that way after a cancel request is
+    // operationally canceled. Without this the intent would be stuck in CANCEL_REQUESTED forever (silently ignored edge).
+    if (intent.status === 'CANCEL_REQUESTED' && (brokerState === 'EXPIRED' || brokerState === 'REJECTED')) brokerState = 'CANCELED';
     if (intent.status === brokerState) return brokerState;
     const terminal = new Set<OrderIntentState>(['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED']);
     if (terminal.has(intent.status)) return intent.status;
@@ -214,14 +249,27 @@ export class PaperOrderCoordinator {
       accountKind: this.broker.accountKind, environment: this.broker.environment,
       clientOrderId: intent.request.client_order_id, quantity: intent.request.qty,
     });
-    assertValidOrderIntentTransition(refreshed.status, 'CANCEL_REQUESTED');
-    await this.store.transitionIntent(orderIntentId, refreshed.status, 'CANCEL_REQUESTED', current.id);
+    // A previous cancel attempt that failed definitively (429, 4xx) leaves CANCEL_REQUESTED; cancel is idempotent at the
+    // broker, so it may be re-issued from that state. Any other state must follow the transition table.
+    if (refreshed.status !== 'CANCEL_REQUESTED') {
+      assertValidOrderIntentTransition(refreshed.status, 'CANCEL_REQUESTED');
+      await this.store.transitionIntent(orderIntentId, refreshed.status, 'CANCEL_REQUESTED', current.id);
+    }
     try {
       await this.broker.cancelOrder(current.id, authorization);
     } catch (error) {
       if (error instanceof AlpacaPaperBrokerError && error.category === 'AMBIGUOUS_NETWORK') {
         await this.store.transitionIntent(orderIntentId, 'CANCEL_REQUESTED', 'UNKNOWN_SUBMISSION', current.id);
         return this.reconcileUnknown(orderIntentId);
+      }
+      // 404/422 on cancel usually means the order already reached a terminal state (filled/canceled/expired) between our
+      // read and the DELETE. Re-read broker truth; a terminal result is the answer, not an error.
+      if (error instanceof AlpacaPaperBrokerError && error.category === 'BROKER_REJECTED' && (error.httpStatus === 404 || error.httpStatus === 422)) {
+        const reread = await this.broker.getOrderByClientOrderId(intent.request.client_order_id);
+        if (reread !== null) {
+          const state = await this.syncBrokerSnapshot(orderIntentId, reread);
+          if (['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED'].includes(state)) return reread;
+        }
       }
       // A definite cancel error does not mean the working order was rejected.
       // Leave CANCEL_REQUESTED for mandatory broker reconciliation.
@@ -244,6 +292,9 @@ export class PaperOrderCoordinator {
       || replacement.executionAccountId !== original.executionAccountId) throw new Error('REPLACEMENT_LINEAGE_MISMATCH');
     if (replacement.request.symbol !== original.request.symbol || replacement.request.side !== original.request.side
       || replacement.request.position_intent !== original.request.position_intent) throw new Error('REPLACEMENT_EXPOSURE_MISMATCH');
+    // Paper policy (owner): a part-filled stock sale is never replaced; it rests as its bounded DAY order and the remainder is
+    // not auto-resubmitted at terminal state.
+    if (original.action === 'SELL_STOCK' && current.filledQty > 0) throw new Error('PARTIAL_STOCK_SELL_REPLACE_FORBIDDEN');
     if ((current.filledQty > 0 && replacement.request.qty <= current.filledQty)
       || replacement.request.qty > original.request.qty) {
       throw new Error('REPLACEMENT_QUANTITY_MAY_NOT_INCREASE_EXPOSURE');
@@ -272,24 +323,44 @@ export class PaperOrderCoordinator {
       if (error instanceof AlpacaPaperBrokerError && error.category === 'AMBIGUOUS_NETWORK') {
         await this.store.updateAttempt(replacement.orderIntentId, 1, { responseStatus: null, timeoutFlag: true, reconcileBeforeRetry: true });
         await this.store.transitionIntent(replacement.orderIntentId, 'SUBMITTING', 'UNKNOWN_SUBMISSION');
-        return this.reconcileUnknown(replacement.orderIntentId);
+        const resolved = await this.reconcileUnknown(replacement.orderIntentId);
+        // The replacement exists at the broker, so the original was replaced there: close it locally too instead of leaving
+        // it ACTIVE until some later reconcile pass happens to notice.
+        if (resolved !== null) await this.closeReplacedOriginal(originalOrderIntentId, current.id);
+        return resolved;
       }
-      await this.store.updateAttempt(replacement.orderIntentId, 1, {
-        responseStatus: error instanceof AlpacaPaperBrokerError ? String(error.httpStatus ?? error.category) : 'ERROR',
-        timeoutFlag: false, reconcileBeforeRetry: false,
-      });
-      await this.store.transitionIntent(replacement.orderIntentId, 'SUBMITTING', 'REJECTED');
-      throw error;
+      const found = await this.settleDefiniteMutationFailure(replacement.orderIntentId, error);
+      if (found === null) {
+        // The replace was refused (e.g. 422 because the original just filled/canceled). Refresh the original from broker truth
+        // so a terminal original is not left looking active; broker read failures here must not mask the replace error.
+        await this.refreshOriginalFromBroker(originalOrderIntentId, original.request.client_order_id);
+        throw error;
+      }
+      await this.closeReplacedOriginal(originalOrderIntentId, current.id);
+      return found;
     }
     await this.store.updateAttempt(replacement.orderIntentId, 1, {
       responseStatus: brokerOrder.status, timeoutFlag: false, reconcileBeforeRetry: false,
     });
     await this.syncBrokerSnapshot(replacement.orderIntentId, brokerOrder);
+    await this.closeReplacedOriginal(originalOrderIntentId, current.id);
+    return brokerOrder;
+  }
+
+  private async closeReplacedOriginal(originalOrderIntentId: string, brokerOrderId: string): Promise<void> {
     const refreshedOriginal = await this.store.getIntent(originalOrderIntentId);
     if (refreshedOriginal !== null && isValidOrderIntentTransition(refreshedOriginal.status, 'CANCELED')) {
-      await this.store.transitionIntent(originalOrderIntentId, refreshedOriginal.status, 'CANCELED', current.id);
+      await this.store.transitionIntent(originalOrderIntentId, refreshedOriginal.status, 'CANCELED', brokerOrderId);
     }
-    return brokerOrder;
+  }
+
+  private async refreshOriginalFromBroker(originalOrderIntentId: string, clientOrderId: string): Promise<void> {
+    try {
+      const latest = await this.broker.getOrderByClientOrderId(clientOrderId);
+      if (latest !== null) await this.syncBrokerSnapshot(originalOrderIntentId, latest);
+    } catch (error) {
+      if (!(error instanceof AlpacaPaperBrokerError)) throw error;
+    }
   }
 
   /**
@@ -301,11 +372,23 @@ export class PaperOrderCoordinator {
   async recoverAfterRestart(now: string = new Date().toISOString()): Promise<readonly { orderIntentId: string; resolved: boolean }[]> {
     const unresolved = await this.store.unresolvedIntents();
     const results: Array<{ orderIntentId: string; resolved: boolean }> = [];
+    let stopForRateLimit = false;
     for (const intent of unresolved) {
+      // One provider outage/429 must not abort recovery of the remaining intents, and after a 429 no further broker reads
+      // are issued in this pass (no retry storm); they stay unresolved for the next pass.
+      if (stopForRateLimit) { results.push({ orderIntentId: intent.orderIntentId, resolved: false }); continue; }
       if (intent.status === 'SUBMITTING') await this.store.transitionIntent(intent.orderIntentId, 'SUBMITTING', 'UNKNOWN_SUBMISSION');
       const current = await this.store.getIntent(intent.orderIntentId);
       if (current?.status === 'UNKNOWN_SUBMISSION' || current?.status === 'RECONCILING') {
-        const resolved = await this.reconcileUnknown(intent.orderIntentId);
+        let resolved: BrokerOrderSnapshot | null;
+        try {
+          resolved = await this.reconcileUnknown(intent.orderIntentId);
+        } catch (error) {
+          if (!(error instanceof AlpacaPaperBrokerError)) throw error;
+          if (error.category === 'RATE_LIMITED') stopForRateLimit = true;
+          results.push({ orderIntentId: intent.orderIntentId, resolved: false });
+          continue;
+        }
         if (resolved === null) {
           const refreshed = await this.store.getIntent(intent.orderIntentId);
           const windowEnd = Date.parse(refreshed?.executionEvidence.decisionExpiresAt ?? '');

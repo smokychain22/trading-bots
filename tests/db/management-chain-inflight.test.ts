@@ -19,11 +19,11 @@ test('chain in-flight and committed-short-call readers compile and run against t
     assert.deepEqual(errors, []);
     assert.deepEqual(inflight, { state: 'KNOWN', entries: [] });
     const committed = await readCommittedShortCallContracts(watched, { executionAccountId: none, reconciliationSnapshotId: none,
-      underlying: 'SPY', externalOrUnknownCount: 0 });
+      underlying: 'SPY', entryBlockingFactCount: 0 });
     assert.deepEqual(errors, []);
     assert.equal(committed, null, 'a reconciliation snapshot that does not exist cannot prove the commitment is zero');
     assert.equal(await readCommittedShortCallContracts(watched, { executionAccountId: none, reconciliationSnapshotId: none,
-      underlying: 'SPY', externalOrUnknownCount: 1 }), null);
+      underlying: 'SPY', entryBlockingFactCount: 1 }), null);
     // Real snapshot (rolled back): FK checks are bypassed inside this one disposable transaction only.
     const client = await pool.connect();
     try {
@@ -37,9 +37,9 @@ test('chain in-flight and committed-short-call readers compile and run against t
         VALUES($1,$2,'SPY261120C00500000',-2,'short','us_option',now(),$3)`, [snapshot, none, hash]);
       const inTransaction = { query: async (text: string, values?: unknown[]) => client.query(text, values) };
       assert.equal(await readCommittedShortCallContracts(inTransaction, { executionAccountId: none, reconciliationSnapshotId: snapshot,
-        underlying: 'SPY', externalOrUnknownCount: 0 }), 2);
+        underlying: 'SPY', entryBlockingFactCount: 0 }), 2);
       assert.equal(await readCommittedShortCallContracts(inTransaction, { executionAccountId: none, reconciliationSnapshotId: snapshot,
-        underlying: 'AAPL', externalOrUnknownCount: 0 }), 0);
+        underlying: 'AAPL', entryBlockingFactCount: 0 }), 0);
     } finally { await client.query('ROLLBACK').catch(() => undefined); client.release(); }
     assert.deepEqual(errors, []);
   } finally { await pool.end(); }

@@ -126,32 +126,35 @@ test('C committed short-call derivation counts open short calls and pending STO 
   assert.equal(deriveCommittedShortCallContracts('AAPL', [pos('GARBAGE', -1, 'short')], []), null);
 });
 
-test('C frontier: share boundaries produce at most floor(shares/100) contracts and never a naked call', () => {
-  const cases: Array<[number, number]> = [[0, 0], [1, 0], [99, 0], [100, 1], [101, 1], [199, 1], [200, 2], [250, 2]];
-  for (const [shares, maxContracts] of cases) {
+test('C frontier: share boundaries - whole-position lot accounting (Paper policy P-B): all contracts covering the entire position, or zero; never naked', () => {
+  // [shares, contracts allowed]. Before P-B a partial cover (101 -> 1, 199 -> 1, 250 -> 2) was allowed; the ledger cannot record a
+  // partial call-away, so a call must cover the whole open position (shares % 100 === 0, contracts === shares / 100) or be zero.
+  const cases: Array<[number, number]> = [[0, 0], [1, 0], [99, 0], [100, 1], [101, 0], [199, 0], [200, 2], [250, 0], [300, 3]];
+  for (const [shares, contracts] of cases) {
     const f = frontier({ contracts: [call()], stock: stock({ shares }), routing: routing(['THETA_C']) });
     const cc = branchOf(f, 'THETA_CC');
     for (const candidate of cc.candidates) {
-      assert.ok(candidate.sizing.quantity <= maxContracts, `shares=${shares} qty=${candidate.sizing.quantity}`);
+      assert.equal(candidate.sizing.quantity, contracts, `shares=${shares} qty=${candidate.sizing.quantity}`);
       assert.equal(candidate.executionAuthorized, false);
-      if (maxContracts === 0) {
-        assert.equal(candidate.sizing.quantity, 0);
-        assert.equal(candidate.riskFeasible, false, `shares=${shares}: no covered shares must be a hard blocker`);
-        assert.ok(candidate.hardBlockers.includes('INSUFFICIENT_COVERED_SHARES') || candidate.hardBlockers.includes('NO_CONFIRMED_STOCK_INVENTORY'));
+      if (contracts === 0) {
+        assert.equal(candidate.riskFeasible, false, `shares=${shares}: must be a hard blocker`);
+        if (shares >= 100) assert.ok(candidate.hardBlockers.includes('COVERED_CALL_WHOLE_POSITION_REQUIRED'), `shares=${shares}`);
+        else assert.ok(candidate.hardBlockers.includes('INSUFFICIENT_COVERED_SHARES') || candidate.hardBlockers.includes('NO_CONFIRMED_STOCK_INVENTORY'));
       }
     }
-    if (maxContracts > 0) assert.equal(cc.candidates[0]?.sizing.quantity, maxContracts, `shares=${shares}`);
   }
 });
 
-test('C frontier: existing short calls and pending CC orders reduce capacity; over-commitment yields zero', () => {
-  const run = (committed: number | null | undefined, shares = 250) => branchOf(frontier({
+test('C frontier: existing short calls and pending CC orders reduce capacity; a partial remainder is not allowed; over-commitment yields zero', () => {
+  const run = (committed: number | null | undefined, shares = 300) => branchOf(frontier({
     contracts: [call()], stock: stock({ shares, ...(committed === undefined ? {} : { committedShortCallContracts: committed }) }),
     routing: routing(['THETA_C']),
   }), 'THETA_CC').candidates[0];
-  assert.equal(run(0)?.sizing.quantity, 2);
-  assert.equal(run(1)?.sizing.quantity, 1);
-  const full = run(2);
+  assert.equal(run(0)?.sizing.quantity, 3);
+  const partial = run(1);
+  assert.equal(partial?.sizing.quantity, 0, 'two free contracts of three is a partial cover of the position: zero under P-B');
+  assert.ok(partial?.hardBlockers.includes('COVERED_CALL_WHOLE_POSITION_REQUIRED'));
+  const full = run(3);
   assert.equal(full?.sizing.quantity, 0);
   assert.ok(full?.hardBlockers.includes('COVERED_SHARES_ALREADY_COMMITTED'));
   assert.equal(full?.riskFeasible, false);

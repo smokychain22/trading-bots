@@ -103,7 +103,7 @@ async function flow(state: PaperBootstrapPolicyInput, quotes: Readonly<Record<st
   const { frontier } = decide(state);
   const compiled = compileManagementExecutionLegDirectives(state, frontier);
   if (compiled.state !== 'READY') return { frontier, compiled, assembled: null, prepared: [] };
-  const assembled = assembleManagementPaperPlans({ state, frontier, managementActionFrontierId: UUID(8), executionAccountId: UUID(9),
+  const assembled = assembleManagementPaperPlans({stockExitFreeze:{state:'CLEAR'}, state, frontier, managementActionFrontierId: UUID(8), executionAccountId: UUID(9),
     strategyVersion: 'theta-conventional-v1', accountStatus: 'ACTIVE', optionsCapabilityVerified: true, aegisState: 'ALLOW_FULL',
     killSwitchActive: false, paperEvidenceRiskCap: 5, executionLegs: compiled.legs, chainInFlight: { state: 'KNOWN', entries: [] },
     committedShortCallContracts: 1, now, decisionExpiresAt: EXPIRES, ...extra });
@@ -486,7 +486,7 @@ function assembleSellCc(state: ManagementInputState, committed: number | null | 
   const compiled = compileManagementExecutionLegDirectives(state, frontier);
   assert.equal(compiled.state, 'READY');
   if (compiled.state !== 'READY') throw new Error('unreachable');
-  return assembleManagementPaperPlans({ state, frontier, managementActionFrontierId: UUID(8), executionAccountId: UUID(9),
+  return assembleManagementPaperPlans({stockExitFreeze:{state:'CLEAR'}, state, frontier, managementActionFrontierId: UUID(8), executionAccountId: UUID(9),
     strategyVersion: 'theta-recovery-v1', accountStatus: 'ACTIVE', optionsCapabilityVerified: true, aegisState: 'ALLOW_FULL',
     killSwitchActive: false, paperEvidenceRiskCap: 1, executionLegs: compiled.legs, chainInFlight,
     ...(committed === undefined ? {} : { committedShortCallContracts: committed }), now: T0, decisionExpiresAt: '2026-09-12T14:00:45.000Z' });
@@ -533,9 +533,12 @@ test('HDAC-05: two chains on one underlying competing for the same 100 shares - 
     avgEntryPrice: null, marketValue: null, unrealizedPl: null, receivedAt: T0 }], []);
   assert.equal(unknownRow, null);
   assert.equal(assembleSellCc(chainB, unknownRow).state, 'BLOCKED');
-  // genuine extra cover (200 shares, one contract committed) leaves exactly one contract
-  assert.equal(assembleSellCc(managed({ lifecycle: 'RECOVERY_WAIT', shares: '200' }), 1).state, 'READY');
-  assert.equal(assembleSellCc(managed({ lifecycle: 'RECOVERY_WAIT', shares: '200' }), 2).state, 'BLOCKED');
+  // genuine extra cover (200 shares, one contract committed) leaves exactly one contract of capacity, but Paper policy P-B (whole-position
+  // lot accounting) forbids a call that does not cover the entire open position: the ledger cannot record a partial call-away.
+  const partialState = managed({ lifecycle: 'RECOVERY_WAIT', shares: '200' });
+  const partialCover = compileManagementExecutionLegDirectives(partialState, sellCcFrontier(partialState));
+  assert.equal(partialCover.state, 'BLOCKED');
+  assert.ok(partialCover.blockers.some((blocker) => blocker.startsWith('COVERED_CALL_WHOLE_POSITION_REQUIRED')));
 });
 
 test('HDAC-05: a covered-call ROLL nets out the call it is closing (and only that call)', async () => {
@@ -589,7 +592,7 @@ test('HDAC-05: order construction and the master handoff enforce the same accoun
 
 test('HDAC-05: the production commitment feed is UNKNOWN on any external/unknown broker fact or read error', async () => {
   const rows = (positions: unknown[], orders: unknown[], plans: unknown[] = []) => ({ query: async (sql: string) => ({ rows: /broker_reconciliation_snapshot/.test(sql) ? [{ observed_at: '2026-10-13T13:59:00.000Z' }] : /trade\.fill/.test(sql) ? [] : /broker_position_snapshot/.test(sql) ? positions : /master_paper_action_plan/.test(sql) ? plans : orders }) });
-  const input = { executionAccountId: UUID(9), reconciliationSnapshotId: UUID(2), underlying: 'AAPL', externalOrUnknownCount: 0 };
+  const input = { executionAccountId: UUID(9), reconciliationSnapshotId: UUID(2), underlying: 'AAPL', entryBlockingFactCount: 0 };
   assert.equal(await readCommittedShortCallContracts(rows([], []) as never, input), 0);
   assert.equal(await readCommittedShortCallContracts(rows([{ symbol: 'AAPL261120C00205000', quantity: -2, side: 'short', asset_class: 'us_option' }], []) as never, input), 2);
   assert.equal(await readCommittedShortCallContracts(rows([], [{ id: 'i1', broker_symbol: 'AAPL261120C00210000', side: 'sell', position_intent: 'SELL_TO_OPEN', quantity: 1, status: 'SUBMITTED' }]) as never, input), 1);
@@ -598,7 +601,7 @@ test('HDAC-05: the production commitment feed is UNKNOWN on any external/unknown
   assert.equal(await readCommittedShortCallContracts(rows([], [], [{ id: 'p2', symbol: 'MSFT261120C00400000', quantity: 3 }]) as never, input), 0);
   // a position row with an UNKNOWN asset class that is an OCC short call is counted, never skipped
   assert.equal(await readCommittedShortCallContracts(rows([{ symbol: 'AAPL261120C00205000', quantity: -1, side: 'short', asset_class: null }], []) as never, input), 1);
-  assert.equal(await readCommittedShortCallContracts(rows([], []) as never, { ...input, externalOrUnknownCount: 1 }), null);
+  assert.equal(await readCommittedShortCallContracts(rows([], []) as never, { ...input, entryBlockingFactCount: 1 }), null);
   assert.equal(await readCommittedShortCallContracts({ query: async () => { throw new Error('down'); } } as never, input), null);
   assert.equal(await readCommittedShortCallContracts(rows([], [{ id: 'i2', broker_symbol: 'AAPL261120C00210000', side: 'sell', position_intent: null, quantity: 1, status: 'READY' }]) as never, input), null);
 });
@@ -850,7 +853,7 @@ test('P2-09: sibling chains on one underlying - a published covered-call plan on
       : /broker_position_snapshot/.test(sql) ? [] : /master_paper_action_plan/.test(sql)
         ? plans.filter((p) => ['READY', 'CLAIMED', 'WAITING_GATE'].includes(p.status)).map((p) => ({ id: p.id, symbol: 'AAPL261120C00205000', quantity: 1 })) : [] }) });
   const read = (plans: { id: string; status: string }[]) => readCommittedShortCallContracts(commitments(plans) as never,
-    { executionAccountId: UUID(9), reconciliationSnapshotId: UUID(2), underlying: 'AAPL', externalOrUnknownCount: 0 });
+    { executionAccountId: UUID(9), reconciliationSnapshotId: UUID(2), underlying: 'AAPL', entryBlockingFactCount: 0 });
   const chainA = sellStockState(stockRead(), { chain: 4 });
   for (const status of ['READY', 'CLAIMED', 'WAITING_GATE']) {
     const committed = await read([{ id: 'ccB', status }]);

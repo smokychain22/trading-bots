@@ -47,6 +47,30 @@ export type ManagementChainInFlightState =
   | { readonly state: 'KNOWN'; readonly entries: readonly ManagementChainInFlightEntry[] }
   | { readonly state: 'UNKNOWN' };
 
+/** Typed blocker / diagnostic label of a chain frozen after a terminal partial stock exit (P-A). */
+export const stockPartialExitPendingReconciliation = 'STOCK_PARTIAL_EXIT_PENDING_RECONCILIATION' as const;
+/** The freeze evidence could not be read: UNKNOWN is never treated as CLEAR. */
+export const managementStockExitStateUnknown = 'MANAGEMENT_STOCK_EXIT_STATE_UNKNOWN' as const;
+/**
+ * P-B. Whole-position lot accounting: a covered call must cover the ENTIRE open stock position (a call-away then disposes whole
+ * lots; the ledger cannot record a partial call-away). Anything else is quantity ZERO with this typed blocker.
+ */
+export const coveredCallWholePositionRequired = 'COVERED_CALL_WHOLE_POSITION_REQUIRED' as const;
+
+/**
+ * P-A. Whether the chain may sell or cover shares. FROZEN: a terminal partial SELL_STOCK exit is unreconciled (broker shares and
+ * ledger shares disagree); realized-P&L attribution of the part fill is UNKNOWN / PENDING_RECONCILIATION. Absent === UNKNOWN.
+ */
+export type ManagementStockExitFreezeState =
+  | { readonly state: 'CLEAR' }
+  | { readonly state: 'UNKNOWN' }
+  | { readonly state: 'FROZEN'; readonly code: typeof stockPartialExitPendingReconciliation;
+      readonly cause: 'PARTIAL_FILL_TERMINAL' | 'TERMINAL_EXIT_LEDGER_AHEAD_OF_BROKER';
+      readonly reconciliationReason: string;
+      readonly blockClass: 'TRANSIENT_RETRYABLE' | 'REQUIRES_RECONCILIATION' | 'REQUIRES_NEW_DECISION' | 'OWNER_POLICY' | 'TERMINAL';
+      readonly orderIntentIds: readonly string[]; readonly filledQuantity: number; readonly orderedQuantity: number;
+      readonly realizedPnlAttribution: 'UNKNOWN_PENDING_RECONCILIATION' };
+
 export interface ManagementPaperPlanAssemblyInput {
   readonly state: ManagementInputState;
   readonly frontier: ManagementActionFrontier;
@@ -67,6 +91,8 @@ export interface ManagementPaperPlanAssemblyInput {
    * closing, which is netted out here. null / absent is UNKNOWN and blocks any covered-call open.
    */
   readonly committedShortCallContracts?: number | null;
+  /** P-A. Absent / UNKNOWN blocks SELL_STOCK, OPEN_CC and ROLL_CC_OPEN; FROZEN blocks them with the typed label. */
+  readonly stockExitFreeze?: ManagementStockExitFreezeState;
   readonly now: string;
   readonly decisionExpiresAt: string;
 }
@@ -115,6 +141,11 @@ const adaptivePricingPolicy = Object.freeze({
 });
 
 const validPositive = (value: number | null): value is number => value !== null && Number.isFinite(value) && value > 0;
+
+/** P-B: the open position is a whole number of contracts and the call quantity covers exactly all of it. */
+export const isWholePositionCoveredCall = (openShares: number, contracts: number, multiplier: number): boolean =>
+  Number.isSafeInteger(openShares) && Number.isSafeInteger(contracts) && Number.isSafeInteger(multiplier)
+  && openShares > 0 && contracts > 0 && multiplier > 0 && openShares % multiplier === 0 && contracts * multiplier === openShares;
 
 /**
  * Compiles broker legs from the selected immutable frontier. Current-leg
@@ -189,6 +220,10 @@ export function compileManagementExecutionLegDirectives(state: ManagementInputSt
     (target.optionType!=='CALL'||state.economics.openStockShares<target.quantity*target.multiplier)){
     return {state:'BLOCKED',legs:[],blockers:['COVERED_CALL_COVERAGE_NOT_CONFIRMED']};
   }
+  // P-B whole-position lot accounting: the call must cover the ENTIRE open position (ledger cannot record a partial call-away).
+  if((selected==='SELL_CC'||selected==='ROLL_CC')&&!isWholePositionCoveredCall(state.economics.openStockShares,target.quantity,target.multiplier)){
+    return {state:'BLOCKED',legs:[],blockers:[coveredCallWholePositionRequired]};
+  }
   if(selected==='SELL_CC')return {state:'READY',blockers:[],legs:[openLeg('OPEN_CC')]};
   if(close===null||!validPositive(execution.closeEconomicBoundary)){
     return {state:'BLOCKED',legs:[],blockers:['MANAGEMENT_ROLL_CLOSE_DIRECTIVE_INCOMPLETE']};
@@ -227,6 +262,10 @@ function validateLegIdentity(state: ManagementInputState, leg: ManagementExecuti
     const coveredShares = leg.confirmedCoveredShares ?? 0;
     if (coveredShares !== state.economics.openStockShares || coveredShares < leg.canonicalQuantity * leg.multiplier) {
       blockers.push(`COVERED_CALL_COVERAGE_INVALID:${leg.action}`);
+    }
+    // P-B: quantity zero is valid, a partial-coverage call is not. The typed blocker is added once coverage is otherwise proven.
+    if (!isWholePositionCoveredCall(state.economics.openStockShares, leg.canonicalQuantity, leg.multiplier)) {
+      blockers.push(`${coveredCallWholePositionRequired}:${leg.action}`);
     }
   }
   if (leg.action === 'ROLL_CSP_OPEN' && (leg.optionType !== 'PUT' || leg.optionContractId === null)) {
@@ -291,8 +330,19 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
   if (input.executionLegs.length !== required.length
     || input.executionLegs.some((leg, index) => leg.action !== required[index])) blockers.push('MANAGEMENT_EXECUTION_LEG_SEQUENCE_INVALID');
   const netCommitted = new Map<number, number>();
+  // P-A: a chain with an unreconciled terminal partial stock exit may not sell or cover shares. Absent evidence is UNKNOWN.
+  const exitFreeze = input.stockExitFreeze ?? { state: 'UNKNOWN' as const };
   for (const [index, leg] of input.executionLegs.entries()) {
     validateLegIdentity(input.state, leg, blockers);
+    if (leg.action === 'SELL_STOCK' || leg.action === 'OPEN_CC' || leg.action === 'ROLL_CC_OPEN') {
+      if (exitFreeze.state === 'FROZEN') blockers.push(exitFreeze.code);
+      else if (exitFreeze.state !== 'CLEAR') blockers.push(managementStockExitStateUnknown);
+    }
+    if ((leg.action === 'OPEN_CC' || leg.action === 'ROLL_CC_OPEN') && leg.canonicalQuantity > 0
+      && !(Number.isSafeInteger(input.paperEvidenceRiskCap) && input.paperEvidenceRiskCap >= leg.canonicalQuantity)) {
+      // The Paper evidence risk cap would clip the call below the whole position. A clipped call is not allowed: ZERO instead.
+      blockers.push(`${coveredCallWholePositionRequired}:${leg.action}:PAPER_EVIDENCE_RISK_CAP`);
+    }
     if (leg.action === 'OPEN_CC' || leg.action === 'ROLL_CC_OPEN') {
       // HDAC-05: coverage is ACCOUNT-NET. Shares already backing another short call (sibling chain, pending sell-to-open)
       // are not free. A roll's own close frees the contracts it is closing.

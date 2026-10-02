@@ -5,7 +5,9 @@ import {AlpacaProviderError,fetchOptionContracts,fetchOptionSnapshots,fetchStock
 import { fetchOptionomicsOptionChain } from '../src/theta/optionomics-provider.js';
 const at='2026-09-30T14:00:00.000Z';
 const config=(fetchImpl:typeof fetch):AlpacaProviderConfig=>({tradingApiBase:'https://paper-api.alpaca.markets',
-  marketDataApiBase:'https://data.alpaca.markets',apiKey:'SYNTHETIC_TEST',apiSecret:'SYNTHETIC_TEST',fetchImpl});
+  marketDataApiBase:'https://data.alpaca.markets',apiKey:'SYNTHETIC_TEST',apiSecret:'SYNTHETIC_TEST',fetchImpl,
+  // Phase 3 E1: 429 reads now retry by default; this matrix asserts the single-attempt typed failure per status.
+  readRetry:{policy:{maxRetries:0}}});
 const response=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status});
 const contract={symbol:'SPY261030P00500000',strike_price:'500',expiration_date:'2026-10-30',size:'100'};
 const quote={latestQuote:{bp:1,ap:1.1,t:at},greeks:{delta:-0.2}};

@@ -187,16 +187,122 @@ export class AlpacaPaperBrokerError extends Error {
     readonly category: 'INVALID_AUTH' | 'NOT_ENTITLED' | 'RATE_LIMITED' | 'BROKER_REJECTED' | 'AMBIGUOUS_NETWORK' | 'MALFORMED_RESPONSE',
     readonly httpStatus: number | null,
     message: string,
+    /** Provider Retry-After hint in milliseconds when the response carried a parseable one; otherwise null. */
+    readonly retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = 'AlpacaPaperBrokerError';
   }
 }
 
+// ---------------------------------------------------------------------------
+// Read-retry / rate-limit policy (Phase 3 E1).
+//
+// READS (GET) retry with bounded exponential backoff + jitter, honoring Retry-After, with a hard cap on attempts AND on
+// total wait. MUTATIONS (POST/PATCH/DELETE) are NEVER retried inside the adapter: a 429 on a mutation means the broker did
+// not process it, and the coordinator must reconcile by client_order_id before any further action. A process-wide shared
+// budget + cooldown stops concurrent worker jobs from forming a retry storm after one 429.
+// ---------------------------------------------------------------------------
+
+export interface ReadRetryPolicy {
+  readonly maxRetries: number;
+  readonly baseDelayMs: number;
+  readonly maxDelayMs: number;
+  readonly maxTotalWaitMs: number;
+}
+export const DEFAULT_READ_RETRY_POLICY: ReadRetryPolicy = { maxRetries: 2, baseDelayMs: 250, maxDelayMs: 3_000, maxTotalWaitMs: 5_000 };
+
+export interface ReadRetryOptions {
+  readonly policy?: Partial<ReadRetryPolicy>;
+  readonly sleep?: (ms: number) => Promise<void>;
+  readonly random?: () => number;
+  readonly now?: () => number;
+  readonly budget?: SharedReadRetryBudget;
+}
+
+/** Parses a Retry-After header (delta-seconds or HTTP-date). Returns null when absent or unusable; never negative. */
+export function parseRetryAfterMs(header: string | null | undefined, nowMs: number): number | null {
+  if (header === null || header === undefined) return null;
+  const value = header.trim();
+  if (value.length === 0) return null;
+  if (/^\d+(?:\.\d+)?$/.test(value)) return Math.round(Number(value) * 1000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - nowMs) : null;
+}
+
+/** Per-process retry budget and rate-limit cooldown shared by every read in the process. */
+export class SharedReadRetryBudget {
+  private readonly stamps: number[] = [];
+  private blockedUntil = 0;
+  constructor(private readonly maxRetriesPerWindow = 20, private readonly windowMs = 60_000, private readonly now: () => number = Date.now) {}
+  tryConsume(): boolean {
+    const t = this.now();
+    while (this.stamps.length > 0 && (this.stamps[0] as number) <= t - this.windowMs) this.stamps.shift();
+    if (this.stamps.length >= this.maxRetriesPerWindow) return false;
+    this.stamps.push(t);
+    return true;
+  }
+  noteCooldown(untilMs: number): void { this.blockedUntil = Math.max(this.blockedUntil, untilMs); }
+  cooldownRemainingMs(): number { return Math.max(0, this.blockedUntil - this.now()); }
+}
+export const defaultSharedReadRetryBudget = new SharedReadRetryBudget();
+
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Delay before retry `attempt` (0-based); null when the provider asks for longer than maxDelayMs (give up, never sleep unboundedly). */
+export function readRetryDelayMs(policy: ReadRetryPolicy, attempt: number, retryAfterMs: number | null, random: () => number): number | null {
+  if (retryAfterMs !== null && retryAfterMs > policy.maxDelayMs) return null;
+  const backoff = Math.min(policy.maxDelayMs, policy.baseDelayMs * 2 ** attempt);
+  const jittered = Math.floor(backoff / 2 + random() * (backoff / 2));
+  return Math.max(jittered, retryAfterMs ?? 0);
+}
+
+export interface ReadRetryVerdict { readonly retryable: boolean; readonly rateLimited: boolean; readonly retryAfterMs: number | null }
+
+/**
+ * Runs a read with the bounded retry policy. Exported so the Alpaca data provider shares the exact same limits and budget.
+ * `rateLimitedError` builds the error thrown when the shared cooldown exceeds the whole wait cap (no network call is made).
+ */
+export async function runBoundedRead<T>(attemptOnce: () => Promise<T>, classify: (error: unknown) => ReadRetryVerdict,
+  rateLimitedError: () => Error, options: ReadRetryOptions = {}): Promise<T> {
+  const policy: ReadRetryPolicy = { ...DEFAULT_READ_RETRY_POLICY, ...options.policy };
+  const sleep = options.sleep ?? defaultSleep;
+  const random = options.random ?? Math.random;
+  const now = options.now ?? Date.now;
+  const budget = options.budget ?? defaultSharedReadRetryBudget;
+  let waited = 0;
+  const cooldown = budget.cooldownRemainingMs();
+  if (cooldown > 0) {
+    // Another job in this process just saw a 429: honor that shared cooldown (bounded) instead of adding to the storm.
+    if (cooldown > policy.maxTotalWaitMs) throw rateLimitedError();
+    await sleep(cooldown);
+    waited += cooldown;
+  }
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await attemptOnce();
+    } catch (error) {
+      const verdict = classify(error);
+      if (!verdict.retryable || attempt >= policy.maxRetries) throw error;
+      const delay = readRetryDelayMs(policy, attempt, verdict.retryAfterMs, random);
+      if (delay === null || waited + delay > policy.maxTotalWaitMs || !budget.tryConsume()) throw error;
+      if (verdict.rateLimited) budget.noteCooldown(now() + delay);
+      await sleep(delay);
+      waited += delay;
+    }
+  }
+}
+
+const retryableReadError = (error: AlpacaPaperBrokerError): boolean =>
+  error.category === 'RATE_LIMITED' || (error.category === 'AMBIGUOUS_NETWORK' && (error.httpStatus === null || [502, 503, 504].includes(error.httpStatus)));
+
 export interface AlpacaPaperBrokerConfig {
   readonly baseUrl: string;
   readonly authentication: AlpacaPaperAuthentication;
   readonly fetchImpl?: typeof fetch;
+  /** Per-request wall-clock limit. A timeout after a mutation was sent is AMBIGUOUS_NETWORK (reconcile, never retry). Default 15s. */
+  readonly requestTimeoutMs?: number;
+  readonly readRetry?: ReadRetryOptions;
 }
 
 const assertPaperHost = (baseUrl: string): URL => {
@@ -217,8 +323,12 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   private readonly baseUrl: URL;
   private readonly fetchImpl: typeof fetch;
   private readonly headers: HeadersInit;
+  private readonly requestTimeoutMs: number;
+  private readonly readRetry: ReadRetryOptions;
 
   constructor(config: AlpacaPaperBrokerConfig) {
+    this.requestTimeoutMs = config.requestTimeoutMs ?? 15_000;
+    this.readRetry = config.readRetry ?? {};
     this.baseUrl = assertPaperHost(config.baseUrl);
     this.fetchImpl = config.fetchImpl ?? fetch;
     this.headers = requestHeaders(config.authentication);
@@ -228,27 +338,49 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   private async request(path: string, init: RequestInit = {}, allowNotFound = false): Promise<unknown> {
     const method = init.method ?? 'GET';
     const isMutation = method === 'POST' || method === 'PATCH' || method === 'DELETE';
-    let response: Response;
+    // Mutations are single-shot: the adapter never retries them (see the policy block above).
+    if (isMutation) return this.requestOnce(path, init, allowNotFound, true);
+    const now = this.readRetry.now ?? Date.now;
+    return runBoundedRead(() => this.requestOnce(path, init, allowNotFound, false), (error) => {
+      if (!(error instanceof AlpacaPaperBrokerError)) return { retryable: false, rateLimited: false, retryAfterMs: null };
+      return { retryable: retryableReadError(error), rateLimited: error.category === 'RATE_LIMITED', retryAfterMs: error.retryAfterMs };
+    }, () => new AlpacaPaperBrokerError('RATE_LIMITED', 429, `Alpaca PAPER ${path.split('?')[0]} refused locally: shared rate-limit cooldown exceeds the bounded wait.`),
+    { ...this.readRetry, now });
+  }
+
+  private async requestOnce(path: string, init: RequestInit, allowNotFound: boolean, isMutation: boolean): Promise<unknown> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     try {
-      response = await this.fetchImpl(new URL(path, this.baseUrl), { ...init, headers: { ...this.headers, ...init.headers } });
-    } catch (error) {
-      throw new AlpacaPaperBrokerError('AMBIGUOUS_NETWORK', null, `Alpaca PAPER request failed before a response was available: ${error instanceof Error ? error.name : 'NetworkError'}.`);
-    }
-    if (allowNotFound && response.status === 404) return null;
-    if (!response.ok) {
-      const category = isMutation && response.status >= 500 ? 'AMBIGUOUS_NETWORK'
-        : response.status === 401 ? 'INVALID_AUTH'
-        : response.status === 403 ? 'NOT_ENTITLED'
-          : response.status === 429 ? 'RATE_LIMITED'
-            : 'BROKER_REJECTED';
-      throw new AlpacaPaperBrokerError(category, response.status, `Alpaca PAPER ${new URL(path, this.baseUrl).pathname} returned HTTP ${response.status}.`);
-    }
-    if (response.status === 204) return null;
-    try {
-      return await response.json();
-    } catch {
-      throw new AlpacaPaperBrokerError(isMutation ? 'AMBIGUOUS_NETWORK' : 'MALFORMED_RESPONSE', response.status,
-        'Alpaca PAPER returned an invalid JSON response.');
+      let response: Response;
+      try {
+        response = await this.fetchImpl(new URL(path, this.baseUrl), { ...init, headers: { ...this.headers, ...init.headers }, signal: controller.signal });
+      } catch (error) {
+        throw new AlpacaPaperBrokerError('AMBIGUOUS_NETWORK', null, `Alpaca PAPER request failed before a response was available: ${controller.signal.aborted ? 'TimeoutError' : error instanceof Error ? error.name : 'NetworkError'}.`);
+      }
+      if (allowNotFound && response.status === 404) return null;
+      if (!response.ok) {
+        // Reads: 5xx/408 are transient provider unavailability (retryable, no state implication). Mutations: 5xx may have
+        // been applied -> ambiguous. 429 is always "not processed".
+        const transientRead = !isMutation && (response.status >= 500 || response.status === 408);
+        const category = (isMutation && response.status >= 500) || transientRead ? 'AMBIGUOUS_NETWORK'
+          : response.status === 401 ? 'INVALID_AUTH'
+          : response.status === 403 ? 'NOT_ENTITLED'
+            : response.status === 429 ? 'RATE_LIMITED'
+              : 'BROKER_REJECTED';
+        const retryAfterMs = response.status === 429 || response.status === 503
+          ? parseRetryAfterMs(response.headers?.get?.('retry-after'), (this.readRetry.now ?? Date.now)()) : null;
+        throw new AlpacaPaperBrokerError(category, response.status, `Alpaca PAPER ${new URL(path, this.baseUrl).pathname} returned HTTP ${response.status}.`, retryAfterMs);
+      }
+      if (response.status === 204) return null;
+      try {
+        return await response.json();
+      } catch {
+        throw new AlpacaPaperBrokerError(isMutation || controller.signal.aborted ? 'AMBIGUOUS_NETWORK' : 'MALFORMED_RESPONSE', response.status,
+          'Alpaca PAPER returned an invalid JSON response.');
+      }
+    } finally {
+      clearTimeout(timer);
     }
   }
 

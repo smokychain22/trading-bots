@@ -111,3 +111,12 @@ test('the duplicate legacy trade-update store has no production importer (quaran
   assert.deepEqual(filesMatching(/postgres-trade-update-store(?:\.js)?['"]/, [...walk(join(root, 'src'), ['.ts']), ...walk(join(root, 'api'), ['.ts']),
     ...walk(join(root, 'tools'), ['.ts', '.mjs'])]), []);
 });
+
+test('the covered-call commitment reader is fed the CURRENT-impact blocking fact count, never the raw count of historical external facts', () => {
+  const runtime = source(join(root, 'src', 'theta', 'autonomous-runtime.ts'));
+  assert.match(runtime, /readCommittedShortCallContracts\(pool,\{[^}]*entryBlockingFactCount:reconciliation\.entryBlockingFactCount/);
+  assert.doesNotMatch(runtime, /readCommittedShortCallContracts\(pool,\{[^}]*externalOrUnknownCount/,
+    'settled historical account activity must not block every covered call and stock sale forever');
+  const reader = source(join(root, 'src', 'execution', 'management-chain-inflight.ts'));
+  assert.doesNotMatch(reader, /externalOrUnknownCount/);
+});

@@ -133,7 +133,7 @@ test('IDEMPOTENCY: the same frontier and selected action always yield the same d
     multiplier: 100, canonicalQuantity: 1, economicBoundary: 0.2, economicsRemainPositive: true, expectedAfterCostEv: null,
     empiricalEconomicsReady: false };
   const input = (frontierId: string, frontier: ManagementActionFrontier): ManagementPaperPlanAssemblyInput => ({
-    state, frontier: { ...frontier, actions: frontier.actions.map((a) => a.action === frontier.selectedAction
+    stockExitFreeze: { state: 'CLEAR' }, state, frontier: { ...frontier, actions: frontier.actions.map((a) => a.action === frontier.selectedAction
       ? { ...a, executionEvidence: { closeEconomicBoundary: 0.2, openEconomicBoundary: null, stockEconomicBoundary: null,
         economicsRemainPositive: true, expectedAfterCostEv: null, empiricalEconomicsReady: false,
         deterministicEconomicsValidated: false, deterministicNetCredit: null, targetContract: null } } : a) },
@@ -384,7 +384,7 @@ test('ROLL EXEC: the persisted economic plan encodes close-then-open dependency 
   assert.equal(compiled.state, 'READY');
   if (compiled.state !== 'READY') return;
   assert.deepEqual(compiled.legs.map((l) => l.action), ['ROLL_CSP_CLOSE', 'ROLL_CSP_OPEN']);
-  const make = (legs: ManagementPaperPlanAssemblyInput['executionLegs']) => assembleManagementPaperPlans({
+  const make = (legs: ManagementPaperPlanAssemblyInput['executionLegs']) => assembleManagementPaperPlans({stockExitFreeze:{state:'CLEAR'},
     state, frontier, managementActionFrontierId: UUID(8), executionAccountId: UUID(9), strategyVersion: 's', accountStatus: 'ACTIVE',
     optionsCapabilityVerified: true, aegisState: 'ALLOW_FULL', killSwitchActive: false, paperEvidenceRiskCap: 5, executionLegs: legs,
     chainInFlight: { state: 'KNOWN' as const, entries: [] }, now: T0, decisionExpiresAt: '2026-09-12T14:00:45.000Z' });

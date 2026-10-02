@@ -307,6 +307,8 @@ export function strategyFamilyForCanonicalBranch(branch: ThetaStrategyBranch): S
 
 const sourceByBranch = new Map(canonicalThetaStrategySources.map((source) => [source.branch, source]));
 const finite = (value: number | null): value is number => value !== null && Number.isFinite(value);
+/** P-B typed blocker / binding constraint: a covered call is all contracts covering the whole open position, or zero. */
+const coveredCallWholePositionRequiredBlocker = 'COVERED_CALL_WHOLE_POSITION_REQUIRED' as const;
 const stable = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
   if (value !== null && typeof value === 'object') return `{${Object.entries(value as Record<string, unknown>)
@@ -405,6 +407,8 @@ function structuralSizing(
   input: CanonicalStrategyFrontierInput,
   candidateId: string,
   candidateAegisState: CanonicalStrategyFrontierInput['aegisNewRiskState'],
+  /** SELL_CC only (P-B): the single contract count covering the whole open position, or null when none exists. */
+  wholePositionContracts?: number | null,
 ): CanonicalFrontierCandidate['sizing'] {
   const caps: { name: string; value: number | null; state: 'KNOWN' | 'MISSING' | 'INVALID' }[] = [];
   let preAegisQuantity: number | null = null;
@@ -516,6 +520,10 @@ function structuralSizing(
     if (reducedMultiplier === null) return result(0, 'REDUCED_MULTIPLIER_UNKNOWN', ['REDUCED_MULTIPLIER_UNKNOWN']);
     quantity = Math.floor(quantity * reducedMultiplier);
     bindingConstraint = 'AEGIS_ALLOW_REDUCED';
+  }
+  // P-B: a covered call is all contracts covering the whole open position or zero; never a partial-coverage quantity.
+  if (action === 'SELL_CC' && wholePositionContracts !== undefined && quantity > 0 && quantity !== wholePositionContracts) {
+    return result(0, coveredCallWholePositionRequiredBlocker, [coveredCallWholePositionRequiredBlocker]);
   }
   return result(quantity, bindingConstraint, quantity === 0 ? ['QUANTITY_ZERO_VALID'] : ['STRUCTURAL_SIZING_COMPUTED']);
 }
@@ -815,6 +823,19 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
   else if (coveredQty === null) evidence.hardBlockers.push('COVERED_CALL_CAPACITY_INVALID');
   else if (coveredQty <= 0) evidence.hardBlockers.push(grossCoveredQty !== null && grossCoveredQty > 0
     ? 'COVERED_SHARES_ALREADY_COMMITTED' : 'INSUFFICIENT_COVERED_SHARES');
+  // P-B WHOLE-POSITION LOT ACCOUNTING (owner Paper policy). The ledger cannot record a partial call-away, so the covered-call
+  // quantity is either EXACTLY the contracts covering the entire open position (shares % multiplier === 0 and no share is
+  // committed elsewhere) or ZERO with a typed blocker. Unknown shares stay UNKNOWN (their own blocker above), never zero.
+  const wholePositionContracts = stock.shares !== null && stock.shares > 0 && Number.isSafeInteger(stock.shares)
+    && stock.shares % contract.multiplier === 0 ? stock.shares / contract.multiplier : null;
+  const wholePositionViolated = stock.shares !== null && stock.shares > 0 && !committedUnknown && (wholePositionContracts === null
+    || (coveredQty !== null && coveredQty !== wholePositionContracts));
+  if (wholePositionViolated) evidence.hardBlockers.push(coveredCallWholePositionRequiredBlocker);
+  const sizing = structuralSizing('SELL_CC', 0, coveredQty, input, candidateId, candidateAegisState, wholePositionContracts);
+  if (sizing.bindingConstraint === coveredCallWholePositionRequiredBlocker
+    && !evidence.hardBlockers.includes(coveredCallWholePositionRequiredBlocker)) {
+    evidence.hardBlockers.push(coveredCallWholePositionRequiredBlocker);
+  }
   const premium = finite(contract.bid) ? contract.bid : null;
   const retainedUpside = stock.currentPrice === null ? null : (contract.strike - stock.currentPrice) * contract.multiplier;
   const callAwayProceeds = contract.strike * contract.multiplier;
@@ -838,7 +859,7 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
     },
     assignmentCapacityQty: coveredQty, aegisState: candidateAegisState, ...evidence,
     structurallyFeasible: evidence.hardBlockers.length === 0, riskFeasible: evidence.hardBlockers.length === 0,
-    sizing: structuralSizing('SELL_CC', 0, coveredQty, input, candidateId, candidateAegisState),
+    sizing,
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
   };
 }

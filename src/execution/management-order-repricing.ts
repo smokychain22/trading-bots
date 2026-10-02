@@ -129,6 +129,9 @@ async function repriceOne(deps: RepriceDependencies, candidate: RepriceCandidate
   const plan = candidate.plan;
 
   const cancelOrder = async (reason: RepriceReason): Promise<RepriceOutcome> => {
+    // Market not confirmed open: a DAY order is left alone (no replace, no cancel). The broker expires it at the close; the next
+    // session's reconcile and the terminal-plan sweep record the outcome. See the CROSS-SESSION SWEEP note below.
+    if (deps.marketOpen !== true) return blocked('MARKET_CLOSED');
     const action = plan?.action ?? 'CLOSE_CSP';
     const stepWindow = paperBootstrapRuntimePolicy.quoteAge.planWindowManagementMilliseconds;
     let after;
@@ -166,6 +169,9 @@ async function repriceOne(deps: RepriceDependencies, candidate: RepriceCandidate
   // the ledger. It rests at its last bounded price (DAY order) until it fills or the session ends, and terminal-partial
   // accounting runs on the original intent. Partial-position accounting beyond that is OWNER_POLICY.
   if (partiallyFilled) return leftWorking('PARTIAL_FILL_ORDER_LEFT_WORKING');
+  // P-A: this order is NOT replaced and no replacement intent is ever created for its residual shares. At the session end it
+  // expires / cancels with 0 < filled < ordered; the sweep closes the plan as ORDER_TERMINAL_PARTIAL_FILL and the chain is frozen
+  // (STOCK_PARTIAL_EXIT_PENDING_RECONCILIATION) until broker and ledger shares agree again.
 
   // 3. Wait interval (persisted last action time, so a duplicate trigger or restart cannot double-step).
   const elapsed = Date.parse(at) - Date.parse(candidate.lastActionAt);
@@ -311,6 +317,104 @@ export class PostgresManagementRepriceStore implements RepriceStore {
         [actionPlanId, at, JSON.stringify({ blockers: [reason], orderIntentId, class: repriceReasonClass[reason], policy: managementRepricePolicyVersion })]);
     }
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// CROSS-SESSION SWEEP (theta-submitted-plan-sweep-v1)
+//
+// DAY orders left working at the close expire at the broker. The next session's PENDING_ORDER_MANAGEMENT job first syncs every
+// SUBMITTED / ACKNOWLEDGED / PARTIAL / CANCEL_REQUESTED intent against broker truth (coordinator.reconcileIntent). A plan that
+// was SUBMITTED is only ever moved by the repricing driver (cancel path) or the handoff (immediately terminal), so a plan whose
+// order simply filled, expired or was cancelled by the broker stayed SUBMITTED forever. This sweep closes it: SUBMITTED ->
+// TERMINAL with a typed reason, operational columns only (the sealed payload is immutable, migration 068 allows exactly this
+// transition). It never touches a broker, never resubmits, never creates an intent, and never releases a chain whose order is
+// still non-terminal. The chain's in-flight guard is owned by the order-intent status, so it was already released by the sync.
+//
+// MARKET CLOSED POLICY (decision): a market that is not confirmed open leaves WORKING orders alone. A DAY order needs no replace
+// and no cancel at the close; the broker expires it, and the next reconcile + this sweep record the outcome. repriceOne therefore
+// withholds both replace and cancel while the market is not open (MARKET_CLOSED), and nothing is resubmitted across the boundary.
+// ---------------------------------------------------------------------------------------------------------------------------
+
+export const submittedPlanSweepPolicyVersion = 'theta-submitted-plan-sweep-v1' as const;
+
+export type SweepTerminalReason =
+  | 'ORDER_FILLED' | 'ORDER_EXPIRED_UNFILLED' | 'ORDER_CANCELED_UNFILLED' | 'ORDER_REJECTED' | 'ORDER_TERMINAL_PARTIAL_FILL';
+
+/** Recovery class per sweep reason; a terminal partial fill is NEVER closed as a silent success, it needs share reconciliation. */
+export const sweepReasonClass: Readonly<Record<SweepTerminalReason, RepriceBlockClass>> = Object.freeze({
+  ORDER_FILLED: 'TERMINAL', ORDER_EXPIRED_UNFILLED: 'REQUIRES_NEW_DECISION', ORDER_CANCELED_UNFILLED: 'REQUIRES_NEW_DECISION',
+  ORDER_REJECTED: 'REQUIRES_NEW_DECISION', ORDER_TERMINAL_PARTIAL_FILL: 'REQUIRES_RECONCILIATION',
+});
+
+export interface SweptPlan {
+  readonly actionPlanId: string;
+  readonly action: string;
+  readonly reason: SweepTerminalReason;
+  readonly orderIntentIds: readonly string[];
+  readonly orderedQuantity: number | null;
+  readonly filledQuantity: number;
+}
+
+export interface SubmittedPlanSweepReport { readonly examined: number; readonly closed: readonly SweptPlan[]; }
+
+/**
+ * Classifies a finished decision/action order group. `latestStatus` is the status of the newest intent of the group and
+ * `filledQuantity` the INGESTED broker fills across every intent of the group.
+ */
+export function classifySweepOutcome(latestStatus: string, orderedQuantity: number | null, filledQuantity: number): SweepTerminalReason | null {
+  if (latestStatus === 'FILLED') return 'ORDER_FILLED';
+  if (!['CANCELED', 'EXPIRED', 'REJECTED'].includes(latestStatus)) return null;
+  if (filledQuantity > 0 && orderedQuantity !== null && filledQuantity < orderedQuantity) return 'ORDER_TERMINAL_PARTIAL_FILL';
+  if (filledQuantity > 0) return 'ORDER_FILLED';
+  return latestStatus === 'EXPIRED' ? 'ORDER_EXPIRED_UNFILLED' : latestStatus === 'REJECTED' ? 'ORDER_REJECTED' : 'ORDER_CANCELED_UNFILLED';
+}
+
+/**
+ * Moves every SUBMITTED management or new-risk plan whose entire order group is terminal to TERMINAL. Idempotent: a closed plan
+ * is not SUBMITTED any more. Fails closed: a group with any non-terminal intent, no intent at all, or an unknown status is left.
+ */
+export async function sweepTerminalSubmittedPlans(pool: Pick<Pool, 'query'>, executionAccountId: string, at: string): Promise<SubmittedPlanSweepReport> {
+  const groups = await pool.query(
+    `SELECT p.action_plan_id::text AS plan_id, p.plan_json->>'action' AS action, s.intent_ids, s.latest_status, s.latest_qty, s.filled_qty
+       FROM trade.master_paper_action_plan p
+       JOIN LATERAL (
+         SELECT array_agg(oi.order_intent_id::text ORDER BY oi.created_at, oi.order_intent_id) AS intent_ids,
+                count(*) FILTER (WHERE oi.status::text <> ALL($2::text[]))::int AS nonterminal,
+                (array_agg(oi.status::text ORDER BY oi.created_at DESC, oi.order_intent_id DESC))[1] AS latest_status,
+                (array_agg(oi.quantity::float8 ORDER BY oi.created_at DESC, oi.order_intent_id DESC))[1] AS latest_qty,
+                COALESCE(sum((SELECT sum(f.quantity) FROM trade.broker_order bo JOIN trade.fill f ON f.broker_order_id=bo.broker_order_id
+                               WHERE bo.order_intent_id=oi.order_intent_id)),0)::float8 AS filled_qty
+           FROM trade.order_intent oi
+          WHERE oi.execution_account_id=p.execution_account_id AND oi.decision_id=p.decision_id
+            AND oi.theta_action=p.plan_json->>'action' AND oi.chain_id::text=p.plan_json->>'chainId'
+       ) s ON s.nonterminal=0 AND s.intent_ids IS NOT NULL
+      WHERE p.execution_account_id=$1 AND p.status='SUBMITTED' AND p.execution_order_intent_id IS NOT NULL
+      ORDER BY p.created_at, p.action_plan_id`,
+    [executionAccountId, ['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED']]);
+  const closed: SweptPlan[] = [];
+  for (const raw of groups.rows as Record<string, unknown>[]) {
+    const ordered = raw.latest_qty === null || raw.latest_qty === undefined ? null : Number(raw.latest_qty);
+    const filled = Number(raw.filled_qty);
+    const reason = Number.isFinite(filled) ? classifySweepOutcome(String(raw.latest_status), ordered !== null && Number.isFinite(ordered) ? ordered : null, filled) : null;
+    if (reason === null) continue;
+    const orderIntentIds = (raw.intent_ids as unknown[]).map(String);
+    const detail = { blockers: [reason], orderIntentIds, class: sweepReasonClass[reason], policy: submittedPlanSweepPolicyVersion,
+      orderedQuantity: ordered, filledQuantity: filled,
+      ...(reason === 'ORDER_TERMINAL_PARTIAL_FILL' ? { realizedPnlAttribution: 'UNKNOWN_PENDING_RECONCILIATION',
+        followUp: 'STOCK_PARTIAL_EXIT_PENDING_RECONCILIATION' } : {}) };
+    // One statement: the status change and its event are atomic, and a concurrent sweep updates nothing (status is no longer SUBMITTED).
+    const result = await pool.query(
+      `WITH moved AS (
+         UPDATE trade.master_paper_action_plan SET status='TERMINAL', last_blockers_json=$2::jsonb, updated_at=$3
+          WHERE action_plan_id=$1 AND status='SUBMITTED' RETURNING action_plan_id)
+       INSERT INTO trade.master_paper_action_plan_event(action_plan_event_id,action_plan_id,state,event_time,detail_json)
+       SELECT gen_random_uuid(), action_plan_id, 'TERMINAL', $3, $4::jsonb FROM moved RETURNING action_plan_id`,
+      [String(raw.plan_id), JSON.stringify([reason]), at, JSON.stringify(detail)]);
+    if ((result.rowCount ?? 0) === 1) {
+      closed.push({ actionPlanId: String(raw.plan_id), action: String(raw.action), reason, orderIntentIds, orderedQuantity: ordered, filledQuantity: filled });
+    }
+  }
+  return { examined: groups.rows.length, closed };
 }
 
 /**

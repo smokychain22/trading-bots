@@ -1,6 +1,7 @@
 import { parseAlpacaBarsPage, type FetchHistoricalBarsParams, type HistoricalBar, type RawAlpacaBarsPage } from './underlying-history.js';
 import type { AlpacaOptionContractListing, AlpacaOptionSnapshot } from './option-chain-ingestion.js';
 import { providerNetworkFailureCode } from './provider-network-failure.js';
+import { parseRetryAfterMs, runBoundedRead, type ReadRetryOptions } from '../execution/broker.js';
 
 // R1B production Alpaca provider service: typed, canonical accessors over
 // the real Alpaca Trading API and Market Data API. This module owns HOST
@@ -23,6 +24,8 @@ export interface AlpacaProviderConfig {
   readonly fetchImpl?: typeof fetch;
   /** Injectable for deterministic boundary tests. Production defaults to 15 seconds. */
   readonly requestTimeoutMs?: number;
+  /** Injectable bounded read-retry policy / sleep / jitter / shared budget (tests use fakes; production uses defaults). */
+  readonly readRetry?: ReadRetryOptions;
 }
 
 const authHeaders = (config: AlpacaProviderConfig): HeadersInit => ({
@@ -42,12 +45,15 @@ export class AlpacaProviderError extends Error {
   readonly errorClass: AlpacaErrorClass;
   readonly httpStatus: number | null;
   readonly safeDetailCode: string | null;
-  constructor(errorClass: AlpacaErrorClass, httpStatus: number | null, message: string, safeDetailCode: string | null = null) {
+  /** Parsed Retry-After hint (ms) from a 429, or null. Used only by the bounded read-retry policy. */
+  readonly retryAfterMs: number | null;
+  constructor(errorClass: AlpacaErrorClass, httpStatus: number | null, message: string, safeDetailCode: string | null = null, retryAfterMs: number | null = null) {
     super(message); // message never includes header/credential content -- see call sites below
     this.name = 'AlpacaProviderError';
     this.errorClass = errorClass;
     this.httpStatus = httpStatus;
     this.safeDetailCode = safeDetailCode;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -60,7 +66,19 @@ const classifyErrorStatus = (status: number): AlpacaErrorClass => {
   return 'INVALID_REQUEST';
 };
 
-async function requestJson(fetchImpl: typeof fetch, url: URL, headers: HeadersInit, requestTimeoutMs = 15_000): Promise<unknown> {
+/**
+ * All provider calls here are READS. A 429 is retried with the shared bounded policy (exponential backoff + jitter, honors
+ * Retry-After, hard caps on attempts and total wait, process-wide budget/cooldown) and then surfaces as RATE_LIMITED.
+ * Other failure classes are not retried here; the caller's own cycle decides.
+ */
+async function requestJson(fetchImpl: typeof fetch, url: URL, headers: HeadersInit, requestTimeoutMs = 15_000, retry: ReadRetryOptions = {}): Promise<unknown> {
+  return runBoundedRead(() => requestJsonOnce(fetchImpl, url, headers, requestTimeoutMs, retry.now ?? Date.now), (error) => {
+    const limited = error instanceof AlpacaProviderError && error.errorClass === 'RATE_LIMITED';
+    return { retryable: limited, rateLimited: limited, retryAfterMs: limited ? (error as AlpacaProviderError).retryAfterMs : null };
+  }, () => new AlpacaProviderError('RATE_LIMITED', 429, `${url.pathname} refused locally: shared rate-limit cooldown exceeds the bounded wait.`), retry);
+}
+
+async function requestJsonOnce(fetchImpl: typeof fetch, url: URL, headers: HeadersInit, requestTimeoutMs: number, nowFn: () => number): Promise<unknown> {
   // Read-only market/broker calls must finish inside the bounded serverless
   // evidence cycle. A stalled read is provider uncertainty, never empty data.
   const controller = new AbortController();
@@ -71,7 +89,8 @@ async function requestJson(fetchImpl: typeof fetch, url: URL, headers: HeadersIn
   try {
     const response = await fetchImpl(url, { headers, signal: controller.signal });
     if (!response.ok) {
-      throw new AlpacaProviderError(classifyErrorStatus(response.status), response.status, `${url.pathname} returned HTTP ${response.status}.`);
+      const retryAfterMs = response.status === 429 ? parseRetryAfterMs(response.headers?.get?.('retry-after'), nowFn()) : null;
+      throw new AlpacaProviderError(classifyErrorStatus(response.status), response.status, `${url.pathname} returned HTTP ${response.status}.`, null, retryAfterMs);
     }
     try {
       return await response.json();
@@ -146,7 +165,7 @@ export async function fetchMasterAccountSnapshot(config: AlpacaProviderConfig, r
 
 async function fetchAccountBody(config: AlpacaProviderConfig):Promise<Record<string,unknown>> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  return providerRow(await requestJson(fetchImpl, new URL('/v2/account', config.tradingApiBase), authHeaders(config), config.requestTimeoutMs), '/v2/account');
+  return providerRow(await requestJson(fetchImpl, new URL('/v2/account', config.tradingApiBase), authHeaders(config), config.requestTimeoutMs, config.readRetry), '/v2/account');
 }
 
 /** Server-side persistence context only. Raw identity stays out of the public
@@ -199,7 +218,7 @@ export interface AlpacaPositionSnapshot {
 
 export async function fetchPositions(config: AlpacaProviderConfig, receivedAt: string): Promise<readonly AlpacaPositionSnapshot[]> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const body = await requestJson(fetchImpl, new URL('/v2/positions', config.tradingApiBase), authHeaders(config), config.requestTimeoutMs);
+  const body = await requestJson(fetchImpl, new URL('/v2/positions', config.tradingApiBase), authHeaders(config), config.requestTimeoutMs, config.readRetry);
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/positions did not return an array.');
   return body.map((value) => {
     const raw = providerRow(value, '/v2/positions');
@@ -251,7 +270,7 @@ export async function fetchOpenOrders(config: AlpacaProviderConfig, receivedAt: 
   // becomes proof that the account has no other pending orders.
   url.search = new URLSearchParams({ status: 'open', limit: '500', direction: 'desc', nested: 'false' }).toString();
   if (beforeOrderId !== null) url.searchParams.set('before_order_id', beforeOrderId);
-  const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs);
+  const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry);
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/orders did not return an array.');
   if (body.length > 500) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, 'ALPACA_OPEN_ORDERS_PAGE_LIMIT_EXCEEDED');
   const normalized = body.map((value): AlpacaOpenOrderSnapshot => {
@@ -306,7 +325,7 @@ export interface AlpacaMarketClock {
 
 export async function fetchMarketClock(config: AlpacaProviderConfig, receivedAt: string): Promise<AlpacaMarketClock> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const body = providerRow(await requestJson(fetchImpl, new URL('/v2/clock', config.tradingApiBase), authHeaders(config), config.requestTimeoutMs), '/v2/clock');
+  const body = providerRow(await requestJson(fetchImpl, new URL('/v2/clock', config.tradingApiBase), authHeaders(config), config.requestTimeoutMs, config.readRetry), '/v2/clock');
   return {
     timestamp: asStringOrNull(body.timestamp),
     isOpen: asBooleanOrNull(body.is_open),
@@ -332,7 +351,7 @@ export async function fetchMarketCalendar(config: AlpacaProviderConfig, start: s
   const fetchImpl = config.fetchImpl ?? fetch;
   const url = new URL('/v2/calendar', config.tradingApiBase);
   url.search = new URLSearchParams({ start, end }).toString();
-  const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs);
+  const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry);
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/calendar did not return an array.');
   return body.map((value) => {
     const raw = providerRow(value, '/v2/calendar');
@@ -385,7 +404,7 @@ export async function fetchTradableAssets(
   const fetchImpl = config.fetchImpl ?? fetch;
   const url = new URL('/v2/assets', config.tradingApiBase);
   url.search = new URLSearchParams({ status: 'active', asset_class: 'us_equity' }).toString();
-  const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs);
+  const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry);
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/assets did not return an array.');
   const rows = body.map((value) => providerRow(value, '/v2/assets'));
   const tradableOnly = rows.filter((raw) => raw.tradable === true);
@@ -464,7 +483,7 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
     if (params.showDeliverables === true) query.show_deliverables = 'true';
     if (pageToken !== null) query.page_token = pageToken;
     url.search = new URLSearchParams(query).toString();
-    const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs);
+    const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry);
     if (body === null || typeof body !== 'object' || Array.isArray(body)
       || !Array.isArray((body as Record<string, unknown>).option_contracts)) {
       throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts omitted its contract array.');
@@ -581,7 +600,7 @@ export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params:
     if(params.strikePriceLte!==undefined)query.strike_price_lte=String(params.strikePriceLte);
     if (pageToken !== null) query.page_token = pageToken;
     url.search = new URLSearchParams(query).toString();
-    const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs);
+    const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry);
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
       throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots returned an invalid page.');
     }
@@ -662,7 +681,7 @@ export async function fetchLatestStockQuote(
   const fetchImpl = config.fetchImpl ?? fetch;
   const url = new URL(`/v2/stocks/${encodeURIComponent(symbol)}/quotes/latest`, config.marketDataApiBase);
   url.search = new URLSearchParams({ feed }).toString();
-  const body = providerRow(await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs), '/v2/stocks/{symbol}/quotes/latest');
+  const body = providerRow(await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry), '/v2/stocks/{symbol}/quotes/latest');
   if (body.quote === undefined) {
     throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/stocks/{symbol}/quotes/latest did not return a quote.');
   }
@@ -684,7 +703,7 @@ export async function fetchLatestStockTrade(
   const fetchImpl = config.fetchImpl ?? fetch;
   const url = new URL(`/v2/stocks/${encodeURIComponent(symbol)}/trades/latest`, config.marketDataApiBase);
   url.search = new URLSearchParams({ feed }).toString();
-  const body = providerRow(await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs), '/v2/stocks/{symbol}/trades/latest');
+  const body = providerRow(await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry), '/v2/stocks/{symbol}/trades/latest');
   if (body.trade === undefined) {
     throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/stocks/{symbol}/trades/latest did not return a trade.');
   }
@@ -740,7 +759,7 @@ export async function fetchStockSnapshotLiquidity(
       try {
         const url = new URL('/v2/stocks/snapshots', config.marketDataApiBase);
         url.search = new URLSearchParams({ symbols: batch.join(','), feed: options.feed ?? 'iex' }).toString();
-        const body = providerRow(await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs), '/v2/stocks/snapshots');
+        const body = providerRow(await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry), '/v2/stocks/snapshots');
         for (const [symbol, raw] of Object.entries(body)) {
           if (raw === null || typeof raw !== 'object') continue;
           const row = raw as Record<string, unknown>;
@@ -771,7 +790,7 @@ export async function fetchStockBars(config: AlpacaProviderConfig, params: Fetch
     };
     if (pageToken !== null) query.page_token = pageToken;
     url.search = new URLSearchParams(query).toString();
-    return await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs) as RawAlpacaBarsPage;
+    return await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry) as RawAlpacaBarsPage;
   };
 
   // Deliberately a local pagination loop (not underlying-history.ts's

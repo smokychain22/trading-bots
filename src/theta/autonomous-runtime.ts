@@ -32,10 +32,13 @@ import {
   MasterPaperActionHandoff, classifyMasterPaperActionExecution, paperBootstrapPreSubmitQuoteAgePolicy,
 } from '../execution/master-paper-action-handoff.js';
 import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives } from '../execution/management-paper-plan-assembly.js';
-import { readCommittedShortCallContracts, readManagementChainInFlight } from '../execution/management-chain-inflight.js';
+import { evaluateStockExitFreeze, listStockPartialExitChains, readCommittedShortCallContracts, readManagementChainInFlight,
+  readStockTerminalExitEvidence, stockExitFrozenManagementActions, stockPartialExitPendingReconciliation,
+  managementStockExitStateUnknown } from '../execution/management-chain-inflight.js';
 import { AlpacaProviderError, fetchLatestStockQuote } from './alpaca-provider.js';
 import { AlpacaStockInventorySource } from '../execution/alpaca-stock-inventory-source.js';
-import { expireStaleReadyOrderIntents, PostgresManagementRepriceStore, repriceReasonClass, runManagementRepricing } from '../execution/management-order-repricing.js';
+import { expireStaleReadyOrderIntents, PostgresManagementRepriceStore, repriceReasonClass, runManagementRepricing,
+  sweepTerminalSubmittedPlans } from '../execution/management-order-repricing.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
 import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.js';
@@ -313,6 +316,21 @@ export async function buildRuntimeManagementFrontiers(
   return states.map((state, index) => buildManagementActionFrontier(state, evidence[index] ?? null));
 }
 
+/**
+ * P-A. The stock-exit freeze a management cycle must honour for one chain. Only actions that would sell or cover shares are
+ * evidence-gated; every other action reports CLEAR without a read. The result feeds assembleManagementPaperPlans
+ * (`stockExitFreeze`), and a FROZEN / UNKNOWN result is also surfaced by the scan as the chain's typed blocker.
+ */
+export async function resolveManagementStockExitFreeze(
+  pool:Pick<Pool,'query'>,executionAccountId:string|null,state:ManagementInputState,selectedAction:string|null,
+):Promise<import('../execution/management-paper-plan-assembly.js').ManagementStockExitFreezeState>{
+  if(selectedAction===null||!stockExitFrozenManagementActions.has(selectedAction))return {state:'CLEAR'};
+  if(executionAccountId===null)return {state:'UNKNOWN'};
+  const evidence=await readStockTerminalExitEvidence(pool,executionAccountId,state.chainId);
+  return evaluateStockExitFreeze({evidence,ledgerShares:state.accountStockLedgerShares??null,broker:state.brokerStockInventory,
+    reconciliationQuality:state.context.assignmentCapacityEvidence.reconciliationQuality,now:state.observedAt});
+}
+
 function isRetryableExternalExecutionFailure(error:unknown):boolean{
   if(error instanceof AlpacaProviderError)return true;
   return error instanceof AlpacaPaperBrokerError&&error.category!=='BROKER_REJECTED';
@@ -514,6 +532,10 @@ export async function runAutonomousRuntimeCycle(
           const rawAegis=state.context.aegisState;
           const aegisState=typeof rawAegis==='string'&&['ALLOW_FULL','ALLOW_REDUCED','HOLD_ONLY','HARD_VETO'].includes(rawAegis)
             ? rawAegis as 'ALLOW_FULL'|'ALLOW_REDUCED'|'HOLD_ONLY'|'HARD_VETO':null;
+          // P-A: a chain frozen after a terminal partial stock exit may not sell or cover shares until broker and ledger agree.
+          const stockExitFreeze=await resolveManagementStockExitFreeze(pool,master.executionAccountId,state,persisted.frontier.selectedAction);
+          if(stockExitFreeze.state==='FROZEN'){firstChainBlocker??=stockPartialExitPendingReconciliation;continue;}
+          if(stockExitFreeze.state==='UNKNOWN'){firstChainBlocker??=managementStockExitStateUnknown;continue;}
           const compiled=compileManagementExecutionLegDirectives(state,persisted.frontier);
           // One blocked chain must never starve the others (a sibling chain's close may be what unblocks it): record the first
           // blocker, keep scanning, and degrade the job once every chain has been evaluated.
@@ -525,8 +547,8 @@ export async function runAutonomousRuntimeCycle(
           const committedShortCallContracts=opensCall&&master.executionAccountId!==null&&reconciliation.dataQuality==='GOOD'
             ?await readCommittedShortCallContracts(pool,{executionAccountId:master.executionAccountId,
               reconciliationSnapshotId:reconciliation.snapshotId,underlying:state.underlying,
-              externalOrUnknownCount:reconciliation.externalOrUnknownCount}):null;
-          const assembly=assembleManagementPaperPlans({state,frontier:persisted.frontier,chainInFlight,committedShortCallContracts,
+              entryBlockingFactCount:reconciliation.entryBlockingFactCount}):null;
+          const assembly=assembleManagementPaperPlans({state,frontier:persisted.frontier,chainInFlight,committedShortCallContracts,stockExitFreeze,
             managementActionFrontierId:persisted.managementActionFrontierId,
             executionAccountId:master.executionAccountId,strategyVersion,accountStatus:reconciliation.accountStatus,
             optionsCapabilityVerified:master.optionsCapabilityVerified,aegisState,
@@ -583,8 +605,15 @@ export async function runAutonomousRuntimeCycle(
           store:new PostgresManagementRepriceStore(pool),coordinator,quoteSource:new AlpacaExecutionQuoteSource(master.alpaca),
           stockInventory:new AlpacaStockInventorySource(master.alpaca),
           recordPriceEvent:(event)=>new PostgresExecutionEvidenceStore(pool).recordPriceEvent(event)});
+        // CROSS-SESSION SWEEP: a plan whose whole order group is terminal (filled, expired at the close, cancelled, rejected) is closed
+        // TERMINAL with a typed reason; a plan is never left SUBMITTED forever and nothing is resubmitted across the session boundary.
+        await sweepTerminalSubmittedPlans(pool,master.executionAccountId,new Date().toISOString());
         if(reprice.outcomes.some((outcome)=>outcome.kind==='BLOCKED'&&repriceReasonClass[outcome.reason]==='REQUIRES_RECONCILIATION'))
           return degraded('ORDER_REPRICING_REQUIRES_RECONCILIATION',retryAt);
+        // P-A: a terminal partial stock exit freezes the chain until broker and ledger shares agree; keep it loudly typed every cycle.
+        const partialExits=await listStockPartialExitChains(pool,master.executionAccountId);
+        if(partialExits.state==='UNKNOWN')return degraded(managementStockExitStateUnknown,retryAt);
+        if(partialExits.chains.length>0)return degraded(stockPartialExitPendingReconciliation,retryAt);
         return succeeded();
       }
       if (jobType === 'WAIT_RECHECK') {

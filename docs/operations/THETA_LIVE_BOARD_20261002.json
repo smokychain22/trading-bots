@@ -1,0 +1,2687 @@
+{
+ "schema": "theta-live-board-20261002-v1",
+ "generatedAt": "2026-10-02T18:50:00Z",
+ "sessionDate": "2026-10-02",
+ "honesty": "Only 3 evidence scans completed on 2026-10-02, all after the 18:18Z hotfix. From the 13:30Z open until then every evidence cycle failed with CANONICAL_FRONTIER_POLICY_PAYLOAD_TOO_LARGE (809-1021 KB against the 768 KiB inline policy) and nothing was persisted for those cycles. Latency and memory are not persisted per stage; only cycle wall-clock is.",
+ "incident": {
+  "code": "CANONICAL_FRONTIER_POLICY_PAYLOAD_TOO_LARGE",
+  "failedCycles": 32,
+  "firstFailure": "2026-10-02T13:31:28Z",
+  "lastFailure": "2026-10-02T18:19:37Z",
+  "payloadBytesRange": [
+   809367,
+   1021149
+  ],
+  "limitBytes": 786432,
+  "cause": "adaptiveShadowDecision.shadowComparison.excluded and candidateEligibility were per-candidate lists inside the queryable frontier projection (about 300 bytes per contract; SPY alone has about 2.9k puts)",
+  "fix": "a5d8711 bounds the projection to a constant ~55 KB with explicit truncation markers, exact counts and full-list hashes; deployed 18:18:10Z; first successful scan 18:26Z",
+  "relatedImpact": "HOST_OFFLINE marks misses and worker lease gaps during the outage"
+ },
+ "scans": [
+  {
+   "scanId": "9cf46134-b8be-4e14-a5f0-276ae1381d08",
+   "startedAt": "2026-10-02T18:25:56.532Z",
+   "finishedAt": "2026-10-02T18:26:23.748Z",
+   "sourceSha": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+   "workerSha": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+   "marketSessionState": "OPEN",
+   "universeDiscovered": 13514,
+   "universeAnalyzed": 3,
+   "candidateCount": 1869,
+   "feasible": 0,
+   "selected": 0,
+   "nearMiss": 3,
+   "hardRejected": 1869,
+   "dataInsufficient": 1864,
+   "quantityZero": 1869,
+   "aegisVeto": 1,
+   "sizingZeroBreakdown": {
+    "AEGIS_HARD_VETO": 5,
+    "Q_REJECTED_UPSTREAM": 222,
+    "ACCOUNT_CAPACITY_ZERO": 1642
+   },
+   "hardGateCounts": {
+    "AEGIS_HARD_VETO": 5,
+    "NO_ASSIGNMENT_CAPACITY": 1,
+    "THETA_Q_ACTION_INFEASIBLE": 10,
+    "ACCOUNT_POLICY_INCOMPATIBILITY": 1642,
+    "THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND": 212,
+    "THETA_Q_INFEASIBLE_REASON:OWNERSHIP_ACCEPTABILITY_UNKNOWN": 10
+   },
+   "finalAction": "SYSTEM_HOLD",
+   "waitClassification": "RISK_WAIT",
+   "globalWaitEarned": false,
+   "waitReasons": [
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:ACCOUNT_POLICY_INCOMPATIBILITY:1081",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:ACCOUNT_POLICY_INCOMPATIBILITY:136",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:ACCOUNT_POLICY_INCOMPATIBILITY:425",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:NOT_EVALUATED_SHORTLIST_BOUND:149",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:NOT_EVALUATED_SHORTLIST_BOUND:63"
+   ],
+   "orderIntentsCreated": 0,
+   "brokerMutations": 0,
+   "perSymbol": {
+    "IWM": {
+     "qDecision": "PASS",
+     "aegisState": null,
+     "cycleState": "COMPLETED",
+     "funnelTotals": {
+      "Q_VALID": 0,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 0,
+      "AEGIS_REACHED": 0,
+      "INPUT_CONTRACTS": 1537,
+      "FINALIST_REACHED": 0,
+      "FINAL_QTY_POSITIVE": 0
+     },
+     "dominantBlocker": "INSTRUMENT_APPROVAL",
+     "stages": [
+      {
+       "stage": "PUT_CONTRACT_IDENTITY",
+       "input": 1537,
+       "pass": 1537,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "INSTRUMENT_APPROVAL",
+       "input": 1537,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 1537,
+       "notApplicable": 0,
+       "reasons": {
+        "INSTRUMENT_UNKNOWN": 1537
+       }
+      },
+      {
+       "stage": "EXECUTABLE_ALPACA_QUOTE",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_KNOWN",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_FRESHNESS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DTE_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_BAND",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "SPREAD",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "OPEN_INTEREST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "VOLUME",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "PREMIUM_ECONOMICS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_AGE_BUDGET",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EVENT_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINALIST_SHORTLIST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "ENTRY_ELIGIBILITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "CAPITAL_FIT",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "AEGIS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINAL_QUANTITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      }
+     ]
+    },
+    "NVDA": {
+     "qDecision": "PASS",
+     "aegisState": null,
+     "cycleState": "COMPLETED",
+     "funnelTotals": {
+      "Q_VALID": 0,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 0,
+      "AEGIS_REACHED": 0,
+      "INPUT_CONTRACTS": 740,
+      "FINALIST_REACHED": 0,
+      "FINAL_QTY_POSITIVE": 0
+     },
+     "dominantBlocker": "INSTRUMENT_APPROVAL",
+     "stages": [
+      {
+       "stage": "PUT_CONTRACT_IDENTITY",
+       "input": 740,
+       "pass": 740,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "INSTRUMENT_APPROVAL",
+       "input": 740,
+       "pass": 0,
+       "fail": 740,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "INSTRUMENT_OPERATING_COMPANY": 740
+       }
+      },
+      {
+       "stage": "EXECUTABLE_ALPACA_QUOTE",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_KNOWN",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_FRESHNESS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DTE_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_BAND",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "SPREAD",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "OPEN_INTEREST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "VOLUME",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "PREMIUM_ECONOMICS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_AGE_BUDGET",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EVENT_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINALIST_SHORTLIST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "ENTRY_ELIGIBILITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "CAPITAL_FIT",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "AEGIS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINAL_QUANTITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      }
+     ]
+    },
+    "SPY": {
+     "qDecision": "PASS",
+     "aegisState": "HARD_VETO",
+     "cycleState": "COMPLETED",
+     "funnelTotals": {
+      "Q_VALID": 383,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 5,
+      "AEGIS_REACHED": 5,
+      "INPUT_CONTRACTS": 2865,
+      "FINALIST_REACHED": 5,
+      "FINAL_QTY_POSITIVE": 0
+     },
+     "dominantBlocker": "AEGIS",
+     "stages": [
+      {
+       "stage": "PUT_CONTRACT_IDENTITY",
+       "input": 2865,
+       "pass": 2865,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "INSTRUMENT_APPROVAL",
+       "input": 2865,
+       "pass": 2865,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EXECUTABLE_ALPACA_QUOTE",
+       "input": 2865,
+       "pass": 2089,
+       "fail": 776,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "QUOTE_STALE": 247,
+        "SPREAD_TOO_WIDE": 530,
+        "CONTRACT_NOT_EXECUTABLE": 776
+       }
+      },
+      {
+       "stage": "DELTA_KNOWN",
+       "input": 2089,
+       "pass": 2051,
+       "fail": 0,
+       "unknown": 38,
+       "notApplicable": 0,
+       "reasons": {
+        "DELTA_UNKNOWN": 38
+       }
+      },
+      {
+       "stage": "QUOTE_FRESHNESS",
+       "input": 2051,
+       "pass": 2051,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DTE_WINDOW",
+       "input": 2051,
+       "pass": 957,
+       "fail": 1094,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "DTE_OUTSIDE_LATTICE": 1094
+       }
+      },
+      {
+       "stage": "DELTA_BAND",
+       "input": 957,
+       "pass": 680,
+       "fail": 277,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "DELTA_OUTSIDE_ALL_BANDS": 277
+       }
+      },
+      {
+       "stage": "SPREAD",
+       "input": 680,
+       "pass": 680,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "OPEN_INTEREST",
+       "input": 680,
+       "pass": 528,
+       "fail": 152,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "OPEN_INTEREST_BELOW_FLOOR": 152
+       }
+      },
+      {
+       "stage": "VOLUME",
+       "input": 528,
+       "pass": 383,
+       "fail": 145,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "VOLUME_BELOW_FLOOR": 145
+       }
+      },
+      {
+       "stage": "PREMIUM_ECONOMICS",
+       "input": 383,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 383,
+       "reasons": {
+        "NO_PRODUCTION_PREMIUM_GATE": 383
+       }
+      },
+      {
+       "stage": "QUOTE_AGE_BUDGET",
+       "input": 383,
+       "pass": 383,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EVENT_WINDOW",
+       "input": 383,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 383,
+       "reasons": {
+        "EVENT_POLICY_NOT_APPLICABLE": 383
+       }
+      },
+      {
+       "stage": "FINALIST_SHORTLIST",
+       "input": 383,
+       "pass": 5,
+       "fail": 378,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "NOT_SELECTED_FOR_FINALIST_REFRESH": 378
+       }
+      },
+      {
+       "stage": "ENTRY_ELIGIBILITY",
+       "input": 5,
+       "pass": 5,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "CAPITAL_FIT",
+       "input": 5,
+       "pass": 5,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "AEGIS",
+       "input": 5,
+       "pass": 0,
+       "fail": 5,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "SECTOR:SECTOR_SEVERELY_EXCEEDED": 5,
+        "PORTFOLIO:PORTFOLIO_SEVERELY_EXCEEDED": 1,
+        "ASSIGNMENT:ASSIGNMENT_SEVERELY_EXCEEDED": 1,
+        "UNDERLYING:UNDERLYING_SEVERELY_EXCEEDED": 5,
+        "CORRELATION:CORRELATION_SEVERELY_EXCEEDED": 5
+       }
+      },
+      {
+       "stage": "FINAL_QUANTITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      }
+     ]
+    }
+   },
+   "strategies": {
+    "THETA_CC": {
+     "status": "SHADOW",
+     "candidates": 0,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {},
+     "missingData": {}
+    },
+    "THETA_CONVENTIONAL": {
+     "status": "SHADOW",
+     "candidates": 1869,
+     "evaluated": 3,
+     "reachability": "REACHED",
+     "hardGates": {
+      "AEGIS_HARD_VETO": 5,
+      "NO_ASSIGNMENT_CAPACITY": 1,
+      "THETA_Q_ACTION_INFEASIBLE": 10,
+      "ACCOUNT_POLICY_INCOMPATIBILITY": 1642,
+      "THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND": 212,
+      "THETA_Q_INFEASIBLE_REASON:OWNERSHIP_ACCEPTABILITY_UNKNOWN": 10
+     },
+     "missingData": {
+      "IV_UNKNOWN": 40,
+      "DELTA_UNKNOWN": 40,
+      "AEGIS_STATE_UNKNOWN": 1864,
+      "EXECUTION_QUOTE_REQUIRED:quote stale": 150,
+      "EXECUTION_QUOTE_REQUIRED:spread too wide": 189,
+      "EXECUTION_QUOTE_REQUIRED:quote stale; spread too wide": 39
+     }
+    },
+    "THETA_DEFINED_RISK": {
+     "status": "RESEARCH_ONLY",
+     "candidates": 3000,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {
+      "AEGIS_HARD_VETO": 1000,
+      "ROUTER_NOT_APPLICABLE": 3000,
+      "NON_POSITIVE_NET_CREDIT": 1160,
+      "DEFINED_RISK_LEG_QUOTE_UNUSABLE:LONG": 321,
+      "DEFINED_RISK_LEG_QUOTE_UNUSABLE:SHORT": 80
+     },
+     "missingData": {
+      "AEGIS_STATE_UNKNOWN": 2000,
+      "EXECUTION_QUOTE_REQUIRED:spread too wide": 2699,
+      "EXECUTION_QUOTE_REQUIRED:quote stale; spread too wide": 379
+     }
+    },
+    "THETA_HOLD_STRIKE": {
+     "status": "RESEARCH_ONLY",
+     "candidates": 804,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {
+      "AEGIS_HARD_VETO": 453,
+      "ROUTER_NOT_APPLICABLE": 804
+     },
+     "missingData": {
+      "IV_UNKNOWN": 74,
+      "DELTA_UNKNOWN": 74,
+      "AEGIS_STATE_UNKNOWN": 351,
+      "EXECUTION_QUOTE_REQUIRED:quote stale": 100,
+      "EXECUTION_QUOTE_REQUIRED:spread too wide": 279,
+      "EXECUTION_QUOTE_REQUIRED:quote stale; spread too wide": 17
+     }
+    },
+    "THETA_RECOVERY": {
+     "status": "SHADOW",
+     "candidates": 0,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {},
+     "missingData": {}
+    }
+   }
+  },
+  {
+   "scanId": "bf9005aa-78da-461e-9506-013dc5933731",
+   "startedAt": "2026-10-02T18:30:46.975Z",
+   "finishedAt": "2026-10-02T18:31:20.976Z",
+   "sourceSha": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+   "workerSha": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+   "marketSessionState": "OPEN",
+   "universeDiscovered": 13514,
+   "universeAnalyzed": 3,
+   "candidateCount": 2300,
+   "feasible": 511,
+   "selected": 0,
+   "nearMiss": 3,
+   "hardRejected": 1789,
+   "dataInsufficient": 2296,
+   "quantityZero": 2300,
+   "aegisVeto": 1,
+   "sizingZeroBreakdown": {
+    "AEGIS_HARD_VETO": 4,
+    "AEGIS_NOT_REACHED": 1,
+    "Q_REJECTED_UPSTREAM": 154,
+    "ACCOUNT_CAPACITY_ZERO": 1631,
+    "AEGIS_REQUIRED_UNKNOWN": 510
+   },
+   "hardGateCounts": {
+    "AEGIS_HARD_VETO": 4,
+    "NO_ASSIGNMENT_CAPACITY": 415,
+    "THETA_Q_ACTION_INFEASIBLE": 5,
+    "ACCOUNT_POLICY_INCOMPATIBILITY": 1217,
+    "THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND": 149,
+    "THETA_Q_INFEASIBLE_REASON:OWNERSHIP_ACCEPTABILITY_UNKNOWN": 5
+   },
+   "finalAction": "SYSTEM_HOLD",
+   "waitClassification": "RISK_WAIT",
+   "globalWaitEarned": false,
+   "waitReasons": [
+    "CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_NOT_REACHED_UPSTREAM",
+    "CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_UNKNOWN",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:ACCOUNT_POLICY_INCOMPATIBILITY:1081",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:ACCOUNT_POLICY_INCOMPATIBILITY:136",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:EVALUATION_STATE_MISSING:924",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:NOT_EVALUATED_SHORTLIST_BOUND:149"
+   ],
+   "orderIntentsCreated": 0,
+   "brokerMutations": 0,
+   "perSymbol": {
+    "MU": {
+     "qDecision": "PASS",
+     "aegisState": null,
+     "cycleState": "COMPLETED",
+     "funnelTotals": {
+      "Q_VALID": 0,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 0,
+      "AEGIS_REACHED": 0,
+      "INPUT_CONTRACTS": 2404,
+      "FINALIST_REACHED": 0,
+      "FINAL_QTY_POSITIVE": 0
+     },
+     "dominantBlocker": "INSTRUMENT_APPROVAL",
+     "stages": [
+      {
+       "stage": "PUT_CONTRACT_IDENTITY",
+       "input": 2404,
+       "pass": 2404,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "INSTRUMENT_APPROVAL",
+       "input": 2404,
+       "pass": 0,
+       "fail": 2404,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "INSTRUMENT_OPERATING_COMPANY": 2404
+       }
+      },
+      {
+       "stage": "EXECUTABLE_ALPACA_QUOTE",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_KNOWN",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_FRESHNESS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DTE_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_BAND",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "SPREAD",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "OPEN_INTEREST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "VOLUME",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "PREMIUM_ECONOMICS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_AGE_BUDGET",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EVENT_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINALIST_SHORTLIST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "ENTRY_ELIGIBILITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "CAPITAL_FIT",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "AEGIS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINAL_QUANTITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      }
+     ]
+    },
+    "NVDA": {
+     "qDecision": "PASS",
+     "aegisState": null,
+     "cycleState": "COMPLETED",
+     "funnelTotals": {
+      "Q_VALID": 0,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 0,
+      "AEGIS_REACHED": 0,
+      "INPUT_CONTRACTS": 740,
+      "FINALIST_REACHED": 0,
+      "FINAL_QTY_POSITIVE": 0
+     },
+     "dominantBlocker": "INSTRUMENT_APPROVAL",
+     "stages": [
+      {
+       "stage": "PUT_CONTRACT_IDENTITY",
+       "input": 740,
+       "pass": 740,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "INSTRUMENT_APPROVAL",
+       "input": 740,
+       "pass": 0,
+       "fail": 740,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "INSTRUMENT_OPERATING_COMPANY": 740
+       }
+      },
+      {
+       "stage": "EXECUTABLE_ALPACA_QUOTE",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_KNOWN",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_FRESHNESS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DTE_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_BAND",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "SPREAD",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "OPEN_INTEREST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "VOLUME",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "PREMIUM_ECONOMICS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_AGE_BUDGET",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EVENT_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINALIST_SHORTLIST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "ENTRY_ELIGIBILITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "CAPITAL_FIT",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "AEGIS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINAL_QUANTITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      }
+     ]
+    },
+    "SPY": {
+     "qDecision": "PASS",
+     "aegisState": "HARD_VETO",
+     "cycleState": "COMPLETED",
+     "funnelTotals": {
+      "Q_VALID": 391,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 5,
+      "AEGIS_REACHED": 5,
+      "INPUT_CONTRACTS": 2865,
+      "FINALIST_REACHED": 5,
+      "FINAL_QTY_POSITIVE": 0
+     },
+     "dominantBlocker": "AEGIS",
+     "stages": [
+      {
+       "stage": "PUT_CONTRACT_IDENTITY",
+       "input": 2865,
+       "pass": 2865,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "INSTRUMENT_APPROVAL",
+       "input": 2865,
+       "pass": 2865,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EXECUTABLE_ALPACA_QUOTE",
+       "input": 2865,
+       "pass": 2294,
+       "fail": 571,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "QUOTE_STALE": 26,
+        "SPREAD_TOO_WIDE": 546,
+        "CONTRACT_NOT_EXECUTABLE": 571
+       }
+      },
+      {
+       "stage": "DELTA_KNOWN",
+       "input": 2294,
+       "pass": 2245,
+       "fail": 0,
+       "unknown": 49,
+       "notApplicable": 0,
+       "reasons": {
+        "DELTA_UNKNOWN": 49
+       }
+      },
+      {
+       "stage": "QUOTE_FRESHNESS",
+       "input": 2245,
+       "pass": 2245,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DTE_WINDOW",
+       "input": 2245,
+       "pass": 1025,
+       "fail": 1220,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "DTE_OUTSIDE_LATTICE": 1220
+       }
+      },
+      {
+       "stage": "DELTA_BAND",
+       "input": 1025,
+       "pass": 685,
+       "fail": 340,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "DELTA_OUTSIDE_ALL_BANDS": 340
+       }
+      },
+      {
+       "stage": "SPREAD",
+       "input": 685,
+       "pass": 685,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "OPEN_INTEREST",
+       "input": 685,
+       "pass": 533,
+       "fail": 152,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "OPEN_INTEREST_BELOW_FLOOR": 152
+       }
+      },
+      {
+       "stage": "VOLUME",
+       "input": 533,
+       "pass": 391,
+       "fail": 142,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "VOLUME_BELOW_FLOOR": 142
+       }
+      },
+      {
+       "stage": "PREMIUM_ECONOMICS",
+       "input": 391,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 391,
+       "reasons": {
+        "NO_PRODUCTION_PREMIUM_GATE": 391
+       }
+      },
+      {
+       "stage": "QUOTE_AGE_BUDGET",
+       "input": 391,
+       "pass": 391,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EVENT_WINDOW",
+       "input": 391,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 391,
+       "reasons": {
+        "EVENT_POLICY_NOT_APPLICABLE": 391
+       }
+      },
+      {
+       "stage": "FINALIST_SHORTLIST",
+       "input": 391,
+       "pass": 5,
+       "fail": 386,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "NOT_SELECTED_FOR_FINALIST_REFRESH": 386
+       }
+      },
+      {
+       "stage": "ENTRY_ELIGIBILITY",
+       "input": 5,
+       "pass": 5,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "CAPITAL_FIT",
+       "input": 5,
+       "pass": 5,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "AEGIS",
+       "input": 5,
+       "pass": 0,
+       "fail": 4,
+       "unknown": 1,
+       "notApplicable": 0,
+       "reasons": {
+        "AEGIS_NOT_REACHED_UPSTREAM": 1,
+        "SECTOR:SECTOR_SEVERELY_EXCEEDED": 4,
+        "PORTFOLIO:PORTFOLIO_SEVERELY_EXCEEDED": 1,
+        "ASSIGNMENT:ASSIGNMENT_SEVERELY_EXCEEDED": 1,
+        "UNDERLYING:UNDERLYING_SEVERELY_EXCEEDED": 4,
+        "CORRELATION:CORRELATION_SEVERELY_EXCEEDED": 4
+       }
+      },
+      {
+       "stage": "FINAL_QUANTITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      }
+     ]
+    }
+   },
+   "strategies": {
+    "THETA_CC": {
+     "status": "SHADOW",
+     "candidates": 0,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {},
+     "missingData": {}
+    },
+    "THETA_CONVENTIONAL": {
+     "status": "SHADOW",
+     "candidates": 2300,
+     "evaluated": 3,
+     "reachability": "REACHED",
+     "hardGates": {
+      "AEGIS_HARD_VETO": 4,
+      "NO_ASSIGNMENT_CAPACITY": 415,
+      "THETA_Q_ACTION_INFEASIBLE": 5,
+      "ACCOUNT_POLICY_INCOMPATIBILITY": 1217,
+      "THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND": 149,
+      "THETA_Q_INFEASIBLE_REASON:OWNERSHIP_ACCEPTABILITY_UNKNOWN": 5
+     },
+     "missingData": {
+      "IV_UNKNOWN": 193,
+      "DELTA_UNKNOWN": 191,
+      "AEGIS_STATE_UNKNOWN": 2296,
+      "EXECUTION_QUOTE_REQUIRED:quote stale": 12,
+      "EXECUTION_QUOTE_REQUIRED:spread too wide": 501,
+      "EXECUTION_QUOTE_REQUIRED:quote stale; spread too wide": 32
+     }
+    },
+    "THETA_DEFINED_RISK": {
+     "status": "RESEARCH_ONLY",
+     "candidates": 3000,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {
+      "AEGIS_HARD_VETO": 1000,
+      "ROUTER_NOT_APPLICABLE": 3000,
+      "NON_POSITIVE_NET_CREDIT": 1936,
+      "DEFINED_RISK_LEG_QUOTE_UNUSABLE:LONG": 892,
+      "DEFINED_RISK_LEG_QUOTE_UNUSABLE:SHORT": 713
+     },
+     "missingData": {
+      "IV_UNKNOWN": 964,
+      "DELTA_UNKNOWN": 944,
+      "AEGIS_STATE_UNKNOWN": 2000,
+      "EXECUTION_QUOTE_REQUIRED:spread too wide": 2310,
+      "EXECUTION_QUOTE_REQUIRED:quote stale; spread too wide": 1000
+     }
+    },
+    "THETA_HOLD_STRIKE": {
+     "status": "RESEARCH_ONLY",
+     "candidates": 859,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {
+      "AEGIS_HARD_VETO": 453,
+      "ROUTER_NOT_APPLICABLE": 859,
+      "NO_ASSIGNMENT_CAPACITY": 182
+     },
+     "missingData": {
+      "IV_UNKNOWN": 52,
+      "DELTA_UNKNOWN": 52,
+      "AEGIS_STATE_UNKNOWN": 406,
+      "EXECUTION_QUOTE_REQUIRED:quote stale": 17,
+      "EXECUTION_QUOTE_REQUIRED:spread too wide": 313,
+      "EXECUTION_QUOTE_REQUIRED:quote stale; spread too wide": 18
+     }
+    },
+    "THETA_RECOVERY": {
+     "status": "SHADOW",
+     "candidates": 0,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {},
+     "missingData": {}
+    }
+   }
+  },
+  {
+   "scanId": "15da347a-d643-402c-b768-ba6cfbc7698f",
+   "startedAt": "2026-10-02T18:35:34.808Z",
+   "finishedAt": "2026-10-02T18:36:01.890Z",
+   "sourceSha": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+   "workerSha": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+   "marketSessionState": "OPEN",
+   "universeDiscovered": 13514,
+   "universeAnalyzed": 3,
+   "candidateCount": 1869,
+   "feasible": 3,
+   "selected": 0,
+   "nearMiss": 3,
+   "hardRejected": 1866,
+   "dataInsufficient": 1867,
+   "quantityZero": 1869,
+   "aegisVeto": 1,
+   "sizingZeroBreakdown": {
+    "AEGIS_HARD_VETO": 2,
+    "AEGIS_NOT_REACHED": 3,
+    "Q_REJECTED_UPSTREAM": 222,
+    "ACCOUNT_CAPACITY_ZERO": 1642
+   },
+   "hardGateCounts": {
+    "AEGIS_HARD_VETO": 2,
+    "NO_ASSIGNMENT_CAPACITY": 1,
+    "THETA_Q_ACTION_INFEASIBLE": 10,
+    "ACCOUNT_POLICY_INCOMPATIBILITY": 1642,
+    "THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND": 212,
+    "THETA_Q_INFEASIBLE_REASON:OWNERSHIP_ACCEPTABILITY_UNKNOWN": 10
+   },
+   "finalAction": "SYSTEM_HOLD",
+   "waitClassification": "RISK_WAIT",
+   "globalWaitEarned": false,
+   "waitReasons": [
+    "CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_NOT_REACHED_UPSTREAM",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:ACCOUNT_POLICY_INCOMPATIBILITY:1081",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:ACCOUNT_POLICY_INCOMPATIBILITY:136",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:ACCOUNT_POLICY_INCOMPATIBILITY:425",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:NOT_EVALUATED_SHORTLIST_BOUND:149",
+    "PAPER_CANDIDATE_EVALUATION_INCOMPLETE:NOT_EVALUATED_SHORTLIST_BOUND:63"
+   ],
+   "orderIntentsCreated": 0,
+   "brokerMutations": 0,
+   "perSymbol": {
+    "IWM": {
+     "qDecision": "PASS",
+     "aegisState": null,
+     "cycleState": "COMPLETED",
+     "funnelTotals": {
+      "Q_VALID": 0,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 0,
+      "AEGIS_REACHED": 0,
+      "INPUT_CONTRACTS": 1537,
+      "FINALIST_REACHED": 0,
+      "FINAL_QTY_POSITIVE": 0
+     },
+     "dominantBlocker": "INSTRUMENT_APPROVAL",
+     "stages": [
+      {
+       "stage": "PUT_CONTRACT_IDENTITY",
+       "input": 1537,
+       "pass": 1537,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "INSTRUMENT_APPROVAL",
+       "input": 1537,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 1537,
+       "notApplicable": 0,
+       "reasons": {
+        "INSTRUMENT_UNKNOWN": 1537
+       }
+      },
+      {
+       "stage": "EXECUTABLE_ALPACA_QUOTE",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_KNOWN",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_FRESHNESS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DTE_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_BAND",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "SPREAD",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "OPEN_INTEREST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "VOLUME",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "PREMIUM_ECONOMICS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_AGE_BUDGET",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EVENT_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINALIST_SHORTLIST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "ENTRY_ELIGIBILITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "CAPITAL_FIT",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "AEGIS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINAL_QUANTITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      }
+     ]
+    },
+    "NVDA": {
+     "qDecision": "PASS",
+     "aegisState": null,
+     "cycleState": "COMPLETED",
+     "funnelTotals": {
+      "Q_VALID": 0,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 0,
+      "AEGIS_REACHED": 0,
+      "INPUT_CONTRACTS": 740,
+      "FINALIST_REACHED": 0,
+      "FINAL_QTY_POSITIVE": 0
+     },
+     "dominantBlocker": "INSTRUMENT_APPROVAL",
+     "stages": [
+      {
+       "stage": "PUT_CONTRACT_IDENTITY",
+       "input": 740,
+       "pass": 740,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "INSTRUMENT_APPROVAL",
+       "input": 740,
+       "pass": 0,
+       "fail": 740,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "INSTRUMENT_OPERATING_COMPANY": 740
+       }
+      },
+      {
+       "stage": "EXECUTABLE_ALPACA_QUOTE",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_KNOWN",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_FRESHNESS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DTE_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DELTA_BAND",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "SPREAD",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "OPEN_INTEREST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "VOLUME",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "PREMIUM_ECONOMICS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "QUOTE_AGE_BUDGET",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EVENT_WINDOW",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINALIST_SHORTLIST",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "ENTRY_ELIGIBILITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "CAPITAL_FIT",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "AEGIS",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "FINAL_QUANTITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      }
+     ]
+    },
+    "SPY": {
+     "qDecision": "PASS",
+     "aegisState": "HARD_VETO",
+     "cycleState": "COMPLETED",
+     "funnelTotals": {
+      "Q_VALID": 389,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 5,
+      "AEGIS_REACHED": 5,
+      "INPUT_CONTRACTS": 2865,
+      "FINALIST_REACHED": 5,
+      "FINAL_QTY_POSITIVE": 0
+     },
+     "dominantBlocker": "AEGIS",
+     "stages": [
+      {
+       "stage": "PUT_CONTRACT_IDENTITY",
+       "input": 2865,
+       "pass": 2865,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "INSTRUMENT_APPROVAL",
+       "input": 2865,
+       "pass": 2865,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EXECUTABLE_ALPACA_QUOTE",
+       "input": 2865,
+       "pass": 2307,
+       "fail": 558,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "QUOTE_STALE": 14,
+        "SPREAD_TOO_WIDE": 545,
+        "CONTRACT_NOT_EXECUTABLE": 558
+       }
+      },
+      {
+       "stage": "DELTA_KNOWN",
+       "input": 2307,
+       "pass": 2240,
+       "fail": 0,
+       "unknown": 67,
+       "notApplicable": 0,
+       "reasons": {
+        "DELTA_UNKNOWN": 67
+       }
+      },
+      {
+       "stage": "QUOTE_FRESHNESS",
+       "input": 2240,
+       "pass": 2240,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "DTE_WINDOW",
+       "input": 2240,
+       "pass": 1020,
+       "fail": 1220,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "DTE_OUTSIDE_LATTICE": 1220
+       }
+      },
+      {
+       "stage": "DELTA_BAND",
+       "input": 1020,
+       "pass": 686,
+       "fail": 334,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "DELTA_OUTSIDE_ALL_BANDS": 334
+       }
+      },
+      {
+       "stage": "SPREAD",
+       "input": 686,
+       "pass": 686,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "OPEN_INTEREST",
+       "input": 686,
+       "pass": 532,
+       "fail": 154,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "OPEN_INTEREST_BELOW_FLOOR": 154
+       }
+      },
+      {
+       "stage": "VOLUME",
+       "input": 532,
+       "pass": 389,
+       "fail": 143,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "VOLUME_BELOW_FLOOR": 143
+       }
+      },
+      {
+       "stage": "PREMIUM_ECONOMICS",
+       "input": 389,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 389,
+       "reasons": {
+        "NO_PRODUCTION_PREMIUM_GATE": 389
+       }
+      },
+      {
+       "stage": "QUOTE_AGE_BUDGET",
+       "input": 389,
+       "pass": 389,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "EVENT_WINDOW",
+       "input": 389,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 389,
+       "reasons": {
+        "EVENT_POLICY_NOT_APPLICABLE": 389
+       }
+      },
+      {
+       "stage": "FINALIST_SHORTLIST",
+       "input": 389,
+       "pass": 5,
+       "fail": 384,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {
+        "NOT_SELECTED_FOR_FINALIST_REFRESH": 384
+       }
+      },
+      {
+       "stage": "ENTRY_ELIGIBILITY",
+       "input": 5,
+       "pass": 5,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "CAPITAL_FIT",
+       "input": 5,
+       "pass": 5,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      },
+      {
+       "stage": "AEGIS",
+       "input": 5,
+       "pass": 0,
+       "fail": 2,
+       "unknown": 3,
+       "notApplicable": 0,
+       "reasons": {
+        "AEGIS_NOT_REACHED_UPSTREAM": 3,
+        "SECTOR:SECTOR_SEVERELY_EXCEEDED": 2,
+        "UNDERLYING:UNDERLYING_SEVERELY_EXCEEDED": 2,
+        "CORRELATION:CORRELATION_SEVERELY_EXCEEDED": 2
+       }
+      },
+      {
+       "stage": "FINAL_QUANTITY",
+       "input": 0,
+       "pass": 0,
+       "fail": 0,
+       "unknown": 0,
+       "notApplicable": 0,
+       "reasons": {}
+      }
+     ]
+    }
+   },
+   "strategies": {
+    "THETA_CC": {
+     "status": "SHADOW",
+     "candidates": 0,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {},
+     "missingData": {}
+    },
+    "THETA_CONVENTIONAL": {
+     "status": "SHADOW",
+     "candidates": 1869,
+     "evaluated": 3,
+     "reachability": "REACHED",
+     "hardGates": {
+      "AEGIS_HARD_VETO": 2,
+      "NO_ASSIGNMENT_CAPACITY": 1,
+      "THETA_Q_ACTION_INFEASIBLE": 10,
+      "ACCOUNT_POLICY_INCOMPATIBILITY": 1642,
+      "THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND": 212,
+      "THETA_Q_INFEASIBLE_REASON:OWNERSHIP_ACCEPTABILITY_UNKNOWN": 10
+     },
+     "missingData": {
+      "IV_UNKNOWN": 47,
+      "DELTA_UNKNOWN": 47,
+      "AEGIS_STATE_UNKNOWN": 1867,
+      "EXECUTION_QUOTE_REQUIRED:quote stale": 32,
+      "EXECUTION_QUOTE_REQUIRED:spread too wide": 207,
+      "EXECUTION_QUOTE_REQUIRED:quote stale; spread too wide": 21
+     }
+    },
+    "THETA_DEFINED_RISK": {
+     "status": "RESEARCH_ONLY",
+     "candidates": 3000,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {
+      "AEGIS_HARD_VETO": 1000,
+      "ROUTER_NOT_APPLICABLE": 3000,
+      "NON_POSITIVE_NET_CREDIT": 1104,
+      "DEFINED_RISK_LEG_QUOTE_UNUSABLE:LONG": 72,
+      "DEFINED_RISK_LEG_QUOTE_UNUSABLE:SHORT": 17
+     },
+     "missingData": {
+      "AEGIS_STATE_UNKNOWN": 2000,
+      "EXECUTION_QUOTE_REQUIRED:spread too wide": 2788,
+      "EXECUTION_QUOTE_REQUIRED:quote stale; spread too wide": 88
+     }
+    },
+    "THETA_HOLD_STRIKE": {
+     "status": "RESEARCH_ONLY",
+     "candidates": 804,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {
+      "AEGIS_HARD_VETO": 453,
+      "ROUTER_NOT_APPLICABLE": 804
+     },
+     "missingData": {
+      "IV_UNKNOWN": 72,
+      "DELTA_UNKNOWN": 72,
+      "AEGIS_STATE_UNKNOWN": 351,
+      "EXECUTION_QUOTE_REQUIRED:spread too wide": 288,
+      "EXECUTION_QUOTE_REQUIRED:quote stale; spread too wide": 14
+     }
+    },
+    "THETA_RECOVERY": {
+     "status": "SHADOW",
+     "candidates": 0,
+     "evaluated": 0,
+     "reachability": "NOT_APPLICABLE_CURRENT_SCAN",
+     "hardGates": {},
+     "missingData": {}
+    }
+   }
+  }
+ ],
+ "command5A": {
+  "jobsCreatedToday": 824,
+  "horizons": {
+   "1M": {
+    "observed": 174,
+    "missed": 32,
+    "missedReasons": {
+     "PROVIDER_UNAVAILABLE": 32
+    },
+    "latenessP50s": 43.9,
+    "latenessP95s": 107.5
+   },
+   "5M": {
+    "observed": 109,
+    "missed": 85,
+    "missedReasons": {
+     "HOST_OFFLINE": 77,
+     "PROVIDER_UNAVAILABLE": 8
+    },
+    "latenessP50s": 23.7,
+    "latenessP95s": 111.2
+   },
+   "30M": {
+    "observed": 127,
+    "missed": 30,
+    "missedReasons": {
+     "HOST_OFFLINE": 17,
+     "OBSERVATION_MISSED_NO_ACTIVE_WORKER": 11,
+     "PROVIDER_UNAVAILABLE": 2
+    },
+    "latenessP50s": 39.9,
+    "latenessP95s": 94.9
+   },
+   "EOD": {
+    "observed": 0,
+    "missed": 0
+   }
+  },
+  "pendingPastDue": 0,
+  "marksTicker": {
+   "lastTick": {
+    "observedAt": "2026-10-02T18:38:34Z",
+    "state": "OK",
+    "due": 12,
+    "observed": 1,
+    "missed": 11,
+    "deferred": 0,
+    "brokerMutations": 0
+   }
+  },
+  "freshStarvation": "NO: observed lateness p50 24-44 s and p95 95-112 s, no pending past-due jobs; HOST_OFFLINE misses coincide with the 503 outage and the expired worker lease, not with backlog starvation"
+ },
+ "latency": {
+  "cycleWallClockSeconds": {
+   "SUCCEEDED": {
+    "n": 149,
+    "p50": 14.74,
+    "p95": 19.2,
+    "max": 154.14
+   },
+   "FAILED": {
+    "n": 32,
+    "p50": 169.05,
+    "p95": 206.86,
+    "max": 213.97
+   },
+   "DEGRADED": {
+    "n": 1,
+    "p50": 130.49
+   }
+  },
+  "scanWallClockSeconds": "27-34 per complete scan",
+  "providerP50P95": "NOT_PERSISTED",
+  "dbP50P95": "NOT_PERSISTED",
+  "strategyP50P95": "NOT_PERSISTED",
+  "aegisP50P95": "NOT_PERSISTED",
+  "persistenceP50P95": "NOT_PERSISTED"
+ },
+ "memory": "NOT_PERSISTED (worker receipts carry no memory fields)",
+ "brokerMutationsToday": 0,
+ "orderIntentsToday": 0,
+ "brokerOrdersToday": 0,
+ "rejectionDistribution": {
+  "scanId": "15da347a-d643-402c-b768-ba6cfbc7698f",
+  "rows": [
+   {
+    "symbol": "IWM",
+    "stage": "PUT_CONTRACT_IDENTITY",
+    "denominator": 1537,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {},
+    "exampleSymbols": [
+     "IWM"
+    ],
+    "class": "CODE/DATA",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "IWM",
+    "stage": "INSTRUMENT_APPROVAL",
+    "denominator": 1537,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 1537,
+    "unknownPercent": 100.0,
+    "notApplicable": 0,
+    "reasons": {
+     "INSTRUMENT_UNKNOWN": 1537
+    },
+    "exampleSymbols": [
+     "IWM"
+    ],
+    "class": "POLICY (owner instrument approval)",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "NVDA",
+    "stage": "PUT_CONTRACT_IDENTITY",
+    "denominator": 740,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {},
+    "exampleSymbols": [
+     "NVDA"
+    ],
+    "class": "CODE/DATA",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "NVDA",
+    "stage": "INSTRUMENT_APPROVAL",
+    "denominator": 740,
+    "fail": 740,
+    "failPercent": 100.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {
+     "INSTRUMENT_OPERATING_COMPANY": 740
+    },
+    "exampleSymbols": [
+     "NVDA"
+    ],
+    "class": "POLICY (owner instrument approval)",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "PUT_CONTRACT_IDENTITY",
+    "denominator": 2865,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {},
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "CODE/DATA",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "INSTRUMENT_APPROVAL",
+    "denominator": 2865,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {},
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "POLICY (owner instrument approval)",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "EXECUTABLE_ALPACA_QUOTE",
+    "denominator": 2865,
+    "fail": 558,
+    "failPercent": 19.48,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {
+     "QUOTE_STALE": 14,
+     "SPREAD_TOO_WIDE": 545,
+     "CONTRACT_NOT_EXECUTABLE": 558
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "MARKET/PROVIDER (quote quality)",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "DELTA_KNOWN",
+    "denominator": 2307,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 67,
+    "unknownPercent": 2.9,
+    "notApplicable": 0,
+    "reasons": {
+     "DELTA_UNKNOWN": 67
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "PROVIDER (greeks absent)",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "QUOTE_FRESHNESS",
+    "denominator": 2240,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {},
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "MARKET/PROVIDER",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "DTE_WINDOW",
+    "denominator": 2240,
+    "fail": 1220,
+    "failPercent": 54.46,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {
+     "DTE_OUTSIDE_LATTICE": 1220
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "MARKET vs bootstrap policy",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "DELTA_BAND",
+    "denominator": 1020,
+    "fail": 334,
+    "failPercent": 32.75,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {
+     "DELTA_OUTSIDE_ALL_BANDS": 334
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "MARKET vs bootstrap policy",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "SPREAD",
+    "denominator": 686,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {},
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "MARKET vs bootstrap policy",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "OPEN_INTEREST",
+    "denominator": 686,
+    "fail": 154,
+    "failPercent": 22.45,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {
+     "OPEN_INTEREST_BELOW_FLOOR": 154
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "MARKET vs bootstrap policy",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "VOLUME",
+    "denominator": 532,
+    "fail": 143,
+    "failPercent": 26.88,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {
+     "VOLUME_BELOW_FLOOR": 143
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "MARKET vs bootstrap policy",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "PREMIUM_ECONOMICS",
+    "denominator": 389,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 389,
+    "reasons": {
+     "NO_PRODUCTION_PREMIUM_GATE": 389
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "POLICY (no production premium gate)",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "QUOTE_AGE_BUDGET",
+    "denominator": 389,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {},
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "MARKET/PROVIDER",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "EVENT_WINDOW",
+    "denominator": 389,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 389,
+    "reasons": {
+     "EVENT_POLICY_NOT_APPLICABLE": 389
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "POLICY (event policy not applicable to SPY)",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "FINALIST_SHORTLIST",
+    "denominator": 389,
+    "fail": 384,
+    "failPercent": 98.71,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {
+     "NOT_SELECTED_FOR_FINALIST_REFRESH": 384
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "BOUND (5 finalists per underlying)",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "ENTRY_ELIGIBILITY",
+    "denominator": 5,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {},
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "POLICY",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "CAPITAL_FIT",
+    "denominator": 5,
+    "fail": 0,
+    "failPercent": 0.0,
+    "unknown": 0,
+    "unknownPercent": 0.0,
+    "notApplicable": 0,
+    "reasons": {},
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "ACCOUNT (buying power)",
+    "codeSolvable": false
+   },
+   {
+    "symbol": "SPY",
+    "stage": "AEGIS",
+    "denominator": 5,
+    "fail": 2,
+    "failPercent": 40.0,
+    "unknown": 3,
+    "unknownPercent": 60.0,
+    "notApplicable": 0,
+    "reasons": {
+     "AEGIS_NOT_REACHED_UPSTREAM": 3,
+     "SECTOR:SECTOR_SEVERELY_EXCEEDED": 2,
+     "UNDERLYING:UNDERLYING_SEVERELY_EXCEEDED": 2,
+     "CORRELATION:CORRELATION_SEVERELY_EXCEEDED": 2
+    },
+    "exampleSymbols": [
+     "SPY"
+    ],
+    "class": "POLICY (concentration limits vs account scale)",
+    "codeSolvable": false
+   }
+  ],
+  "account": {
+   "equity": 99999.96,
+   "minimumQValidSpyCollateral": 37500,
+   "note": "all Q-valid SPY puts exceed the single-underlying hard-veto line at this equity; see THETA_PHASE2_SPY_ACCOUNT_FIT_20261002.json"
+  },
+  "spy": {
+   "inputContracts": 2865,
+   "qValid": 389,
+   "finalists": 5,
+   "capitalFitBuyingPower": 5,
+   "aegisReached": 5,
+   "aegisPass": 0,
+   "finalQtyPositive": 0,
+   "aegisBinding": "UNDERLYING_SEVERELY_EXCEEDED / SECTOR_SEVERELY_EXCEEDED / CORRELATION (account-scale incompatibility); three finalists were PARETO_DOMINATED so AEGIS was not reached for them"
+  }
+ },
+ "unknownRegister": [
+  {
+   "field": "instrument approval / classification",
+   "symbol": "IWM",
+   "producer": "versioned instrument manifest",
+   "consumer": "Q funnel INSTRUMENT_APPROVAL",
+   "whyUnknown": "IWM is not in the manifest; no classification evidence",
+   "decisionEffect": "all 1537 IWM puts stop before the quote stage",
+   "count": 1537,
+   "class": "UNKNOWN_REQUIRED",
+   "codeSolvable": false,
+   "resolution": "OWNER_POLICY (instrument approval)"
+  },
+  {
+   "field": "instrument approval",
+   "symbol": "NVDA",
+   "producer": "manifest",
+   "consumer": "Q funnel",
+   "whyUnknown": "known: INSTRUMENT_OPERATING_COMPANY (not an approved fund); a FAIL, not an unknown",
+   "decisionEffect": "all 740 NVDA puts rejected",
+   "count": 740,
+   "class": "NOT_UNKNOWN",
+   "codeSolvable": false,
+   "resolution": "OWNER_POLICY"
+  },
+  {
+   "field": "delta",
+   "symbol": "SPY",
+   "producer": "Alpaca indicative option snapshots",
+   "consumer": "DELTA_KNOWN gate",
+   "whyUnknown": "greeks absent for illiquid strikes",
+   "decisionEffect": "contract excluded (never assumed)",
+   "count": 67,
+   "class": "UNKNOWN_PROVIDER_LIMITED",
+   "codeSolvable": false
+  },
+  {
+   "field": "iv",
+   "symbol": "SPY/IWM/NVDA",
+   "producer": "Alpaca indicative option snapshots",
+   "consumer": "strategy missing-data reasons",
+   "whyUnknown": "implied volatility absent in the snapshot",
+   "decisionEffect": "IV-dependent shadow evidence stays UNKNOWN",
+   "count": 47,
+   "class": "UNKNOWN_PROVIDER_LIMITED",
+   "codeSolvable": false
+  },
+  {
+   "field": "AEGIS state",
+   "symbol": "all",
+   "producer": "AEGIS (python)",
+   "consumer": "sizing and WAIT classification",
+   "whyUnknown": "candidate never reached AEGIS (Q-rejected upstream, shortlist-bound, or Pareto-dominated)",
+   "decisionEffect": "quantity zero with a typed cause; 3 PARETO_DOMINATED SPY finalists keep the cycle at SYSTEM_HOLD instead of an earned WAIT",
+   "count": 1867,
+   "class": "UNKNOWN_NOT_REACHED",
+   "codeSolvable": false
+  },
+  {
+   "field": "ownership acceptability",
+   "symbol": "IWM/NVDA",
+   "producer": "ownership model",
+   "consumer": "Q evaluation",
+   "whyUnknown": "relative-strength definition is owner policy and non-manifest instruments have no ownership inputs",
+   "decisionEffect": "research-only route",
+   "count": 10,
+   "class": "UNKNOWN_REQUIRED",
+   "codeSolvable": false,
+   "resolution": "OWNER_POLICY (relative strength)"
+  },
+  {
+   "field": "executable quote",
+   "symbol": "SPY",
+   "producer": "Alpaca",
+   "consumer": "EXECUTABLE_ALPACA_QUOTE",
+   "whyUnknown": "known: 545 spreads too wide and 14 stale quotes (a FAIL, not an unknown)",
+   "decisionEffect": "558 contracts not executable",
+   "count": 558,
+   "class": "UNKNOWN_STALE",
+   "codeSolvable": false
+  },
+  {
+   "field": "expected after-cost EV / calibrated probability",
+   "symbol": "all",
+   "producer": "empirical models",
+   "consumer": "plan economics",
+   "whyUnknown": "no resolved outcomes exist",
+   "decisionEffect": "PAPER_EVIDENCE tier only; no EV claim",
+   "count": null,
+   "class": "UNKNOWN_EMPIRICAL",
+   "codeSolvable": false
+  },
+  {
+   "field": "per-fill fees",
+   "symbol": "n/a",
+   "producer": "Alpaca (not supplied)",
+   "consumer": "whole-chain P&L",
+   "whyUnknown": "provider supplies none",
+   "decisionEffect": "chain realized P&L stays UNKNOWN",
+   "count": 0,
+   "class": "UNKNOWN_PROVIDER_LIMITED",
+   "codeSolvable": false
+  },
+  {
+   "field": "external broker facts",
+   "symbol": "account",
+   "producer": "broker reconciliation",
+   "consumer": "covered-call commitment reader",
+   "whyUnknown": "11 settled historical facts were counted as an unknown commitment",
+   "decisionEffect": "WOULD HAVE blocked every covered call and stock sale of the account forever",
+   "count": 11,
+   "class": "UNKNOWN_CONFLICTING",
+   "codeSolvable": true,
+   "resolution": "FIXED in this pass: the reader now uses the current-impact blocking fact count"
+  },
+  {
+   "field": "conflicting evidence",
+   "symbol": "n/a",
+   "producer": "n/a",
+   "consumer": "n/a",
+   "whyUnknown": "none observed today",
+   "decisionEffect": "n/a",
+   "count": 0,
+   "class": "UNKNOWN_CONFLICTING",
+   "codeSolvable": false
+  }
+ ]
+}

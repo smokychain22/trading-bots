@@ -41,8 +41,8 @@ function model(seed: { plans?: Plan[]; intents?: Intent[]; fills?: Fill[]; posit
   } };
 }
 
-const read = (seed: Parameters<typeof model>[0], externalOrUnknownCount = 0) => readCommittedShortCallContracts(model(seed) as never,
-  { executionAccountId: 'acct', reconciliationSnapshotId: 'snap', underlying: 'AAPL', externalOrUnknownCount });
+const read = (seed: Parameters<typeof model>[0], entryBlockingFactCount = 0) => readCommittedShortCallContracts(model(seed) as never,
+  { executionAccountId: 'acct', reconciliationSnapshotId: 'snap', underlying: 'AAPL', entryBlockingFactCount });
 
 test('every non-terminal publication state counts, terminal states release deterministically', async () => {
   for (const status of ['READY', 'CLAIMED', 'WAITING_GATE']) {

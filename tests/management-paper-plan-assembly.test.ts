@@ -55,7 +55,7 @@ const selectedFrontier=(action:ManagementFrontierAction,executionEvidence:Manage
 };
 
 const input=(action:ManagementFrontierAction,overrides:Partial<ManagementPaperPlanAssemblyInput>={}):ManagementPaperPlanAssemblyInput=>({
-  state:state(),frontier:selectedFrontier(action),managementActionFrontierId:ids.frontier,executionAccountId:ids.account,
+  state:state(),frontier:selectedFrontier(action),managementActionFrontierId:ids.frontier,executionAccountId:ids.account,stockExitFreeze:{state:'CLEAR'},
   strategyVersion:'theta-conventional-v1',accountStatus:'ACTIVE',optionsCapabilityVerified:true,aegisState:'ALLOW_FULL',
   killSwitchActive:false,paperEvidenceRiskCap:1,executionLegs:[],now,decisionExpiresAt:'2026-09-15T14:00:45.000Z',
   // MGMT-CROSS-CYCLE-DUP / HDAC-05 evidence has no default in production (absent === UNKNOWN === blocked); these tests state it.
@@ -201,7 +201,7 @@ test('bootstrap covered-call management reaches a capped PAPER_EVIDENCE plan wit
   const compiled=compileManagementExecutionLegDirectives(recovery,frontier);
   assert.equal(compiled.state,'READY');
   if(compiled.state!=='READY')return;
-  const assembled=assembleManagementPaperPlans({state:recovery,frontier,managementActionFrontierId:ids.frontier,
+  const assembled=assembleManagementPaperPlans({stockExitFreeze:{state:'CLEAR'},state:recovery,frontier,managementActionFrontierId:ids.frontier,
     executionAccountId:ids.account,strategyVersion:'theta-recovery-v1',accountStatus:'ACTIVE',optionsCapabilityVerified:true,
     aegisState:'ALLOW_FULL',killSwitchActive:false,paperEvidenceRiskCap:1,executionLegs:compiled.legs,now,
     decisionExpiresAt:'2026-09-15T14:00:45.000Z',chainInFlight:{state:'KNOWN',entries:[]},committedShortCallContracts:0});
@@ -227,3 +227,82 @@ test('covered-call close is compiled as BUY_TO_CLOSE against the exact current c
   assert.equal(compiled.legs[0]?.canonicalQuantity,2);
 });
 
+
+// Phase 3 P-A: a terminal partial stock exit freezes the chain for every action that sells or covers shares, until broker and ledger
+// shares agree. Absent evidence is UNKNOWN (never CLEAR). Risk-reducing option closes are never frozen.
+const frozenFreeze={state:'FROZEN' as const,code:'STOCK_PARTIAL_EXIT_PENDING_RECONCILIATION' as const,cause:'PARTIAL_FILL_TERMINAL' as const,
+  reconciliationReason:'LEDGER_AHEAD_OF_BROKER',blockClass:'REQUIRES_RECONCILIATION' as const,orderIntentIds:['o1'],filledQuantity:40,orderedQuantity:100,
+  realizedPnlAttribution:'UNKNOWN_PENDING_RECONCILIATION' as const};
+const sellStockAssembly=(freeze:ManagementPaperPlanAssemblyInput['stockExitFreeze'])=>{
+  const recovery=lifecycleState('RECOVERY_WAIT','PUT',100);
+  const frontier=frontierFor(recovery,'SELL_STOCK',{closeEconomicBoundary:null,openEconomicBoundary:null,stockEconomicBoundary:189,
+    economicsRemainPositive:true,expectedAfterCostEv:null,empiricalEconomicsReady:false,targetContract:null});
+  const compiled=compileManagementExecutionLegDirectives(recovery,frontier);
+  assert.equal(compiled.state,'READY');
+  if(compiled.state!=='READY')throw new Error('unreachable');
+  return assembleManagementPaperPlans({...(freeze===undefined?{}:{stockExitFreeze:freeze}),state:recovery,frontier,managementActionFrontierId:ids.frontier,
+    executionAccountId:ids.account,strategyVersion:'theta-recovery-v1',accountStatus:'ACTIVE',optionsCapabilityVerified:true,
+    aegisState:'ALLOW_FULL',killSwitchActive:false,paperEvidenceRiskCap:100,executionLegs:compiled.legs,now,
+    decisionExpiresAt:'2026-09-15T14:00:45.000Z',chainInFlight:{state:'KNOWN',entries:[]},committedShortCallContracts:0});
+};
+
+test('P-A: a FROZEN chain cannot sell stock; absent or UNKNOWN freeze evidence blocks too; only CLEAR proceeds',()=>{
+  const frozen=sellStockAssembly(frozenFreeze);
+  assert.equal(frozen.state,'BLOCKED');
+  assert.ok(frozen.blockers.includes('STOCK_PARTIAL_EXIT_PENDING_RECONCILIATION'));
+  for(const freeze of [undefined,{state:'UNKNOWN' as const}]){
+    const unknown=sellStockAssembly(freeze);
+    assert.equal(unknown.state,'BLOCKED');
+    assert.ok(unknown.blockers.includes('MANAGEMENT_STOCK_EXIT_STATE_UNKNOWN'));
+  }
+  assert.equal(sellStockAssembly({state:'CLEAR'}).state,'READY');
+});
+
+test('P-A: the freeze does not block a risk-reducing covered-call close',()=>{
+  const covered=lifecycleState('CC_OPEN','CALL',200);
+  const frontier=frontierFor(covered,'CLOSE_CC',{closeEconomicBoundary:1.25,openEconomicBoundary:null,stockEconomicBoundary:null,
+    economicsRemainPositive:true,expectedAfterCostEv:null,empiricalEconomicsReady:false,targetContract:null});
+  const compiled=compileManagementExecutionLegDirectives(covered,frontier);
+  assert.equal(compiled.state,'READY');
+  if(compiled.state!=='READY')return;
+  const assembled=assembleManagementPaperPlans({stockExitFreeze:frozenFreeze,state:covered,frontier,managementActionFrontierId:ids.frontier,
+    executionAccountId:ids.account,strategyVersion:'theta-recovery-v1',accountStatus:'ACTIVE',optionsCapabilityVerified:true,
+    aegisState:'ALLOW_FULL',killSwitchActive:false,paperEvidenceRiskCap:2,executionLegs:compiled.legs,now,
+    decisionExpiresAt:'2026-09-15T14:00:45.000Z',chainInFlight:{state:'KNOWN',entries:[]},committedShortCallContracts:0});
+  assert.equal(assembled.state,'READY');
+});
+
+// Phase 3 P-B whole-position lot accounting: a covered call covers the ENTIRE open position (shares % 100 === 0, contracts ===
+// shares / 100) or it is zero. The ledger cannot record a partial call-away, so a partial cover would strand the chain.
+const sellCcEvidence=(quantity:number)=>({closeEconomicBoundary:null,openEconomicBoundary:1,stockEconomicBoundary:null,economicsRemainPositive:true,
+  expectedAfterCostEv:null,empiricalEconomicsReady:false,
+  targetContract:{symbol:'AAPL261016C00200000',optionContractId:ids.target,optionType:'CALL' as const,multiplier:100,quantity}});
+
+test('P-B: a covered call is compiled only when it covers the whole open position',()=>{
+  for(const [shares,quantity,expected] of [[100,1,'READY'],[200,2,'READY'],[300,3,'READY'],[200,1,'BLOCKED'],[300,1,'BLOCKED'],[300,2,'BLOCKED'],
+    [250,2,'BLOCKED'],[101,1,'BLOCKED'],[199,1,'BLOCKED']] as const){
+    const recovery=lifecycleState('RECOVERY_WAIT','PUT',shares);
+    const compiled=compileManagementExecutionLegDirectives(recovery,frontierFor(recovery,'SELL_CC',sellCcEvidence(quantity)));
+    assert.equal(compiled.state,expected,`${shares} shares / ${quantity} contracts`);
+    if(expected==='BLOCKED'&&shares>=quantity*100){
+      assert.ok(compiled.blockers.includes('COVERED_CALL_WHOLE_POSITION_REQUIRED')||compiled.blockers.includes('COVERED_CALL_COVERAGE_NOT_CONFIRMED'),
+        `${shares}/${quantity}: ${compiled.blockers.join(',')}`);
+    }
+  }
+});
+
+test('P-B: the Paper evidence risk cap may not clip a whole-position covered call to a partial cover - zero instead',()=>{
+  const recovery=lifecycleState('RECOVERY_WAIT','PUT',200);
+  const frontier=frontierFor(recovery,'SELL_CC',sellCcEvidence(2));
+  const compiled=compileManagementExecutionLegDirectives(recovery,frontier);
+  assert.equal(compiled.state,'READY');
+  if(compiled.state!=='READY')return;
+  const assemble=(cap:number)=>assembleManagementPaperPlans({stockExitFreeze:{state:'CLEAR'},state:recovery,frontier,managementActionFrontierId:ids.frontier,
+    executionAccountId:ids.account,strategyVersion:'theta-recovery-v1',accountStatus:'ACTIVE',optionsCapabilityVerified:true,aegisState:'ALLOW_FULL',
+    killSwitchActive:false,paperEvidenceRiskCap:cap,executionLegs:compiled.legs,now,decisionExpiresAt:'2026-09-15T14:00:45.000Z',
+    chainInFlight:{state:'KNOWN',entries:[]},committedShortCallContracts:0});
+  const clipped=assemble(1);
+  assert.equal(clipped.state,'BLOCKED');
+  assert.ok(clipped.blockers.some((blocker)=>blocker.startsWith('COVERED_CALL_WHOLE_POSITION_REQUIRED')&&blocker.endsWith('PAPER_EVIDENCE_RISK_CAP')));
+  assert.equal(assemble(2).state,'READY');
+});

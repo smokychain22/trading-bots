@@ -1,0 +1,864 @@
+{
+  "computed": {
+    "PHASE3_TOTAL": 45,
+    "PASS": 30,
+    "PROVIDER_LIMITED": 2,
+    "OWNER_POLICY": 2,
+    "FUTURE_MARKET": 0,
+    "FUTURE_PAPER": 5,
+    "EMPIRICAL_ONLY": 2,
+    "NOT_APPLICABLE": 3,
+    "CODE_SOLVABLE_REMAINING": 1,
+    "OBSERVED_TODAY": 14
+  },
+  "rows": [
+    {
+      "ID": "P3-001",
+      "CAPABILITY": "Order intent state machine: reviewed legal-transition table, exhaustive pair test, restart recovery per state",
+      "SOURCE": [
+        "src/theta/order-intent-state.ts",
+        "src/execution/paper-order-coordinator.ts"
+      ],
+      "TEST": [
+        "tests/phase3-exec-state-machine.test.ts",
+        "tests/order-intent-state.test.ts",
+        "tests/order-intent-transition-invariants.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "worker PENDING_ORDER_MANAGEMENT job",
+      "DB_DEPENDENCY": "trade.order_intent (status enum)",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "ALREADY_CORRECT_VERIFIED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-002",
+      "CAPABILITY": "Deterministic idempotent client order id with database uniqueness",
+      "SOURCE": [
+        "src/theta/order-intent-state.ts",
+        "src/execution/postgres-paper-order-store.ts"
+      ],
+      "TEST": [
+        "tests/order-intent-state.test.ts",
+        "tests/db/order-intent-client-order-id-unique.test.ts",
+        "tests/phase3-exec-unknown-submit.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none",
+      "DB_DEPENDENCY": "order_intent unique client_order_id",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "ALREADY_CORRECT_VERIFIED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-003",
+      "CAPABILITY": "PaperOrderCoordinator is the single broker-mutation authority",
+      "SOURCE": [
+        "src/execution/paper-order-coordinator.ts",
+        "src/execution/broker.ts"
+      ],
+      "TEST": [
+        "tests/architecture-authority-guards.test.ts",
+        "tests/paper-order-coordinator.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "ALREADY_CORRECT_VERIFIED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-004",
+      "CAPABILITY": "Unknown-submit safety: lost POST, timeout, reset, 5xx after acceptance, malformed body, restart, concurrent submit",
+      "SOURCE": [
+        "src/execution/paper-order-coordinator.ts",
+        "src/execution/broker.ts"
+      ],
+      "TEST": [
+        "tests/phase3-exec-unknown-submit.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none (fake broker)",
+      "DB_DEPENDENCY": "trade.order_intent, execution_attempt",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "VERIFIED_AND_TIGHTENED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-005",
+      "CAPABILITY": "Broker fault-injection campaign (operation x fault matrix) with no duplicate economic order",
+      "SOURCE": [
+        "src/execution/broker.ts",
+        "src/execution/paper-order-coordinator.ts"
+      ],
+      "TEST": [
+        "tests/phase3-exec-fault-injection.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none (stateful fake Alpaca)",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-006",
+      "CAPABILITY": "Rate-limit policy: bounded read retry with Retry-After, shared budget and cooldown; mutations never retried",
+      "SOURCE": [
+        "src/execution/broker.ts",
+        "src/theta/alpaca-provider.ts"
+      ],
+      "TEST": [
+        "tests/phase3-exec-rate-limit.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Alpaca rate limits (exact quota not published to us)",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-007",
+      "CAPABILITY": "Partial-fill safety at the order level (option and stock), late fill during cancel, no replacement of part-filled stock exits",
+      "SOURCE": [
+        "src/execution/paper-order-coordinator.ts",
+        "src/execution/broker-order-state.ts"
+      ],
+      "TEST": [
+        "tests/phase3-exec-partial-fills.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none",
+      "DB_DEPENDENCY": "order_intent",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-008",
+      "CAPABILITY": "Terminal partial stock exit freeze (owner Paper policy P-A): typed state, no fabricated lot P&L, clears only on share reconciliation",
+      "SOURCE": [
+        "src/execution/management-chain-inflight.ts",
+        "src/execution/management-paper-plan-assembly.ts",
+        "src/theta/autonomous-runtime.ts"
+      ],
+      "TEST": [
+        "tests/db/phase3-sweep-and-freeze.test.ts",
+        "tests/management-paper-plan-assembly.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "worker scan",
+      "DB_DEPENDENCY": "order_intent, fill, stock_lot",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-009",
+      "CAPABILITY": "Whole-position covered calls (owner Paper policy P-B): all contracts covering the whole position, or zero",
+      "SOURCE": [
+        "src/theta/canonical-strategy-frontier.ts",
+        "src/execution/management-paper-plan-assembly.ts"
+      ],
+      "TEST": [
+        "tests/phase2-hdac-mechanics.test.ts",
+        "tests/management-paper-plan-assembly.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-010",
+      "CAPABILITY": "Cross-session working-order sweep: finished plans closed with typed reasons, chain released, nothing resubmitted",
+      "SOURCE": [
+        "src/execution/management-order-repricing.ts",
+        "src/theta/autonomous-runtime.ts"
+      ],
+      "TEST": [
+        "tests/db/phase3-sweep-and-freeze.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "worker PENDING_ORDER_MANAGEMENT job",
+      "DB_DEPENDENCY": "master_paper_action_plan(+event)",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-011",
+      "CAPABILITY": "Entry order duplicate guard (resting DAY entry order cannot be duplicated; releases when terminal)",
+      "SOURCE": [
+        "src/execution/postgres-master-paper-action-plan-store.ts"
+      ],
+      "TEST": [
+        "tests/db/phase3-entry-guard.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "production shadow scan enqueue",
+      "DB_DEPENDENCY": "master_paper_action_plan, order_intent",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-012",
+      "CAPABILITY": "Management repricing driver (persisted attempts, bounded concessions)",
+      "SOURCE": [
+        "src/execution/management-order-repricing.ts"
+      ],
+      "TEST": [
+        "tests/phase2-repricing-driver.test.ts",
+        "tests/db/management-reprice-store.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "worker PENDING_ORDER_MANAGEMENT job",
+      "DB_DEPENDENCY": "order_intent, price events",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "REVIEWED_BY_MAIN_PROCESS",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-013",
+      "CAPABILITY": "Floor liveness: cancel at the economic boundary, plan closed, next scan makes a new decision",
+      "SOURCE": [
+        "src/execution/management-order-repricing.ts",
+        "src/execution/adaptive-limit-policy.ts"
+      ],
+      "TEST": [
+        "tests/phase2-repricing-driver.test.ts",
+        "tests/adaptive-limit-policy.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "worker",
+      "DB_DEPENDENCY": "plan table",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "REVIEWED_BY_MAIN_PROCESS",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-014",
+      "CAPABILITY": "Named quote-freshness contract (decision, plan window, pre-submit cap)",
+      "SOURCE": [
+        "src/theta/paper-bootstrap-runtime-policy.ts",
+        "src/execution/master-paper-action-handoff.ts"
+      ],
+      "TEST": [
+        "tests/master-paper-action-handoff.test.ts",
+        "tests/phase2-repricing-driver.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Alpaca quotes",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "REVIEWED_BY_MAIN_PROCESS",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-015",
+      "CAPABILITY": "Broker/ledger share reconciliation, free sellable shares, fresh pre-submit inventory read",
+      "SOURCE": [
+        "src/theta/stock-share-reconciliation.ts",
+        "src/execution/alpaca-stock-inventory-source.ts"
+      ],
+      "TEST": [
+        "tests/phase2-share-reconciliation.test.ts",
+        "tests/phase2-stock-inventory-source.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Alpaca positions and orders (read-only)",
+      "DB_DEPENDENCY": "broker_position_snapshot",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "REVIEWED_BY_MAIN_PROCESS",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-016",
+      "CAPABILITY": "Short-call commitment guard fed by CURRENT-impact blocking facts (not settled historical activity)",
+      "SOURCE": [
+        "src/execution/management-chain-inflight.ts",
+        "src/theta/account-exposure.ts",
+        "src/theta/autonomous-runtime.ts"
+      ],
+      "TEST": [
+        "tests/phase2-short-call-commitments.test.ts",
+        "tests/db/management-chain-inflight.test.ts",
+        "tests/architecture-authority-guards.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "reconciliation snapshot",
+      "DB_DEPENDENCY": "positions, order_intent, plans",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "DEFECT_FOUND_AND_FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-017",
+      "CAPABILITY": "Plan integrity: sealed payload verified at claim and before submit; database trigger and pre-submit uniqueness (migration 068)",
+      "SOURCE": [
+        "src/execution/action-plan-integrity.ts",
+        "migrations/068_action_plan_integrity.sql"
+      ],
+      "TEST": [
+        "tests/phase2-plan-integrity.test.ts",
+        "tests/db/plan-integrity.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "worker claim path",
+      "DB_DEPENDENCY": "master_paper_action_plan",
+      "CURRENT_STATUS": "CODE_SOLVABLE",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "governed Production run in progress (backup phase)",
+      "SOLVABILITY": "GOVERNED_RUN_IN_PROGRESS",
+      "NEXT_ACTION": "verify trigger and index in Production after the governed run"
+    },
+    {
+      "ID": "P3-018",
+      "CAPABILITY": "Plan-order-fill lineage",
+      "SOURCE": [
+        "src/execution/postgres-master-paper-action-plan-store.ts",
+        "src/execution/postgres-execution-evidence-store.ts"
+      ],
+      "TEST": [
+        "tests/phase2-repricing-driver.test.ts",
+        "tests/db/management-reprice-store.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "worker",
+      "DB_DEPENDENCY": "plan, order_intent, fill",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "REVIEWED_BY_MAIN_PROCESS",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-019",
+      "CAPABILITY": "Recovery races: restart, duplicate trigger, replace race, late fill during cancel",
+      "SOURCE": [
+        "src/execution/paper-order-coordinator.ts",
+        "src/execution/management-order-repricing.ts"
+      ],
+      "TEST": [
+        "tests/phase3-exec-unknown-submit.test.ts",
+        "tests/phase3-exec-fault-injection.test.ts",
+        "tests/phase2-repricing-driver.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "worker restart",
+      "DB_DEPENDENCY": "order_intent",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "ALREADY_CORRECT_VERIFIED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-020",
+      "CAPABILITY": "SELL_STOCK limit policy: floor equals the bid, limit inside the BBO, sub-tick cancels",
+      "SOURCE": [
+        "src/execution/adaptive-limit-policy.ts",
+        "src/execution/master-paper-command-assembly.ts"
+      ],
+      "TEST": [
+        "tests/adaptive-limit-policy.test.ts",
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "fresh Alpaca stock quote",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "REVIEWED_BY_MAIN_PROCESS",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-021",
+      "CAPABILITY": "Multi-lot full-position disposal allocation",
+      "SOURCE": [
+        "src/execution/stock-lot-allocation.ts",
+        "src/theta/postgres-lifecycle-application-store.ts"
+      ],
+      "TEST": [
+        "tests/phase2-chain-stock-disposal.test.ts",
+        "tests/db/stock-disposal-lots.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "fill ingestion",
+      "DB_DEPENDENCY": "stock_lot",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "REVIEWED_BY_MAIN_PROCESS",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-022",
+      "CAPABILITY": "First Paper path is technically reachable: natural candidate -> canary cap 1 -> plan -> handoff -> coordinator -> broker; quantity zero is no order",
+      "SOURCE": [
+        "src/execution/master-paper-action-handoff.ts",
+        "src/execution/execution-authorization-tier.ts"
+      ],
+      "TEST": [
+        "tests/phase3-first-paper-path.test.ts",
+        "tests/master-paper-action-handoff.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "owner gates (LOCKED today)",
+      "DB_DEPENDENCY": "ops.paper_execution_control",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "no legitimate candidate exists (account scale vs concentration limits)",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-023",
+      "CAPABILITY": "Queryable frontier projection bounded independent of chain size (production incident: 32 evidence cycles failed with HTTP 503)",
+      "SOURCE": [
+        "src/theta/postgres-cycle-evidence-storage.ts"
+      ],
+      "TEST": [
+        "tests/phase3-frontier-projection-bound.test.ts",
+        "tests/postgres-cycle-evidence-storage.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Vercel runtime",
+      "DB_DEPENDENCY": "trade.fusion_snapshot / decision receipts",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "DEFECT_FOUND_IN_LIVE_SESSION_AND_FIXED_a5d8711",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-024",
+      "CAPABILITY": "Evidence cycle succeeds on a full SPY chain after the fix (3 complete scans, v7 diagnostics persisted)",
+      "SOURCE": [
+        "src/research/production-shadow-runtime.ts"
+      ],
+      "TEST": [
+        "docs/operations/THETA_LIVE_BOARD_20261002.json"
+      ],
+      "RUNTIME_DEPENDENCY": "Vercel runtime, Alpaca",
+      "DB_DEPENDENCY": "research.theta_shadow_scan_run",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "RUNTIME_OBSERVED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-025",
+      "CAPABILITY": "Command-5A marks ticker fires, fresh jobs are observed with bounded lateness, no fresh-job starvation",
+      "SOURCE": [
+        "tools/windows/ThetaProcess.Common.ps1",
+        "src/research/production-shadow-runtime.ts"
+      ],
+      "TEST": [
+        "docs/operations/THETA_LIVE_BOARD_20261002.json",
+        "tests/observation-retry.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Windows worker thread job, Alpaca snapshots",
+      "DB_DEPENDENCY": "research.theta_execution_observation_job",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "RUNTIME_OBSERVED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-026",
+      "CAPABILITY": "Command-5A completeness for illiquid contracts (PROVIDER_UNAVAILABLE misses where the indicative snapshot has no usable quote)",
+      "SOURCE": [
+        "src/research/production-shadow-runtime.ts"
+      ],
+      "TEST": [
+        "docs/operations/THETA_LIVE_BOARD_20261002.json"
+      ],
+      "RUNTIME_DEPENDENCY": "Alpaca indicative snapshots",
+      "DB_DEPENDENCY": "job table",
+      "CURRENT_STATUS": "PROVIDER_LIMITED",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "contracts without a current indicative quote cannot be observed",
+      "SOLVABILITY": "PROVIDER_LIMITED",
+      "NEXT_ACTION": "optional: label the miss reason NO_USABLE_QUOTE instead of PROVIDER_UNAVAILABLE"
+    },
+    {
+      "ID": "P3-027",
+      "CAPABILITY": "Universe discovery ranks before bounding (13,514 assets -> 100 ranked -> 3 analyzed)",
+      "SOURCE": [
+        "src/theta/universe-discovery.ts"
+      ],
+      "TEST": [
+        "docs/operations/THETA_LIVE_BOARD_20261002.json",
+        "tests/universe-discovery.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Alpaca assets and snapshots",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "RUNTIME_OBSERVED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-028",
+      "CAPABILITY": "Q funnel, AEGIS NOT_REACHED semantics, sizing-zero causes and v7 WAIT classification on real data",
+      "SOURCE": [
+        "src/theta/q-entry-funnel.ts",
+        "src/theta/runtime-behavior-diagnostic.ts"
+      ],
+      "TEST": [
+        "docs/operations/THETA_LIVE_BOARD_20261002.json",
+        "tests/phase2-q-funnel.test.ts",
+        "tests/runtime-behavior-sizing-zero.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "production shadow scan",
+      "DB_DEPENDENCY": "research.theta_runtime_behavior_diagnostic",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "RUNTIME_OBSERVED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-029",
+      "CAPABILITY": "H and D shadow isolation, A and C applicability (NOT_APPLICABLE while flat) on real data",
+      "SOURCE": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "TEST": [
+        "docs/operations/THETA_LIVE_BOARD_20261002.json",
+        "tests/phase2-hdac-mechanics.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "production shadow scan",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "RUNTIME_OBSERVED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-030",
+      "CAPABILITY": "Account-policy incompatibility classification on real data (1642 of 1869 candidates)",
+      "SOURCE": [
+        "src/theta/canonical-strategy-frontier.ts",
+        "src/theta/account-capacity-zero.ts"
+      ],
+      "TEST": [
+        "docs/operations/THETA_LIVE_BOARD_20261002.json",
+        "tests/phase2-sizing-zero-label.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "production shadow scan",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "RUNTIME_OBSERVED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-031",
+      "CAPABILITY": "Executable quote authority is Alpaca; research providers never set executable BBO",
+      "SOURCE": [
+        "src/execution/alpaca-execution-quote-source.ts"
+      ],
+      "TEST": [
+        "tests/phase2-q-economics-source.test.ts",
+        "tests/master-paper-action-handoff.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Alpaca",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "ALREADY_CORRECT_VERIFIED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-032",
+      "CAPABILITY": "Execution gate, followers and live money stay locked/unauthorized; no broker mutation",
+      "SOURCE": [
+        "src/execution/execution-control.ts",
+        "src/execution/paper-execution-authorization.ts"
+      ],
+      "TEST": [
+        "tests/paper-execution-authorization.test.ts",
+        "tests/phase3-first-paper-path.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "owner flags",
+      "DB_DEPENDENCY": "ops.paper_execution_control",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "RUNTIME_OBSERVED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-033",
+      "CAPABILITY": "Gate transition LOCKED -> FIRST_CANARY_ARMED requires migration 068 verified, zero code-solvable blockers, a Vercel Production flag change and the owner-authorized activation",
+      "SOURCE": [
+        "src/execution/paper-execution-authorization.ts"
+      ],
+      "TEST": [
+        "tests/paper-execution-authorization.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Vercel Production env (flags are sensitive/hidden), activation endpoint",
+      "DB_DEPENDENCY": "ops.paper_execution_control",
+      "CURRENT_STATUS": "FUTURE_PAPER",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "see the receipt for the arming decision",
+      "SOLVABILITY": "OPERATIONAL_STEP",
+      "NEXT_ACTION": "arm only after the exit gate is met"
+    },
+    {
+      "ID": "P3-034",
+      "CAPABILITY": "First Paper canary submitted and reconciled (max 1 contract) when a legitimate candidate exists",
+      "SOURCE": [
+        "src/execution/first-canary-acceptance.ts"
+      ],
+      "TEST": [
+        "tests/phase3-first-paper-path.test.ts",
+        "tests/db/autonomous-paper-transition.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "market, account scale",
+      "DB_DEPENDENCY": "order_intent, broker_order",
+      "CURRENT_STATUS": "FUTURE_PAPER",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "no SPY contract fits the account concentration limits",
+      "SOLVABILITY": "FUTURE_PAPER",
+      "NEXT_ACTION": "wait for a legitimate natural candidate"
+    },
+    {
+      "ID": "P3-035",
+      "CAPABILITY": "Entry-order (OPEN_CSP) repricing as a fill-rate enhancement",
+      "SOURCE": [
+        "src/execution/management-order-repricing.ts"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "n/a",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "EMPIRICAL_ONLY",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "needs Paper fill-rate evidence; safety (duplicates, expiry) is covered by P3-011 and P3-010",
+      "SOLVABILITY": "EMPIRICAL",
+      "NEXT_ACTION": "decide after the first Paper fills"
+    },
+    {
+      "ID": "P3-036",
+      "CAPABILITY": "Lot-split accounting (single-lot partial sale)",
+      "SOURCE": [
+        "docs/operations/THETA_PHASE3_LOT_SPLIT_ANALYSIS_20261002.md"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "n/a",
+      "DB_DEPENDENCY": "schema additions",
+      "CURRENT_STATUS": "FUTURE_PAPER",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "needed only once a real partial stock fill occurs",
+      "SOLVABILITY": "FUTURE_PAPER",
+      "NEXT_ACTION": "build after the first Paper position"
+    },
+    {
+      "ID": "P3-037",
+      "CAPABILITY": "Multi-lot partial stock sale lot-selection policy",
+      "SOURCE": [
+        "src/execution/stock-lot-allocation.ts"
+      ],
+      "TEST": [
+        "tests/phase2-chain-stock-disposal.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "n/a",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "OWNER_POLICY",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "owner selects FIFO/LIFO/specific/pro-rata",
+      "SOLVABILITY": "OWNER_POLICY",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "P3-038",
+      "CAPABILITY": "Per-fill fees",
+      "SOURCE": [
+        "src/theta/whole-chain-economics.ts"
+      ],
+      "TEST": [
+        "tests/phase2-q-economics-source.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Alpaca does not supply fees",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "PROVIDER_LIMITED",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "owner-attested fee schedule needed",
+      "SOLVABILITY": "PROVIDER_LIMITED",
+      "NEXT_ACTION": "owner attestation"
+    },
+    {
+      "ID": "P3-039",
+      "CAPABILITY": "Dividends",
+      "SOURCE": [
+        "src/theta/whole-chain-economics.ts"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "n/a",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "FUTURE_PAPER",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "needs a stock lot",
+      "SOLVABILITY": "FUTURE_PAPER",
+      "NEXT_ACTION": "after assignment"
+    },
+    {
+      "ID": "P3-040",
+      "CAPABILITY": "Per-stage latency and memory persistence",
+      "SOURCE": [
+        "src/theta/theta-shadow-cycle.ts"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "n/a",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "NOT_APPLICABLE",
+      "LIVE_SESSION_STATUS": "NOT_APPLICABLE",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "performance instrumentation belongs to the owner Phase 4 plan",
+      "SOLVABILITY": "DEFERRED_TO_PHASE_4",
+      "NEXT_ACTION": "Phase 4"
+    },
+    {
+      "ID": "P3-041",
+      "CAPABILITY": "Streaming trade-update ingestion",
+      "SOURCE": [
+        "src/execution/trade-updates.ts"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "n/a",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "NOT_APPLICABLE",
+      "LIVE_SESSION_STATUS": "NOT_APPLICABLE",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "Paper uses polling reconciliation every cycle; the legacy store is quarantined",
+      "SOLVABILITY": "NOT_REQUIRED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-042",
+      "CAPABILITY": "Instrument approval expansion, relative-strength definition, account concentration policy",
+      "SOURCE": [
+        "docs/operations/THETA_STRATEGY_PHASE2_REGISTER_20261002.json"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "n/a",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "OWNER_POLICY",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "the only reason SPY cannot trade at this equity",
+      "SOLVABILITY": "OWNER_POLICY",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "P3-043",
+      "CAPABILITY": "Real management of a live Paper position, assignment, call-away, profitability",
+      "SOURCE": [
+        "n/a"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "market",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "FUTURE_PAPER",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "no position exists",
+      "SOLVABILITY": "FUTURE_PAPER",
+      "NEXT_ACTION": "after the first position"
+    },
+    {
+      "ID": "P3-044",
+      "CAPABILITY": "Fill rate, slippage and concession-schedule quality",
+      "SOURCE": [
+        "n/a"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "market",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "EMPIRICAL_ONLY",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "no Paper fills exist",
+      "SOLVABILITY": "EMPIRICAL",
+      "NEXT_ACTION": "after Paper fills"
+    },
+    {
+      "ID": "P3-045",
+      "CAPABILITY": "Operational backup freshness: the verified daily backup is stale since 2026-09-29 (disk space)",
+      "SOURCE": [
+        "tools/windows/dr/Backup-Theta.ps1"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "Windows scheduled backup",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "NOT_APPLICABLE",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "space was reclaimed; the pre-migration verified backup is running",
+      "SOLVABILITY": "FIXED_OPERATIONALLY_THIS_PHASE",
+      "NEXT_ACTION": "confirm the next scheduled backup completes"
+    }
+  ]
+}
