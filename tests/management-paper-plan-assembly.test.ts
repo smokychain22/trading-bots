@@ -33,7 +33,7 @@ const lifecycleState=(lifecycle:'RECOVERY_WAIT'|'CC_OPEN',optionType:'PUT'|'CALL
   realized_option_pnl:'0',open_stock_shares:String(shares),stock_basis_per_share:'195',realized_stock_pnl:'0',dividends:'0',fees:'0',
   unknown_fill_fees:false,buying_power:'50000',options_buying_power:'40000',account_as_of:now,fusion_snapshot_id:ids.fusion,
   snapshot_json:{eventState:{state:'CLEAR'},riskState:{assignmentCapacity:2,newRiskState:'ALLOW_FULL'},versions:{strategyVersion:'theta-cc-v1'}},
-  broker_position:{currentPrice:190}},
+  broker_position:{currentPrice:190},broker_stock_quantity:String(shares),broker_stock_side:'long'},
 {managementInputSnapshotId:ids.input,reconciliationSnapshotId:ids.reconciliation,observedAt:now});
 
 const frontierFor=(managementState:ReturnType<typeof lifecycleState>,action:ManagementFrontierAction,
@@ -224,4 +224,17 @@ test('covered-call close is compiled as BUY_TO_CLOSE against the exact current c
   assert.equal(compiled.legs[0]?.action,'CLOSE_CC');
   assert.equal(compiled.legs[0]?.optionType,'CALL');
   assert.equal(compiled.legs[0]?.canonicalQuantity,2);
+});
+
+test('a stock sale is blocked unless the broker position confirms at least the ledger shares (no short stock from a ledger-only count)',()=>{
+  const recovery=lifecycleState('RECOVERY_WAIT','PUT',100);
+  const frontier=frontierFor(recovery,'SELL_STOCK',{closeEconomicBoundary:null,openEconomicBoundary:null,
+    stockEconomicBoundary:189,economicsRemainPositive:true,expectedAfterCostEv:null,empiricalEconomicsReady:false,targetContract:null});
+  for(const brokerStockShares of [null,undefined,99,0,-100]){
+    const state={...recovery,economics:{...recovery.economics,brokerStockShares}};
+    const compiled=compileManagementExecutionLegDirectives(state,frontier);
+    assert.equal(compiled.state,'BLOCKED',String(brokerStockShares));
+    assert.deepEqual(compiled.blockers,['STOCK_SALE_BROKER_SHARES_NOT_CONFIRMED']);
+  }
+  assert.equal(compileManagementExecutionLegDirectives({...recovery,economics:{...recovery.economics,brokerStockShares:100}},frontier).state,'READY');
 });

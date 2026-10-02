@@ -61,6 +61,8 @@ export const register = [
   // ---- chain economics
   row('ASSIGNMENT-ECONOMICS', 'CHAIN', 'whole-chain-economics.ts, assignment-utility.ts', 'TRD Appendix A', 'cash = strike*100*shares; basis net of option premium; unknown fees/dividends keep total UNKNOWN', 'same', [T + 'chain-assignment-economics.test.ts', T + 'chain-stock-disposal.test.ts'], 'PASS', 'ALREADY_CORRECT'),
   row('STOCK-DISPOSAL-LOT-COVERAGE', 'CHAIN', 'broker-fill-lifecycle-router.ts, postgres-broker-fill-lifecycle-orchestrator.ts', 'whole-chain accounting', 'a stock sale is recorded only when exactly one open lot is sold in full; otherwise UNKNOWN (no cross-lot basis blending)', 'same', [T + 'chain-stock-disposal.test.ts'], 'PASS', 'FIXED_THIS_PHASE'),
+  row('SELL-STOCK-BROKER-SHARES', 'CHAIN', 'management-input-state.ts, management-paper-plan-assembly.ts', 'no short stock', 'a stock sale compiles only when the broker position confirms at least the ledger shares', 'same', ['tests/management-paper-plan-assembly.test.ts'], 'PASS', 'FIXED_THIS_PHASE'),
+  row('MULTI-LOT-DISPOSAL-ALLOCATION', 'CHAIN', 'broker-fill-lifecycle-router.ts', 'whole-chain accounting', 'a sale spanning several open lots is recorded UNKNOWN (fail closed); allocation across lots is not built', 'allocate across lots once more than one open lot can exist', [], 'FUTURE_PAPER', 'NEEDS_MULTIPLE_LOTS', 'build when a chain can hold several open lots'),
   row('RECOVERY-DECISION', 'CHAIN', 'recovery-state.ts', 'forward economics', 'WAIT/SELL_STOCK/SELL_CC on forward economics, identical across historical loss', 'same', [T + 'chain-recovery-cc.test.ts'], 'PASS', 'FIXED_THIS_PHASE'),
   row('COVERED-CALL-BELOW-BASIS', 'CHAIN', 'bootstrap SELL_CC gate belowBasisAllowed=false', 'owner policy', 'strikes below effective basis are rejected', 'owner decides forward-economics rule or exception', [T + 'chain-recovery-cc.test.ts'], 'OWNER_POLICY', 'POLICY_NOT_DEFECT', 'owner decision'),
   row('WHOLE-CHAIN-IDENTITY', 'CHAIN', 'whole-chain-economics.ts, ledger-contract.ts', 'accounting identity', '4800 seeded episodes agree across three computations; unknown P&L is null not zero', 'same', [T + 'chain-random-episodes.test.ts', T + 'chain-false-value-sweep.test.ts'], 'PASS', 'FIXED_THIS_PHASE'),
@@ -85,6 +87,12 @@ export const register = [
   row('CANDIDATE-DISTRIBUTION-REAL-SESSION', 'RUNTIME', 'runtime', 'market session', 'real candidate distribution on this release unobserved', 'future market', [], 'FUTURE_MARKET', 'NEEDS_SESSION'),
 ];
 
+export const deferredToPhase3 = [
+  'SELL_STOCK / close repricing driver: pricingAttempt is always 0, so only the first-attempt limit is placed (broker order state machine)',
+  'SELL_STOCK floor liveness: freeing a chain after the floor becomes unreachable (broker order state machine)',
+  'pre-submit quote age 45s vs decision-time 30s (execution mechanics)',
+  'management plan row immutability / hash re-check at claim (execution plan store)',
+];
 const STATUSES = ['PASS', 'CODE_SOLVABLE', 'OWNER_POLICY', 'PROVIDER_LIMITED', 'FUTURE_MARKET', 'FUTURE_PAPER', 'EMPIRICAL_ONLY', 'NOT_APPLICABLE'];
 export function computeRegister() {
   const n = (status) => register.filter((r) => r.STATUS === status).length;
@@ -95,7 +103,7 @@ export function computeRegister() {
 export { STATUSES };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const out = { computed: computeRegister(), rows: register };
+  const out = { computed: computeRegister(), rows: register, deferredToPhase3: deferredToPhase3 };
   if (process.argv.includes('--write')) writeFileSync(new URL('../docs/operations/THETA_STRATEGY_PHASE2_REGISTER_20261002.json', import.meta.url), JSON.stringify(out, null, 2) + '\n');
   console.log(JSON.stringify(out.computed, null, 2));
 }

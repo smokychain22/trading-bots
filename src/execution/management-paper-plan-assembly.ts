@@ -162,6 +162,11 @@ export function compileManagementExecutionLegDirectives(state: ManagementInputSt
       || !validPositive(execution.stockEconomicBoundary)) {
       return { state:'BLOCKED',legs:[],blockers:['MANAGEMENT_STOCK_EXIT_DIRECTIVE_INCOMPLETE'] };
     }
+    const brokerShares = state.economics.brokerStockShares;
+    if (brokerShares === undefined || brokerShares === null || !Number.isFinite(brokerShares) || brokerShares < state.economics.openStockShares) {
+      // A sale larger than the broker position could open a short stock position; the ledger count is never enough on its own.
+      return { state:'BLOCKED',legs:[],blockers:['STOCK_SALE_BROKER_SHARES_NOT_CONFIRMED'] };
+    }
     return {state:'READY',blockers:[],legs:[{action:'SELL_STOCK',symbol:state.underlying,optionContractId:null,
       optionType:null,multiplier:1,canonicalQuantity:state.economics.openStockShares,
       economicBoundary:execution.stockEconomicBoundary,...common}]};

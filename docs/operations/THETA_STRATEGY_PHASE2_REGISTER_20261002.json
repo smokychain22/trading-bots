@@ -1,11 +1,11 @@
 {
   "computed": {
-    "PHASE2_TOTAL": 64,
-    "PASS": 45,
+    "PHASE2_TOTAL": 66,
+    "PASS": 46,
     "OWNER_POLICY": 9,
     "PROVIDER_LIMITED": 1,
     "FUTURE_MARKET": 2,
-    "FUTURE_PAPER": 4,
+    "FUTURE_PAPER": 5,
     "EMPIRICAL_ONLY": 3,
     "NOT_APPLICABLE": 0,
     "CODE_SOLVABLE_REMAINING": 0
@@ -646,6 +646,32 @@
       "NEXT_ACTION": "none"
     },
     {
+      "ID": "SELL-STOCK-BROKER-SHARES",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "management-input-state.ts, management-paper-plan-assembly.ts",
+      "CANONICAL_AUTHORITY": "no short stock",
+      "CURRENT_BEHAVIOR": "a stock sale compiles only when the broker position confirms at least the ledger shares",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/management-paper-plan-assembly.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "MULTI-LOT-DISPOSAL-ALLOCATION",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "broker-fill-lifecycle-router.ts",
+      "CANONICAL_AUTHORITY": "whole-chain accounting",
+      "CURRENT_BEHAVIOR": "a sale spanning several open lots is recorded UNKNOWN (fail closed); allocation across lots is not built",
+      "EXPECTED_BEHAVIOR": "allocate across lots once more than one open lot can exist",
+      "TEST": [],
+      "STATUS": "FUTURE_PAPER",
+      "SOLVABILITY": "NEEDS_MULTIPLE_LOTS",
+      "NEXT_ACTION": "build when a chain can hold several open lots"
+    },
+    {
       "ID": "RECOVERY-DECISION",
       "DOMAIN": "CHAIN",
       "SOURCE": "recovery-state.ts",
@@ -903,5 +929,11 @@
       "SOLVABILITY": "NEEDS_SESSION",
       "NEXT_ACTION": "none"
     }
+  ],
+  "deferredToPhase3": [
+    "SELL_STOCK / close repricing driver: pricingAttempt is always 0, so only the first-attempt limit is placed (broker order state machine)",
+    "SELL_STOCK floor liveness: freeing a chain after the floor becomes unreachable (broker order state machine)",
+    "pre-submit quote age 45s vs decision-time 30s (execution mechanics)",
+    "management plan row immutability / hash re-check at claim (execution plan store)"
   ]
 }

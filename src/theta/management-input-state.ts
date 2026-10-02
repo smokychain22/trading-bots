@@ -151,6 +151,8 @@ export interface ManagementInputState {
     readonly openStockShares: number;
     readonly stockBasisPerShare: number | null;
     readonly stockMarkPerShare: number | null;
+    /** Broker-confirmed signed share count for the underlying (long positive) from the reconciliation snapshot; absent/null = UNKNOWN. A stock sale never exceeds it. */
+    readonly brokerStockShares?: number | null;
     readonly unrealizedStockPnl: number | null;
     readonly realizedStockPnl: number;
     readonly dividends: number;
@@ -427,6 +429,11 @@ export function assembleManagementInput(row: Row, input: {
     timingState:futureEvidence?'FUTURE_EVIDENCE':requiredEvidenceTimes.some((value)=>value===null)?'PARTIAL':'VALID',
   };
   const unknownFields: string[] = [];
+  const signedBrokerShares = (quantity: unknown, side: unknown): number | null => {
+    const q = numeric(quantity); const s = text(side)?.toLowerCase() ?? null;
+    if (q === null) return row.broker_position === null || row.broker_position === undefined ? 0 : null;
+    return s === 'long' ? q : s === 'short' ? -q : null;
+  };
   const required = (name: string, value: unknown): void => { if (value === null || value === undefined) unknownFields.push(name); };
   if (hasOpenOption) {
     required('contract.multiplier', multiplier);
@@ -500,6 +507,7 @@ export function assembleManagementInput(row: Row, input: {
       optionType: text(row.option_type) as 'PUT' | 'CALL' | null, strike, expiration, multiplier, contracts },
     economics: { entryCreditDebit, realizedOptionPnl, unrealizedOptionPnl: hasOpenOption ? optionMark : 0,
       openStockShares: stockShares, stockBasisPerShare: stockBasis, stockMarkPerShare: stockMark,
+      brokerStockShares: signedBrokerShares(row.broker_stock_quantity, row.broker_stock_side),
       unrealizedStockPnl: stockMtm, realizedStockPnl, dividends, fees, wholeChainPnl },
     market: { spot, optionBid: bid, optionAsk: ask, quoteTimestamp: text(row.quote_as_of),
       quoteFeed: text(row.feed), quoteQuality: text(row.quote_quality), dte: daysToExpiration(expiration, input.observedAt),
@@ -582,7 +590,7 @@ export class PostgresManagementInputStore {
         fs.decision_time AS fusion_decision_time,brs.observed_at AS reconciliation_observed_at,
         brs.data_quality AS reconciliation_quality,
         brs.provider_timestamp AS clock_timestamp,brs.detail_json AS reconciliation_detail,
-        bp.observed_at AS position_observed_at,
+        bp.observed_at AS position_observed_at,bp.quantity AS broker_stock_quantity,bp.side AS broker_stock_side,
         bop.symbol AS broker_option_symbol,bop.quantity AS broker_option_quantity,bop.side AS broker_option_side,
         bop.asset_class AS broker_option_asset_class,bop.observed_at AS broker_option_observed_at,
         contract_lots.total_remaining AS ledger_option_contract_quantity,

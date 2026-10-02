@@ -59,6 +59,7 @@ function managed(o: Opts = {}): ManagementInputState {
     snapshot_json: { underlyingState: { last: 205 }, marketSession: { isOpen: true },
       riskState: { assignmentCapacity: 2, newRiskState: 'ALLOW_FULL' }, eventState: { state: 'CLEAR' } },
     broker_position: hasStock ? { currentPrice: o.mark ?? 190 } : null,
+    broker_stock_quantity: hasStock ? (o.shares ?? '100') : null, broker_stock_side: hasStock ? 'long' : null,
   }, { managementInputSnapshotId: UUID(1), reconciliationSnapshotId: UUID(2), observedAt, stockQuoteRead: o.stockRead ?? null });
 }
 
