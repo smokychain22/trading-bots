@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
-import { routeConfirmedFillLifecycle,routeConfirmedRollPair,type ConfirmedFillFact,type FillLifecycleContext } from './broker-fill-lifecycle-router.js';
+import { fillEvidenceKey,routeConfirmedFillLifecycle,routeConfirmedRollPair,type ConfirmedFillFact,type FillLifecycleContext } from './broker-fill-lifecycle-router.js';
+import type { OpenStockLot } from './stock-lot-allocation.js';
 import { PostgresLifecycleApplicationStore,type LifecycleApplicationResult } from '../theta/postgres-lifecycle-application-store.js';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
 import { confirmedMasterCopyEventId,PostgresDisabledCopyPlanner } from '../customer/postgres-disabled-copy-planner.js';
@@ -15,6 +16,12 @@ const fills=(value:unknown):ConfirmedFillFact[]=>Array.isArray(value)?value.map(
     quantity:Number(row.quantity),pricePerShare:Number(row.price_per_share),occurredAt:String(row.filled_at),fees:n(row.fees)};
 }):[];
 
+/** Open lots of the chain as aggregated by the query. Malformed lot facts become UNKNOWN basis/shares, never zero. */
+const openStockLots=(value:unknown):readonly OpenStockLot[]=>Array.isArray(value)?value.map((raw)=>{
+  const row=raw as Row; return {stockLotId:String(row.stock_lot_id),shares:Number(row.shares),
+    economicBasisPerShare:n(row.economic_basis_per_share),acquiredAt:s(row.acquired_at)};
+}):[];
+
 export interface FillLifecycleOrchestrationReport{readonly inspected:number;readonly applied:number;readonly duplicates:number;
   readonly partial:number;readonly unresolved:number;readonly results:readonly LifecycleApplicationResult[];}
 
@@ -24,7 +31,7 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     oi.option_contract_id,oi.underlying_id,oc.contract_symbol,u.symbol AS underlying_symbol,oc.multiplier,ol.option_leg_id,ol.entry_credit_debit,
     ol.original_leg_quantity,COALESCE(pc.partial_closed_quantity,0) AS partial_closed_quantity,
     COALESCE(pc.partial_realized_pnl,0) AS partial_realized_pnl,
-    sl.stock_lot_id,sl.economic_basis_per_share,sl.shares AS stock_lot_shares,sl.open_lot_count,
+    sl.open_stock_lots,
     COALESCE(jsonb_agg(jsonb_build_object('provider_fill_id',f.provider_fill_id,'quantity',f.quantity,
       'price_per_share',f.price_per_share,'filled_at',f.filled_at,'fees',f.fees) ORDER BY f.filled_at,f.provider_fill_id)
       FILTER(WHERE f.fill_id IS NOT NULL),'[]'::jsonb) AS fills
@@ -43,15 +50,15 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     LEFT JOIN LATERAL(SELECT sum(p.closed_quantity) AS partial_closed_quantity,
       sum(p.realized_pnl_before_fees) AS partial_realized_pnl
       FROM trade.option_partial_close_realization p WHERE p.option_leg_id=ol.option_leg_id) pc ON true
-    LEFT JOIN LATERAL(SELECT x.stock_lot_id,x.economic_basis_per_share,x.shares,(SELECT count(*) FROM trade.stock_lot y WHERE y.chain_id=oi.chain_id AND y.disposed_at IS NULL) AS open_lot_count FROM trade.stock_lot x WHERE x.chain_id=oi.chain_id AND x.disposed_at IS NULL ORDER BY x.acquired_at LIMIT 1) sl ON true
+    LEFT JOIN LATERAL(SELECT COALESCE(jsonb_agg(jsonb_build_object('stock_lot_id',x.stock_lot_id,'shares',x.shares,'economic_basis_per_share',x.economic_basis_per_share,'acquired_at',x.acquired_at) ORDER BY x.acquired_at,x.stock_lot_id),'[]'::jsonb) AS open_stock_lots FROM trade.stock_lot x WHERE x.chain_id=oi.chain_id AND x.disposed_at IS NULL) sl ON true
     WHERE oi.chain_id IS NOT NULL AND (f.filled_at IS NULL OR f.filled_at <= $2)
       AND oi.theta_action IN ('OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK')
     GROUP BY oi.order_intent_id,ec.bot_instance_id,oc.contract_symbol,u.symbol,oc.multiplier,ol.option_leg_id,
       ol.entry_credit_debit,ol.original_leg_quantity,pc.partial_closed_quantity,pc.partial_realized_pnl,
-      sl.stock_lot_id,sl.economic_basis_per_share,sl.shares,sl.open_lot_count
+      sl.open_stock_lots
     ORDER BY oi.created_at,oi.order_intent_id`,[connectionId,observedAt]);
   const store=new PostgresLifecycleApplicationStore(pool),copyPlanner=new PostgresDisabledCopyPlanner(pool),results:LifecycleApplicationResult[]=[];
-  let partial=0,unresolved=0; const rollRows=new Map<string,Row[]>();
+  let partial=0,unresolved=0,alreadyApplied=0; const rollRows=new Map<string,Row[]>();
   const persistMasterFillEvent=async(row:Row,parentMasterCopyEventId:string|null=null):Promise<string|null>=>{
     const decision=s(row.decision_id),chain=s(row.chain_id),bot=s(row.bot_instance_id),order=s(row.order_intent_id);
     const fillIds=Array.isArray(row.fill_ids)?row.fill_ids.map(String):[],facts=fills(row.fills);
@@ -74,9 +81,15 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
       priorPartialClosedQuantity:n(row.partial_closed_quantity)??0,priorPartialRealizedOptionPnl:n(row.partial_realized_pnl)??0,
       chainId:String(row.chain_id),
       decisionId:s(row.decision_id),optionLegId:action==='OPEN_CSP'||action==='OPEN_CC'?deterministicRuntimeUuid(`option-leg:${row.order_intent_id}`):s(row.option_leg_id),
-      optionContractId:s(row.option_contract_id),stockLotId:s(row.stock_lot_id),stockLotShares:n(row.stock_lot_shares),openStockLotCount:n(row.open_lot_count),multiplier:n(row.multiplier),entryCreditDebit:n(row.entry_credit_debit),
-      economicBasisPerShare:n(row.economic_basis_per_share),nextState:action==='CLOSE_CSP'?'REDEPLOY':action==='CLOSE_CC'?'RECOVERY_WAIT':action==='SELL_STOCK'?'CLOSED':null,
+      optionContractId:s(row.option_contract_id),stockLotId:null,openStockLots:openStockLots(row.open_stock_lots),multiplier:n(row.multiplier),entryCreditDebit:n(row.entry_credit_debit),
+      economicBasisPerShare:null,nextState:action==='CLOSE_CSP'?'REDEPLOY':action==='CLOSE_CC'?'RECOVERY_WAIT':action==='SELL_STOCK'?'CLOSED':null,
       fills:fills(row.fills)};
+    if(action==='SELL_STOCK'&&(context.openStockLots?.length??0)===0&&context.fills.length>0){
+      // Every lot is already disposed: if this fill set was already applied it is a duplicate, not an unresolved fact.
+      const applied=await pool.query(`SELECT 1 FROM trade.lifecycle_application WHERE evidence_key=$1 AND chain_id=$2
+        AND event_kind='STOCK_DISPOSAL'`,[fillEvidenceKey(context.fills),context.chainId]);
+      if((applied.rowCount??0)>0){alreadyApplied++;continue;}
+    }
     const routed=routeConfirmedFillLifecycle(context);
     if(routed.state==='PARTIAL'){
       partial++;
@@ -118,5 +131,5 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     const closeEventId=await persistMasterFillEvent(close);
     if(closeEventId===null||await persistMasterFillEvent(open,closeEventId)===null) unresolved++;
   }
-  return {inspected:rows.rowCount??0,applied:results.filter((r)=>!r.duplicate).length,duplicates:results.filter((r)=>r.duplicate).length,partial,unresolved,results};
+  return {inspected:rows.rowCount??0,applied:results.filter((r)=>!r.duplicate).length,duplicates:results.filter((r)=>r.duplicate).length+alreadyApplied,partial,unresolved,results};
 }

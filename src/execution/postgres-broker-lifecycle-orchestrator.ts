@@ -4,6 +4,7 @@ import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js
 import { PostgresLifecycleApplicationStore,type LifecycleApplicationResult,type LifecycleApplication } from '../theta/postgres-lifecycle-application-store.js';
 import { confirmedMasterCopyEventId,PostgresDisabledCopyPlanner } from '../customer/postgres-disabled-copy-planner.js';
 import type { MasterCopyEvent } from '../customer/copy-engine-contract.js';
+import { allocateStockDisposal, type OpenStockLot } from './stock-lot-allocation.js';
 
 type Row = Record<string,unknown>;
 const n=(value:unknown):number|null=>value==null?null:Number.isFinite(Number(value))?Number(value):null;
@@ -34,8 +35,7 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
       previous_stock.quantity AS previous_stock_qty,current_stock.quantity AS current_stock_qty,
       current_stock.average_entry_price AS broker_stock_basis,
       activity.broker_activity_fact_id,activity.provider_activity_ref_hash,activity.activity_type,activity.quantity AS activity_quantity,
-      activity.price AS activity_price,activity.activity_at,stock.stock_lot_id,stock.shares AS stock_lot_shares,
-      stock.economic_basis_per_share
+      activity.price AS activity_price,activity.activity_at,stock.open_stock_lots
     FROM trade.economic_chain ec JOIN core.bot_instance bi ON bi.bot_instance_id=ec.bot_instance_id
     JOIN market.underlying u ON u.underlying_id=ec.underlying_id
     JOIN trade.option_leg ol ON ol.chain_id=ec.chain_id AND ol.closed_at IS NULL
@@ -50,7 +50,7 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
     LEFT JOIN LATERAL(SELECT baf.* FROM trade.broker_activity_fact baf WHERE baf.connection_id=$1
       AND baf.symbol=oc.contract_symbol AND baf.activity_type IN ('OPASN','OPEXP') AND baf.activity_at <= $4
       ORDER BY baf.activity_at DESC NULLS LAST LIMIT 1) activity ON true
-    LEFT JOIN LATERAL(SELECT sl.* FROM trade.stock_lot sl WHERE sl.chain_id=ec.chain_id AND sl.disposed_at IS NULL ORDER BY sl.acquired_at LIMIT 1) stock ON true
+    LEFT JOIN LATERAL(SELECT COALESCE(jsonb_agg(jsonb_build_object('stock_lot_id',sl.stock_lot_id,'shares',sl.shares,'economic_basis_per_share',sl.economic_basis_per_share,'acquired_at',sl.acquired_at) ORDER BY sl.acquired_at,sl.stock_lot_id),'[]'::jsonb) AS open_stock_lots FROM trade.stock_lot sl WHERE sl.chain_id=ec.chain_id AND sl.disposed_at IS NULL) stock ON true
     WHERE EXISTS(SELECT 1 FROM copy.follower_account fa WHERE fa.follower_account_id=$1
       AND fa.account_role='MASTER_THETA_PAPER' AND fa.environment='PAPER' AND fa.disconnected_at IS NULL)
       AND bi.bot_code='THETA' AND ec.closed_at IS NULL AND ec.lifecycle_state IN ('CSP_OPEN','CC_OPEN')`,
@@ -78,10 +78,18 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
         brokerBasisPerShare:n(row.broker_stock_basis),economicBasisPerShare:strike,realizedOptionPnl:terminalOptionPnl,
         evidenceKey:hash(`${activityHash}:${row.chain_id}:SHORT_PUT_ASSIGNMENT`)};
     } else if (activityType==='OPASN'&&activityQty!==null&&Math.abs(activityQty)===contracts&&String(row.lifecycle_state)==='CC_OPEN'&&priorShares-currentShares>=expectedShares) {
-      const basis=n(row.economic_basis_per_share),lotShares=n(row.stock_lot_shares);
-      if (basis===null||lotShares===null||s(row.stock_lot_id)===null||lotShares!==expectedShares) { unresolved++; continue; }
-      application={...common,eventKind:'COVERED_CALL_ASSIGNMENT',optionLegId:String(row.option_leg_id),stockLotId:String(row.stock_lot_id),
-        shares:expectedShares,strikePrice:strike,realizedOptionPnl:terminalOptionPnl,realizedStockPnl:(strike-basis)*expectedShares,
+      // MULTI_LOT_DISPOSAL: the delivery is allocated across EVERY open lot. Delivering exactly all open shares is exact whatever
+      // the lot order. Delivering fewer leaves live stock on a chain the call-away would close, and needs an owner lot policy.
+      const lots:OpenStockLot[]=Array.isArray(row.open_stock_lots)?(row.open_stock_lots as Row[]).map((lot)=>({
+        stockLotId:String(lot.stock_lot_id),shares:Number(lot.shares),economicBasisPerShare:n(lot.economic_basis_per_share),
+        acquiredAt:s(lot.acquired_at)})):[];
+      const allocation=allocateStockDisposal({lots,disposedShares:expectedShares,pricePerShare:strike,policy:null});
+      if (allocation.state!=='ALLOCATED'||allocation.mode!=='FULL_POSITION'||allocation.hasPartialLot) { unresolved++; continue; }
+      const [first,...rest]=allocation.allocations;
+      if (first===undefined) { unresolved++; continue; }
+      application={...common,eventKind:'COVERED_CALL_ASSIGNMENT',optionLegId:String(row.option_leg_id),stockLotId:first.stockLotId,
+        shares:expectedShares,strikePrice:strike,realizedOptionPnl:terminalOptionPnl,realizedStockPnl:first.realizedPnl,
+        ...(rest.length===0?{}:{additionalStockLots:rest.map((lot)=>({stockLotId:lot.stockLotId,realizedStockPnl:lot.realizedPnl}))}),
         evidenceKey:hash(`${activityHash}:${row.chain_id}:COVERED_CALL_ASSIGNMENT`)};
     }
     if (application===null) { unresolved++; continue; }

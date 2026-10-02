@@ -181,8 +181,8 @@ function buildEpisode(seed: number): Episode {
     };
     const sellStock = (): void => {
       const price = integer(random, Math.max(100, Math.floor(strike * 40)), Math.floor(strike * 170) + 100) / 100;
-      const sold = routeConfirmedFillLifecycle(baseContext({ action: 'SELL_STOCK', orderQuantity: assignedShares, stockLotId: 'lot-1', stockLotShares: assignedShares, openStockLotCount: 1,
-        economicBasisPerShare: strike, multiplier: null, fills: [fillOf(assignedShares, price, true, nextDay())] }));
+      const sold = routeConfirmedFillLifecycle(baseContext({ action: 'SELL_STOCK', orderQuantity: assignedShares, openStockLots: [{ stockLotId: 'lot-1', shares: assignedShares, economicBasisPerShare: strike, acquiredAt: at(day) }],
+        multiplier: null, fills: [fillOf(assignedShares, price, true, nextDay())] }));
       assert.equal(sold.application?.eventKind, 'STOCK_DISPOSAL');
       if (sold.application?.eventKind !== 'STOCK_DISPOSAL') throw new Error('disposal expected');
       proceeds = sold.application.realizedStockPnl + strike * assignedShares;

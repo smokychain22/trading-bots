@@ -3,6 +3,8 @@ import type { Pool, PoolClient } from 'pg';
 import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import { assertValidLifecycleTransition, type ThetaLifecycleState } from './runtime-state.js';
 
+export interface StockLotDisposal { readonly stockLotId: string; readonly realizedStockPnl: number }
+
 type BaseApplication = {
   readonly evidenceKey: string;
   readonly chainId: string;
@@ -19,7 +21,10 @@ export type LifecycleApplication = BaseApplication & (
       readonly economicBasisPerShare: number; readonly realizedOptionPnl: number }
   | { readonly eventKind: 'COVERED_CALL_ASSIGNMENT'; readonly optionLegId: string; readonly stockLotId: string;
       readonly shares: number; readonly strikePrice: number; readonly realizedOptionPnl: number;
-      readonly realizedStockPnl: number }
+      /** Realized stock P&L of `stockLotId` (the first allocated lot). */
+      readonly realizedStockPnl: number;
+      /** Further whole lots delivered by the same assignment, in allocation order. All open lots must be consumed. */
+      readonly additionalStockLots?: readonly StockLotDisposal[] }
   | { readonly eventKind: 'OPTION_EXPIRATION'; readonly optionLegId: string; readonly itm: false;
       readonly realizedOptionPnl: number }
   | { readonly eventKind: 'OPTION_CLOSE'; readonly optionLegId: string; readonly closePricePerShare: number;
@@ -37,7 +42,10 @@ export type LifecycleApplication = BaseApplication & (
   | { readonly eventKind: 'COVERED_CALL_OPEN'; readonly optionLegId: string; readonly optionContractId: string;
       readonly quantity: number; readonly entryPricePerShare: number; readonly entryCreditDebit: number }
   | { readonly eventKind: 'STOCK_DISPOSAL'; readonly stockLotId: string; readonly disposedPricePerShare: number;
-      readonly realizedStockPnl: number }
+      /** Realized stock P&L of `stockLotId` (the first allocated lot). */
+      readonly realizedStockPnl: number;
+      /** Further whole lots disposed by the same fill, in allocation order. The chain may keep no open lot afterwards. */
+      readonly additionalStockLots?: readonly StockLotDisposal[] }
 );
 
 export interface LifecycleApplicationResult {
@@ -217,26 +225,19 @@ export class PostgresLifecycleApplicationStore {
         throw new Error('CALL_AWAY_OPTION_LEG_INVALID');
       }
       this.assertOptionRealizedPnl(leg, 0, application.realizedOptionPnl);
-      const stockEconomics = await this.openStockLotEconomics(client, application.stockLotId, application.chainId);
-      if (!closeEnough(stockEconomics.shares, application.shares)
-        || !closeEnough((application.strikePrice - stockEconomics.economicBasisPerShare) * stockEconomics.shares,
-          application.realizedStockPnl)) {
-        throw new Error('CALL_AWAY_STOCK_ECONOMICS_INVALID');
-      }
       await this.closeLeg(client, application.optionLegId, application.chainId, application.occurredAt,
         'ASSIGNED', null, application.realizedOptionPnl);
-      const lot = await client.query(
-        `UPDATE trade.stock_lot SET disposed_at=$2,disposed_price_per_share=$3,realized_pnl=$4
-         WHERE stock_lot_id=$1 AND chain_id=$5 AND disposed_at IS NULL AND shares=$6 RETURNING stock_lot_id`,
-        [application.stockLotId,application.occurredAt,application.strikePrice,application.realizedStockPnl,
-          application.chainId,application.shares],
-      );
-      if (lot.rowCount !== 1) throw new Error('COVERED_STOCK_LOT_NOT_FOUND');
-      await client.query(
-        `INSERT INTO trade.assignment_event(option_leg_id,stock_lot_id,assigned_at,shares,strike_price)
-         VALUES($1,$2,$3,$4,$5)`,
-        [application.optionLegId,application.stockLotId,application.occurredAt,application.shares,application.strikePrice],
-      );
+      const disposed = await this.disposeStockLots(client, application.chainId, application.occurredAt, application.strikePrice,
+        [{ stockLotId: application.stockLotId, realizedStockPnl: application.realizedStockPnl }, ...(application.additionalStockLots ?? [])],
+        'CALL_AWAY_STOCK_ECONOMICS_INVALID');
+      if (!closeEnough(disposed.totalShares, application.shares)) throw new Error('CALL_AWAY_STOCK_ECONOMICS_INVALID');
+      for (const lot of disposed.lots) {
+        await client.query(
+          `INSERT INTO trade.assignment_event(option_leg_id,stock_lot_id,assigned_at,shares,strike_price)
+           VALUES($1,$2,$3,$4,$5)`,
+          [application.optionLegId,lot.stockLotId,application.occurredAt,lot.shares,application.strikePrice],
+        );
+      }
       return;
     }
     if (application.eventKind === 'OPTION_EXPIRATION') {
@@ -383,18 +384,38 @@ export class PostgresLifecycleApplicationStore {
       );
       return;
     }
-    const stockEconomics = await this.openStockLotEconomics(client, application.stockLotId, application.chainId);
-    if (!closeEnough((application.disposedPricePerShare - stockEconomics.economicBasisPerShare) * stockEconomics.shares,
-      application.realizedStockPnl)) {
-      throw new Error('STOCK_DISPOSAL_ECONOMICS_INVALID');
+    await this.disposeStockLots(client, application.chainId, application.occurredAt, application.disposedPricePerShare,
+      [{ stockLotId: application.stockLotId, realizedStockPnl: application.realizedStockPnl }, ...(application.additionalStockLots ?? [])],
+      'STOCK_DISPOSAL_ECONOMICS_INVALID');
+  }
+
+  /**
+   * Disposes WHOLE open lots, each at the one disposal price with its own basis. Every supplied realized P&L must equal
+   * (price - lot basis) x lot shares. The lifecycle moves to CLOSED with these applications, so the chain may hold no open lot
+   * afterwards: a disposal that leaves stock behind is rejected (and rolled back) rather than closing the chain over live shares.
+   */
+  private async disposeStockLots(client: PoolClient, chainId: string, occurredAt: string, pricePerShare: number,
+    lots: readonly StockLotDisposal[], invalidEconomicsError: string): Promise<{
+    readonly totalShares: number; readonly lots: readonly { readonly stockLotId: string; readonly shares: number }[];
+  }> {
+    const disposed: { stockLotId: string; shares: number }[] = [];
+    for (const lot of lots) {
+      const economics = await this.openStockLotEconomics(client, lot.stockLotId, chainId);
+      if (!closeEnough((pricePerShare - economics.economicBasisPerShare) * economics.shares, lot.realizedStockPnl)) {
+        throw new Error(invalidEconomicsError);
+      }
+      const updated = await client.query(
+        `UPDATE trade.stock_lot SET disposed_at=$2,disposed_price_per_share=$3,realized_pnl=$4
+         WHERE stock_lot_id=$1 AND chain_id=$5 AND disposed_at IS NULL AND shares=$6 RETURNING stock_lot_id`,
+        [lot.stockLotId,occurredAt,pricePerShare,lot.realizedStockPnl,chainId,economics.shares],
+      );
+      if (updated.rowCount !== 1) throw new Error('OPEN_STOCK_LOT_NOT_FOUND');
+      disposed.push({ stockLotId: lot.stockLotId, shares: economics.shares });
     }
-    const lot = await client.query(
-      `UPDATE trade.stock_lot SET disposed_at=$2,disposed_price_per_share=$3,realized_pnl=$4
-       WHERE stock_lot_id=$1 AND chain_id=$5 AND disposed_at IS NULL RETURNING stock_lot_id`,
-      [application.stockLotId,application.occurredAt,application.disposedPricePerShare,
-        application.realizedStockPnl,application.chainId],
-    );
-    if (lot.rowCount !== 1) throw new Error('OPEN_STOCK_LOT_NOT_FOUND');
+    const remaining = await client.query(
+      `SELECT count(*)::int AS open_lots FROM trade.stock_lot WHERE chain_id=$1 AND disposed_at IS NULL`, [chainId]);
+    if (Number(remaining.rows[0]?.open_lots ?? 0) !== 0) throw new Error('STOCK_DISPOSAL_LEAVES_OPEN_LOTS');
+    return { totalShares: disposed.reduce((sum, item) => sum + item.shares, 0), lots: disposed };
   }
 
   private async closeLeg(client: PoolClient, optionLegId: string, chainId: string, occurredAt: string,

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { LifecycleApplication } from '../theta/postgres-lifecycle-application-store.js';
+import { allocateStockDisposal, type OpenStockLot } from './stock-lot-allocation.js';
 
 export type FillLifecycleAction = 'OPEN_CSP'|'CLOSE_CSP'|'ROLL_CSP_CLOSE'|'ROLL_CSP_OPEN'|'OPEN_CC'|'CLOSE_CC'|'ROLL_CC_CLOSE'|'ROLL_CC_OPEN'|'SELL_STOCK';
 export interface ConfirmedFillFact {
@@ -13,8 +14,8 @@ export interface FillLifecycleContext {
   readonly priorPartialClosedQuantity?:number; readonly priorPartialRealizedOptionPnl?:number;
   readonly chainId:string; readonly decisionId:string|null; readonly optionLegId:string|null;
   readonly optionContractId:string|null; readonly stockLotId:string|null;
-  /** SELL_STOCK: shares in the single open lot and the count of open lots on the chain. A disposal is recorded only when exactly one open lot is sold in full (one basis, no cross-lot P&L blending). */
-  readonly stockLotShares?:number|null; readonly openStockLotCount?:number|null;
+  /** SELL_STOCK: EVERY open lot of the chain (never just the earliest). The sale is allocated across them by allocateStockDisposal. */
+  readonly openStockLots?:readonly OpenStockLot[]|null;
   readonly multiplier:number|null; readonly entryCreditDebit:number|null; readonly economicBasisPerShare:number|null;
   readonly nextState:'RECOVERY_WAIT'|'REDEPLOY'|'CLOSED'|'ROLL_DECISION'|null;
   readonly fills:readonly ConfirmedFillFact[];
@@ -40,6 +41,8 @@ const weightedPrice=(fills:readonly ConfirmedFillFact[]):number|null=>{
 const evidence=(fills:readonly ConfirmedFillFact[])=>createHash('sha256').update(
   fills.map((fill)=>fill.providerActivityRefHash).sort().join(':'),
 ).digest('hex');
+/** The idempotency key of a fill set; lets a caller recognise an already-applied disposal after its lots are closed. */
+export const fillEvidenceKey=evidence;
 const fees=(fills:readonly ConfirmedFillFact[]):number|null=>fills.every((fill)=>fill.fees!==null)
   ? fills.reduce((sum,fill)=>sum+(fill.fees as number),0):null;
 const terminalCloseStatus=(status:string):status is 'CANCELED'|'REJECTED'|'EXPIRED'=>
@@ -101,11 +104,18 @@ export function routeConfirmedFillLifecycle(input:FillLifecycleContext):RoutedFi
       nextState:input.nextState});
   }
   if(input.action==='SELL_STOCK'){
-    if(input.stockLotId===null||input.economicBasisPerShare===null) return missing();
-    if(input.openStockLotCount!==1||input.stockLotShares===null||input.stockLotShares===undefined||input.stockLotShares!==filled)
-      return {state:'UNKNOWN',reasonCode:'STOCK_DISPOSAL_LOT_COVERAGE_MISMATCH',application:null};
-    return confirmed({...common,eventKind:'STOCK_DISPOSAL',stockLotId:input.stockLotId,disposedPricePerShare:price,
-      realizedStockPnl:(price-input.economicBasisPerShare)*filled});
+    // MULTI_LOT_DISPOSAL: allocate the fill across ALL open lots. Only a full-position sale has an exact, policy-free allocation;
+    // a partial position needs an owner lot-selection policy (and lot-split accounting) and is UNKNOWN, never guessed.
+    if(input.openStockLots===undefined||input.openStockLots===null) return missing();
+    const allocation=allocateStockDisposal({lots:input.openStockLots,disposedShares:filled,pricePerShare:price,policy:null});
+    if(allocation.state==='UNKNOWN') return {state:'UNKNOWN',reasonCode:`STOCK_DISPOSAL_${allocation.reason}`,application:null};
+    if(allocation.mode!=='FULL_POSITION'||allocation.hasPartialLot)
+      return {state:'UNKNOWN',reasonCode:'STOCK_DISPOSAL_PARTIAL_POSITION_REQUIRES_OWNER_LOT_POLICY',application:null};
+    const [first,...rest]=allocation.allocations;
+    if(first===undefined) return missing();
+    return confirmed({...common,eventKind:'STOCK_DISPOSAL',stockLotId:first.stockLotId,disposedPricePerShare:price,
+      realizedStockPnl:first.realizedPnl,
+      ...(rest.length===0?{}:{additionalStockLots:rest.map((lot)=>({stockLotId:lot.stockLotId,realizedStockPnl:lot.realizedPnl}))})});
   }
   return {state:'UNKNOWN',reasonCode:'ROLL_LEGS_REQUIRE_ATOMIC_PAIR',application:null};
 }
