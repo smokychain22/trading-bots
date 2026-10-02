@@ -46,7 +46,13 @@ export async function verifyAlpacaPaperAccount(
     ? { Authorization: `Bearer ${authentication.accessToken}` }
     : { "APCA-API-KEY-ID": authentication.apiKey, "APCA-API-SECRET-KEY": authentication.apiSecret };
   const get = async (path: string) => {
-    const response = await fetchImpl(`${ALPACA_PAPER_BASE_URL}${path}`, { headers, signal: AbortSignal.timeout(12_000) });
+    let response: Response;
+    try {
+      response = await fetchImpl(`${ALPACA_PAPER_BASE_URL}${path}`, { headers, signal: AbortSignal.timeout(12_000) });
+    } catch (error) {
+      // Same typed ambiguity as the adapter's reads, so the failure class never depends on which parallel call settles first.
+      throw new AlpacaPaperBrokerError("AMBIGUOUS_NETWORK", null, `Alpaca PAPER request failed before a response was available: ${error instanceof Error ? error.name : "NetworkError"}.`);
+    }
     if (!response.ok) throw new AlpacaPaperBrokerError(response.status === 401 ? "INVALID_AUTH" : "BROKER_REJECTED", response.status, `Alpaca PAPER ${path.split('?')[0]} returned HTTP ${response.status}.`);
     return response.json();
   };
