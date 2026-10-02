@@ -35,6 +35,8 @@ export class MasterPaperExecutionOrchestrator {
     private readonly evidence?: Pick<PostgresExecutionEvidenceStore,'recordPriceEvent'>) {}
 
   async execute(command: MasterPaperExecutionCommand, priceEvidence?: Omit<ExecutionPriceEventInput,'orderIntentId'>): Promise<MasterPaperExecutionResult> {
+    // Before any state change: a stalled/abandoned invocation must not even persist an intent it will not send.
+    await this.coordinator.assertMayMutate('SUBMIT', command.orderIntentId);
     const recovery = await this.coordinator.recoverAfterRestart();
     if (recovery.some((item) => !item.resolved)) {
       return { orderIntentId: command.orderIntentId, state: 'BLOCKED_UNRESOLVED_ORDER', brokerOrder: null, submittedNow: false };

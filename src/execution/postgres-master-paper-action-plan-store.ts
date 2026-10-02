@@ -362,6 +362,26 @@ export class PostgresMasterPaperActionPlanStore {
     await this.transition(actionPlanId,'WAITING_GATE',at,blockers,retryAt);
   }
 
+  /**
+   * Releases a plan back to WAITING_GATE ONLY while it is still claimed by this exact worker. An invocation that lost its claim (it
+   * expired and another invocation reclaimed the plan) must never clear that other invocation's claim. Returns false when the claim
+   * is not ours (nothing is changed).
+   */
+  async releaseOwnClaim(actionPlanId:string,workerId:string,blockers:readonly string[],retryAt:string,at:string):Promise<boolean>{
+    return withRuntimePostgresTransaction(this.pool,(client)=>this.releaseOwnClaimOn(client,actionPlanId,workerId,blockers,retryAt,at));
+  }
+
+  /** Transaction-composable form of releaseOwnClaim (the caller owns BEGIN/COMMIT). */
+  async releaseOwnClaimOn(client:PoolClient,actionPlanId:string,workerId:string,blockers:readonly string[],retryAt:string,at:string):Promise<boolean>{
+    const result=await client.query(`UPDATE trade.master_paper_action_plan SET status='WAITING_GATE',last_blockers_json=$3::jsonb,
+      not_before=COALESCE($4::timestamptz,not_before),claimed_by=NULL,claimed_at=NULL,claim_expires_at=NULL,updated_at=$5
+      WHERE action_plan_id=$1 AND status='CLAIMED' AND claimed_by=$2 RETURNING action_plan_id`,
+    [actionPlanId,workerId,JSON.stringify(blockers),retryAt,at]);
+    if(result.rowCount!==1)return false;
+    await this.event(actionPlanId,'WAITING_GATE',at,{blockers,releasedBy:'OWN_CLAIM_RELEASE'},client);
+    return true;
+  }
+
   async submitted(actionPlanId:string,orderIntentId:string,at:string):Promise<void>{
     await this.transition(actionPlanId,'SUBMITTED',at,[],null,{orderIntentId});
   }

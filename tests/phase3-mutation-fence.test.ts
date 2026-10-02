@@ -96,6 +96,30 @@ test('every production coordinator in the runtime is constructed with a mutation
 test('the claim fence refuses a lost plan claim and the runtime releases the plan instead of quarantining it', async () => {
   const { readFileSync } = await import('node:fs');
   const source = readFileSync(new URL('../src/theta/autonomous-runtime.ts', import.meta.url), 'utf8');
-  assert.match(source, /claimFence[\s\S]{0,200}verifyBeforeSubmit[\s\S]{0,200}MutationFenceLostError/);
-  assert.match(source, /error instanceof MutationFenceLostError[\s\S]{0,300}planStore\.wait\(/);
+  assert.match(source, /claimFence[\s\S]{0,200}verifyBeforeSubmit[\s\S]{0,800}MutationFenceLostError/);
+  assert.match(source, /error instanceof MutationFenceLostError[\s\S]{0,300}planStore\.releaseOwnClaim\(/);
+});
+
+test('the orchestrator fences BEFORE persisting anything: a refusal leaves no intent, no broker call, and a later owner can run the same command', async () => {
+  const { MasterPaperExecutionOrchestrator } = await import('../src/execution/master-paper-execution-orchestrator.js');
+  let open = false;
+  const rig = rigWithFence(async () => { if (!open) throw new MutationFenceLostError('REQUEST_MUTATION_WINDOW_EXPIRED'); });
+  const orchestrator = new MasterPaperExecutionOrchestrator(rig.coordinator);
+  const command = { ...optionIntent(), gate: optionGate };
+  await assert.rejects(orchestrator.execute(command), MutationFenceLostError);
+  assert.equal(await rig.store.getIntent(command.orderIntentId), null, 'no READY intent may be left behind by a refused fence');
+  assert.equal(rig.server.count(POST), 0);
+  open = true;
+  const result = await orchestrator.execute(command);
+  assert.equal(result.submittedNow, true);
+  assert.equal(rig.server.count(POST), 1);
+});
+
+test('only a lost plan CLAIM is a lost fence; an integrity or currency failure inside the claim fence is not released for retry', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../src/theta/autonomous-runtime.ts', import.meta.url), 'utf8');
+  assert.match(source, /PLAN_CLAIM_NOT_HELD'\|\|item==='PLAN_NOT_CLAIMED'[\s\S]{0,200}MutationFenceLostError/);
+  assert.match(source, /throw new Error\(held\.mismatches\.length===1&&held\.mismatches\[0\]===planNoLongerCurrent\?planNoLongerCurrent:'PLAN_INTEGRITY_MISMATCH'\)/);
+  assert.match(source, /planStore\.releaseOwnClaim\(plan\.actionPlanId,workerInstance/);
+  assert.equal(/error instanceof MutationFenceLostError[\s\S]{0,200}planStore\.wait\(/.test(source), false, 'a refused fence must release only its own claim, never call the unconditional wait()');
 });

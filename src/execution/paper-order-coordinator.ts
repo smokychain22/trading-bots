@@ -122,6 +122,11 @@ export class PaperOrderCoordinator {
     private readonly fence: MutationFence | null = null,
   ) {}
 
+  /** Runs the mutation fence without touching any state. The orchestrator calls it BEFORE persisting an intent so a refusal leaves no READY intent behind. */
+  async assertMayMutate(operation: 'SUBMIT' | 'REPLACE', orderIntentId: string): Promise<void> {
+    if (this.fence !== null) await this.fence(operation, orderIntentId);
+  }
+
   async prepare(input: PrepareIntentInput): Promise<PersistedPaperOrderIntent> {
     const existing = await this.store.getIntent(input.orderIntentId);
     if (existing !== null) {

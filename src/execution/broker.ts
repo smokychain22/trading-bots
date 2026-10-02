@@ -363,7 +363,7 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
         // Reads: 5xx/408 are transient provider unavailability (retryable, no state implication). Mutations: 5xx may have
         // been applied -> ambiguous. 429 is always "not processed".
         const transientRead = !isMutation && (response.status >= 500 || response.status === 408);
-        const category = (isMutation && response.status >= 500) || transientRead ? 'AMBIGUOUS_NETWORK'
+        const category = (isMutation && (response.status >= 500 || response.status === 408)) || transientRead ? 'AMBIGUOUS_NETWORK'
           : response.status === 401 ? 'INVALID_AUTH'
           : response.status === 403 ? 'NOT_ENTITLED'
             : response.status === 429 ? 'RATE_LIMITED'

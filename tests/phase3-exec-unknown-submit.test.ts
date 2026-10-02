@@ -15,6 +15,7 @@ const LOOKUP = 'GET /v2/orders:by_client_order_id';
 const ambiguousFaults: ReadonlyArray<readonly [string, FaultResponse]> = [
   ['lost response / timeout after POST', { kind: 'timeout' }],
   ['connection reset', { kind: 'network', code: 'ECONNRESET' }],
+  ['HTTP 408 request timeout on the POST', { kind: 'status', status: 408 }],
   ['HTTP 500 after acceptance', { kind: 'status', status: 500 }],
   ['HTTP 502 after acceptance', { kind: 'status', status: 502 }],
   ['HTTP 503 after acceptance', { kind: 'status', status: 503 }],

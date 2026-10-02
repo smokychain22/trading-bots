@@ -1,9 +1,9 @@
 {
   "computed": {
-    "PHASE3_TOTAL": 54,
-    "PASS": 38,
+    "PHASE3_TOTAL": 57,
+    "PASS": 40,
     "PROVIDER_LIMITED": 2,
-    "OWNER_POLICY": 2,
+    "OWNER_POLICY": 3,
     "FUTURE_MARKET": 0,
     "FUTURE_PAPER": 5,
     "EMPIRICAL_ONLY": 2,
@@ -1041,6 +1041,65 @@
       "BLOCKER": "only matters if the resident worker is ever deployed as the production worker",
       "SOLVABILITY": "NOT_PRODUCTION_PATH",
       "NEXT_ACTION": "revisit if the resident worker becomes the production worker"
+    },
+    {
+      "ID": "P3-055",
+      "CAPABILITY": "A mutation HTTP 408 is ambiguous (the order may exist): reconciled by client order id, never recorded as a definite rejection",
+      "SOURCE": [
+        "src/execution/broker.ts",
+        "src/execution/paper-order-coordinator.ts"
+      ],
+      "TEST": [
+        "tests/phase3-exec-unknown-submit.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Alpaca",
+      "DB_DEPENDENCY": "order_intent",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "DEFECT_FOUND_BY_ADVERSARIAL_REVIEW_AND_FIXED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-056",
+      "CAPABILITY": "Plan claim ownership: a refused fence releases a plan only while this worker still holds its claim; the fence runs before any intent is persisted (no READY intent left to collide with the next claim quote hash); integrity failures inside the fence still quarantine",
+      "SOURCE": [
+        "src/execution/postgres-master-paper-action-plan-store.ts",
+        "src/execution/master-paper-execution-orchestrator.ts",
+        "src/theta/autonomous-runtime.ts"
+      ],
+      "TEST": [
+        "tests/phase3-mutation-fence.test.ts",
+        "tests/db/phase3-own-claim.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "worker claim path",
+      "DB_DEPENDENCY": "master_paper_action_plan",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "a stall in the few milliseconds between persisting the intent and submitting it can still leave a READY intent; the next claim then quarantines (fails closed, never a duplicate order)",
+      "SOLVABILITY": "DEFECTS_FOUND_BY_ADVERSARIAL_REVIEW_AND_FIXED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-057",
+      "CAPABILITY": "A covered call partly filled (fewer contracts than the whole position) cannot be rolled or extended under whole-position lot accounting; it can still be closed, and a partial call-away at expiry is frozen and reconciled",
+      "SOURCE": [
+        "src/execution/management-paper-plan-assembly.ts",
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "TEST": [
+        "tests/management-paper-plan-assembly.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "n/a",
+      "DB_DEPENDENCY": "n/a",
+      "CURRENT_STATUS": "OWNER_POLICY",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "fail-closed consequence of the owner Paper policy P-B; an owner may want an active close preference for a stranded half-covered position",
+      "SOLVABILITY": "OWNER_POLICY",
+      "NEXT_ACTION": "owner decision"
     }
   ]
 }

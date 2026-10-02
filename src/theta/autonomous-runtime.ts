@@ -672,7 +672,12 @@ export async function runAutonomousRuntimeCycle(
         // unexpired claim on the exact plan (a stalled invocation whose claim was reclaimed must not start a mutation).
         const claimFence:MutationFence=async()=>{
           const held=await planStore.verifyBeforeSubmit(plan.actionPlanId,plan,workerInstance);
-          if(!held.ok)throw new MutationFenceLostError(held.mismatches[0]??'PLAN_CLAIM_NOT_HELD');
+          if(held.ok)return;
+          // Only a lost CLAIM is a lost fence. A sealed-payload or currency problem is the same integrity failure the pre-handoff
+          // check quarantines, so it must reach the quarantine path instead of being released and retried.
+          if(held.mismatches.some((item)=>item==='PLAN_CLAIM_NOT_HELD'||item==='PLAN_NOT_CLAIMED'))
+            throw new MutationFenceLostError(held.mismatches[0]??'PLAN_CLAIM_NOT_HELD');
+          throw new Error(held.mismatches.length===1&&held.mismatches[0]===planNoLongerCurrent?planNoLongerCurrent:'PLAN_INTEGRITY_MISMATCH');
         };
         const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(pool,master.executionAccountId),{
           masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders},allFences(windowFence,claimFence));
@@ -702,8 +707,8 @@ export async function runAutonomousRuntimeCycle(
           return degraded(result.blockers[0]??result.state,retryAt);
         }catch(error){
           if(error instanceof MutationFenceLostError){
-            // Nothing was sent and the intent is still READY: release the plan for whichever invocation owns it next.
-            await planStore.wait(plan.actionPlanId,[error.message],retryAt,new Date().toISOString());
+            // Nothing was sent: release the plan, but only if this invocation still holds the claim (never clear another one's).
+            await planStore.releaseOwnClaim(plan.actionPlanId,workerInstance,[error.message],retryAt,new Date().toISOString());
             return degraded('MUTATION_FENCE_LOST',retryAt);
           }
           const failure=safeRuntimeFailure(error);
