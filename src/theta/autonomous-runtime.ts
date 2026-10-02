@@ -34,6 +34,7 @@ import {
 import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives } from '../execution/management-paper-plan-assembly.js';
 import { readCommittedShortCallContracts, readManagementChainInFlight } from '../execution/management-chain-inflight.js';
 import { AlpacaProviderError, fetchLatestStockQuote } from './alpaca-provider.js';
+import { AlpacaStockInventorySource } from '../execution/alpaca-stock-inventory-source.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
 import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.js';
 import { PostgresP2EEvidenceStore } from './p2e-evidence-store.js';
@@ -612,7 +613,7 @@ export async function runAutonomousRuntimeCycle(
           masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders});
         const handoff=new MasterPaperActionHandoff(new AlpacaExecutionQuoteSource(master.alpaca),
           new MasterPaperExecutionOrchestrator(coordinator,new PostgresExecutionEvidenceStore(pool)),
-          paperBootstrapPreSubmitQuoteAgePolicy);
+          paperBootstrapPreSubmitQuoteAgePolicy,undefined,new AlpacaStockInventorySource(master.alpaca));
         try{
           const at=new Date().toISOString();
           const result=await handoff.execute(plan,at,true);

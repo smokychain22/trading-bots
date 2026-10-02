@@ -3,6 +3,7 @@ import type { ManagementActionFrontier, ManagementFrontierAction } from '../thet
 import type { ManagementInputState } from '../theta/management-input-state.js';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
 import { coveredCallContractCapacity } from '../theta/secured-contract-capacity.js';
+import { freeSellableShares, reconcileStockShares } from '../theta/stock-share-reconciliation.js';
 import { applyPaperEvidenceRiskCap } from './execution-authorization-tier.js';
 import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
 import type { ThetaOrderAction } from './order-construction.js';
@@ -162,6 +163,12 @@ export function compileManagementExecutionLegDirectives(state: ManagementInputSt
       || !validPositive(execution.stockEconomicBoundary)) {
       return { state:'BLOCKED',legs:[],blockers:['MANAGEMENT_STOCK_EXIT_DIRECTIVE_INCOMPLETE'] };
     }
+    // Two share truths: the ledger count alone never authorizes a stock sale. Mismatch/unknown broker evidence fails closed
+    // here (management keeps evaluating; only broker mutation is withheld).
+    const reconciliation = reconcileStockShares({ ledgerShares: state.economics.openStockShares, broker: state.brokerStockInventory,
+      reconciliationQuality: state.context.assignmentCapacityEvidence.reconciliationQuality, now: state.observedAt });
+    if (reconciliation.state === 'MISMATCH') return { state:'BLOCKED',legs:[],blockers:[`STOCK_SHARES_LEDGER_BROKER_MISMATCH:${reconciliation.reason}`] };
+    if (reconciliation.state !== 'RECONCILED') return { state:'BLOCKED',legs:[],blockers:[`STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:${reconciliation.reason}`] };
     return {state:'READY',blockers:[],legs:[{action:'SELL_STOCK',symbol:state.underlying,optionContractId:null,
       optionType:null,multiplier:1,canonicalQuantity:state.economics.openStockShares,
       economicBoundary:execution.stockEconomicBoundary,...common}]};
@@ -302,9 +309,10 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
       // Selling the underlying must never leave a short call uncovered. Chain coverage is account-net and the stock leg only
       // knows this chain's shares, so the account must be PROVEN to carry no short calls (or pending sell-to-open) on this
       // underlying. Unknown blocks; any committed call blocks (close or let it resolve first).
-      const committed = input.committedShortCallContracts ?? null;
-      if (committed === null || !Number.isSafeInteger(committed) || committed < 0) blockers.push('COMMITTED_SHORT_CALLS_UNKNOWN:SELL_STOCK');
-      else if (committed > 0) blockers.push('STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK');
+      const free = freeSellableShares(leg.canonicalQuantity, input.committedShortCallContracts, 100);
+      if (free.state === 'UNKNOWN') blockers.push(free.reason === 'OVERCOMMITTED_INVALID_STATE'
+        ? 'STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK' : 'COMMITTED_SHORT_CALLS_UNKNOWN:SELL_STOCK');
+      else if ((free.freeShares as number) < leg.canonicalQuantity) blockers.push('STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK');
       else netCommitted.set(index, 0);
     }
     if (leg.action !== 'SELL_STOCK' && !input.optionsCapabilityVerified) blockers.push(`OPTIONS_CAPABILITY_NOT_VERIFIED:${leg.action}`);
@@ -367,6 +375,9 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
       multiplier: leg.multiplier,
       ...(leg.confirmedCoveredShares === undefined ? {} : { confirmedCoveredShares: leg.confirmedCoveredShares }),
       ...(netCommitted.has(index) ? { committedShortCallContracts: netCommitted.get(index) as number } : {}),
+      // SELL_STOCK: both share truths agreed (compile) and the free-sellable shares cover the whole position (checked above).
+      ...(leg.action === 'SELL_STOCK' ? { brokerConfirmedShares: input.state.brokerStockInventory?.quantity as number,
+        freeSellableShares: leg.canonicalQuantity } : {}),
       action: leg.action,
       economicBoundary: leg.economicBoundary,
       economicsRemainPositive: leg.economicsRemainPositive,

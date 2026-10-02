@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives,
   type ManagementPaperPlanAssemblyInput } from '../src/execution/management-paper-plan-assembly.js';
+import type { StockInventorySource } from '../src/execution/alpaca-stock-inventory-source.js';
 import { readCommittedShortCallContracts, readManagementChainInFlight } from '../src/execution/management-chain-inflight.js';
 import { prepareMasterPaperAction, type ApprovedMasterPaperActionPlan,
   type MasterPaperActionPreparationResult } from '../src/execution/master-paper-action-handoff.js';
@@ -31,7 +32,7 @@ const UUID = (n: number) => `20000000-0000-4000-8000-${String(n).padStart(12, '0
 interface Opts {
   readonly lifecycle?: 'CSP_OPEN' | 'CC_OPEN' | 'RECOVERY_WAIT'; readonly bid?: number | null; readonly ask?: number | null;
   readonly observedAt?: string; readonly quoteAsOf?: string; readonly shares?: string; readonly contracts?: string;
-  readonly chain?: number; readonly mark?: number; readonly stockRead?: ManagementStockQuoteReadOutcome | null;
+  readonly chain?: number; readonly mark?: number; readonly brokerShares?: string; readonly stockRead?: ManagementStockQuoteReadOutcome | null;
 }
 
 function managed(o: Opts = {}): ManagementInputState {
@@ -58,7 +59,8 @@ function managed(o: Opts = {}): ManagementInputState {
     broker_option_observed_at: hasOption ? observedAt : null, ledger_option_contract_quantity: hasOption ? contracts : '0',
     snapshot_json: { underlyingState: { last: 205 }, marketSession: { isOpen: true },
       riskState: { assignmentCapacity: 2, newRiskState: 'ALLOW_FULL' }, eventState: { state: 'CLEAR' } },
-    broker_position: hasStock ? { currentPrice: o.mark ?? 190 } : null,
+    broker_position: hasStock ? { currentPrice: o.mark ?? 190 } : null, reconciliation_observed_at: observedAt, position_observed_at: hasStock ? observedAt : null,
+    broker_stock_quantity: hasStock ? (o.brokerShares ?? o.shares ?? '100') : null, broker_stock_side: hasStock ? 'long' : null,
   }, { managementInputSnapshotId: UUID(1), reconciliationSnapshotId: UUID(2), observedAt, stockQuoteRead: o.stockRead ?? null });
 }
 
@@ -96,7 +98,7 @@ interface Flow {
 
 /** frontier -> compile -> plan assembly -> master handoff validation -> adaptive limit. Broker-free by construction. */
 async function flow(state: PaperBootstrapPolicyInput, quotes: Readonly<Record<string, ExecutionOptionQuote | null>>,
-  extra: Partial<ManagementPaperPlanAssemblyInput> = {}, now = T_NEAR, marketOpen = true): Promise<Flow> {
+  extra: Partial<ManagementPaperPlanAssemblyInput> = {}, now = T_NEAR, marketOpen = true, inventory?: StockInventorySource): Promise<Flow> {
   const { frontier } = decide(state);
   const compiled = compileManagementExecutionLegDirectives(state, frontier);
   if (compiled.state !== 'READY') return { frontier, compiled, assembled: null, prepared: [] };
@@ -108,7 +110,8 @@ async function flow(state: PaperBootstrapPolicyInput, quotes: Readonly<Record<st
   if (assembled.state === 'READY') {
     for (const plan of assembled.plans) {
       prepared.push(await prepareMasterPaperAction(plan, { getCurrentQuote: async (p: ApprovedMasterPaperActionPlan) => quotes[p.symbol] ?? null },
-        now, marketOpen, undefined, () => now));
+        now, marketOpen, undefined, () => now, inventory ?? { async readStockInventory() { return { inventory: { state: 'KNOWN', quantity: state.economics.openStockShares,
+          observedAt: now, reason: null }, committedShortCallContracts: 0 }; } }));
     }
   }
   return { frontier, compiled, assembled, prepared };
@@ -668,4 +671,66 @@ test('D4 policy wiring: the roll capital-day weight prices a same-collateral ext
   const priced = decide({ ...state, rollCandidates: [sameStrikeFar], rollIncrementalCapitalDayWeight: 0.001 });
   assert.equal(priced.frontier.selectedAction, 'HOLD');
   assert.ok((priced.evidence?.actionValues.find((v) => v.action === 'ROLL')?.reasons ?? []).some((r) => r.startsWith('INCREMENTAL_CAPITAL_DAYS_')));
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// P2-04 / P2-05: two share truths and free-sellable shares gate every stock disposal.
+// ---------------------------------------------------------------------------------------------------------------------
+
+test('P2-04 scan time: ledger vs broker shares - only an exact, GOOD, fresh agreement compiles a stock exit', () => {
+  const compileFor = (state: ManagementInputState) => compileManagementExecutionLegDirectives(state, decide(state).frontier);
+  const ok = sellStockState(stockRead(), { shares: '100', brokerShares: '100' });
+  assert.equal(compileFor(ok).state, 'READY');
+  const cases: readonly [string, ManagementInputState, string][] = [
+    ['ledger 100 / broker 99', sellStockState(stockRead(), { shares: '100', brokerShares: '99' }), 'STOCK_SHARES_LEDGER_BROKER_MISMATCH:LEDGER_AHEAD_OF_BROKER'],
+    ['ledger 100 / broker 0', sellStockState(stockRead(), { shares: '100', brokerShares: '0' }), 'STOCK_SHARES_LEDGER_BROKER_MISMATCH:LEDGER_AHEAD_OF_BROKER'],
+    ['ledger 100 / broker 150', sellStockState(stockRead(), { shares: '100', brokerShares: '150' }), 'STOCK_SHARES_LEDGER_BROKER_MISMATCH:BROKER_AHEAD_OF_LEDGER'],
+    ['broker unavailable', { ...ok, brokerStockInventory: { state: 'UNKNOWN', quantity: null, observedAt: null, reason: 'BROKER_POSITION_UNAVAILABLE' } },
+      'STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:BROKER_UNAVAILABLE'],
+    ['broker evidence absent', { ...ok, brokerStockInventory: undefined }, 'STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:BROKER_UNAVAILABLE'],
+    ['stale broker snapshot', { ...ok, brokerStockInventory: { state: 'KNOWN', quantity: 100, observedAt: '2026-10-13T13:50:00.000Z', reason: null } },
+      'STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:BROKER_EVIDENCE_STALE'],
+    ['broker short stock', { ...ok, brokerStockInventory: { state: 'KNOWN', quantity: -100, observedAt: T_NEAR, reason: null } },
+      'STOCK_SHARES_LEDGER_BROKER_MISMATCH:BROKER_SHORT_STOCK_POSITION'],
+  ];
+  for (const [label, state, blocker] of cases) {
+    const compiled = compileFor(state);
+    assert.equal(compiled.state, 'BLOCKED', label);
+    assert.deepEqual(compiled.blockers, [blocker], label);
+  }
+  // ledger 0 / broker 100 never even offers SELL_STOCK (no ledger inventory)
+  const noLedger = sellStockState(stockRead(), { shares: '0', brokerShares: '100' });
+  assert.ok(buildManagementActionFrontier(noLedger).actions.find((a) => a.action === 'SELL_STOCK')?.blockers.includes('NO_OPEN_STOCK_INVENTORY'));
+  assert.equal(compileManagementExecutionLegDirectives(noLedger, { ...decide(noLedger).frontier, selectedAction: 'SELL_STOCK' }).state === 'READY', false);
+});
+
+test('P2-04 submit time: a fresh broker inventory read must agree; no source / failed read / mismatch never reaches a quote or order', async () => {
+  const state = sellStockState(stockRead());
+  const ready = await flow(state, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: 0 });
+  assert.equal(ready.assembled?.state, 'READY');
+  if (ready.assembled?.state !== 'READY') return;
+  const plan = ready.assembled.plans[0] as ApprovedMasterPaperActionPlan;
+  assert.equal(plan.brokerConfirmedShares, 100);
+  assert.equal(plan.freeSellableShares, 100);
+  let quoteCalls = 0;
+  const quotes = { getCurrentQuote: async () => { quoteCalls += 1; return stockQuote(190, 190.1); } };
+  const known = (quantity: number, committed: number | null = 0): StockInventorySource => ({ async readStockInventory() {
+    return { inventory: { state: 'KNOWN', quantity, observedAt: T_NEAR, reason: null }, committedShortCallContracts: committed }; } });
+  const attempt = (inventory?: StockInventorySource, p: ApprovedMasterPaperActionPlan = plan) =>
+    prepareMasterPaperAction(p, quotes, T_NEAR, true, undefined, () => T_NEAR, inventory);
+  assert.deepEqual((await attempt(undefined)).blockers, ['STOCK_INVENTORY_SOURCE_UNAVAILABLE']);
+  assert.deepEqual((await attempt({ async readStockInventory() { throw new Error('down'); } })).blockers, ['STOCK_INVENTORY_READ_FAILED']);
+  assert.deepEqual((await attempt(known(99))).blockers, ['STOCK_SHARES_LEDGER_BROKER_MISMATCH:LEDGER_AHEAD_OF_BROKER']);
+  assert.deepEqual((await attempt(known(0))).blockers, ['STOCK_SHARES_LEDGER_BROKER_MISMATCH:LEDGER_AHEAD_OF_BROKER']);
+  assert.deepEqual((await attempt(known(150))).blockers, ['STOCK_SHARES_LEDGER_BROKER_MISMATCH:BROKER_AHEAD_OF_LEDGER']);
+  assert.deepEqual((await attempt({ async readStockInventory() {
+    return { inventory: { state: 'UNKNOWN', quantity: null, observedAt: null, reason: 'BROKER_POSITION_UNAVAILABLE' }, committedShortCallContracts: 0 }; } })).blockers,
+  ['STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:BROKER_UNAVAILABLE']);
+  assert.deepEqual((await attempt(known(100, 1))).blockers, ['STOCK_SALE_WITH_SHORT_CALLS_COMMITTED']);
+  assert.deepEqual((await attempt(known(100, null))).blockers, ['COMMITTED_SHORT_CALLS_UNKNOWN']);
+  // a plan stripped of the share evidence is blocked before any read
+  const stripped = { ...plan } as Record<string, unknown>; delete stripped.brokerConfirmedShares;
+  assert.ok((await attempt(known(100), stripped as never)).blockers.includes('STOCK_SALE_SHARE_RECONCILIATION_NOT_CONFIRMED'));
+  assert.equal(quoteCalls, 0, 'no quote is fetched for any blocked stock exit');
+  assert.equal((await attempt(known(100))).state, 'READY_TO_SUBMIT');
 });

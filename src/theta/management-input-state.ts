@@ -9,6 +9,7 @@ import type { WholeChainComponents } from './whole-chain-economics.js';
 import { securedContractCapacity } from './secured-contract-capacity.js';
 import type { ManagementCandidateDiscovery } from './management-candidate-evidence.js';
 import { loadManagementEntryThesis, type ManagementEntryThesis } from './management-entry-thesis.js';
+import type { BrokerStockInventoryEvidence } from './stock-share-reconciliation.js';
 
 export const managementInputVersion = 'theta-management-input-v5' as const;
 
@@ -127,6 +128,8 @@ export interface ManagementInputState {
   readonly managementCandidateDiscovery?: ManagementCandidateDiscovery | null;
   /** One bounded stock quote read per underlying per scan; present only when a reader was supplied and shares are held. */
   readonly stockExecutionQuote?: ManagementStockExecutionQuote;
+  /** Broker-confirmed stock inventory for this underlying from the reconciliation snapshot (the SECOND share truth beside the ledger). */
+  readonly brokerStockInventory?: BrokerStockInventoryEvidence;
   readonly originalEntryThesis?: ManagementEntryThesis;
   readonly wholeChainComponentEvidence?: WholeChainComponentEvidence;
   readonly wholeChainComponents?: WholeChainComponents | null;
@@ -231,6 +234,29 @@ function managementCalendarSessions(value: unknown): readonly { readonly date: s
     sessions.push({ date: sessionDate, open: text(row.open), close: text(row.close) });
   }
   return sessions;
+}
+
+/**
+ * Broker inventory for the underlying. A reconciliation snapshot with NO position row for the symbol means the broker holds
+ * none (KNOWN zero, observed at the reconciliation time); a row whose side/quantity/asset class cannot be read is UNKNOWN.
+ */
+export function brokerStockInventoryEvidence(row: Row): BrokerStockInventoryEvidence {
+  const unknown = (reason: NonNullable<BrokerStockInventoryEvidence['reason']>): BrokerStockInventoryEvidence =>
+    ({ state: 'UNKNOWN', quantity: null, observedAt: null, reason });
+  const position = row.broker_position;
+  if (position === null || position === undefined) {
+    const observedAt = text(row.reconciliation_observed_at);
+    return observedAt === null ? unknown('BROKER_POSITION_UNAVAILABLE') : { state: 'KNOWN', quantity: 0, observedAt, reason: null };
+  }
+  const quantity = numeric(row.broker_stock_quantity);
+  const side = text(row.broker_stock_side)?.toLowerCase() ?? null;
+  const assetClass = text(row.broker_stock_asset_class)?.toLowerCase() ?? null;
+  const observedAt = text(row.position_observed_at);
+  if (quantity === null) return unknown('BROKER_POSITION_QUANTITY_INVALID');
+  if (observedAt === null || (assetClass !== null && assetClass !== 'us_equity')) return unknown('BROKER_POSITION_UNAVAILABLE');
+  if (side !== 'long' && side !== 'short') return unknown('BROKER_POSITION_SIDE_UNKNOWN');
+  const signed = side === 'long' ? Math.abs(quantity) : -Math.abs(quantity);
+  return { state: 'KNOWN', quantity: signed, observedAt, reason: null };
 }
 
 function daysToExpiration(expiration: string | null, observedAt: string): number | null {
@@ -488,6 +514,8 @@ export function assembleManagementInput(row: Row, input: {
     reconciliationSnapshotId: input.reconciliationSnapshotId,
     fusionSnapshotId: text(row.fusion_snapshot_id), chainId: String(row.chain_id), observedAt: input.observedAt,
     evidenceBundle: { ...evidenceBundle, fusionSnapshotHash: text(row.fusion_content_hash) }, managementCandidateDiscovery:candidateDiscovery,
+    ...(stockShares > 0 || row.broker_stock_quantity !== undefined
+      ? { brokerStockInventory: brokerStockInventoryEvidence(row) } : {}),
     ...(stockShares > 0 && input.stockQuoteRead != null
       ? { stockExecutionQuote: classifyManagementStockQuote(String(row.underlying), input.stockQuoteRead, input.observedAt) } : {}),
     originalEntryThesis: loadManagementEntryThesis(row.original_entry_thesis, {
@@ -582,7 +610,7 @@ export class PostgresManagementInputStore {
         fs.decision_time AS fusion_decision_time,brs.observed_at AS reconciliation_observed_at,
         brs.data_quality AS reconciliation_quality,
         brs.provider_timestamp AS clock_timestamp,brs.detail_json AS reconciliation_detail,
-        bp.observed_at AS position_observed_at,
+        bp.observed_at AS position_observed_at,bp.quantity AS broker_stock_quantity,bp.side AS broker_stock_side,bp.asset_class AS broker_stock_asset_class,
         bop.symbol AS broker_option_symbol,bop.quantity AS broker_option_quantity,bop.side AS broker_option_side,
         bop.asset_class AS broker_option_asset_class,bop.observed_at AS broker_option_observed_at,
         contract_lots.total_remaining AS ledger_option_contract_quantity,

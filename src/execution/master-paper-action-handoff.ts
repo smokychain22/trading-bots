@@ -11,6 +11,8 @@ import { aegisAssessmentIdentitySchema, verifyAegisAssessmentIdentity, type Aegi
 import { paperBootstrapRuntimePolicy } from '../theta/paper-bootstrap-runtime-policy.js';
 import { firstPaperCanaryQuantity } from './paper-execution-authorization.js';
 import { parseOccOptionSymbol } from '../theta/account-exposure.js';
+import { freeSellableShares, reconcileStockShares } from '../theta/stock-share-reconciliation.js';
+import type { StockInventoryRead, StockInventorySource } from './alpaca-stock-inventory-source.js';
 
 export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v4' as const;
 
@@ -46,6 +48,9 @@ export interface ApprovedMasterPaperActionPlan {
   readonly confirmedCoveredShares?: number;
   /** HDAC-05: short-call contracts already committed on this underlying (net of a roll's own close). Required to open a call. */
   readonly committedShortCallContracts?: number;
+  /** SELL_STOCK: broker-confirmed shares at plan time and shares free of short-call commitments. */
+  readonly brokerConfirmedShares?: number;
+  readonly freeSellableShares?: number;
   readonly action: ThetaOrderAction;
   readonly economicBoundary: number;
   readonly economicsRemainPositive: boolean;
@@ -79,6 +84,7 @@ export const masterPaperActionPlanSchema = z.object({
   paperEvidenceCapReason:z.enum(['PAPER_EVIDENCE_RISK_CAP','CANONICAL_QUANTITY_LOWER','QUANTITY_ZERO']),
   executionTier:z.enum(executionAuthorizationTiers),multiplier:z.number().int().positive(),confirmedCoveredShares:z.number().int().nonnegative().optional(),
   committedShortCallContracts:z.number().int().nonnegative().optional(),
+  brokerConfirmedShares:z.number().int().nonnegative().optional(),freeSellableShares:z.number().int().nonnegative().optional(),
   firstCanaryCompleted:z.boolean().optional(),
   action:z.enum(['OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK']),
   economicBoundary:z.number().positive().finite(),economicsRemainPositive:z.boolean(),expectedAfterCostEv:z.number().finite().nullable(),
@@ -190,6 +196,7 @@ export async function prepareMasterPaperAction(
   marketOpen: boolean,
   quoteAgePolicy: PreSubmitQuoteAgePolicy = paperBootstrapPreSubmitQuoteAgePolicy,
   clock:()=>string=()=>new Date().toISOString(),
+  stockInventory?:StockInventorySource,
 ): Promise<MasterPaperActionPreparationResult> {
   const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
   let evaluatedAt=now;
@@ -213,6 +220,10 @@ export async function prepareMasterPaperAction(
     blockers.push('COVERED_CALL_ACCOUNT_NET_COVERAGE_NOT_CONFIRMED');
   // Independent of plan assembly: a stock exit must carry proof that no short call is committed on the account's underlying.
   if(plan.action==='SELL_STOCK'&&plan.committedShortCallContracts!==0)blockers.push('STOCK_SALE_SHORT_CALL_COVERAGE_NOT_CONFIRMED');
+  // Two share truths: the plan must carry broker-confirmed shares covering the whole sale, and free-sellable shares (net of
+  // committed calls) covering it too. Ledger quantity alone never reaches the broker.
+  if(plan.action==='SELL_STOCK'&&(plan.brokerConfirmedShares!==plan.quantity||(plan.freeSellableShares??-1)<plan.quantity))
+    blockers.push('STOCK_SALE_SHARE_RECONCILIATION_NOT_CONFIRMED');
   if(plan.killSwitchActive)blockers.push('KILL_SWITCH_ACTIVE');
   if(!marketOpen)blockers.push('MARKET_CLOSED');
   if(!plan.economicsRemainPositive)blockers.push('FORWARD_ECONOMICS_NOT_POSITIVE');
@@ -232,6 +243,22 @@ export async function prepareMasterPaperAction(
     decisionExpiresAt:plan.decisionExpiresAt});
   if(maximumQuoteAgeMs===null)blockers.push('PRE_SUBMIT_QUOTE_AGE_POLICY_INVALID');
   if(blockers.length>0)return blocked('BLOCKED',blockers);
+
+  // SELL_STOCK: a FRESH broker inventory read at submit time must agree with the plan's whole-position quantity, and the live
+  // broker must show no committed short calls on the underlying. The ledger count / scan-time snapshot is never enough.
+  if(plan.action==='SELL_STOCK'){
+    if(stockInventory===undefined)return blocked('BLOCKED',['STOCK_INVENTORY_SOURCE_UNAVAILABLE']);
+    let read:StockInventoryRead;
+    try{read=await stockInventory.readStockInventory(plan.symbol,now);}
+    catch{return blocked('BLOCKED',['STOCK_INVENTORY_READ_FAILED']);}
+    const fresh=reconcileStockShares({ledgerShares:plan.quantity,broker:read.inventory,reconciliationQuality:'GOOD',now:clock()});
+    if(fresh.state==='MISMATCH')return blocked('BLOCKED',[`STOCK_SHARES_LEDGER_BROKER_MISMATCH:${fresh.reason}`]);
+    if(fresh.state!=='RECONCILED')return blocked('BLOCKED',[`STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:${fresh.reason}`]);
+    const live=freeSellableShares(fresh.reconciledShares,read.committedShortCallContracts,plan.multiplier===1?100:plan.multiplier);
+    if(live.state==='UNKNOWN')return blocked('BLOCKED',[live.reason==='OVERCOMMITTED_INVALID_STATE'
+      ?'STOCK_SALE_WITH_SHORT_CALLS_COMMITTED':'COMMITTED_SHORT_CALLS_UNKNOWN']);
+    if((live.freeShares as number)<plan.quantity)return blocked('BLOCKED',['STOCK_SALE_WITH_SHORT_CALLS_COMMITTED']);
+  }
 
   const quote=await quoteSource.getCurrentQuote(plan,now);
   const completedAt=clock();
@@ -295,11 +322,12 @@ export class MasterPaperActionHandoff {
     private readonly execution: MasterPaperExecutionOrchestrator,
     private readonly quoteAgePolicy: PreSubmitQuoteAgePolicy = paperBootstrapPreSubmitQuoteAgePolicy,
     private readonly clock:()=>string=()=>new Date().toISOString(),
+    private readonly stockInventory?:StockInventorySource,
   ) {}
 
   async execute(raw: ApprovedMasterPaperActionPlan, now: string, marketOpen: boolean): Promise<MasterPaperActionHandoffResult> {
     const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
-    const prepared=await prepareMasterPaperAction(plan,this.quoteSource,now,marketOpen,this.quoteAgePolicy,this.clock);
+    const prepared=await prepareMasterPaperAction(plan,this.quoteSource,now,marketOpen,this.quoteAgePolicy,this.clock,this.stockInventory);
     if(prepared.state!=='READY_TO_SUBMIT'){
       return {actionPlanId:prepared.actionPlanId,state:prepared.state,blockers:prepared.blockers,execution:null};
     }

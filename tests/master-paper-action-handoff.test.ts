@@ -5,6 +5,7 @@ import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '
 import { MasterPaperActionHandoff, classifyMasterPaperActionExecution, masterPaperActionPlanSchema, masterPaperActionPlanVersion,
   prepareMasterPaperAction, preSubmitMaximumQuoteAgeMs, type ApprovedMasterPaperActionPlan,
   type ExecutionOptionQuoteSource } from '../src/execution/master-paper-action-handoff.js';
+import type { StockInventorySource } from '../src/execution/alpaca-stock-inventory-source.js';
 import { MasterPaperExecutionOrchestrator } from '../src/execution/master-paper-execution-orchestrator.js';
 import { InMemoryPaperOrderStore, PaperOrderCoordinator } from '../src/execution/paper-order-coordinator.js';
 import { applyPaperEvidenceRiskCap } from '../src/execution/execution-authorization-tier.js';
@@ -57,9 +58,12 @@ class Broker implements PaperBrokerAdapter{
     clientOrderId:request.client_order_id,symbol:request.symbol,qty:request.qty,filledQty:0,filledAvgPrice:null,side:request.side,
     status:'accepted',limitPrice:Number(request.limit_price),submittedAt:now,replacedBy:null,replaces:null};};}
 
-const setup=(value:ExecutionOptionQuote|null=quote)=>{const broker=new Broker();const coordinator=new PaperOrderCoordinator(broker,
+const stockInventory=(quantity:number|null=1,committed:number|null=0):StockInventorySource=>({async readStockInventory(){
+  return{inventory:quantity===null?{state:'UNKNOWN',quantity:null,observedAt:null,reason:'BROKER_POSITION_UNAVAILABLE'}:{state:'KNOWN',quantity,observedAt:now,reason:null},
+    committedShortCallContracts:committed};}});
+const setup=(value:ExecutionOptionQuote|null=quote,inventory:StockInventorySource=stockInventory())=>{const broker=new Broker();const coordinator=new PaperOrderCoordinator(broker,
   new InMemoryPaperOrderStore(),{masterEnabled:true,followerEnabled:false,pauseNewOrders:false});return{broker,
-    handoff:new MasterPaperActionHandoff(new QuoteSource(value),new MasterPaperExecutionOrchestrator(coordinator),undefined,()=>now)};};
+    handoff:new MasterPaperActionHandoff(new QuoteSource(value),new MasterPaperExecutionOrchestrator(coordinator),undefined,()=>now,inventory)};};
 
 test('approved canonical action reaches the existing Paper coordinator exactly once',async()=>{
   const {broker,handoff}=setup();const result=await handoff.execute(plan(),now,true);
@@ -230,7 +234,7 @@ test('a risk-reducing stock exit reaches the coordinator through a qualified Alp
     managementInputSnapshotId:'88888888-8888-4888-8888-888888888888',
     managementActionFrontierId:'99999999-9999-4999-8999-999999999999',action:'SELL_STOCK',symbol:'AAPL',
     optionContractId:null,optionType:null,multiplier:1,expectedAfterCostEv:null,empiricalEconomicsReady:false,aegisState:'HOLD_ONLY',
-    committedShortCallContracts:0}),now,true);
+    committedShortCallContracts:0,brokerConfirmedShares:1,freeSellableShares:1}),now,true);
   assert.equal(result.state,'EXECUTED');assert.equal(broker.submitCalls,1);
 });
 
