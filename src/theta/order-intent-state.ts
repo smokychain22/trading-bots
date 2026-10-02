@@ -27,7 +27,9 @@ export type OrderIntentState =
 export const ORDER_INTENT_TRANSITIONS: Readonly<Record<OrderIntentState, readonly OrderIntentState[]>> = {
   PROPOSED: ['PREFLIGHT'],
   PREFLIGHT: ['READY', 'REJECTED'],
-  READY: ['SUBMITTING'],
+  // EXPIRED: an intent that never reached the broker and whose decision window has passed can never be submitted; it must be
+  // terminal so it stops holding the chain's in-flight guard (expireStaleReadyOrderIntents).
+  READY: ['SUBMITTING', 'EXPIRED'],
   // Broker truth can skip an intermediate event. A fast fill may arrive
   // before a separate acknowledgement is observed, so terminal or partial
   // states are valid direct transitions after a persisted submission.

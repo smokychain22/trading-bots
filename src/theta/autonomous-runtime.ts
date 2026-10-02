@@ -35,6 +35,7 @@ import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives }
 import { readCommittedShortCallContracts, readManagementChainInFlight } from '../execution/management-chain-inflight.js';
 import { AlpacaProviderError, fetchLatestStockQuote } from './alpaca-provider.js';
 import { AlpacaStockInventorySource } from '../execution/alpaca-stock-inventory-source.js';
+import { expireStaleReadyOrderIntents, PostgresManagementRepriceStore, repriceReasonClass, runManagementRepricing } from '../execution/management-order-repricing.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
 import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.js';
@@ -569,6 +570,17 @@ export async function runAutonomousRuntimeCycle(
           const brokerOrder=await coordinator.reconcileIntent(intent.orderIntentId);
           if(brokerOrder===null)return degraded('LOCAL_ORDER_MISSING_AT_BROKER',retryAt);
         }
+        // An intent that never reached the broker and whose decision window passed would hold the chain forever: expire it.
+        await expireStaleReadyOrderIntents(pool,master.executionAccountId,new Date().toISOString());
+        // REPRICING_DRIVER: step every working MANAGEMENT order through the bounded adaptive concessions, or cancel it at the floor.
+        const reprice=await runManagementRepricing({now:()=>new Date().toISOString(),executionAccountId:master.executionAccountId,
+          reconciliationQuality:reconciliation.dataQuality,marketOpen:reconciliation.marketOpen,
+          managementSubmissionEnabled:executionControl.managementSubmissionEnabled,optionsCapabilityVerified:master.optionsCapabilityVerified,
+          store:new PostgresManagementRepriceStore(pool),coordinator,quoteSource:new AlpacaExecutionQuoteSource(master.alpaca),
+          stockInventory:new AlpacaStockInventorySource(master.alpaca),
+          recordPriceEvent:(event)=>new PostgresExecutionEvidenceStore(pool).recordPriceEvent(event)});
+        if(reprice.outcomes.some((outcome)=>outcome.kind==='BLOCKED'&&repriceReasonClass[outcome.reason]==='REQUIRES_RECONCILIATION'))
+          return degraded('ORDER_REPRICING_REQUIRES_RECONCILIATION',retryAt);
         return succeeded();
       }
       if (jobType === 'WAIT_RECHECK') {
