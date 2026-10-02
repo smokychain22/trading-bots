@@ -130,6 +130,11 @@ export interface ManagementInputState {
   readonly stockExecutionQuote?: ManagementStockExecutionQuote;
   /** Broker-confirmed stock inventory for this underlying from the reconciliation snapshot (the SECOND share truth beside the ledger). */
   readonly brokerStockInventory?: BrokerStockInventoryEvidence;
+  /**
+   * Ledger shares of this underlying across EVERY open chain of the same bot account. The broker position is account-wide, so the
+   * two share truths are only comparable at account level (two chains on one underlying must not read as a mismatch). null = UNKNOWN.
+   */
+  readonly accountStockLedgerShares?: number | null;
   readonly originalEntryThesis?: ManagementEntryThesis;
   readonly wholeChainComponentEvidence?: WholeChainComponentEvidence;
   readonly wholeChainComponents?: WholeChainComponents | null;
@@ -515,7 +520,7 @@ export function assembleManagementInput(row: Row, input: {
     fusionSnapshotId: text(row.fusion_snapshot_id), chainId: String(row.chain_id), observedAt: input.observedAt,
     evidenceBundle: { ...evidenceBundle, fusionSnapshotHash: text(row.fusion_content_hash) }, managementCandidateDiscovery:candidateDiscovery,
     ...(stockShares > 0 || row.broker_stock_quantity !== undefined
-      ? { brokerStockInventory: brokerStockInventoryEvidence(row) } : {}),
+      ? { brokerStockInventory: brokerStockInventoryEvidence(row), accountStockLedgerShares: numeric(row.account_ledger_shares) } : {}),
     ...(stockShares > 0 && input.stockQuoteRead != null
       ? { stockExecutionQuote: classifyManagementStockQuote(String(row.underlying), input.stockQuoteRead, input.observedAt) } : {}),
     originalEntryThesis: loadManagementEntryThesis(row.original_entry_thesis, {
@@ -602,7 +607,7 @@ export class PostgresManagementInputStore {
         ol.option_leg_id,ol.remaining_quantity AS quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
         oc.strike,oc.expiration_date,oc.multiplier,
         oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.retrieved_at AS quote_retrieved_at,oq.feed,oq.quality AS quote_quality,
-        totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,
+        totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,acct.account_ledger_shares,
         totals.realized_stock_pnl,totals.dividends,totals.fees,totals.unknown_fill_fees,totals.unknown_closed_leg_pnl,totals.has_stock_lots,
         a.account_snapshot_id,a.buying_power,a.options_buying_power,a.as_of AS account_as_of,
         a.retrieved_at AS account_retrieved_at,fs.fusion_snapshot_id,fs.snapshot_json,fs.content_hash AS fusion_content_hash,
@@ -683,6 +688,13 @@ export class PostgresManagementInputStore {
           CASE WHEN sum(s.shares)>0 THEN sum(s.economic_basis_per_share*s.shares)/sum(s.shares) END AS stock_basis_per_share
         FROM trade.stock_lot s WHERE s.chain_id=ec.chain_id AND s.disposed_at IS NULL
       ) stocks ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(sum(s2.shares),0) AS account_ledger_shares
+        FROM trade.stock_lot s2
+        JOIN trade.economic_chain ec2 ON ec2.chain_id=s2.chain_id AND ec2.underlying_id=ec.underlying_id
+        JOIN core.bot_instance bi2 ON bi2.bot_instance_id=ec2.bot_instance_id AND bi2.account_id=bi.account_id
+        WHERE s2.disposed_at IS NULL
+      ) acct ON true
       LEFT JOIN LATERAL (
         SELECT s.* FROM trade.account_snapshot s WHERE s.account_id=bi.account_id ORDER BY s.as_of DESC LIMIT 1
       ) a ON true

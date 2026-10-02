@@ -57,7 +57,7 @@ test('multi-lot stock disposal and call-away: every open lot is disposed with it
     const chain = await makeChain('RECOVERY_WAIT', [[a, 100, 50], [b, 150, 52]]);
     const sale = { eventKind: 'STOCK_DISPOSAL' as const, evidenceKey: hash('sale-' + chain), chainId: chain, occurredAt: now, decisionId: null,
       providerActivityRefHash: null, stockLotId: a, disposedPricePerShare: 49, realizedStockPnl: -100,
-      additionalStockLots: [{ stockLotId: b, realizedStockPnl: -450 }] };
+      additionalStockLots: [{ stockLotId: b, realizedStockPnl: -450 }], lineage: { orderIntentId: 'intent-lineage-1', fillIds: ['fill-a', 'fill-b'] } };
 
     // a disposal that covers only the first lot would close the chain over live stock: rejected and rolled back
     await assert.rejects(() => store.apply({ ...sale, evidenceKey: hash('partial-' + chain), additionalStockLots: undefined }), /STOCK_DISPOSAL_LEAVES_OPEN_LOTS/);
@@ -76,6 +76,9 @@ test('multi-lot stock disposal and call-away: every open lot is disposed with it
     assert.ok(rows.every((r) => r.disposed_at !== null));
     const total = await pool.query(`SELECT sum(realized_pnl)::float8 AS pnl FROM trade.stock_lot WHERE chain_id=$1`, [chain]);
     assert.equal(total.rows[0].pnl, -550, 'whole-chain stock P&L is the sum of the lot allocations');
+    const lineage = await pool.query(`SELECT detail_json FROM trade.lifecycle_application WHERE evidence_key=$1`, [sale.evidenceKey]);
+    assert.deepEqual(lineage.rows[0].detail_json, { decisionId: null, orderIntentId: 'intent-lineage-1', fillIds: ['fill-a', 'fill-b'], lotIds: [a, b] },
+      'the application records which order intent, fills and lots it came from');
     assert.equal((await store.apply(sale)).duplicate, true, 'replay of the same fill set is idempotent');
     assert.deepEqual((await lotRows(chain)).map((r) => r.pnl), [-100, -450]);
 

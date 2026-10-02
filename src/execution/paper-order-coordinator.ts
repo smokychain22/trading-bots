@@ -90,6 +90,9 @@ function assertBrokerSnapshotMatches(intent: PersistedPaperOrderIntent, order: B
     throw new Error('BROKER_ORDER_QUANTITY_INVALID');
 }
 
+/** Time after a decision window during which an ambiguous submission that is absent at the broker still counts as unresolved. */
+export const absentUnknownSubmissionGraceMs = 120_000;
+
 export class PaperOrderCoordinator {
   constructor(
     private readonly broker: PaperBrokerAdapter,
@@ -289,7 +292,13 @@ export class PaperOrderCoordinator {
     return brokerOrder;
   }
 
-  async recoverAfterRestart(): Promise<readonly { orderIntentId: string; resolved: boolean }[]> {
+  /**
+   * Resolves ambiguous (SUBMITTING / UNKNOWN_SUBMISSION / RECONCILING) intents from broker truth. An intent whose order is STILL absent
+   * at the broker by client order id long after its decision window can never have been accepted (submission is synchronous), so it
+   * becomes EXPIRED (terminal) instead of blocking the account's order management and the chain forever. Within the grace period an
+   * absent order stays unresolved: never a blind resubmit.
+   */
+  async recoverAfterRestart(now: string = new Date().toISOString()): Promise<readonly { orderIntentId: string; resolved: boolean }[]> {
     const unresolved = await this.store.unresolvedIntents();
     const results: Array<{ orderIntentId: string; resolved: boolean }> = [];
     for (const intent of unresolved) {
@@ -297,6 +306,15 @@ export class PaperOrderCoordinator {
       const current = await this.store.getIntent(intent.orderIntentId);
       if (current?.status === 'UNKNOWN_SUBMISSION' || current?.status === 'RECONCILING') {
         const resolved = await this.reconcileUnknown(intent.orderIntentId);
+        if (resolved === null) {
+          const refreshed = await this.store.getIntent(intent.orderIntentId);
+          const windowEnd = Date.parse(refreshed?.executionEvidence.decisionExpiresAt ?? '');
+          if (refreshed?.status === 'RECONCILING' && Number.isFinite(windowEnd) && Date.parse(now) > windowEnd + absentUnknownSubmissionGraceMs) {
+            await this.store.transitionIntent(intent.orderIntentId, 'RECONCILING', 'EXPIRED');
+            results.push({ orderIntentId: intent.orderIntentId, resolved: true });
+            continue;
+          }
+        }
         results.push({ orderIntentId: intent.orderIntentId, resolved: resolved !== null });
       }
     }

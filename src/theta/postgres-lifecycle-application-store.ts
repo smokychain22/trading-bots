@@ -11,6 +11,8 @@ type BaseApplication = {
   readonly occurredAt: string;
   readonly decisionId: string | null;
   readonly providerActivityRefHash: string | null;
+  /** PLAN_ORDER_FILL_LINEAGE: the order intent and broker fill ids this application was derived from (stored in detail_json). */
+  readonly lineage?: { readonly orderIntentId: string | null; readonly fillIds: readonly string[] };
 };
 
 export type LifecycleApplication = BaseApplication & (
@@ -142,7 +144,7 @@ export class PostgresLifecycleApplicationStore {
       if (chain.rowCount !== 1) throw new Error('ECONOMIC_CHAIN_NOT_FOUND');
       let current = String(chain.rows[0].lifecycle_state) as ThetaLifecycleState;
       const path = transitionPath(application, current);
-      await this.mutateEconomicState(client, application, current);
+      const economic = await this.mutateEconomicState(client, application, current);
       for (const next of path) {
         await applyTransition(client, application, current, next);
         current = next;
@@ -155,7 +157,8 @@ export class PostgresLifecycleApplicationStore {
          VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9::jsonb)`,
         [applicationId,application.evidenceKey,application.chainId,application.eventKind,
           application.providerActivityRefHash,JSON.stringify(path),application.occurredAt,resultHash,
-          JSON.stringify({ decisionId:application.decisionId })],
+          JSON.stringify({ decisionId:application.decisionId, orderIntentId:application.lineage?.orderIntentId ?? null,
+            fillIds:application.lineage?.fillIds ?? [], lotIds:economic?.lotIds ?? [] })],
       );
       return { applicationId,duplicate:false,chainId:application.chainId,eventKind:application.eventKind,
         transitionPath:path,finalState:current };
@@ -167,7 +170,7 @@ export class PostgresLifecycleApplicationStore {
   }
 
   private async mutateEconomicState(client: PoolClient, application: LifecycleApplication,
-    current: ThetaLifecycleState): Promise<void> {
+    current: ThetaLifecycleState): Promise<{ readonly lotIds: readonly string[] } | void> {
     if (application.eventKind === 'SHORT_PUT_OPEN') {
       if (application.quantity <= 0) throw new Error('SHORT_PUT_QUANTITY_INVALID');
       const contract = await this.contractEconomics(client, application.optionContractId, application.chainId);
@@ -238,7 +241,7 @@ export class PostgresLifecycleApplicationStore {
           [application.optionLegId,lot.stockLotId,application.occurredAt,lot.shares,application.strikePrice],
         );
       }
-      return;
+      return { lotIds: disposed.lots.map((lot) => lot.stockLotId) };
     }
     if (application.eventKind === 'OPTION_EXPIRATION') {
       if (application.providerActivityRefHash === null) throw new Error('BROKER_EXPIRATION_EVIDENCE_REQUIRED');
@@ -384,9 +387,10 @@ export class PostgresLifecycleApplicationStore {
       );
       return;
     }
-    await this.disposeStockLots(client, application.chainId, application.occurredAt, application.disposedPricePerShare,
+    const disposed = await this.disposeStockLots(client, application.chainId, application.occurredAt, application.disposedPricePerShare,
       [{ stockLotId: application.stockLotId, realizedStockPnl: application.realizedStockPnl }, ...(application.additionalStockLots ?? [])],
       'STOCK_DISPOSAL_ECONOMICS_INVALID');
+    return { lotIds: disposed.lots.map((lot) => lot.stockLotId) };
   }
 
   /**

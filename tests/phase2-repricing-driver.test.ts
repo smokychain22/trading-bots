@@ -4,6 +4,7 @@ import type { StockInventorySource } from '../src/execution/alpaca-stock-invento
 import type { BrokerOrderRequest, BrokerOrderSnapshot, PaperBrokerAdapter } from '../src/execution/broker.js';
 import { AlpacaPaperBrokerError } from '../src/execution/broker.js';
 import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '../src/execution/execution-option-quote.js';
+import { absentUnknownSubmissionGraceMs } from '../src/execution/paper-order-coordinator.js';
 import { expireStaleReadyOrderIntents, managementRepricePolicyVersion, PostgresManagementRepriceStore, repriceReasonClass,
   runManagementRepricing, type RepriceCandidate, type RepriceDependencies, type RepriceReason, type RepriceStore } from '../src/execution/management-order-repricing.js';
 import { masterPaperActionPlanVersion, prepareMasterPaperAction, type ApprovedMasterPaperActionPlan } from '../src/execution/master-paper-action-handoff.js';
@@ -25,7 +26,7 @@ const stockPlan: ApprovedMasterPaperActionPlan = {
   expectedAfterCostEv: null, empiricalEconomicsReady: false, selectedByCanonicalAuthority: true, hardValidityPassed: true,
   accountVerified: true, optionsCapabilityVerified: true, noEquivalentExposureConflict: true, aegisState: 'ALLOW_FULL', killSwitchActive: false,
   decisionExpiresAt: at(30), pricingPolicy: { waitIntervalMs: 5000, maxAttempts: 3, concessionFractions: [0, 0.5, 1], tickSize: 0.01 },
-  pricingAttempt: 0, previousLimit: null, committedShortCallContracts: 0, brokerConfirmedShares: 100, freeSellableShares: 100,
+  pricingAttempt: 0, previousLimit: null, committedShortCallContracts: 0, brokerConfirmedShares: 100, accountLedgerShares: 100, freeSellableShares: 100,
 };
 
 const stockQuote = (bid: number, ask: number, time: string): ExecutionOptionQuote => ({ contractVersion: executionOptionQuoteContractVersion,
@@ -50,6 +51,8 @@ class FakeBroker implements PaperBrokerAdapter {
   readonly orders = new Map<string, BrokerOrderSnapshot>();
   calls: string[] = [];
   failReplace: Error | null = null;
+  failSubmit: Error | null = null;
+  timeoutAfterAccept = false;
   onCancel: (() => void) | null = null;
   private sequence = 0;
   getAccount = async () => ({}); getPositions = async () => []; getOrders = async () => [...this.orders.values()]; getActivities = async () => [];
@@ -57,10 +60,12 @@ class FakeBroker implements PaperBrokerAdapter {
   getOrderByClientOrderId = async (clientOrderId: string) => this.orders.get(clientOrderId) ?? null;
   submitOrder = async (request: BrokerOrderRequest): Promise<BrokerOrderSnapshot> => {
     this.calls.push(`submit:${request.limit_price}`);
+    if (this.failSubmit !== null) throw this.failSubmit;
     const order: BrokerOrderSnapshot = { id: `broker-${++this.sequence}`, clientOrderId: request.client_order_id, symbol: request.symbol, qty: request.qty, filledQty: 0,
       filledAvgPrice: null, side: request.side, positionIntent: request.position_intent ?? null, status: 'accepted', limitPrice: Number(request.limit_price),
       submittedAt: T0, replacedBy: null, replaces: null };
     this.orders.set(request.client_order_id, order);
+    if (this.timeoutAfterAccept) throw new AlpacaPaperBrokerError('AMBIGUOUS_NETWORK', null, 'timeout after accept');
     return order;
   };
   replaceOrder = async (providerOrderId: string, replacement: Pick<BrokerOrderRequest, 'qty' | 'limit_price' | 'time_in_force' | 'client_order_id'>): Promise<BrokerOrderSnapshot> => {
@@ -112,7 +117,7 @@ class MemoryStore implements RepriceStore {
 
 interface Harness {
   readonly broker: FakeBroker; readonly intents: InMemoryPaperOrderStore; readonly store: MemoryStore; readonly coordinator: PaperOrderCoordinator;
-  quote: { bid: number; ask: number; at: string | null }; reconciliation: string; marketOpen: boolean; enabled: boolean;
+  quote: { bid: number; ask: number; at: string | null }; reconciliation: string; marketOpen: boolean; enabled: boolean; liveCommitted: number | null;
   tick(seconds: number): Promise<ReturnType<typeof runManagementRepricing>>;
   restart(): Harness;
 }
@@ -125,7 +130,7 @@ async function harness(plan: ApprovedMasterPaperActionPlan = stockPlan, quoteFor
   const store = shared?.store ?? new MemoryStore(intents, plan);
   const coordinator = new PaperOrderCoordinator(broker, intents, { masterEnabled: true, followerEnabled: false, pauseNewOrders: false });
   const state: Harness = {
-    broker, intents, store, coordinator, quote: shared?.quote ?? { bid: initial.bid, ask: initial.ask, at: T0 }, reconciliation: 'GOOD', marketOpen: true, enabled: true,
+    broker, intents, store, coordinator, quote: shared?.quote ?? { bid: initial.bid, ask: initial.ask, at: T0 }, reconciliation: 'GOOD', marketOpen: true, enabled: true, liveCommitted: 0,
     async tick(seconds: number) {
       clock = at(seconds);
       if (state.quote.at !== null && state.quote.at !== 'STALE') state.quote.at = clock;
@@ -133,7 +138,7 @@ async function harness(plan: ApprovedMasterPaperActionPlan = stockPlan, quoteFor
         marketOpen: state.marketOpen, managementSubmissionEnabled: state.enabled, optionsCapabilityVerified: true, store, coordinator,
         quoteSource: { getCurrentQuote: async () => state.quote.at === null ? null : quoteFor({ bid: state.quote.bid, ask: state.quote.ask,
           at: state.quote.at === 'STALE' ? at(-600) : clock }) },
-        stockInventory: knownInventory(), recordPriceEvent: async (event) => { store.events.push({ orderIntentId: event.orderIntentId, attemptNo: event.attemptNo ?? 0, at: event.eventTime }); } };
+        stockInventory: knownInventory(100, state.liveCommitted), recordPriceEvent: async (event) => { store.events.push({ orderIntentId: event.orderIntentId, attemptNo: event.attemptNo ?? 0, at: event.eventTime }); } };
       return runManagementRepricing(deps);
     },
     restart: () => { throw new Error('replaced below'); },
@@ -363,13 +368,13 @@ test('PostgresManagementRepriceStore and the stale-READY sweep issue well-formed
   const pool = { query: async (sql: string, values: unknown[]) => {
     queries.push({ sql, values });
     if (sql.includes('FROM trade.order_intent oi') && sql.includes('JOIN trade.master_paper_action_plan')) return { rows: [row], rowCount: 1 };
-    if (sql.includes('count(DISTINCT')) return { rows: [{ intents: 2, max_attempt_no: 3, last_action_at: new Date(T0) }], rowCount: 1 };
+    if (sql.includes('count(DISTINCT')) return { rows: [{ intents: 2, keeps: 1, last_action_at: new Date(T0) }], rowCount: 1 };
     if (sql.startsWith('UPDATE trade.order_intent')) return { rows: [{ order_intent_id: id(41) }], rowCount: 1 };
     return { rows: [], rowCount: 0 };
   } };
   const candidates = await new PostgresManagementRepriceStore(pool as never).loadCandidates(id(4));
   assert.equal(candidates.length, 1);
-  assert.equal(candidates[0]?.attemptsSoFar, 3, 'max(intents, highest recorded attempt number)');
+  assert.equal(candidates[0]?.attemptsSoFar, 3, 'order intents (a rejected replacement still counts) + persisted KEEP evidence');
   assert.equal(candidates[0]?.lastActionAt, T0);
   assert.equal(candidates[0]?.plan, null, 'a row that fails integrity verification yields no plan');
   assert.equal(candidates[0]?.decisionStillCurrent, true);
@@ -409,4 +414,58 @@ test('P2-08 lineage: DECISION -> PLAN -> ORDER_INTENT -> CLIENT_ORDER_ID are det
   assert.equal(intents.length, 2);
   assert.ok(intents.every((intent) => intent.decisionId === stockPlan.decisionId && intent.chainId === stockPlan.chainId && intent.action === 'SELL_STOCK'));
   await assert.rejects(h.coordinator.replace((intents[1] as { orderIntentId: string }).orderIntentId, { ...(second.command as object), orderIntentId: id(97), decisionId: id(96) } as never, second.command.gate), /REPLACEMENT_LINEAGE_MISMATCH/);
+});
+
+test('call opens: repricing a working covered-call order does not count that order as an extra commitment, and broker cover is re-verified every step', async () => {
+  const symbol = 'AAPL261120C00205000';
+  const callPlan: ApprovedMasterPaperActionPlan = { ...stockPlan, actionPlanId: id(31), actionGroupId: id(31), decisionId: id(35), action: 'OPEN_CC', symbol,
+    optionContractId: id(36), optionType: 'CALL', multiplier: 100, quantity: 1, canonicalQuantity: 1, paperEvidenceQuantity: 1, paperEvidenceRiskCap: 1,
+    economicBoundary: 1.5, candidateId: `management:${id(3)}:SELL_CC`, confirmedCoveredShares: 100, committedShortCallContracts: 0, brokerConfirmedShares: 100,
+    accountLedgerShares: 100, freeSellableShares: undefined };
+  const h = await harness(callPlan, (q) => optionQuote(symbol, q.bid, q.ask, q.at), { bid: 1.5, ask: 1.6 });
+  assert.deepEqual(limits(h.broker), ['1.60']);
+  // the live broker view now contains this very order (1 working sell-to-open): its own contract must not be demanded twice
+  h.liveCommitted = 1;
+  const outcome = await onlyOutcome(h, 6);
+  assert.equal(outcome?.kind, 'REPLACED', JSON.stringify(outcome));
+  assert.equal(outcome?.kind === 'REPLACED' && outcome.limitPrice, 1.55);
+  // a DIFFERENT live commitment (a second call on the same shares) is not the order itself and blocks the reprice
+  h.liveCommitted = 2;
+  const blocked = await onlyOutcome(h, 12);
+  assert.deepEqual([blocked?.kind, blocked?.kind === 'BLOCKED' && blocked.reason], ['BLOCKED', 'PRE_SUBMIT_GATE_BLOCKED']);
+  assert.deepEqual(blocked?.kind === 'BLOCKED' && blocked.detail, ['COVERED_CALL_BROKER_SHARES_INSUFFICIENT']);
+  assert.equal(h.broker.calls.filter((call) => call.startsWith('replace')).length, 1);
+});
+
+test('an ambiguous submission that never reached the broker is held through the grace period, then EXPIRED so it cannot block the account forever', async () => {
+  clock = T0;
+  const broker = new FakeBroker();
+  const intents = new InMemoryPaperOrderStore();
+  const coordinator = new PaperOrderCoordinator(broker, intents, { masterEnabled: true, followerEnabled: false, pauseNewOrders: false });
+  const prepared = await prepareMasterPaperAction(stockPlan, { getCurrentQuote: async () => stockQuote(190, 190.1, T0) }, T0, true, undefined, () => T0, knownInventory());
+  assert.ok(prepared.command);
+  broker.failSubmit = new AlpacaPaperBrokerError('AMBIGUOUS_NETWORK', null, 'timeout');
+  const executed = await new MasterPaperExecutionOrchestrator(coordinator).execute(prepared.command);
+  assert.equal(executed.brokerOrder, null);
+  const id0 = prepared.command.orderIntentId;
+  assert.equal(intents.intents.get(id0)?.status, 'RECONCILING');
+  const windowEnd = Date.parse(stockPlan.decisionExpiresAt);
+  // still inside window + grace: unresolved, and there is NO blind resubmit
+  const early = await coordinator.recoverAfterRestart(new Date(windowEnd + absentUnknownSubmissionGraceMs - 1000).toISOString());
+  assert.deepEqual(early, [{ orderIntentId: id0, resolved: false }]);
+  assert.equal(intents.intents.get(id0)?.status, 'RECONCILING');
+  assert.equal(broker.calls.filter((call) => call.startsWith('submit')).length, 1);
+  // after window + grace the absent order is proven never accepted: terminal, the account is no longer blocked
+  const late = await coordinator.recoverAfterRestart(new Date(windowEnd + absentUnknownSubmissionGraceMs + 1000).toISOString());
+  assert.deepEqual(late, [{ orderIntentId: id0, resolved: true }]);
+  assert.equal(intents.intents.get(id0)?.status, 'EXPIRED');
+  assert.deepEqual(await coordinator.recoverAfterRestart(new Date(windowEnd + 600_000).toISOString()), []);
+  // an order that DOES exist at the broker is reconciled, never expired
+  const present = new FakeBroker();
+  const store2 = new InMemoryPaperOrderStore();
+  const coordinator2 = new PaperOrderCoordinator(present, store2, { masterEnabled: true, followerEnabled: false, pauseNewOrders: false });
+  present.timeoutAfterAccept = true;
+  await new MasterPaperExecutionOrchestrator(coordinator2).execute(prepared.command);
+  assert.notEqual(store2.intents.get(id0)?.status, 'EXPIRED');
+  assert.ok(['ACKNOWLEDGED', 'SUBMITTED'].includes(store2.intents.get(id0)?.status ?? ''));
 });

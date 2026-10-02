@@ -83,7 +83,8 @@ export function routeConfirmedFillLifecycle(input:FillLifecycleContext):RoutedFi
   const occurredAt=[...input.fills].sort((a,b)=>a.occurredAt.localeCompare(b.occurredAt)).at(-1)?.occurredAt;
   if(occurredAt===undefined) return {state:'UNKNOWN',reasonCode:'BROKER_FILL_TIMESTAMP_UNKNOWN',application:null};
   const common={chainId:input.chainId,decisionId:input.decisionId,occurredAt,
-    providerActivityRefHash:evidence(input.fills),evidenceKey:evidence(input.fills)};
+    providerActivityRefHash:evidence(input.fills),evidenceKey:evidence(input.fills),
+    lineage:{orderIntentId:input.orderIntentId??null,fillIds:input.fills.map((fill)=>fill.providerFillId)}};
   if(input.action==='OPEN_CSP'){
     if(input.optionLegId===null||input.optionContractId===null||input.multiplier===null) return missing();
     return confirmed({...common,eventKind:'SHORT_PUT_OPEN',optionLegId:input.optionLegId,optionContractId:input.optionContractId,

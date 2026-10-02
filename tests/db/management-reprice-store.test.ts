@@ -18,7 +18,7 @@ const plan: ApprovedMasterPaperActionPlan = {
   expectedAfterCostEv: null, empiricalEconomicsReady: false, selectedByCanonicalAuthority: true, hardValidityPassed: true,
   accountVerified: true, optionsCapabilityVerified: true, noEquivalentExposureConflict: true, aegisState: 'ALLOW_FULL', killSwitchActive: false,
   decisionExpiresAt: '2026-10-13T14:00:30.000Z', pricingPolicy: { waitIntervalMs: 5000, maxAttempts: 3, concessionFractions: [0, 0.5, 1], tickSize: 0.01 },
-  pricingAttempt: 0, previousLimit: null, committedShortCallContracts: 0, brokerConfirmedShares: 100, freeSellableShares: 100,
+  pricingAttempt: 0, previousLimit: null, committedShortCallContracts: 0, brokerConfirmedShares: 100, accountLedgerShares: 100, freeSellableShares: 100,
 };
 
 // Every statement the store issues must compile against the migrated schema and the candidate join must really find a working
@@ -63,7 +63,7 @@ test('management repricing store: statements compile, candidate join reconstruct
     assert.equal(rest.length, 0);
     assert.equal(candidate?.orderIntentId, id(41));
     assert.equal(candidate?.limitPrice, 190.05);
-    assert.equal(candidate?.attemptsSoFar, 3, 'max(2 intents, highest recorded attempt number 3): kept attempts are not lost');
+    assert.equal(candidate?.attemptsSoFar, 3, '2 intents + 1 persisted KEEP evidence row: a kept attempt is never lost and an attempt number is never reused');
     assert.equal(candidate?.lastActionAt, '2026-10-13T14:00:12.000Z', 'last action time includes the recorded KEEP');
     assert.deepEqual(candidate?.plan, plan, 'the sealed plan verified from the stored row');
     assert.equal(candidate?.decisionStillCurrent, true);

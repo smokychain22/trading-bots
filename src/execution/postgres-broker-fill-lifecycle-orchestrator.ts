@@ -59,6 +59,12 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     ORDER BY oi.created_at,oi.order_intent_id`,[connectionId,observedAt]);
   const store=new PostgresLifecycleApplicationStore(pool),copyPlanner=new PostgresDisabledCopyPlanner(pool),results:LifecycleApplicationResult[]=[];
   let partial=0,unresolved=0,alreadyApplied=0; const rollRows=new Map<string,Row[]>();
+  // A coded domain rejection (for example STOCK_DISPOSAL_LEAVES_OPEN_LOTS on a stale snapshot) rolls that one application back and is
+  // reported as unresolved; it must not stop every other chain's fills from being applied. Infrastructure errors still abort the cycle.
+  const applySafely=async(application:Parameters<PostgresLifecycleApplicationStore['apply']>[0]):Promise<LifecycleApplicationResult|null>=>{
+    try{return await store.apply(application);}
+    catch(error){if(error instanceof Error&&/^[A-Z][A-Z0-9_]+$/.test(error.message)){unresolved++;return null;}throw error;}
+  };
   const persistMasterFillEvent=async(row:Row,parentMasterCopyEventId:string|null=null):Promise<string|null>=>{
     const decision=s(row.decision_id),chain=s(row.chain_id),bot=s(row.bot_instance_id),order=s(row.order_intent_id);
     const fillIds=Array.isArray(row.fill_ids)?row.fill_ids.map(String):[],facts=fills(row.fills);
@@ -93,10 +99,12 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     const routed=routeConfirmedFillLifecycle(context);
     if(routed.state==='PARTIAL'){
       partial++;
-      if(routed.application!==null){results.push(await store.apply(routed.application));if(await persistMasterFillEvent(row)===null)unresolved++;}
+      if(routed.application!==null){const applied=await applySafely(routed.application);if(applied!==null){results.push(applied);if(await persistMasterFillEvent(row)===null)unresolved++;}}
       continue;
     } if(routed.application===null){unresolved++;continue;}
-    results.push(await store.apply(routed.application));
+    const appliedFill=await applySafely(routed.application);
+    if(appliedFill===null)continue;
+    results.push(appliedFill);
     if(await persistMasterFillEvent(row)===null) unresolved++;
   }
   for(const pair of rollRows.values()){
@@ -113,11 +121,13 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
       nextState:'ROLL_DECISION',fills:fills(close.fills)});
     if(closed.state==='PARTIAL'){
       partial++;
-      if(closed.application!==null){results.push(await store.apply(closed.application));if(await persistMasterFillEvent(close)===null)unresolved++;}
+      if(closed.application!==null){const applied=await applySafely(closed.application);if(applied!==null){results.push(applied);if(await persistMasterFillEvent(close)===null)unresolved++;}}
       continue;
     }
     if(closed.application===null){partial++;continue;}
-    results.push(await store.apply(closed.application));
+    const appliedClose=await applySafely(closed.application);
+    if(appliedClose===null)continue;
+    results.push(appliedClose);
     if(open===undefined){unresolved++;continue;}
     const multiplier=n(open.multiplier),credit=n(close.entry_credit_debit),oldLeg=s(close.option_leg_id),contract=s(open.option_contract_id);
     if(multiplier===null||credit===null||oldLeg===null||contract===null){unresolved++;continue;}
@@ -127,7 +137,9 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
       close:{orderStatus:String(close.status),orderQuantity:Number(close.order_quantity),fills:fills(close.fills)},
       open:{orderStatus:String(open.status),orderQuantity:Number(open.order_quantity),fills:fills(open.fills)}});
     if(routed.state==='PARTIAL'){partial++;continue;} if(routed.application===null){unresolved++;continue;}
-    results.push(await store.apply(routed.application));
+    const appliedRoll=await applySafely(routed.application);
+    if(appliedRoll===null)continue;
+    results.push(appliedRoll);
     const closeEventId=await persistMasterFillEvent(close);
     if(closeEventId===null||await persistMasterFillEvent(open,closeEventId)===null) unresolved++;
   }

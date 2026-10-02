@@ -50,6 +50,8 @@ export interface ApprovedMasterPaperActionPlan {
   readonly committedShortCallContracts?: number;
   /** SELL_STOCK: broker-confirmed shares at plan time and shares free of short-call commitments. */
   readonly brokerConfirmedShares?: number;
+  /** Ledger shares of the underlying across every chain of the account at plan time (equals brokerConfirmedShares when reconciled). */
+  readonly accountLedgerShares?: number;
   readonly freeSellableShares?: number;
   readonly action: ThetaOrderAction;
   readonly economicBoundary: number;
@@ -84,7 +86,7 @@ export const masterPaperActionPlanSchema = z.object({
   paperEvidenceCapReason:z.enum(['PAPER_EVIDENCE_RISK_CAP','CANONICAL_QUANTITY_LOWER','QUANTITY_ZERO']),
   executionTier:z.enum(executionAuthorizationTiers),multiplier:z.number().int().positive(),confirmedCoveredShares:z.number().int().nonnegative().optional(),
   committedShortCallContracts:z.number().int().nonnegative().optional(),
-  brokerConfirmedShares:z.number().int().nonnegative().optional(),freeSellableShares:z.number().int().nonnegative().optional(),
+  brokerConfirmedShares:z.number().int().nonnegative().optional(),accountLedgerShares:z.number().int().nonnegative().optional(),freeSellableShares:z.number().int().nonnegative().optional(),
   firstCanaryCompleted:z.boolean().optional(),
   action:z.enum(['OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK']),
   economicBoundary:z.number().positive().finite(),economicsRemainPositive:z.boolean(),expectedAfterCostEv:z.number().finite().nullable(),
@@ -219,10 +221,11 @@ export async function prepareMasterPaperAction(
     ||(plan.confirmedCoveredShares??0)<(plan.quantity+plan.committedShortCallContracts)*plan.multiplier))
     blockers.push('COVERED_CALL_ACCOUNT_NET_COVERAGE_NOT_CONFIRMED');
   // Independent of plan assembly: a stock exit must carry proof that no short call is committed on the account's underlying.
-  if(plan.action==='SELL_STOCK'&&plan.committedShortCallContracts!==0)blockers.push('STOCK_SALE_SHORT_CALL_COVERAGE_NOT_CONFIRMED');
+  if(plan.action==='SELL_STOCK'&&plan.committedShortCallContracts===undefined)blockers.push('STOCK_SALE_SHORT_CALL_COVERAGE_NOT_CONFIRMED');
   // Two share truths: the plan must carry broker-confirmed shares covering the whole sale, and free-sellable shares (net of
   // committed calls) covering it too. Ledger quantity alone never reaches the broker.
-  if(plan.action==='SELL_STOCK'&&(plan.brokerConfirmedShares!==plan.quantity||(plan.freeSellableShares??-1)<plan.quantity))
+  if(plan.action==='SELL_STOCK'&&(plan.accountLedgerShares===undefined||plan.brokerConfirmedShares!==plan.accountLedgerShares
+    ||plan.brokerConfirmedShares<plan.quantity||(plan.freeSellableShares??-1)<plan.quantity))
     blockers.push('STOCK_SALE_SHARE_RECONCILIATION_NOT_CONFIRMED');
   if(plan.killSwitchActive)blockers.push('KILL_SWITCH_ACTIVE');
   if(!marketOpen)blockers.push('MARKET_CLOSED');
@@ -251,13 +254,30 @@ export async function prepareMasterPaperAction(
     let read:StockInventoryRead;
     try{read=await stockInventory.readStockInventory(plan.symbol,now);}
     catch{return blocked('BLOCKED',['STOCK_INVENTORY_READ_FAILED']);}
-    const fresh=reconcileStockShares({ledgerShares:plan.quantity,broker:read.inventory,reconciliationQuality:'GOOD',now:clock()});
+    const fresh=reconcileStockShares({ledgerShares:plan.accountLedgerShares??null,broker:read.inventory,reconciliationQuality:'GOOD',now:clock()});
     if(fresh.state==='MISMATCH')return blocked('BLOCKED',[`STOCK_SHARES_LEDGER_BROKER_MISMATCH:${fresh.reason}`]);
     if(fresh.state!=='RECONCILED')return blocked('BLOCKED',[`STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:${fresh.reason}`]);
-    const live=freeSellableShares(fresh.reconciledShares,read.committedShortCallContracts,plan.multiplier===1?100:plan.multiplier);
+    // Account-net: all shares of the underlying, minus every live short call commitment, must still cover this sale.
+    const live=freeSellableShares(read.inventory.quantity,read.committedShortCallContracts,100);
     if(live.state==='UNKNOWN')return blocked('BLOCKED',[live.reason==='OVERCOMMITTED_INVALID_STATE'
       ?'STOCK_SALE_WITH_SHORT_CALLS_COMMITTED':'COMMITTED_SHORT_CALLS_UNKNOWN']);
     if((live.freeShares as number)<plan.quantity)return blocked('BLOCKED',['STOCK_SALE_WITH_SHORT_CALLS_COMMITTED']);
+  }
+
+  // Covered-call opens: the sealed ledger cover must be confirmed by a FRESH broker read at submit time as well. The broker
+  // position (account-wide) must equal the plan-time reconciled shares and still cover this call net of every committed call.
+  if(plan.action==='OPEN_CC'||plan.action==='ROLL_CC_OPEN'){
+    if(stockInventory===undefined)return blocked('BLOCKED',['COVER_INVENTORY_SOURCE_UNAVAILABLE']);
+    let read:StockInventoryRead;
+    try{read=await stockInventory.readStockInventory(plan.underlying,now);}
+    catch{return blocked('BLOCKED',['COVER_INVENTORY_READ_FAILED']);}
+    const fresh=reconcileStockShares({ledgerShares:plan.accountLedgerShares??null,broker:read.inventory,reconciliationQuality:'GOOD',now:clock()});
+    if(fresh.state!=='RECONCILED')return blocked('BLOCKED',[`COVERED_CALL_SHARE_RECONCILIATION_BLOCKED:${fresh.state}:${fresh.reason}`]);
+    const committed=Math.max(plan.committedShortCallContracts??0,read.committedShortCallContracts??0);
+    if(read.committedShortCallContracts===null)return blocked('BLOCKED',['COMMITTED_SHORT_CALLS_UNKNOWN']);
+    const freeCover=freeSellableShares(fresh.brokerShares,committed,plan.multiplier);
+    if(freeCover.state!=='KNOWN'||(freeCover.freeShares as number)<plan.quantity*plan.multiplier)
+      return blocked('BLOCKED',['COVERED_CALL_BROKER_SHARES_INSUFFICIENT']);
   }
 
   const quote=await quoteSource.getCurrentQuote(plan,now);

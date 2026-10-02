@@ -23,8 +23,9 @@ import { paperBootstrapRuntimePolicy } from '../theta/paper-bootstrap-runtime-po
  * a typed reason. The in-flight guard then no longer sees a non-terminal order, so the next management scan produces a new
  * frontier -> new decision id -> a freshly recomputed boundary (or a different action). A cancelled plan is never resurrected.
  *
- * Attempt state is never held in memory. It is reconstructed from persisted rows: attempts made = max(order intents of the
- * decision/action/chain, highest recorded price-event attempt number), so it cannot reset on restart, retry, reconciliation or a
+ * Attempt state is never held in memory. It is reconstructed from persisted rows: attempts made = order intents of the
+ * decision/action/chain (a rejected replacement still counts, so an attempt number is never reused) + persisted KEEP evidence
+ * rows (an attempt spent without a broker mutation), so it cannot reset on restart, retry, reconciliation or a
  * cancel/replace cycle, and a duplicate trigger inside the wait interval is a no-op because the last action time is persisted too.
  * Maximum attempts and concession schedule come from the plan's sealed pricing policy (adaptive policy: 3 attempts); there is no
  * invented order-lifetime constant: orders are DAY orders and the plan's bounded attempts end the sequence.
@@ -180,12 +181,19 @@ async function repriceOne(deps: RepriceDependencies, candidate: RepriceCandidate
   //    identity, share evidence) are the sealed ones; only the attempt index, previous limit and step window change.
   const stepPlan: ApprovedMasterPaperActionPlan = { ...plan, pricingAttempt: candidate.attemptsSoFar, previousLimit: candidate.limitPrice,
     decisionExpiresAt: new Date(Date.parse(at) + paperBootstrapRuntimePolicy.quoteAge.planWindowManagementMilliseconds).toISOString() };
-  const prepared = await prepareMasterPaperAction(stepPlan, deps.quoteSource, at, true, paperBootstrapPreSubmitQuoteAgePolicy, deps.now, deps.stockInventory);
+  // A working covered-call order is itself in the live commitment count; when repricing THAT order its own contracts are not an
+  // additional commitment (otherwise every call reprice would demand cover for the order twice).
+  const stepInventory: StockInventorySource | undefined = deps.stockInventory === undefined ? undefined
+    : plan.action === 'OPEN_CC' || plan.action === 'ROLL_CC_OPEN' ? { readStockInventory: async (symbol, now) => {
+      const read = await (deps.stockInventory as StockInventorySource).readStockInventory(symbol, now);
+      return { ...read, committedShortCallContracts: read.committedShortCallContracts === null ? null : Math.max(0, read.committedShortCallContracts - plan.quantity) };
+    } } : deps.stockInventory;
+  const prepared = await prepareMasterPaperAction(stepPlan, deps.quoteSource, at, true, paperBootstrapPreSubmitQuoteAgePolicy, deps.now, stepInventory);
 
   // The adaptive policy decided the concession lands on the limit already resting: no broker mutation, but the attempt is spent
   // (persisted as price-event evidence) so the bounded sequence still terminates. (The handoff reports a non-PLACE/REPLACE
   // decision as PRICE_REJECTED, so KEEP is recognised from the pricing decision itself.)
-  if (prepared.pricing?.action === 'KEEP' && prepared.pricing.limitPrice !== null && prepared.quote !== null) {
+  if (prepared.state === 'PRICE_REJECTED' && prepared.pricing?.action === 'KEEP' && prepared.pricing.limitPrice !== null && prepared.quote !== null) {
     const attemptNo = candidate.attemptsSoFar + 1;
     if (deps.recordPriceEvent === undefined) return blocked('ORDER_STATE_UNKNOWN', ['ATTEMPT_EVIDENCE_SINK_MISSING']);
     await deps.recordPriceEvent({ orderIntentId, eventType: 'REPLACEMENT', eventTime: prepared.evaluatedAt, quote: prepared.quote,
@@ -205,7 +213,8 @@ async function repriceOne(deps: RepriceDependencies, candidate: RepriceCandidate
       if (/IDEMPOTENCY_COLLISION|REPLACEMENT_|Stale or missing order intent transition|BROKER_ORDER_NOT_FOUND/.test(message)) return blocked('REPLACE_RACE_LOST', [message]);
       throw error;
     }
-    if (replacement !== null && brokerOrderIntentState(replacement) === 'FILLED') return leftWorking('ORDER_ALREADY_TERMINAL');
+    if (replacement === null) return blocked('ORDER_STATE_UNKNOWN', ['REPLACEMENT_NOT_CONFIRMED_RECONCILE_BEFORE_RETRY']);
+    if (brokerOrderIntentState(replacement) === 'FILLED') return leftWorking('ORDER_ALREADY_TERMINAL');
     if (deps.recordPriceEvent !== undefined) {
       try {
         await deps.recordPriceEvent({ orderIntentId: prepared.command.orderIntentId, eventType: 'REPLACEMENT', eventTime: prepared.evaluatedAt,
@@ -267,7 +276,7 @@ export class PostgresManagementRepriceStore implements RepriceStore {
     for (const raw of working.rows as Record<string, unknown>[]) {
       const state = await this.pool.query(
         `SELECT count(DISTINCT oi.order_intent_id)::int AS intents,
-           COALESCE(max(pe.attempt_no), 0)::int AS max_attempt_no,
+           count(DISTINCT pe.content_hash) FILTER (WHERE pe.reason_code='ADAPTIVE_LIMIT_KEEP')::int AS keeps,
            max(GREATEST(oi.intent_persisted_at, COALESCE(pe.event_time, oi.intent_persisted_at))) AS last_action_at
          FROM trade.order_intent oi
          LEFT JOIN trade.execution_price_event pe ON pe.order_intent_id=oi.order_intent_id
@@ -279,7 +288,7 @@ export class PostgresManagementRepriceStore implements RepriceStore {
       candidates.push({
         orderIntentId: String(raw.order_intent_id), orderStatus: String(raw.status) as OrderIntentState,
         limitPrice: raw.limit_price === null ? null : Number(raw.limit_price),
-        attemptsSoFar: Math.max(Number(attempts.intents), Number(attempts.max_attempt_no)),
+        attemptsSoFar: Number(attempts.intents) + Number(attempts.keeps),
         lastActionAt: toIso(attempts.last_action_at), actionPlanId: String(raw.plan_row_id),
         plan: integrity.ok ? integrity.plan : null, integrityMismatches: integrity.mismatches,
         decisionStillCurrent: managementDecisionIsCurrent({ legSequence: Number(raw.ip_leg_sequence), chainClosed: raw.chain_closed_at !== null,

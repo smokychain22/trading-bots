@@ -503,6 +503,7 @@ export async function runAutonomousRuntimeCycle(
         await new PostgresP2EEvidenceStore(pool).persistManagementEvidence(states,frontiers);
         const persistedFrontiers=await managementStore.persistFrontiers(states, frontiers);
         const actionPlanStore=new PostgresMasterPaperActionPlanStore(pool);
+        let firstChainBlocker:string|null=null;
         for(let index=0;index<states.length;index+=1){
           const state=states[index],persisted=persistedFrontiers[index];
           if(state===undefined||persisted===undefined)throw new Error('MANAGEMENT_PERSISTENCE_ALIGNMENT_FAILED');
@@ -514,7 +515,9 @@ export async function runAutonomousRuntimeCycle(
           const aegisState=typeof rawAegis==='string'&&['ALLOW_FULL','ALLOW_REDUCED','HOLD_ONLY','HARD_VETO'].includes(rawAegis)
             ? rawAegis as 'ALLOW_FULL'|'ALLOW_REDUCED'|'HOLD_ONLY'|'HARD_VETO':null;
           const compiled=compileManagementExecutionLegDirectives(state,persisted.frontier);
-          if(compiled.state==='BLOCKED')return degraded(compiled.blockers[0]??'MANAGEMENT_LEG_COMPILATION_BLOCKED',retryAt);
+          // One blocked chain must never starve the others (a sibling chain's close may be what unblocks it): record the first
+          // blocker, keep scanning, and degrade the job once every chain has been evaluated.
+          if(compiled.state==='BLOCKED'){firstChainBlocker??=compiled.blockers[0]??'MANAGEMENT_LEG_COMPILATION_BLOCKED';continue;}
           // MGMT-CROSS-CYCLE-DUP / HDAC-05 evidence. Both reads fail closed (UNKNOWN / null blocks the assembly).
           const chainInFlight=compiled.state==='READY'&&master.executionAccountId!==null
             ?await readManagementChainInFlight(pool,master.executionAccountId,state.chainId):{state:'UNKNOWN' as const};
@@ -534,9 +537,10 @@ export async function runAutonomousRuntimeCycle(
           if(assembly.state==='BLOCKED'){
             // An earlier order for this chain is still in flight: that is expected, not a degraded job; keep scanning other chains.
             if(assembly.blockers.length>0&&assembly.blockers.every((blocker)=>blocker==='MANAGEMENT_EQUIVALENT_ORDER_IN_FLIGHT'))continue;
-            return degraded(assembly.blockers[0]??'MANAGEMENT_ACTION_PLAN_BLOCKED',retryAt);
+            firstChainBlocker??=assembly.blockers[0]??'MANAGEMENT_ACTION_PLAN_BLOCKED';continue;
           }
         }
+        if (firstChainBlocker !== null) return degraded(firstChainBlocker, retryAt);
         if (states.some((state) => state.hardBlockers.length > 0)) {
           return degraded('MANAGEMENT_HARD_BLOCKERS_PRESENT', retryAt);
         }

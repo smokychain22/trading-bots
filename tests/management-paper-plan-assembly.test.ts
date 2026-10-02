@@ -33,7 +33,7 @@ const lifecycleState=(lifecycle:'RECOVERY_WAIT'|'CC_OPEN',optionType:'PUT'|'CALL
   realized_option_pnl:'0',open_stock_shares:String(shares),stock_basis_per_share:'195',realized_stock_pnl:'0',dividends:'0',fees:'0',
   unknown_fill_fees:false,buying_power:'50000',options_buying_power:'40000',account_as_of:now,fusion_snapshot_id:ids.fusion,
   snapshot_json:{eventState:{state:'CLEAR'},riskState:{assignmentCapacity:2,newRiskState:'ALLOW_FULL'},versions:{strategyVersion:'theta-cc-v1'}},
-  broker_position:{currentPrice:190},broker_stock_quantity:String(shares),broker_stock_side:'long',position_observed_at:now,
+  broker_position:{currentPrice:190},broker_stock_quantity:String(shares),broker_stock_side:'long',account_ledger_shares:String(shares),position_observed_at:now,
   reconciliation_observed_at:now,reconciliation_quality:'GOOD'},
 {managementInputSnapshotId:ids.input,reconciliationSnapshotId:ids.reconciliation,observedAt:now});
 

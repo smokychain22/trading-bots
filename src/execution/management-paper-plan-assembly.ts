@@ -165,8 +165,11 @@ export function compileManagementExecutionLegDirectives(state: ManagementInputSt
     }
     // Two share truths: the ledger count alone never authorizes a stock sale. Mismatch/unknown broker evidence fails closed
     // here (management keeps evaluating; only broker mutation is withheld).
-    const reconciliation = reconcileStockShares({ ledgerShares: state.economics.openStockShares, broker: state.brokerStockInventory,
+    const reconciliation = reconcileStockShares({ ledgerShares: state.accountStockLedgerShares ?? null, broker: state.brokerStockInventory,
       reconciliationQuality: state.context.assignmentCapacityEvidence.reconciliationQuality, now: state.observedAt });
+    if (reconciliation.state === 'RECONCILED' && (reconciliation.brokerShares ?? 0) < state.economics.openStockShares) {
+      return { state:'BLOCKED',legs:[],blockers:['STOCK_SHARES_LEDGER_BROKER_MISMATCH:CHAIN_SHARES_EXCEED_BROKER'] };
+    }
     if (reconciliation.state === 'MISMATCH') return { state:'BLOCKED',legs:[],blockers:[`STOCK_SHARES_LEDGER_BROKER_MISMATCH:${reconciliation.reason}`] };
     if (reconciliation.state !== 'RECONCILED') return { state:'BLOCKED',legs:[],blockers:[`STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:${reconciliation.reason}`] };
     return {state:'READY',blockers:[],legs:[{action:'SELL_STOCK',symbol:state.underlying,optionContractId:null,
@@ -303,17 +306,33 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
         const capacity = coveredCallContractCapacity(leg.confirmedCoveredShares ?? null, net, 0, leg.multiplier);
         if (capacity === null || capacity < leg.canonicalQuantity) blockers.push(`COVERED_CALL_ACCOUNT_NET_COVERAGE_INSUFFICIENT:${leg.action}`);
         netCommitted.set(index, net);
+        // The ledger count is not enough cover: the BROKER must confirm the shares (a part-filled stock exit or manual activity
+        // can leave the ledger ahead of the broker). Ledger and broker agree at account level, and the broker position, net of
+        // every committed call, must still cover this call.
+        const cover = reconcileStockShares({ ledgerShares: input.state.accountStockLedgerShares ?? null, broker: input.state.brokerStockInventory,
+          reconciliationQuality: input.state.context.assignmentCapacityEvidence.reconciliationQuality, now: input.state.observedAt });
+        if (cover.state !== 'RECONCILED') blockers.push(`COVERED_CALL_SHARE_RECONCILIATION_BLOCKED:${leg.action}:${cover.reason}`);
+        else {
+          const freeCover = freeSellableShares(cover.brokerShares, net, leg.multiplier);
+          if (freeCover.state !== 'KNOWN' || (freeCover.freeShares as number) < leg.canonicalQuantity * leg.multiplier) {
+            blockers.push(`COVERED_CALL_BROKER_SHARES_INSUFFICIENT:${leg.action}`);
+          }
+        }
       }
     }
     if (leg.action === 'SELL_STOCK') {
       // Selling the underlying must never leave a short call uncovered. Chain coverage is account-net and the stock leg only
       // knows this chain's shares, so the account must be PROVEN to carry no short calls (or pending sell-to-open) on this
       // underlying. Unknown blocks; any committed call blocks (close or let it resolve first).
-      const free = freeSellableShares(leg.canonicalQuantity, input.committedShortCallContracts, 100);
+      // Account-net: the broker holds the shares of EVERY chain on this underlying, and short calls anywhere on it commit those
+      // shares. Free = account shares - 100 x committed calls must still cover the whole position being sold.
+      const accountShares = input.state.brokerStockInventory?.quantity ?? null;
+      const free = freeSellableShares(accountShares, input.committedShortCallContracts, 100);
       if (free.state === 'UNKNOWN') blockers.push(free.reason === 'OVERCOMMITTED_INVALID_STATE'
-        ? 'STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK' : 'COMMITTED_SHORT_CALLS_UNKNOWN:SELL_STOCK');
+        ? 'STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK' : free.reason === 'COMMITTED_SHORT_CALLS_UNKNOWN'
+          ? 'COMMITTED_SHORT_CALLS_UNKNOWN:SELL_STOCK' : 'STOCK_SHARES_BROKER_EVIDENCE_UNKNOWN:BROKER_UNAVAILABLE');
       else if ((free.freeShares as number) < leg.canonicalQuantity) blockers.push('STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK');
-      else netCommitted.set(index, 0);
+      else netCommitted.set(index, input.committedShortCallContracts as number);
     }
     if (leg.action !== 'SELL_STOCK' && !input.optionsCapabilityVerified) blockers.push(`OPTIONS_CAPABILITY_NOT_VERIFIED:${leg.action}`);
     if (opensRisk.has(leg.action) && !['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState ?? '')) {
@@ -376,8 +395,11 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
       ...(leg.confirmedCoveredShares === undefined ? {} : { confirmedCoveredShares: leg.confirmedCoveredShares }),
       ...(netCommitted.has(index) ? { committedShortCallContracts: netCommitted.get(index) as number } : {}),
       // SELL_STOCK: both share truths agreed (compile) and the free-sellable shares cover the whole position (checked above).
+      ...(leg.action === 'OPEN_CC' || leg.action === 'ROLL_CC_OPEN' ? { brokerConfirmedShares: input.state.brokerStockInventory?.quantity as number,
+        accountLedgerShares: input.state.accountStockLedgerShares as number } : {}),
       ...(leg.action === 'SELL_STOCK' ? { brokerConfirmedShares: input.state.brokerStockInventory?.quantity as number,
-        freeSellableShares: leg.canonicalQuantity } : {}),
+        accountLedgerShares: input.state.accountStockLedgerShares as number,
+        freeSellableShares: (input.state.brokerStockInventory?.quantity as number) - 100 * (input.committedShortCallContracts as number) } : {}),
       action: leg.action,
       economicBoundary: leg.economicBoundary,
       economicsRemainPositive: leg.economicsRemainPositive,

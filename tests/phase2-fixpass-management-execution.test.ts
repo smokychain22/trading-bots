@@ -32,7 +32,7 @@ const UUID = (n: number) => `20000000-0000-4000-8000-${String(n).padStart(12, '0
 interface Opts {
   readonly lifecycle?: 'CSP_OPEN' | 'CC_OPEN' | 'RECOVERY_WAIT'; readonly bid?: number | null; readonly ask?: number | null;
   readonly observedAt?: string; readonly quoteAsOf?: string; readonly shares?: string; readonly contracts?: string;
-  readonly chain?: number; readonly mark?: number; readonly brokerShares?: string; readonly stockRead?: ManagementStockQuoteReadOutcome | null;
+  readonly chain?: number; readonly mark?: number; readonly brokerShares?: string; readonly accountShares?: string; readonly stockRead?: ManagementStockQuoteReadOutcome | null;
 }
 
 function managed(o: Opts = {}): ManagementInputState {
@@ -61,6 +61,7 @@ function managed(o: Opts = {}): ManagementInputState {
       riskState: { assignmentCapacity: 2, newRiskState: 'ALLOW_FULL' }, eventState: { state: 'CLEAR' } },
     broker_position: hasStock ? { currentPrice: o.mark ?? 190 } : null, reconciliation_observed_at: observedAt, position_observed_at: hasStock ? observedAt : null,
     broker_stock_quantity: hasStock ? (o.brokerShares ?? o.shares ?? '100') : null, broker_stock_side: hasStock ? 'long' : null,
+    account_ledger_shares: hasStock ? (o.accountShares ?? o.shares ?? '100') : null,
   }, { managementInputSnapshotId: UUID(1), reconciliationSnapshotId: UUID(2), observedAt, stockQuoteRead: o.stockRead ?? null });
 }
 
@@ -319,7 +320,7 @@ test('SELL_STOCK must never be possible while a covered call is short against th
   const calls: number[] = [];
   const source = { getCurrentQuote: async () => { calls.push(1); return null; } };
   const strip = { ...plan } as Record<string, unknown>; delete strip.committedShortCallContracts;
-  for (const bad of [strip, { ...plan, committedShortCallContracts: 1 }]) {
+  for (const bad of [strip]) {
     const prepared = await prepareMasterPaperAction(bad as never, source, T_NEAR, true, undefined, () => T_NEAR);
     assert.equal(prepared.state, 'BLOCKED');
     assert.ok(prepared.blockers.includes('STOCK_SALE_SHORT_CALL_COVERAGE_NOT_CONFIRMED'));
@@ -500,7 +501,7 @@ test('HDAC-05: account-net coverage - committed short calls reduce what the chai
   // a sibling chain / pending sell-to-open already commits the one contract these 100 shares can cover
   const taken = assembleSellCc(recovery, 1);
   assert.equal(taken.state, 'BLOCKED');
-  assert.deepEqual(taken.blockers, ['COVERED_CALL_ACCOUNT_NET_COVERAGE_INSUFFICIENT:OPEN_CC']);
+  assert.ok(taken.blockers.includes('COVERED_CALL_ACCOUNT_NET_COVERAGE_INSUFFICIENT:OPEN_CC'));
   // unknown commitment (null / absent) blocks - never zero
   for (const unknown of [null, undefined]) {
     const result = assembleSellCc(recovery, unknown);
@@ -526,7 +527,7 @@ test('HDAC-05: two chains on one underlying competing for the same 100 shares - 
   assert.equal(committedAfter, 1);
   const second = assembleSellCc(chainB, committedAfter);
   assert.equal(second.state, 'BLOCKED');
-  assert.deepEqual(second.blockers, ['COVERED_CALL_ACCOUNT_NET_COVERAGE_INSUFFICIENT:OPEN_CC']);
+  assert.ok(second.blockers.includes('COVERED_CALL_ACCOUNT_NET_COVERAGE_INSUFFICIENT:OPEN_CC'));
   // an unreadable broker row makes the whole commitment UNKNOWN, which blocks as well
   const unknownRow = deriveCommittedShortCallContracts('AAPL', [{ symbol: 'GARBAGE', assetClass: 'us_option', quantity: -1, side: 'short',
     avgEntryPrice: null, marketValue: null, unrealizedPl: null, receivedAt: T0 }], []);
@@ -551,7 +552,7 @@ test('HDAC-05: a covered-call ROLL nets out the call it is closing (and only tha
   // a sibling's extra short call on the same 100 shares leaves no cover for the replacement
   const crowded = await flow(state, quotes, { committedShortCallContracts: 2 }, T0);
   assert.equal(crowded.assembled?.state, 'BLOCKED');
-  assert.deepEqual(crowded.assembled?.blockers, ['COVERED_CALL_ACCOUNT_NET_COVERAGE_INSUFFICIENT:ROLL_CC_OPEN']);
+  assert.ok(crowded.assembled?.blockers.includes('COVERED_CALL_ACCOUNT_NET_COVERAGE_INSUFFICIENT:ROLL_CC_OPEN'));
   // a commitment smaller than the call being closed is internally inconsistent -> UNKNOWN -> blocked
   const inconsistent = await flow(state, quotes, { committedShortCallContracts: 0 }, T0);
   assert.deepEqual(inconsistent.assembled?.blockers, ['COMMITTED_SHORT_CALLS_UNKNOWN:ROLL_CC_OPEN']);
@@ -912,4 +913,67 @@ test('SELL_STOCK economicsRemainPositive is incremental utility vs WAIT, indepen
   const sell = evidenceFor(losing);
   assert.equal(sell?.expectedAfterCostEv, null);
   assert.equal(sell?.empiricalEconomicsReady, false);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Review fixes: account-level share truths, broker-confirmed cover for call opens, one blocked chain cannot starve the scan.
+// ---------------------------------------------------------------------------------------------------------------------
+
+test('account-level shares: two chains on one underlying are NOT a mismatch; the sale needs free = account shares - 100 x committed calls', async () => {
+  // chain A holds 100, chain B holds 100: the broker position is 200 and the account ledger is 200
+  const chainA = sellStockState(stockRead(), { shares: '100', accountShares: '200', brokerShares: '200' });
+  assert.equal(compileManagementExecutionLegDirectives(chainA, decide(chainA).frontier).state, 'READY', 'account ledger == broker');
+  // chain B has a covered call committed: B's call is covered by B's 100 shares, so A may still sell its own 100
+  const sold = await flow(chainA, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: 1 });
+  assert.equal(sold.assembled?.state, 'READY', JSON.stringify(sold.assembled?.blockers));
+  assert.equal(sold.assembled?.state === 'READY' ? sold.assembled.plans[0]?.freeSellableShares : null, 100);
+  // two calls committed leave no free shares for A
+  const none = await flow(chainA, { AAPL: stockQuote(190, 190.1) }, { committedShortCallContracts: 2 });
+  assert.equal(none.assembled?.state, 'BLOCKED');
+  assert.ok(none.assembled?.blockers.includes('STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK'));
+  // a manual or external holding (broker ahead of the whole ledger) is a typed mismatch, never a sale
+  const external = sellStockState(stockRead(), { shares: '100', accountShares: '100', brokerShares: '250' });
+  assert.deepEqual(compileManagementExecutionLegDirectives(external, decide(external).frontier).blockers, ['STOCK_SHARES_LEDGER_BROKER_MISMATCH:BROKER_AHEAD_OF_LEDGER']);
+  // the submit-time check is account-net too: live commitments beyond the free shares block even with a good plan
+  if (sold.assembled?.state !== 'READY') return;
+  const plan = sold.assembled.plans[0] as ApprovedMasterPaperActionPlan;
+  const source = (committed: number): StockInventorySource => ({ async readStockInventory() {
+    return { inventory: { state: 'KNOWN', quantity: 200, observedAt: T_NEAR, reason: null }, committedShortCallContracts: committed }; } });
+  const attempt = (committed: number) => prepareMasterPaperAction(plan, { getCurrentQuote: async () => stockQuote(190, 190.1) }, T_NEAR, true, undefined, () => T_NEAR, source(committed));
+  assert.equal((await attempt(1)).state, 'READY_TO_SUBMIT');
+  assert.deepEqual((await attempt(2)).blockers, ['STOCK_SALE_WITH_SHORT_CALLS_COMMITTED']);
+});
+
+test('covered-call opens need BROKER-confirmed cover: a ledger-only count (e.g. after a part-filled stock exit) never opens a call', async () => {
+  // ledger says 100, the broker holds only 40 (60 were sold and the ledger did not record the partial)
+  const drift = managed({ lifecycle: 'RECOVERY_WAIT', observedAt: T_NEAR, shares: '100', brokerShares: '40' });
+  const blocked = assembleSellCc(drift, 0);
+  assert.equal(blocked.state, 'BLOCKED');
+  assert.deepEqual(blocked.blockers, ['COVERED_CALL_SHARE_RECONCILIATION_BLOCKED:OPEN_CC:LEDGER_AHEAD_OF_BROKER']);
+  // reconciled: opens
+  const ready = assembleSellCc(managed({ lifecycle: 'RECOVERY_WAIT', observedAt: T0, shares: '100' }), 0);
+  assert.equal(ready.state, 'READY');
+  if (ready.state !== 'READY') throw new Error('plan expected');
+  // submit time: a fresh broker read that no longer matches blocks the order before any quote or broker call
+  const plan = ready.plans[0] as ApprovedMasterPaperActionPlan;
+  let quoteCalls = 0;
+  const quotes = { getCurrentQuote: async () => { quoteCalls += 1; return null; } };
+  const inventory = (quantity: number, committed: number | null): StockInventorySource => ({ async readStockInventory() {
+    return { inventory: { state: 'KNOWN', quantity, observedAt: T0, reason: null }, committedShortCallContracts: committed }; } });
+  const run = (source?: StockInventorySource) => prepareMasterPaperAction(plan, quotes, T0, true, undefined, () => T0, source);
+  assert.deepEqual((await run(undefined)).blockers, ['COVER_INVENTORY_SOURCE_UNAVAILABLE']);
+  assert.deepEqual((await run(inventory(40, 0))).blockers, ['COVERED_CALL_SHARE_RECONCILIATION_BLOCKED:MISMATCH:LEDGER_AHEAD_OF_BROKER']);
+  assert.deepEqual((await run(inventory(100, 1))).blockers, ['COVERED_CALL_BROKER_SHARES_INSUFFICIENT']);
+  assert.deepEqual((await run(inventory(100, null))).blockers, ['COMMITTED_SHORT_CALLS_UNKNOWN']);
+  assert.equal(quoteCalls, 0, 'no quote is fetched for a call without confirmed cover');
+  assert.equal((await run(inventory(100, 0))).state, 'NO_QUOTE', 'with confirmed cover the flow proceeds to the quote');
+});
+
+test('one blocked chain never starves the other chains of the management scan (first blocker is recorded, the loop continues)', () => {
+  const runtime = readFileSync(new URL('../src/theta/autonomous-runtime.ts', import.meta.url), 'utf8');
+  assert.match(runtime, /let firstChainBlocker:string\|null=null;/);
+  assert.match(runtime, /firstChainBlocker\?\?=compiled\.blockers\[0\]\?\?'MANAGEMENT_LEG_COMPILATION_BLOCKED';continue;/);
+  assert.match(runtime, /firstChainBlocker\?\?=assembly\.blockers\[0\]\?\?'MANAGEMENT_ACTION_PLAN_BLOCKED';continue;/);
+  assert.match(runtime, /if \(firstChainBlocker !== null\) return degraded\(firstChainBlocker, retryAt\);/);
+  assert.equal(/if\(compiled\.state==='BLOCKED'\)return degraded/.test(runtime), false, 'no early return inside the chain loop');
 });

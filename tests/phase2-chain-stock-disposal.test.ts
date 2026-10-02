@@ -186,3 +186,26 @@ test('a sale already applied (its lots are all disposed) is a duplicate, not a p
   const missing = await run(false);
   assert.equal(missing.report.unresolved, 1); assert.equal(missing.report.duplicates, 0);
 });
+
+test('a coded domain rejection for one chain is reported as unresolved and does not stop the other chains; infrastructure errors still abort the cycle', async () => {
+  const { applyConfirmedFillLifecycle } = await import('../src/execution/postgres-broker-fill-lifecycle-orchestrator.js');
+  const { EventEmitter } = await import('node:events');
+  const rowFor = (chain: string, intent: string) => ({ order_intent_id: intent, chain_id: chain, bot_instance_id: 'bot', decision_id: 'decision', theta_action: 'SELL_STOCK', status: 'FILLED',
+    order_quantity: 100, underlying_symbol: 'AAPL', option_contract_id: null, fill_ids: ['f-' + intent],
+    open_stock_lots: [{ stock_lot_id: 'lot-' + chain, shares: 100, economic_basis_per_share: 195, acquired_at: '2026-09-01T15:00:00Z' }],
+    fills: [{ provider_fill_id: 'fill-' + intent, quantity: 100, price_per_share: 190, filled_at: '2026-10-02T15:00:00Z', fees: 0 }] });
+  const run = async (error: Error) => {
+    const applied: string[] = [];
+    const client = Object.assign(new EventEmitter(), { release() { /* noop */ }, async query(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) { applied.push('attempt'); throw error; }
+      return { rows: [], rowCount: 0 };
+    } });
+    const pool = { query: async () => ({ rows: [rowFor('chain-1', 'intent-1'), rowFor('chain-2', 'intent-2')], rowCount: 2 }), connect: async () => client };
+    const report = await applyConfirmedFillLifecycle(pool as never, 'connection', '2026-10-02T16:00:00Z');
+    return { report, attempts: applied.length };
+  };
+  const coded = await run(new Error('STOCK_DISPOSAL_LEAVES_OPEN_LOTS'));
+  assert.equal(coded.report.unresolved, 2, 'both chains reported unresolved');
+  assert.equal(coded.attempts, 2, 'the second chain was still attempted after the first was rejected');
+  await assert.rejects(run(new Error('connection terminated unexpectedly')), /connection terminated/);
+});

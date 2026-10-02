@@ -19,7 +19,7 @@ const plan: ApprovedMasterPaperActionPlan = {
   expectedAfterCostEv: null, empiricalEconomicsReady: false, selectedByCanonicalAuthority: true, hardValidityPassed: true,
   accountVerified: true, optionsCapabilityVerified: true, noEquivalentExposureConflict: true, aegisState: 'ALLOW_FULL', killSwitchActive: false,
   decisionExpiresAt: '2026-10-13T14:00:30.000Z', pricingPolicy: { waitIntervalMs: 5000, maxAttempts: 3, concessionFractions: [0, 0.5, 1], tickSize: 0.01 },
-  pricingAttempt: 0, previousLimit: null, committedShortCallContracts: 0, brokerConfirmedShares: 100, freeSellableShares: 100,
+  pricingAttempt: 0, previousLimit: null, committedShortCallContracts: 0, brokerConfirmedShares: 100, accountLedgerShares: 100, freeSellableShares: 100,
 };
 
 const sealed = (value: ApprovedMasterPaperActionPlan = plan, overrides: Partial<ActionPlanRowForIntegrity> = {}): ActionPlanRowForIntegrity => ({
