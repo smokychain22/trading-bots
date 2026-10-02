@@ -116,6 +116,9 @@ const rawRows = [
   r('CROSS_SESSION_SWEEP', 'PHASE3', 'terminal submitted plans swept with typed reasons; source only', { obsNow: 0, paperApplicable: 1 }),
   r('FIRST_PAPER_PATH', 'PHASE3', 'natural candidate -> capped canary composition proven offline; quantity zero places nothing; no candidate exists at this account scale', { obsNow: 0, paperApplicable: 1 }),
   r('PHASE3_REGISTER', 'PHASE3', '45-row finite register with a derived-count test', { obsNow: 0 }),
+  r('WORKER_MUTATION_FENCE', 'PHASE3', 'last-moment fence before a broker mutation starts: request window (150 s, below the 180 s supervisor timeout) plus plan-claim re-verification; source only (not released)', { obsNow: 0, paperApplicable: 1 }),
+  r('DR_SNAPSHOT_KEEPER', 'OPERATIONS', 'DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated, confirmation needs a completed governed backup', { obsNow: 0 }),
+  r('PRODUCTION_REACHABILITY_PIN', 'PHASE3', 'audited live/paper modules are reachable from a production entry or declared (superseded/future) with a reason; broker mutations only via the coordinator', { obsNow: 0 }),
   r('MIGRATION_068_STATUS', 'PHASE3', 'migration committed and rehearsed on a disposable database; NOT applied to Production (governed verified-backup run in progress)', { engDone: 0, obsNow: 0 }),
   r('LOT_SPLIT_ACCOUNTING', 'PHASE3', 'whole-position accounting only; partial disposal stays UNKNOWN_PENDING_RECONCILIATION; schema enhancement is FUTURE_PAPER / owner lot policy', { obsNow: 0, policyBlocked: 1 }),
   r('REGISTRY_SOURCE_LISTS', 'OPEN', 'verified: the registry second list names SOURCES; shadow-strategy-orchestrator is a real research producer of H/D evaluation, so no entry is wrong', { obsNow: 0 }),
@@ -132,7 +135,7 @@ const rawRows = [
 const observedAtDeployed = new Set(['FRONTIER_PROJECTION_BOUND', 'ALPACA_MARKET_CLOCK_CALENDAR', 'AEGIS_TWELVE_FAMILIES', 'CAPITAL_BUDGET', 'POSTGRES_OBSERVATION_JOBS', 'MARKS_TICKER','ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
   'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE']);
 // Rows whose runtime source changed after the deployed release: committed, not released.
-const unreleasedIds = new Set(['PHASE3_EXEC_STATE_MACHINE', 'FAULT_INJECTION', 'RATE_LIMIT_POLICY', 'PARTIAL_FILL_POLICY', 'ENTRY_DUPLICATE_GUARD',
+const unreleasedIds = new Set(['WORKER_MUTATION_FENCE', 'DR_SNAPSHOT_KEEPER', 'PHASE3_EXEC_STATE_MACHINE', 'FAULT_INJECTION', 'RATE_LIMIT_POLICY', 'PARTIAL_FILL_POLICY', 'ENTRY_DUPLICATE_GUARD',
   'CROSS_SESSION_SWEEP', 'FIRST_PAPER_PATH', 'PAPER_ORDER_COORDINATOR', 'PARTIAL_FILL_HANDLING', 'UNKNOWN_SUBMIT_RECONCILIATION', 'ORDER_INTENT_STATE_MACHINE',
   'STRUCTURAL_SIZING', 'ENTRY_SELECTION_FRONTIER', 'COVERED_CALL_MANAGEMENT', 'ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'ALPACA_OPTION_CHAIN_ENUMERATION', 'ALPACA_OPTION_QUOTES_BBO']);
 

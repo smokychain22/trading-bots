@@ -1,15 +1,15 @@
 {
   "computed": {
-    "PHASE3_TOTAL": 45,
-    "PASS": 30,
+    "PHASE3_TOTAL": 54,
+    "PASS": 38,
     "PROVIDER_LIMITED": 2,
     "OWNER_POLICY": 2,
     "FUTURE_MARKET": 0,
     "FUTURE_PAPER": 5,
     "EMPIRICAL_ONLY": 2,
-    "NOT_APPLICABLE": 3,
+    "NOT_APPLICABLE": 4,
     "CODE_SOLVABLE_REMAINING": 1,
-    "OBSERVED_TODAY": 14
+    "OBSERVED_TODAY": 17
   },
   "rows": [
     {
@@ -859,6 +859,188 @@
       "BLOCKER": "space was reclaimed; the pre-migration verified backup is running",
       "SOLVABILITY": "FIXED_OPERATIONALLY_THIS_PHASE",
       "NEXT_ACTION": "confirm the next scheduled backup completes"
+    },
+    {
+      "ID": "P3-046",
+      "CAPABILITY": "Last-moment mutation fence: a stalled or abandoned invocation cannot START a broker mutation (request window shorter than the supervisor client timeout, plus plan-claim re-verification before the intent leaves READY)",
+      "SOURCE": [
+        "src/execution/mutation-fence.ts",
+        "src/execution/paper-order-coordinator.ts",
+        "src/theta/autonomous-runtime.ts"
+      ],
+      "TEST": [
+        "tests/phase3-mutation-fence.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Vercel request, Windows supervisor client timeout 180 s",
+      "DB_DEPENDENCY": "master_paper_action_plan claim",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "DEFECT_FOUND_AND_FIXED_OVERNIGHT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-047",
+      "CAPABILITY": "DR exported-snapshot keeper: heartbeat keeps the session active, records its own death, and a dead keeper fails the backup immediately after the dump",
+      "SOURCE": [
+        "tools/windows/dr/ThetaBackup.Common.ps1",
+        "tools/windows/dr/Backup-Theta.ps1"
+      ],
+      "TEST": [
+        "tests/windows/theta-snapshot-heartbeat.test.ps1",
+        "tests/windows/theta-backup-digest-v2.test.ps1"
+      ],
+      "RUNTIME_DEPENDENCY": "Windows DR tooling, Aiven connection",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_APPLICABLE",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "a server-side connection loss during a multi-hour dump still forces a rerun (the heartbeat cannot prevent it); confirmation needs a governed backup that completes",
+      "SOLVABILITY": "MITIGATED_NOT_ELIMINATED",
+      "NEXT_ACTION": "confirm on the governed run; optional hardening: run digests and the schema dump before the long dump"
+    },
+    {
+      "ID": "P3-048",
+      "CAPABILITY": "Production reachability pin: every live/paper module the wiring audit names is reachable from a production entry or declared with a reason; broker mutation methods are called only by the coordinator",
+      "SOURCE": [
+        "tools/theta-runtime-wiring-audit.ts",
+        "src/execution/paper-order-coordinator.ts"
+      ],
+      "TEST": [
+        "tests/production-reachability.test.ts",
+        "tests/architecture-authority-guards.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_APPLICABLE",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "BUILT_OVERNIGHT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-049",
+      "CAPABILITY": "Provider boundary: option pagination token cycles, mid-chain 401/403/404, truncated body, TLS and future timestamps are typed and never a truncated chain presented as complete; an unfinished chain blocks the cycle",
+      "SOURCE": [
+        "src/theta/alpaca-provider.ts",
+        "src/theta/theta-shadow-cycle.ts",
+        "src/research/alpaca-command5a-observation-source.ts"
+      ],
+      "TEST": [
+        "tests/phase3-provider-gaps.test.ts",
+        "tests/alpaca-failure-matrix.test.ts",
+        "tests/phase2-provider-matrix.test.ts",
+        "tests/theta-shadow-cycle.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "Alpaca",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "GAPS_CLOSED_OVERNIGHT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-050",
+      "CAPABILITY": "Frontier archive at production chain sizes: complete candidate list retained (exact rows), size linear, hash reproducible at 300 / 2619 / 5000 contracts",
+      "SOURCE": [
+        "src/storage/canonical-frontier-local-archive.ts",
+        "src/theta/postgres-cycle-evidence-storage.ts"
+      ],
+      "TEST": [
+        "tests/canonical-frontier-local-archive.test.ts",
+        "tests/phase3-frontier-projection-bound.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none",
+      "DB_DEPENDENCY": "research archive",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "GAP_CLOSED_OVERNIGHT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-051",
+      "CAPABILITY": "Raw pool.connect() transactions: a failed ROLLBACK neither masks the original error nor returns a broken client to the pool",
+      "SOURCE": [
+        "src/database/safe-rollback.ts",
+        "src/customer/postgres-disabled-copy-planner.ts",
+        "src/research/postgres-shadow-virtual-trader.ts",
+        "src/customer/paper-account-role.ts"
+      ],
+      "TEST": [
+        "tests/phase3-safe-rollback.test.ts",
+        "tests/runtime-postgres-client.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "DEFECT_FOUND_AND_FIXED_OVERNIGHT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-052",
+      "CAPABILITY": "Unsafe-default sweep of production decision paths: no confirmed fail-open; three plausible cases fixed (activation counts, null open-call contract count, non-finite TCA fill price)",
+      "SOURCE": [
+        "src/execution/paper-execution-authorization.ts",
+        "src/theta/management-action-frontier.ts",
+        "src/theta/paper-bootstrap-management-policy.ts",
+        "src/execution/confirmed-fill-tca.ts"
+      ],
+      "TEST": [
+        "tests/phase3-activation-counts.test.ts",
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "NOT_REACHED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "SWEEP_COMPLETE_FIXES_APPLIED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-053",
+      "CAPABILITY": "Incident matrix with provenance (frontier payload 29 vs 32; DR snapshot keeper)",
+      "SOURCE": [
+        "docs/operations/THETA_INCIDENT_MATRIX.json"
+      ],
+      "TEST": [
+        "tests/incident-matrix.test.ts",
+        "tests/phase3-frontier-projection-bound.test.ts"
+      ],
+      "RUNTIME_DEPENDENCY": "none",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "none",
+      "SOLVABILITY": "BUILT_OVERNIGHT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P3-054",
+      "CAPABILITY": "Resident Node worker (worker:start) does not abort an in-flight cycle when it loses its lease",
+      "SOURCE": [
+        "src/worker/resident-worker.ts"
+      ],
+      "TEST": [],
+      "RUNTIME_DEPENDENCY": "not the production path: the Windows supervisor posting to the Vercel endpoint is; the mutation fence (P3-046) protects the production path",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "NOT_APPLICABLE",
+      "LIVE_SESSION_STATUS": "NOT_APPLICABLE",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "only matters if the resident worker is ever deployed as the production worker",
+      "SOLVABILITY": "NOT_PRODUCTION_PATH",
+      "NEXT_ACTION": "revisit if the resident worker becomes the production worker"
     }
   ]
 }

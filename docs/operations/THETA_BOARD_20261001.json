@@ -12,25 +12,25 @@
     ]
   },
   "computed": {
-    "totalRows": 85,
+    "totalRows": 88,
     "preMarketEngineering": {
-      "numerator": 82,
-      "denominator": 85,
-      "percent": 96.47
+      "numerator": 85,
+      "denominator": 88,
+      "percent": 96.59
     },
     "implementation": {
-      "numerator": 85,
-      "denominator": 85,
+      "numerator": 88,
+      "denominator": 88,
       "percent": 100
     },
     "wiring": {
-      "numerator": 79,
-      "denominator": 85,
-      "percent": 92.94
+      "numerator": 82,
+      "denominator": 88,
+      "percent": 93.18
     },
     "tested": {
-      "numerator": 85,
-      "denominator": 85,
+      "numerator": 88,
+      "denominator": 88,
       "percent": 100
     },
     "currentReleaseRuntime": {
@@ -40,7 +40,7 @@
     },
     "paperOperation": {
       "numerator": 0,
-      "denominator": 22,
+      "denominator": 23,
       "percent": 0
     },
     "empiricalValidation": {
@@ -59,12 +59,12 @@
       "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 23,
-      "NOT_OBSERVABLE_YET": 20,
+      "SOURCE_ONLY": 25,
+      "NOT_OBSERVABLE_YET": 21,
       "DEPLOYED_NOT_YET_OBSERVED": 29,
       "CURRENT_RELEASE_REAL_OBSERVED": 13
     },
-    "unreleasedRowCount": 17,
+    "unreleasedRowCount": 19,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -1502,6 +1502,63 @@
       "id": "PHASE3_REGISTER",
       "domain": "PHASE3",
       "note": "45-row finite register with a derived-count test",
+      "impl": 1,
+      "wired": 1,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 0,
+      "observedAtRelease": null,
+      "releaseStatus": "NOT_OBSERVABLE_YET"
+    },
+    {
+      "id": "WORKER_MUTATION_FENCE",
+      "domain": "PHASE3",
+      "note": "last-moment fence before a broker mutation starts: request window (150 s, below the 180 s supervisor timeout) plus plan-claim re-verification; source only (not released)",
+      "impl": 1,
+      "wired": 1,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 1,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DR_SNAPSHOT_KEEPER",
+      "domain": "OPERATIONS",
+      "note": "DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated, confirmation needs a completed governed backup",
+      "impl": 1,
+      "wired": 1,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "PRODUCTION_REACHABILITY_PIN",
+      "domain": "PHASE3",
+      "note": "audited live/paper modules are reachable from a production entry or declared (superseded/future) with a reason; broker mutations only via the coordinator",
       "impl": 1,
       "wired": 1,
       "tested": 1,
