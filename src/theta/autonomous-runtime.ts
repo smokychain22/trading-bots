@@ -23,7 +23,7 @@ import type { AlpacaProviderConfig } from './alpaca-provider.js';
 import { processDueExecutionObservations, runProductionShadowEvidenceScan } from '../research/production-shadow-runtime.js';
 import { shadowSessionDecision } from '../research/shadow-evidence-runtime.js';
 import { applyConfirmedFillLifecycle } from '../execution/postgres-broker-fill-lifecycle-orchestrator.js';
-import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
+import { planNoLongerCurrent, PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
 import { AlpacaExecutionQuoteSource } from '../execution/alpaca-execution-quote-source.js';
 import { PostgresPaperOrderStore } from '../execution/postgres-paper-order-store.js';
 import { PaperOrderCoordinator } from '../execution/paper-order-coordinator.js';
@@ -35,6 +35,7 @@ import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives }
 import { readCommittedShortCallContracts, readManagementChainInFlight } from '../execution/management-chain-inflight.js';
 import { AlpacaProviderError, fetchLatestStockQuote } from './alpaca-provider.js';
 import { AlpacaStockInventorySource } from '../execution/alpaca-stock-inventory-source.js';
+import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
 import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.js';
 import { PostgresP2EEvidenceStore } from './p2e-evidence-store.js';
@@ -527,7 +528,7 @@ export async function runAutonomousRuntimeCycle(
             optionsCapabilityVerified:master.optionsCapabilityVerified,aegisState,
             killSwitchActive:executionControl.emergencyExecutionLock||!executionControl.managementSubmissionEnabled,
             paperEvidenceRiskCap:environment.PAPER_EVIDENCE_RISK_CAP,executionLegs:compiled.legs,
-            now:reconciliation.observedAt,decisionExpiresAt:new Date(Date.parse(reconciliation.observedAt)+30_000).toISOString()});
+            now:reconciliation.observedAt,decisionExpiresAt:new Date(Date.parse(reconciliation.observedAt)+paperBootstrapRuntimePolicy.quoteAge.planWindowManagementMilliseconds).toISOString()});
           if(assembly.state==='READY')await actionPlanStore.publishManagementPlans(assembly.decision,assembly.plans,reconciliation.observedAt);
           if(assembly.state==='BLOCKED'){
             // An earlier order for this chain is still in flight: that is expected, not a degraded job; keep scanning other chains.
@@ -613,8 +614,10 @@ export async function runAutonomousRuntimeCycle(
           // Re-verify the sealed economic payload immediately before the handoff can reach the coordinator.
           const integrity=await planStore.verifyBeforeSubmit(plan.actionPlanId,plan);
           if(!integrity.ok){
-            await planStore.quarantine(plan.actionPlanId,['PLAN_INTEGRITY_MISMATCH'],new Date().toISOString());
-            return degraded('PLAN_INTEGRITY_MISMATCH',retryAt);
+            // PLAN_NO_LONGER_CURRENT (REQUIRES_NEW_DECISION) is a superseded decision, not tampering; everything else is integrity.
+            const code=integrity.mismatches.length===1&&integrity.mismatches[0]===planNoLongerCurrent?planNoLongerCurrent:'PLAN_INTEGRITY_MISMATCH';
+            await planStore.quarantine(plan.actionPlanId,[code],new Date().toISOString());
+            return degraded(code,retryAt);
           }
         }
         const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(pool,master.executionAccountId),{

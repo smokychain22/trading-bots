@@ -127,8 +127,10 @@ test('claimNext never returns a plan when every candidate row is corrupt', async
 });
 
 test('verifyBeforeSubmit proves the stored row is still the claimed plan and is CLAIMED', async () => {
+  let chainRow: Record<string, unknown> = { closed_at: null, chain_state: 'RECOVERY_WAIT', plan_state: 'RECOVERY_WAIT' };
   const run = async (row: Record<string, unknown> | null, claimed: ApprovedMasterPaperActionPlan = plan) => {
-    const client = new Scripted(async () => ({ rows: row === null ? [] : [row], rowCount: row === null ? 0 : 1 }));
+    const client = new Scripted(async (sql) => sql.includes('trade.economic_chain') ? { rows: [chainRow], rowCount: 1 }
+      : { rows: row === null ? [] : [row], rowCount: row === null ? 0 : 1 });
     const pool = { connect: async () => (client as unknown as PoolClient), query: async () => ({ rows: row === null ? [] : [row], rowCount: row === null ? 0 : 1 }) } as unknown as Pool;
     return new PostgresMasterPaperActionPlanStore(pool).verifyBeforeSubmit(plan.actionPlanId, claimed);
   };
@@ -140,6 +142,15 @@ test('verifyBeforeSubmit proves the stored row is still the claimed plan and is 
   assert.equal((await run({ ...stored, ...ipColumns(sealed(mutated, { content_hash: actionPlanContentHash(plan) })) })).ok, false, 'stored payload mutated after claim');
   // the in-memory claimed plan differs from what is stored (tampered between claim and submit)
   assert.deepEqual((await run(stored, { ...plan, economicBoundary: 1 })).mismatches, ['CLAIMED_PLAN_DIFFERS_FROM_STORED']);
+  // the management decision must still be current for its chain: chain closed or lifecycle moved on => PLAN_NO_LONGER_CURRENT (new decision)
+  chainRow = { closed_at: null, chain_state: 'CC_OPEN', plan_state: 'RECOVERY_WAIT' };
+  assert.deepEqual((await run(stored)).mismatches, ['PLAN_NO_LONGER_CURRENT']);
+  chainRow = { closed_at: NOW, chain_state: 'CLOSED', plan_state: 'RECOVERY_WAIT' };
+  assert.deepEqual((await run(stored)).mismatches, ['PLAN_NO_LONGER_CURRENT']);
+  chainRow = { closed_at: null, chain_state: 'RECOVERY_WAIT', plan_state: null };
+  assert.deepEqual((await run(stored)).mismatches, ['PLAN_NO_LONGER_CURRENT'], 'unknown decision lifecycle is never assumed current');
+  chainRow = { closed_at: null, chain_state: 'RECOVERY_WAIT', plan_state: 'RECOVERY_WAIT' };
+  assert.deepEqual(await run(stored), { ok: true, mismatches: [] });
 });
 
 test('replaying the same plan is deterministic: identical hash, identical canonical payload', () => {

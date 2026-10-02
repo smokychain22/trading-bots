@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
+import { paperBootstrapRuntimePolicy } from '../theta/paper-bootstrap-runtime-policy.js';
 import { AlpacaProviderError, fetchMasterAccountEvidence, fetchOptionSnapshots, type AlpacaProviderConfig } from '../theta/alpaca-provider.js';
 import { discoverRealUniverse, type UniverseDiscoveryResult } from '../theta/universe-discovery.js';
 import type { UnderlyingCandidateInput } from '../theta/universe-policy.js';
@@ -516,7 +517,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const marketSession=snapshot.marketSession!==null&&typeof snapshot.marketSession==='object'&&!Array.isArray(snapshot.marketSession)
         ? snapshot.marketSession as Record<string,unknown>:{};
       const planNow=input.now();
-      const boundedExpiry=new Date(Date.parse(planNow)+45_000).toISOString();
+      const boundedExpiry=new Date(Date.parse(planNow)+paperBootstrapRuntimePolicy.quoteAge.planWindowNewRiskMilliseconds).toISOString();
       const sessionClose=typeof marketSession.nextClose==='string'&&Number.isFinite(Date.parse(marketSession.nextClose))
         ? new Date(marketSession.nextClose).toISOString():null;
       const decisionExpiresAt=sessionClose!==null&&Date.parse(sessionClose)<Date.parse(boundedExpiry)?sessionClose:boundedExpiry;

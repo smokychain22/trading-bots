@@ -5,24 +5,11 @@ import { managementOrderActions, type ManagementDecisionDraft } from './manageme
 import { masterPaperActionPlanSchema, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
 import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import { verifyAegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
-import { actionPlanContentHash, planIntegrityMismatch, verifyActionPlanRow, type ActionPlanRowForIntegrity } from './action-plan-integrity.js';
+import { actionPlanContentHash, planIntegrityMismatch, planIntegrityRowFromAliases, planIntegritySelectColumns, verifyActionPlanRow } from './action-plan-integrity.js';
 
-const integrityColumns=`p.action_plan_id AS ip_action_plan_id,p.decision_id AS ip_decision_id,p.execution_account_id AS ip_execution_account_id,
-  p.plan_version AS ip_plan_version,p.plan_json AS ip_plan_json,p.content_hash AS ip_content_hash,p.execution_tier AS ip_execution_tier,
-  p.canonical_quantity AS ip_canonical_quantity,p.paper_evidence_quantity AS ip_paper_evidence_quantity,
-  p.empirical_economics_ready AS ip_empirical_economics_ready,p.expected_after_cost_ev AS ip_expected_after_cost_ev,
-  p.authority_kind AS ip_authority_kind,p.management_input_snapshot_id AS ip_management_input_snapshot_id,
-  p.management_action_frontier_id AS ip_management_action_frontier_id,p.action_group_id AS ip_action_group_id,
-  p.leg_sequence AS ip_leg_sequence,p.depends_on_action_plan_id AS ip_depends_on_action_plan_id`;
-
-const integrityRow=(row:Record<string,unknown>):ActionPlanRowForIntegrity=>({
-  action_plan_id:row.ip_action_plan_id,decision_id:row.ip_decision_id,execution_account_id:row.ip_execution_account_id,
-  plan_version:row.ip_plan_version,plan_json:row.ip_plan_json,content_hash:row.ip_content_hash,execution_tier:row.ip_execution_tier,
-  canonical_quantity:row.ip_canonical_quantity,paper_evidence_quantity:row.ip_paper_evidence_quantity,
-  empirical_economics_ready:row.ip_empirical_economics_ready,expected_after_cost_ev:row.ip_expected_after_cost_ev,
-  authority_kind:row.ip_authority_kind,management_input_snapshot_id:row.ip_management_input_snapshot_id,
-  management_action_frontier_id:row.ip_management_action_frontier_id,action_group_id:row.ip_action_group_id,
-  leg_sequence:row.ip_leg_sequence,depends_on_action_plan_id:row.ip_depends_on_action_plan_id});
+export const planNoLongerCurrent='PLAN_NO_LONGER_CURRENT' as const;
+const integrityColumns=planIntegritySelectColumns;
+const integrityRow=planIntegrityRowFromAliases;
 
 export type MasterPaperActionPlanState='READY'|'CLAIMED'|'WAITING_GATE'|'SUBMITTED'|'TERMINAL'|'QUARANTINED';
 
@@ -311,6 +298,17 @@ export class PostgresMasterPaperActionPlanStore {
     if(!integrity.ok)return {ok:false,mismatches:integrity.mismatches};
     if(actionPlanContentHash(integrity.plan)!==actionPlanContentHash(claimed))return {ok:false,mismatches:['CLAIMED_PLAN_DIFFERS_FROM_STORED']};
     if(row.status!=='CLAIMED')return {ok:false,mismatches:['PLAN_NOT_CLAIMED']};
+    if(claimed.decisionAuthority==='MANAGEMENT'){
+      // The management decision must still be the current one for its chain: the chain is open and still in the lifecycle
+      // state the decision was made in. Otherwise the decision is superseded and a NEW management decision is required.
+      const chain=await withRuntimePostgresReadRetry(this.pool,(client)=>client.query(`SELECT ec.closed_at,ec.lifecycle_state::text AS chain_state,
+        mis.lifecycle_state::text AS plan_state FROM trade.economic_chain ec
+        LEFT JOIN trade.management_input_snapshot mis ON mis.management_input_snapshot_id=$2 WHERE ec.chain_id=$1`,
+      [claimed.chainId,claimed.managementInputSnapshotId]));
+      const current=chain.value.rows[0] as Record<string,unknown>|undefined;
+      if(current===undefined||current.closed_at!==null||current.plan_state===null||current.plan_state===undefined
+        ||String(current.chain_state)!==String(current.plan_state))return {ok:false,mismatches:[planNoLongerCurrent]};
+    }
     return {ok:true,mismatches:[]};
   }
 

@@ -26,10 +26,22 @@ export const paperBootstrapRuntimePolicy = Object.freeze({
   ownership: Object.freeze({
     thetaQAcceptabilityFloor: 0.3,
   }),
+  /**
+   * QUOTE_FRESHNESS_CONTRACT (theta-quote-freshness-contract-v1). Three DIFFERENT, deliberately separate clocks:
+   *  - DECISION_EVIDENCE_MAX_AGE: candidate/finalist/management stock quotes used to DECIDE (30 s).
+   *  - PLAN_WINDOW: how long a published plan authorizes a broker action after its evidence was frozen. New-risk plans (shadow
+   *    runtime) get 45 s, management plans 30 s (the reconciliation snapshot is the evidence time and management never trades
+   *    on older evidence than it decides on).
+   *  - SUBMIT_EVIDENCE_MAX_AGE (`preSubmitMaximumMilliseconds`): the cap on the age of the BBO used to PRICE the order at submit.
+   *    The handoff applies min(cap, time left in the plan window), so a fresh decision can never justify a stale submit, and the
+   *    cap equals the longest plan window (45 s) so it is never the looser of the two for any plan.
+   */
   quoteAge: Object.freeze({
     candidateMaximumSeconds: 30,
     finalistMaximumSeconds: 30,
     preSubmitMaximumMilliseconds: 45_000,
+    planWindowNewRiskMilliseconds: 45_000,
+    planWindowManagementMilliseconds: 30_000,
     goodMaximumSeconds: 10,
     staleMinimumSeconds: 60,
   }),
@@ -87,6 +99,8 @@ export const presessionConfigurationRegistry: readonly PresessionConfigurationEn
   entry('quote.candidateMaximumSeconds', paperBootstrapRuntimePolicy.quoteAge.candidateMaximumSeconds, 'SECONDS', 'HARD_SAFETY', 'ThetaShadowCycle'),
   entry('quote.finalistMaximumSeconds', paperBootstrapRuntimePolicy.quoteAge.finalistMaximumSeconds, 'SECONDS', 'HARD_SAFETY', 'FinalistQuoteRefresh'),
   entry('quote.preSubmitMaximumMilliseconds', paperBootstrapRuntimePolicy.quoteAge.preSubmitMaximumMilliseconds, 'MILLISECONDS', 'HARD_SAFETY', 'MasterPaperActionHandoff'),
+  entry('quote.planWindowNewRiskMilliseconds', paperBootstrapRuntimePolicy.quoteAge.planWindowNewRiskMilliseconds, 'MILLISECONDS', 'HARD_SAFETY', 'ProductionShadowRuntime'),
+  entry('quote.planWindowManagementMilliseconds', paperBootstrapRuntimePolicy.quoteAge.planWindowManagementMilliseconds, 'MILLISECONDS', 'HARD_SAFETY', 'AutonomousRuntimeManagement'),
   entry('quote.goodMaximumSeconds', paperBootstrapRuntimePolicy.quoteAge.goodMaximumSeconds, 'SECONDS', 'STRUCTURAL_FILTER', 'OptionQuoteFreshness'),
   entry('quote.staleMinimumSeconds', paperBootstrapRuntimePolicy.quoteAge.staleMinimumSeconds, 'SECONDS', 'HARD_SAFETY', 'OptionQuoteFreshness'),
   entry('conventional.minimumDte', paperBootstrapRuntimePolicy.conventional.minimumDte, 'DAYS', 'STRUCTURAL_FILTER', 'ThetaQCandidateLattice'),
@@ -125,7 +139,8 @@ export const decisionCriticalConfigurationFields: readonly string[] = Object.fre
   'conventional.minimumDte', 'conventional.maximumDte', 'conventional.deltaBands',
   'conventional.minimumOpenInterest', 'conventional.minimumVolume', 'conventional.maximumSpreadPct',
   'conventional.earningsExclusionDays', 'ownership.thetaQAcceptabilityFloor', 'quote.candidateMaximumSeconds', 'quote.finalistMaximumSeconds',
-  'quote.preSubmitMaximumMilliseconds', 'quote.goodMaximumSeconds', 'quote.staleMinimumSeconds',
+  'quote.preSubmitMaximumMilliseconds', 'quote.planWindowNewRiskMilliseconds', 'quote.planWindowManagementMilliseconds',
+  'quote.goodMaximumSeconds', 'quote.staleMinimumSeconds',
   'sizing.riskBudgetQuantityCap', 'sizing.collateralQuantityCap', 'sizing.concentrationQuantityCap',
   'sizing.assignmentCapacityQuantityCap', 'sizing.tailRiskQuantityCap', 'sizing.correlationQuantityCap',
   'sizing.liquidityQuantityCap', 'sizing.reducedStateMultiplier', 'aegis.hardCapMultiplier',
@@ -166,6 +181,13 @@ export function auditPresessionConfiguration(): PresessionConfigurationAudit {
     candidateQuoteAgePositive: paperBootstrapRuntimePolicy.quoteAge.candidateMaximumSeconds > 0,
     finalistQuoteAgePositive: paperBootstrapRuntimePolicy.quoteAge.finalistMaximumSeconds > 0,
     preSubmitQuoteAgePositive: paperBootstrapRuntimePolicy.quoteAge.preSubmitMaximumMilliseconds > 0,
+    // The submit cap is never looser than the longest plan window, and no plan window outlives the decision-evidence age plus its
+    // own execution step: management plans may not outlive decision evidence.
+    submitCapCoversPlanWindows: paperBootstrapRuntimePolicy.quoteAge.preSubmitMaximumMilliseconds
+      >= Math.max(paperBootstrapRuntimePolicy.quoteAge.planWindowNewRiskMilliseconds,
+        paperBootstrapRuntimePolicy.quoteAge.planWindowManagementMilliseconds),
+    managementPlanWindowWithinDecisionEvidenceAge: paperBootstrapRuntimePolicy.quoteAge.planWindowManagementMilliseconds
+      <= paperBootstrapRuntimePolicy.quoteAge.candidateMaximumSeconds * 1000,
     freshnessBandsOrdered: paperBootstrapRuntimePolicy.quoteAge.goodMaximumSeconds < paperBootstrapRuntimePolicy.quoteAge.staleMinimumSeconds,
     spreadBounded: paperBootstrapRuntimePolicy.conventional.maximumSpreadPct > 0 && paperBootstrapRuntimePolicy.conventional.maximumSpreadPct <= 1,
     concentrationBounded: paperBootstrapRuntimePolicy.aegis.maximumTickerConcentrationPct > 0 && paperBootstrapRuntimePolicy.aegis.maximumTickerConcentrationPct <= 1,
