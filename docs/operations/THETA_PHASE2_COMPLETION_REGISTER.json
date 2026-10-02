@@ -289,7 +289,7 @@
       "PROVIDER_LIMITED": false,
       "OWNER_GATED": false,
       "FIX_REQUIRED": "NO_KNOWN_SOURCE_FIX_REMAINING_FOR_REVIEWED_REQUIREMENT",
-      "FIX_COMMIT": "d447563f67f000879d83c33e5cecb613a3e67248",
+      "FIX_COMMIT": "d9a0156a46531e357a6d32e73a29d701ffe0b48a",
       "TEST_RESULT": {
         "requirementId": "2.2.FAULT_MATRIX",
         "reviewedBehavior": "Deterministic error injection covers acquisition, checkout, query, rollback, ambiguous commit identity readback and bounded queue release. Dedicated disposable PostgreSQL execution is additionally required for full fault-matrix closure.",
@@ -388,15 +388,15 @@
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
-        "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "f2ea2cd915ccc5d609c7a435b0b0c6a2a2aefce912645665f884aba6a6835524"
+        "artifactHash": "f2ea2cd915ccc5d609c7a435b0b0c6a2a2aefce912645665f884aba6a6835524",
+        "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json"
       },
       "RUNTIME_EVIDENCE": "Executed disposable PostgreSQL evidence. Deployed current-worker behavior remains separately unproven.",
       "DISPOSABLE_DB_EVIDENCE": {
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_DISPOSABLE_CI.json",
-        "artifactHash": "ef4aded964caca52f3a99fa105aa9d2720a6ade789ba86a5faa5305b224b2ec4",
-        "ciRun": "36918038048",
-        "sourceSha": "d447563f67f000879d83c33e5cecb613a3e67248",
+        "artifactHash": "e0da8df35bda5cbe7fe7fbebdb4d107b1d43cd82fd38b6a3d1714691d30de463",
+        "ciRun": "36985694766",
+        "sourceSha": "d9a0156a46531e357a6d32e73a29d701ffe0b48a",
         "requirementId": "2.2.FAULT_MATRIX"
       }
     },
@@ -635,7 +635,7 @@
       "PROVIDER_LIMITED": false,
       "OWNER_GATED": false,
       "FIX_REQUIRED": "NO_KNOWN_SOURCE_FIX_REMAINING_FOR_REVIEWED_REQUIREMENT",
-      "FIX_COMMIT": "d447563f67f000879d83c33e5cecb613a3e67248",
+      "FIX_COMMIT": "d9a0156a46531e357a6d32e73a29d701ffe0b48a",
       "TEST_RESULT": {
         "requirementId": "2.4.FRESH_CYCLE",
         "reviewedBehavior": "Runtime cycle store expires only stale unfinished identities. Actual shadow cycle obtains a new run ID and fails stale evidence closed. Production customer persistence recovery test is separately required, and offline circuit tests do not prove deployed circuit behavior.",
@@ -699,15 +699,15 @@
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
-        "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "f2ea2cd915ccc5d609c7a435b0b0c6a2a2aefce912645665f884aba6a6835524"
+        "artifactHash": "f2ea2cd915ccc5d609c7a435b0b0c6a2a2aefce912645665f884aba6a6835524",
+        "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json"
       },
       "RUNTIME_EVIDENCE": "Executed disposable PostgreSQL evidence. Deployed current-worker behavior remains separately unproven.",
       "DISPOSABLE_DB_EVIDENCE": {
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_DISPOSABLE_CI.json",
-        "artifactHash": "ef4aded964caca52f3a99fa105aa9d2720a6ade789ba86a5faa5305b224b2ec4",
-        "ciRun": "36918038048",
-        "sourceSha": "d447563f67f000879d83c33e5cecb613a3e67248",
+        "artifactHash": "e0da8df35bda5cbe7fe7fbebdb4d107b1d43cd82fd38b6a3d1714691d30de463",
+        "ciRun": "36985694766",
+        "sourceSha": "d9a0156a46531e357a6d32e73a29d701ffe0b48a",
         "requirementId": "2.4.FRESH_CYCLE"
       }
     },
@@ -2680,8 +2680,8 @@
   "checkpoint": {
     "CURRENT_PHASE": 3,
     "EXACT_CI": {
-      "sourceSha": "d447563f67f000879d83c33e5cecb613a3e67248",
-      "runId": "36918038048",
+      "sourceSha": "d9a0156a46531e357a6d32e73a29d701ffe0b48a",
+      "runId": "36985694766",
       "conclusion": "success"
     },
     "COMPLETED": "21 reviewed Phase-2 engineering requirements have executed evidence, including real disposable database fault and fresh-cycle recovery tests.",
