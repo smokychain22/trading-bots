@@ -587,7 +587,7 @@ test('HDAC-05: order construction and the master handoff enforce the same accoun
 });
 
 test('HDAC-05: the production commitment feed is UNKNOWN on any external/unknown broker fact or read error', async () => {
-  const rows = (positions: unknown[], orders: unknown[], plans: unknown[] = []) => ({ query: async (sql: string) => ({ rows: /broker_position_snapshot/.test(sql) ? positions : /master_paper_action_plan/.test(sql) ? plans : orders }) });
+  const rows = (positions: unknown[], orders: unknown[], plans: unknown[] = []) => ({ query: async (sql: string) => ({ rows: /broker_reconciliation_snapshot/.test(sql) ? [{ observed_at: '2026-10-13T13:59:00.000Z' }] : /trade\.fill/.test(sql) ? [] : /broker_position_snapshot/.test(sql) ? positions : /master_paper_action_plan/.test(sql) ? plans : orders }) });
   const input = { executionAccountId: UUID(9), reconciliationSnapshotId: UUID(2), underlying: 'AAPL', externalOrUnknownCount: 0 };
   assert.equal(await readCommittedShortCallContracts(rows([], []) as never, input), 0);
   assert.equal(await readCommittedShortCallContracts(rows([{ symbol: 'AAPL261120C00205000', quantity: -2, side: 'short', asset_class: 'us_option' }], []) as never, input), 2);

@@ -72,6 +72,23 @@ export async function readCommittedShortCallContracts(pool: Pick<Pool, 'query'>,
       orderId: `plan:${String(row.id)}`, clientOrderId: null, symbol: row.symbol === null ? null : String(row.symbol),
       side: 'sell', positionIntent: 'sell_to_open' as const, quantity: row.quantity === null ? null : Number(row.quantity),
       limitPrice: null, status: 'planned', submittedAt: null, receivedAt: '' }));
+    // Sell fills that landed AFTER the reconciliation snapshot (a filled or part-filled-then-cancelled covered call is a
+    // terminal intent, so it is excluded above, yet the snapshot position does not show it yet). Without this a fresh fill
+    // would be a commitment gap. A snapshot with no observed time cannot prove the gap is empty, so it is UNKNOWN.
+    const snapshot = await pool.query(
+      `SELECT observed_at::text AS observed_at FROM trade.broker_reconciliation_snapshot WHERE reconciliation_snapshot_id=$1`,
+      [input.reconciliationSnapshotId]);
+    const snapshotObservedAt = (snapshot.rows[0] as Record<string, unknown> | undefined)?.observed_at;
+    if (snapshotObservedAt === undefined || snapshotObservedAt === null) return null;
+    const lateFills = await pool.query(
+      `SELECT oi.order_intent_id::text AS id, oi.broker_symbol, oi.side, oi.position_intent, sum(f.quantity)::float8 AS quantity, oi.status::text AS status
+         FROM trade.order_intent oi
+         JOIN trade.broker_order bo ON bo.order_intent_id=oi.order_intent_id
+         JOIN trade.fill f ON f.broker_order_id=bo.broker_order_id
+        WHERE oi.execution_account_id=$1 AND oi.status::text = ANY($2::text[]) AND lower(oi.side)='sell'
+          AND f.filled_at > $3::timestamptz
+        GROUP BY oi.order_intent_id, oi.broker_symbol, oi.side, oi.position_intent, oi.status`,
+      [input.executionAccountId, [...terminalOrderIntentStates], String(snapshotObservedAt)]);
     const positionRows: AlpacaPositionSnapshot[] = positions.rows.map((row: Record<string, unknown>) => ({
       symbol: String(row.symbol), assetClass: row.asset_class === null ? null : String(row.asset_class),
       quantity: row.quantity === null ? null : Number(row.quantity), side: row.side === null ? null : String(row.side),
@@ -82,7 +99,13 @@ export async function readCommittedShortCallContracts(pool: Pick<Pool, 'query'>,
       positionIntent: (row.position_intent === null ? null : String(row.position_intent).toLowerCase()) as AlpacaOpenOrderSnapshot['positionIntent'],
       quantity: row.quantity === null ? null : Number(row.quantity), limitPrice: null, status: String(row.status),
       submittedAt: null, receivedAt: '' }));
-    return deriveCommittedShortCallContracts(input.underlying, positionRows, [...orderRows, ...planRows]);
+    const lateFillRows: AlpacaOpenOrderSnapshot[] = lateFills.rows.map((row: Record<string, unknown>) => ({
+      orderId: `fill:${String(row.id)}`, clientOrderId: null, symbol: row.broker_symbol === null ? null : String(row.broker_symbol),
+      side: String(row.side).toLowerCase(),
+      positionIntent: (row.position_intent === null ? null : String(row.position_intent).toLowerCase()) as AlpacaOpenOrderSnapshot['positionIntent'],
+      quantity: row.quantity === null ? null : Number(row.quantity), limitPrice: null, status: String(row.status),
+      submittedAt: null, receivedAt: '' }));
+    return deriveCommittedShortCallContracts(input.underlying, positionRows, [...orderRows, ...lateFillRows, ...planRows]);
   } catch {
     return null;
   }
