@@ -1023,3 +1023,18 @@ itMockedProviderRealCodePath('a materially DIFFERENT market state (different acc
   const second = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-B'));
   assert.notEqual(first.snapshotContentHash, second.snapshotContentHash);
 });
+
+itMockedProviderRealCodePath('an option chain the provider says is not finished (page cap reached) is incomplete evidence and can never produce a trade', async () => {
+  const incompleteFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const response = await mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, init ?? {});
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (!url.includes('/v2/options/contracts')) return response;
+    const body = await response.json() as Record<string, unknown>;
+    return jsonResponse(200, { ...body, next_page_token: 'more-pages-exist' });
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ maxOptionPages: 1,
+    alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: incompleteFetch } }));
+  assert.ok(result.blockers.some((blocker) => blocker.startsWith('OPTION_CONTRACTS_INCOMPLETE')), `blockers: ${result.blockers.join(',')}`);
+  assert.equal(result.optionContractsComplete, false);
+  assert.ok(!['OPEN_CSP', 'OPEN_NEW_RISK'].includes(String(result.orchestration?.receipt.winningAction)));
+});
