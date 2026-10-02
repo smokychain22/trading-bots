@@ -351,7 +351,8 @@ export function deriveCommittedShortCallContracts(
 ): number | null {
   let committed = 0;
   for (const position of positions) {
-    if (position.assetClass !== 'us_option') continue;
+    // A row with an UNKNOWN (null) asset class whose symbol is an OCC contract is treated as an option, never skipped.
+    if (position.assetClass !== 'us_option' && !(position.assetClass == null && parseOccOptionSymbol(position.symbol) !== null)) continue;
     const parsed = parseOccOptionSymbol(position.symbol);
     if (parsed === null) return null; // an unreadable option row could be a short call on this underlying
     if (parsed.underlying !== underlying || parsed.optionType !== 'CALL') continue;

@@ -516,7 +516,7 @@ export async function runAutonomousRuntimeCycle(
           const chainInFlight=compiled.state==='READY'&&master.executionAccountId!==null
             ?await readManagementChainInFlight(pool,master.executionAccountId,state.chainId):{state:'UNKNOWN' as const};
           const opensCall=compiled.state==='READY'&&compiled.legs.some((leg)=>leg.action==='OPEN_CC'||leg.action==='ROLL_CC_OPEN'||leg.action==='SELL_STOCK');
-          const committedShortCallContracts=opensCall&&master.executionAccountId!==null
+          const committedShortCallContracts=opensCall&&master.executionAccountId!==null&&reconciliation.dataQuality==='GOOD'
             ?await readCommittedShortCallContracts(pool,{executionAccountId:master.executionAccountId,
               reconciliationSnapshotId:reconciliation.snapshotId,underlying:state.underlying,
               externalOrUnknownCount:reconciliation.externalOrUnknownCount}):null;

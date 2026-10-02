@@ -87,7 +87,8 @@ export function decideAdaptiveLimit(input: {
   let limitPrice = roundedTick(bounded, input.policy.tickSize, input.side);
   // A zero bid floors a BUY at 0; an order needs a positive limit, so use one tick (still bounded by boundary and ask below).
   if (input.side === 'BUY' && limitPrice <= 0) limitPrice = input.policy.tickSize;
-  if (input.side === 'BUY' && limitPrice > ask) {
+  // Tick rounding (SELL rounds up) can lift the limit above a sub-tick ask: not placeable inside the BBO, so cancel (never throw later).
+  if ((input.side === 'BUY' || input.side === 'SELL') && limitPrice > ask) {
     return { policyVersion: adaptiveLimitPolicyVersion, action: 'CANCEL', limitPrice: null,
       mid, spread, spreadPct, microprice, reason: 'ECONOMIC_BOUNDARY_UNREACHABLE' };
   }

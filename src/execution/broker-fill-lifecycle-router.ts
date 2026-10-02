@@ -13,6 +13,8 @@ export interface FillLifecycleContext {
   readonly priorPartialClosedQuantity?:number; readonly priorPartialRealizedOptionPnl?:number;
   readonly chainId:string; readonly decisionId:string|null; readonly optionLegId:string|null;
   readonly optionContractId:string|null; readonly stockLotId:string|null;
+  /** SELL_STOCK: shares in the single open lot and the count of open lots on the chain. A disposal is recorded only when exactly one open lot is sold in full (one basis, no cross-lot P&L blending). */
+  readonly stockLotShares?:number|null; readonly openStockLotCount?:number|null;
   readonly multiplier:number|null; readonly entryCreditDebit:number|null; readonly economicBasisPerShare:number|null;
   readonly nextState:'RECOVERY_WAIT'|'REDEPLOY'|'CLOSED'|'ROLL_DECISION'|null;
   readonly fills:readonly ConfirmedFillFact[];
@@ -100,6 +102,8 @@ export function routeConfirmedFillLifecycle(input:FillLifecycleContext):RoutedFi
   }
   if(input.action==='SELL_STOCK'){
     if(input.stockLotId===null||input.economicBasisPerShare===null) return missing();
+    if(input.openStockLotCount!==1||input.stockLotShares===null||input.stockLotShares===undefined||input.stockLotShares!==filled)
+      return {state:'UNKNOWN',reasonCode:'STOCK_DISPOSAL_LOT_COVERAGE_MISMATCH',application:null};
     return confirmed({...common,eventKind:'STOCK_DISPOSAL',stockLotId:input.stockLotId,disposedPricePerShare:price,
       realizedStockPnl:(price-input.economicBasisPerShare)*filled});
   }

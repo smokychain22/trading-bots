@@ -1,7 +1,7 @@
 {
   "computed": {
-    "PHASE2_TOTAL": 63,
-    "PASS": 44,
+    "PHASE2_TOTAL": 64,
+    "PASS": 45,
     "OWNER_POLICY": 9,
     "PROVIDER_LIMITED": 1,
     "FUTURE_MARKET": 2,
@@ -624,10 +624,25 @@
       "CURRENT_BEHAVIOR": "cash = strike*100*shares; basis net of option premium; unknown fees/dividends keep total UNKNOWN",
       "EXPECTED_BEHAVIOR": "same",
       "TEST": [
-        "tests/phase2-chain-assignment-economics.test.ts"
+        "tests/phase2-chain-assignment-economics.test.ts",
+        "tests/phase2-chain-stock-disposal.test.ts"
       ],
       "STATUS": "PASS",
       "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "STOCK-DISPOSAL-LOT-COVERAGE",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "broker-fill-lifecycle-router.ts, postgres-broker-fill-lifecycle-orchestrator.ts",
+      "CANONICAL_AUTHORITY": "whole-chain accounting",
+      "CURRENT_BEHAVIOR": "a stock sale is recorded only when exactly one open lot is sold in full; otherwise UNKNOWN (no cross-lot basis blending)",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-chain-stock-disposal.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
       "NEXT_ACTION": "none"
     },
     {

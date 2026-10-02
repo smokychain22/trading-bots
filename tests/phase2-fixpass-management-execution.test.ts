@@ -584,11 +584,16 @@ test('HDAC-05: order construction and the master handoff enforce the same accoun
 });
 
 test('HDAC-05: the production commitment feed is UNKNOWN on any external/unknown broker fact or read error', async () => {
-  const rows = (positions: unknown[], orders: unknown[]) => ({ query: async (sql: string) => ({ rows: /broker_position_snapshot/.test(sql) ? positions : orders }) });
+  const rows = (positions: unknown[], orders: unknown[], plans: unknown[] = []) => ({ query: async (sql: string) => ({ rows: /broker_position_snapshot/.test(sql) ? positions : /master_paper_action_plan/.test(sql) ? plans : orders }) });
   const input = { executionAccountId: UUID(9), reconciliationSnapshotId: UUID(2), underlying: 'AAPL', externalOrUnknownCount: 0 };
   assert.equal(await readCommittedShortCallContracts(rows([], []) as never, input), 0);
   assert.equal(await readCommittedShortCallContracts(rows([{ symbol: 'AAPL261120C00205000', quantity: -2, side: 'short', asset_class: 'us_option' }], []) as never, input), 2);
   assert.equal(await readCommittedShortCallContracts(rows([], [{ id: 'i1', broker_symbol: 'AAPL261120C00210000', side: 'sell', position_intent: 'SELL_TO_OPEN', quantity: 1, status: 'SUBMITTED' }]) as never, input), 1);
+  // a READY/CLAIMED covered-call plan (e.g. a sibling chain planned in the same cycle) is a commitment before any order intent exists
+  assert.equal(await readCommittedShortCallContracts(rows([], [], [{ id: 'p1', symbol: 'AAPL261120C00205000', quantity: 1 }]) as never, input), 1);
+  assert.equal(await readCommittedShortCallContracts(rows([], [], [{ id: 'p2', symbol: 'MSFT261120C00400000', quantity: 3 }]) as never, input), 0);
+  // a position row with an UNKNOWN asset class that is an OCC short call is counted, never skipped
+  assert.equal(await readCommittedShortCallContracts(rows([{ symbol: 'AAPL261120C00205000', quantity: -1, side: 'short', asset_class: null }], []) as never, input), 1);
   assert.equal(await readCommittedShortCallContracts(rows([], []) as never, { ...input, externalOrUnknownCount: 1 }), null);
   assert.equal(await readCommittedShortCallContracts({ query: async () => { throw new Error('down'); } } as never, input), null);
   assert.equal(await readCommittedShortCallContracts(rows([], [{ id: 'i2', broker_symbol: 'AAPL261120C00210000', side: 'sell', position_intent: null, quantity: 1, status: 'READY' }]) as never, input), null);

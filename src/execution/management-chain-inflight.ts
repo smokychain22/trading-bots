@@ -59,6 +59,19 @@ export async function readCommittedShortCallContracts(pool: Pick<Pool, 'query'>,
          FROM trade.order_intent
         WHERE execution_account_id=$1 AND status::text <> ALL($2::text[]) AND lower(side)='sell'`,
       [input.executionAccountId, [...terminalOrderIntentStates]]);
+    // Published-but-not-yet-submitted covered-call opens (READY/CLAIMED/WAITING_GATE plans, e.g. a sibling chain planned in the
+    // same cycle) are commitments too; without them two chains planned together could each see zero. Double counting a plan that
+    // already became an order intent can only over-block, never under-block.
+    const plans = await pool.query(
+      `SELECT p.action_plan_id::text AS id, p.plan_json->>'symbol' AS symbol, (p.plan_json->>'quantity')::float8 AS quantity
+         FROM trade.master_paper_action_plan p
+        WHERE p.execution_account_id=$1 AND p.status IN ('READY','CLAIMED','WAITING_GATE')
+          AND p.plan_json->>'action' IN ('OPEN_CC','ROLL_CC_OPEN')`,
+      [input.executionAccountId]);
+    const planRows: AlpacaOpenOrderSnapshot[] = plans.rows.map((row: Record<string, unknown>) => ({
+      orderId: `plan:${String(row.id)}`, clientOrderId: null, symbol: row.symbol === null ? null : String(row.symbol),
+      side: 'sell', positionIntent: 'sell_to_open' as const, quantity: row.quantity === null ? null : Number(row.quantity),
+      limitPrice: null, status: 'planned', submittedAt: null, receivedAt: '' }));
     const positionRows: AlpacaPositionSnapshot[] = positions.rows.map((row: Record<string, unknown>) => ({
       symbol: String(row.symbol), assetClass: row.asset_class === null ? null : String(row.asset_class),
       quantity: row.quantity === null ? null : Number(row.quantity), side: row.side === null ? null : String(row.side),
@@ -69,7 +82,7 @@ export async function readCommittedShortCallContracts(pool: Pick<Pool, 'query'>,
       positionIntent: (row.position_intent === null ? null : String(row.position_intent).toLowerCase()) as AlpacaOpenOrderSnapshot['positionIntent'],
       quantity: row.quantity === null ? null : Number(row.quantity), limitPrice: null, status: String(row.status),
       submittedAt: null, receivedAt: '' }));
-    return deriveCommittedShortCallContracts(input.underlying, positionRows, orderRows);
+    return deriveCommittedShortCallContracts(input.underlying, positionRows, [...orderRows, ...planRows]);
   } catch {
     return null;
   }

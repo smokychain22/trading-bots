@@ -31,3 +31,13 @@ test('an economic boundary outside the market cancels rather than posting an ind
   assert.equal(decideAdaptiveLimit({side:'SELL',quote:q,attempt:0,previousLimit:null,economicBoundary:1.21,economicsRemainPositive:true,policy}).reason,'ECONOMIC_BOUNDARY_UNREACHABLE');
   assert.equal(decideAdaptiveLimit({side:'BUY',quote:q,attempt:0,previousLimit:null,economicBoundary:.99,economicsRemainPositive:true,policy}).reason,'ECONOMIC_BOUNDARY_UNREACHABLE');
 });
+
+test('regression: a sub-tick SELL quote cannot be rounded up above the ask - it cancels instead of producing an out-of-BBO limit',()=>{
+  const sub={...q,bid:0.5025,ask:0.5075};
+  for(const attempt of [0,1,2]){
+    const result=decideAdaptiveLimit({side:'SELL',quote:sub,attempt,previousLimit:null,economicBoundary:0.5025,economicsRemainPositive:true,policy});
+    assert.equal(result.action,'CANCEL'); assert.equal(result.limitPrice,null); assert.equal(result.reason,'ECONOMIC_BOUNDARY_UNREACHABLE');
+  }
+  const locked=decideAdaptiveLimit({side:'SELL',quote:{...q,bid:10.005,ask:10.005},attempt:0,previousLimit:null,economicBoundary:10.005,economicsRemainPositive:true,policy});
+  assert.equal(locked.action,'CANCEL');
+});

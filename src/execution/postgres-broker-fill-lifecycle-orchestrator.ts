@@ -24,7 +24,7 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     oi.option_contract_id,oi.underlying_id,oc.contract_symbol,u.symbol AS underlying_symbol,oc.multiplier,ol.option_leg_id,ol.entry_credit_debit,
     ol.original_leg_quantity,COALESCE(pc.partial_closed_quantity,0) AS partial_closed_quantity,
     COALESCE(pc.partial_realized_pnl,0) AS partial_realized_pnl,
-    sl.stock_lot_id,sl.economic_basis_per_share,
+    sl.stock_lot_id,sl.economic_basis_per_share,sl.shares AS stock_lot_shares,sl.open_lot_count,
     COALESCE(jsonb_agg(jsonb_build_object('provider_fill_id',f.provider_fill_id,'quantity',f.quantity,
       'price_per_share',f.price_per_share,'filled_at',f.filled_at,'fees',f.fees) ORDER BY f.filled_at,f.provider_fill_id)
       FILTER(WHERE f.fill_id IS NOT NULL),'[]'::jsonb) AS fills
@@ -43,12 +43,12 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     LEFT JOIN LATERAL(SELECT sum(p.closed_quantity) AS partial_closed_quantity,
       sum(p.realized_pnl_before_fees) AS partial_realized_pnl
       FROM trade.option_partial_close_realization p WHERE p.option_leg_id=ol.option_leg_id) pc ON true
-    LEFT JOIN LATERAL(SELECT x.stock_lot_id,x.economic_basis_per_share FROM trade.stock_lot x WHERE x.chain_id=oi.chain_id AND x.disposed_at IS NULL ORDER BY x.acquired_at LIMIT 1) sl ON true
+    LEFT JOIN LATERAL(SELECT x.stock_lot_id,x.economic_basis_per_share,x.shares,(SELECT count(*) FROM trade.stock_lot y WHERE y.chain_id=oi.chain_id AND y.disposed_at IS NULL) AS open_lot_count FROM trade.stock_lot x WHERE x.chain_id=oi.chain_id AND x.disposed_at IS NULL ORDER BY x.acquired_at LIMIT 1) sl ON true
     WHERE oi.chain_id IS NOT NULL AND (f.filled_at IS NULL OR f.filled_at <= $2)
       AND oi.theta_action IN ('OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK')
     GROUP BY oi.order_intent_id,ec.bot_instance_id,oc.contract_symbol,u.symbol,oc.multiplier,ol.option_leg_id,
       ol.entry_credit_debit,ol.original_leg_quantity,pc.partial_closed_quantity,pc.partial_realized_pnl,
-      sl.stock_lot_id,sl.economic_basis_per_share
+      sl.stock_lot_id,sl.economic_basis_per_share,sl.shares,sl.open_lot_count
     ORDER BY oi.created_at,oi.order_intent_id`,[connectionId,observedAt]);
   const store=new PostgresLifecycleApplicationStore(pool),copyPlanner=new PostgresDisabledCopyPlanner(pool),results:LifecycleApplicationResult[]=[];
   let partial=0,unresolved=0; const rollRows=new Map<string,Row[]>();
@@ -74,7 +74,7 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
       priorPartialClosedQuantity:n(row.partial_closed_quantity)??0,priorPartialRealizedOptionPnl:n(row.partial_realized_pnl)??0,
       chainId:String(row.chain_id),
       decisionId:s(row.decision_id),optionLegId:action==='OPEN_CSP'||action==='OPEN_CC'?deterministicRuntimeUuid(`option-leg:${row.order_intent_id}`):s(row.option_leg_id),
-      optionContractId:s(row.option_contract_id),stockLotId:s(row.stock_lot_id),multiplier:n(row.multiplier),entryCreditDebit:n(row.entry_credit_debit),
+      optionContractId:s(row.option_contract_id),stockLotId:s(row.stock_lot_id),stockLotShares:n(row.stock_lot_shares),openStockLotCount:n(row.open_lot_count),multiplier:n(row.multiplier),entryCreditDebit:n(row.entry_credit_debit),
       economicBasisPerShare:n(row.economic_basis_per_share),nextState:action==='CLOSE_CSP'?'REDEPLOY':action==='CLOSE_CC'?'RECOVERY_WAIT':action==='SELL_STOCK'?'CLOSED':null,
       fills:fills(row.fills)};
     const routed=routeConfirmedFillLifecycle(context);
