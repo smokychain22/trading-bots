@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, normalize, relative, resolve } from 'node:path';
+import { dirname, join, normalize, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { canonicalSystemCapabilities } from '../src/theta/canonical-system-truth.js';
 import { profitabilityBrainMethodRegistry } from '../src/theta/profitability-brain-reality.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const rel = (path: string): string => relative(root, path).replaceAll('\\', '/');
 const read = (path: string): string => readFileSync(path, 'utf8');
 
 function listFiles(directory: string, extension: string): string[] {
