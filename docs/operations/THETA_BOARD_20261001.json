@@ -1,6 +1,6 @@
 {
   "asOf": {
-    "deployedRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
+    "deployedRelease": "637c7acf04962a1ccc0ddc370cf3cc0b92ea160d",
     "priorObservedRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
     "note": "rows describe the continuation branch head; runtime flags describe observation at the deployed release only",
     "runtimeSourcePaths": [
@@ -56,12 +56,12 @@
       "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 24,
-      "NOT_OBSERVABLE_YET": 12,
-      "DEPLOYED_NOT_YET_OBSERVED": 30,
+      "SOURCE_ONLY": 6,
+      "NOT_OBSERVABLE_YET": 22,
+      "DEPLOYED_NOT_YET_OBSERVED": 38,
       "CURRENT_RELEASE_REAL_OBSERVED": 8
     },
-    "unreleasedRowCount": 18,
+    "unreleasedRowCount": 0,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -86,7 +86,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
+      "observedAtRelease": "637c7acf04962a1ccc0ddc370cf3cc0b92ea160d",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -370,9 +370,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "Q_ECONOMIC_DECISION",
@@ -408,9 +408,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "D_SHADOW",
@@ -427,9 +427,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "A_RECOVERY",
@@ -465,9 +465,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "COMPANY_EVENT_POLICY",
@@ -503,9 +503,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "AEGIS_NOT_REACHED_SEMANTICS",
@@ -541,9 +541,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "STRUCTURAL_SIZING",
@@ -560,9 +560,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "ENTRY_SELECTION_FRONTIER",
@@ -579,9 +579,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "COMMON_HORIZON_COMPARISON",
@@ -617,9 +617,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "MANAGEMENT_ACTION_FRONTIER",
@@ -636,9 +636,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "PROFIT_MANAGEMENT",
@@ -655,9 +655,9 @@
       "empApplicable": 1,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "LOSS_MANAGEMENT",
@@ -674,9 +674,9 @@
       "empApplicable": 1,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "ROLL_ECONOMICS",
@@ -693,9 +693,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "ASSIGNMENT_HANDLING",
@@ -712,9 +712,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "RECOVERY_DECISION",
@@ -731,9 +731,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "COVERED_CALL_MANAGEMENT",
@@ -750,9 +750,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "WHOLE_CHAIN_ACCOUNTING",
@@ -769,9 +769,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "ORDER_INTENT_STATE_MACHINE",
@@ -807,9 +807,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "IDEMPOTENT_CLIENT_ORDER_ID",
@@ -884,7 +884,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
+      "observedAtRelease": "637c7acf04962a1ccc0ddc370cf3cc0b92ea160d",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -941,7 +941,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
+      "observedAtRelease": "637c7acf04962a1ccc0ddc370cf3cc0b92ea160d",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1150,7 +1150,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
+      "observedAtRelease": "637c7acf04962a1ccc0ddc370cf3cc0b92ea160d",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1169,7 +1169,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
+      "observedAtRelease": "637c7acf04962a1ccc0ddc370cf3cc0b92ea160d",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1188,7 +1188,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
+      "observedAtRelease": "637c7acf04962a1ccc0ddc370cf3cc0b92ea160d",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1207,7 +1207,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
+      "observedAtRelease": "637c7acf04962a1ccc0ddc370cf3cc0b92ea160d",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1264,7 +1264,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "6b20d713f697fc8ab70e0a223c3a51908c9fcc80",
+      "observedAtRelease": "637c7acf04962a1ccc0ddc370cf3cc0b92ea160d",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
