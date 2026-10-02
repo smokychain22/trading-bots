@@ -198,13 +198,17 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
   const acquiredAtMs=now();
   const atAcquire=poolState(pool);
   let broken = false;
+  // discard() asks for the client to be DESTROYED on release (e.g. a recovery probe that must prove a brand-new connection each time).
+  // It is not an error: it must never turn a successful operation into POSTGRES_CHECKED_OUT_CLIENT_LOST. Only the client's own
+  // 'error' event (a lost connection) does that.
+  let discardRequested = false;
   let outcome:PostgresClientObservationOutcome='SUCCEEDED_RELEASED';
   let failureSafeCode:string|null=null;
   let detail: ReturnType<typeof failureDetail> = {sqlState:null,socketCode:null,exceptionFamily:null};
   const onError = (error: unknown): void => { broken = true; detail=failureDetail(error); };
   client.on('error', onError);
   try {
-    const result = await operation(client, () => { broken = true; });
+    const result = await operation(client, () => { discardRequested = true; });
     if (broken) throw new PostgresCheckedOutClientLostError();
     return result;
   } catch (error) {
@@ -217,7 +221,7 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
   } finally {
     const operationEndedAtMs=now();
     client.removeListener('error', onError);
-    client.release(broken);
+    client.release(broken||discardRequested);
     const releasedAtMs=now();
     emitObservation(options,{operationStartedAt:new Date(acquiredAtMs).toISOString(),
       operationDurationMs:Math.max(0,operationEndedAtMs-acquiredAtMs),...detail,
@@ -231,7 +235,7 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
         ?Math.max(0,acquiredAtMs-requestedAtMs):null,
       outcome,connectionTimeoutMillis:configuredConnectionTimeout(pool),poolWaitTimeoutMillis:options.poolWaitTimeoutMillis??null,
       poolBefore:before,poolAfterRequest:afterRequest,poolAtAcquire:atAcquire,
-      poolAfterRelease:poolState(pool),discarded:broken,failureSafeCode});
+      poolAfterRelease:poolState(pool),discarded:broken||discardRequested,failureSafeCode});
   }
 }
 

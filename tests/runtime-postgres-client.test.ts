@@ -357,3 +357,29 @@ test('a recovered cycle marks only stale RUNNING rows failed before starting a n
   assert.match(queries[0]??'',/LIMIT 32 FOR UPDATE SKIP LOCKED/);
   assert.match(queries[1]??'',/ON CONFLICT\(correlation_id\) DO NOTHING/);
 });
+
+test('discard() after a SUCCESSFUL operation returns the result and destroys the client; it is not a lost-client error (the DB recovery probe depends on this)', async () => {
+  const observations: RuntimePostgresClientObservation[] = [];
+  const client = new FakeClient();
+  const value = await withRuntimePostgresClient(poolOf(client), async (c, discard) => {
+    await c.query('SELECT 1');
+    discard();
+    return 'probe-ok';
+  }, { observe: (o) => observations.push(o) });
+  assert.equal(value, 'probe-ok');
+  assert.deepEqual(client.releases, [true], 'the client must be destroyed on release');
+  assert.equal(observations[0]?.discarded, true);
+  assert.equal(observations[0]?.outcome, 'SUCCEEDED_RELEASED');
+});
+
+test('an operation that never calls discard() releases its client for reuse', async () => {
+  const client = new FakeClient();
+  await withRuntimePostgresClient(poolOf(client), async (c) => c.query('SELECT 1'));
+  assert.deepEqual(client.releases, [false]);
+});
+
+test('the runtime DB recovery probe still relies on discard() succeeding', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../src/theta/autonomous-runtime-handler.ts', import.meta.url), 'utf8');
+  assert.match(source, /SELECT 1'\);\s*discard\(\);/);
+});
