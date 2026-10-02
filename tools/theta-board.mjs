@@ -22,8 +22,8 @@ import { writeFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const boardAsOf = {
-  deployedRelease: '97665fbfd49adac33e0efd6b4a7a92f363f8be69',
-  priorObservedRelease: 'c3d8868265426d870e50352b06d8d252c68a16c9',
+  deployedRelease: 'a5d8711078740ee65be30e3586ba49a04c89e23c',
+  priorObservedRelease: '97665fbfd49adac33e0efd6b4a7a92f363f8be69',
   note: 'rows describe the continuation branch head; runtime flags describe observation at the deployed release only',
   runtimeSourcePaths: ['src/', 'api/', 'bots/theta/quant/', 'tools/windows/', 'package.json'],
 };
@@ -88,8 +88,8 @@ const rawRows = [
   r('T0_CYCLE_ARCHIVE', 'LEARNING', 'WAIT cycle archived and hash-verified', { runtime: 1 }),
   r('PROVIDER_FREE_REPLAY', 'LEARNING', 'replayed with 0 provider calls; tamper rejected', { runtime: 1 }),
   r('COMMAND5A_LOCAL_SCHEDULER', 'LEARNING', 'SQLite scheduler fresh-first', { runtime: 1 }),
-  r('POSTGRES_OBSERVATION_JOBS', 'LEARNING', 'fresh-first + retry in source; deployed release produced 0 observed', { runtime: 0 }),
-  r('MARKS_TICKER', 'LEARNING', '40 s read-only tick in source; not deployed', { runtime: 0 }),
+  r('POSTGRES_OBSERVATION_JOBS', 'LEARNING', 'fresh-first + retry; observed 2026-10-02 at a5d8711: 410 marks observed across 1M/5M/30M, lateness p50 24-44 s, no pending past-due', { runtime: 1 }),
+  r('MARKS_TICKER', 'LEARNING', '40 s read-only tick; last tick 2026-10-02 18:38Z state OK, 0 broker mutations', { runtime: 1 }),
   r('COUNTERFACTUAL_TRUTH_CLASSES', 'LEARNING', 'broker actual vs counterfactual vs modeled kept separate', { runtime: 1 }),
   r('OUTCOME_DATASET_EXPORT', 'LEARNING', 'PIT export, hashes, bounded', { runtime: 1 }),
   r('BACKTEST_WALKFORWARD', 'LEARNING', 'purged walk-forward harness; no resolved data', { wired: 0, obsNow: 0, empApplicable: 1 }),
@@ -107,7 +107,17 @@ const rawRows = [
   r('STRESS_HISTORY_TRUNCATION_FLAG', 'PHASE1', 'limit+1 completeness record in both stress assessments; truncated read withholds the cold-start exception', { obsNow: 0 }),
   r('REGISTRY_REACHABILITY_GUARD', 'PHASE1', 'registry runtime claims must sit inside the deployed import closure; research->production edges pinned', { wired: 0, obsNow: 0 }),
   r('WHOLE_CHAIN_FEES_DIVIDENDS_INPUT', 'PHASE1', 'fees (provider supplies none) and dividends (no stock lot) stay UNKNOWN by design; needs a fee-schedule attestation', { obsNow: 0, policyBlocked: 1 }),
-  r('FRONTIER_PROJECTION_BOUND', 'PHASE3', 'queryable frontier projection is bounded independent of chain size; the 2026-10-02 full-chain overflow (HTTP 503 on every evidence cycle) is fixed in source', { }),
+  r('FRONTIER_PROJECTION_BOUND', 'PHASE3', 'queryable frontier projection is bounded independent of chain size; the 2026-10-02 full-chain overflow (HTTP 503 on evidence cycles) is fixed and deployed in a5d8711; three full-chain SPY scans persisted afterwards', { runtime: 1 }),
+  r('PHASE3_EXEC_STATE_MACHINE', 'PHASE3', 'exhaustive transition-pair test, restart recovery per state; source only (not released)', { obsNow: 0, paperApplicable: 1 }),
+  r('FAULT_INJECTION', 'PHASE3', 'operation x fault matrix against a stateful fake Alpaca; no duplicate economic order; source only', { obsNow: 0, paperApplicable: 1 }),
+  r('RATE_LIMIT_POLICY', 'PHASE3', 'bounded read retry, Retry-After, shared budget, mutations never retried; source only', { obsNow: 0, paperApplicable: 1 }),
+  r('PARTIAL_FILL_POLICY', 'PHASE3', 'owner Paper policy P-A freeze and P-B whole-position covered calls; source only', { obsNow: 0, paperApplicable: 1 }),
+  r('ENTRY_DUPLICATE_GUARD', 'PHASE3', 'resting new-risk entry cannot be re-enqueued; releases at terminal; DB-tested; source only', { obsNow: 0, paperApplicable: 1 }),
+  r('CROSS_SESSION_SWEEP', 'PHASE3', 'terminal submitted plans swept with typed reasons; source only', { obsNow: 0, paperApplicable: 1 }),
+  r('FIRST_PAPER_PATH', 'PHASE3', 'natural candidate -> capped canary composition proven offline; quantity zero places nothing; no candidate exists at this account scale', { obsNow: 0, paperApplicable: 1 }),
+  r('PHASE3_REGISTER', 'PHASE3', '45-row finite register with a derived-count test', { obsNow: 0 }),
+  r('MIGRATION_068_STATUS', 'PHASE3', 'migration committed and rehearsed on a disposable database; NOT applied to Production (governed verified-backup run in progress)', { engDone: 0, obsNow: 0 }),
+  r('LOT_SPLIT_ACCOUNTING', 'PHASE3', 'whole-position accounting only; partial disposal stays UNKNOWN_PENDING_RECONCILIATION; schema enhancement is FUTURE_PAPER / owner lot policy', { obsNow: 0, policyBlocked: 1 }),
   r('REGISTRY_SOURCE_LISTS', 'OPEN', 'verified: the registry second list names SOURCES; shadow-strategy-orchestrator is a real research producer of H/D evaluation, so no entry is wrong', { obsNow: 0 }),
   r('DEAD_MODULE_INVENTORY', 'OPEN', 'inventoried: tested library modules with no production importer are classified LIBRARY / FUTURE; the duplicate legacy trade-update store is quarantined by a guard test; no required module is dead', { obsNow: 0, wired: 0 }),
   r('SHADOW_ONCE_SIZING_POLICY_DIVERGENCE', 'OPEN', 'thetaQ sizing uses an inline concentration cap of 2 while structural sizing uses 5; which is intended is a sizing-policy decision', { engDone: 0, obsNow: 0, policyBlocked: 1 }),
@@ -118,11 +128,13 @@ const rawRows = [
   r('ERROR_SANITIZATION', 'SECURITY', 'credentials never in provider errors (tested)', { runtime: 1 }),
 ];
 
-// Fresh observations made against the deployed release (runtime-truth receipt after the 97665fb cutover, 2026-10-02 15:03Z).
-const observedAtDeployed = new Set(['ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
+// Fresh observations made against the deployed release a5d8711 (cutover 2026-10-02 18:18Z; scans 18:26Z onward; docs/operations/THETA_LIVE_BOARD_20261002.json).
+const observedAtDeployed = new Set(['FRONTIER_PROJECTION_BOUND', 'ALPACA_MARKET_CLOCK_CALENDAR', 'AEGIS_TWELVE_FAMILIES', 'CAPITAL_BUDGET', 'POSTGRES_OBSERVATION_JOBS', 'MARKS_TICKER','ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
   'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE']);
 // Rows whose runtime source changed after the deployed release: committed, not released.
-const unreleasedIds = new Set(['FRONTIER_PROJECTION_BOUND', 'T0_CYCLE_ARCHIVE']);
+const unreleasedIds = new Set(['PHASE3_EXEC_STATE_MACHINE', 'FAULT_INJECTION', 'RATE_LIMIT_POLICY', 'PARTIAL_FILL_POLICY', 'ENTRY_DUPLICATE_GUARD',
+  'CROSS_SESSION_SWEEP', 'FIRST_PAPER_PATH', 'PAPER_ORDER_COORDINATOR', 'PARTIAL_FILL_HANDLING', 'UNKNOWN_SUBMIT_RECONCILIATION', 'ORDER_INTENT_STATE_MACHINE',
+  'STRUCTURAL_SIZING', 'ENTRY_SELECTION_FRONTIER', 'COVERED_CALL_MANAGEMENT', 'ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'ALPACA_OPTION_CHAIN_ENUMERATION', 'ALPACA_OPTION_QUOTES_BBO']);
 
 export const rows = rawRows.map((row) => {
   const everObserved = Boolean(row.runtime);

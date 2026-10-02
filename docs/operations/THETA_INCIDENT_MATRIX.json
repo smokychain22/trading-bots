@@ -1,0 +1,21 @@
+{
+  "schema": "theta-incident-matrix-v1",
+  "incidents": [
+    {
+      "INCIDENT_ID": "INC-20261002-FRONTIER-PAYLOAD",
+      "DATE": "2026-10-02",
+      "AFFECTED_RELEASE": "97665fbfd49adac33e0efd6b4a7a92f363f8be69",
+      "FAILED_CYCLE_COUNT": 32,
+      "FAILED_CYCLE_COUNT_NOTE": "32 FAILED evidence cycles counted from the Production cycle table between 13:31:28Z and 18:19:37Z; an externally estimated figure of 29 differs by cycles counted at a different boundary and is not used",
+      "PAYLOAD_MIN_BYTES": 809367,
+      "PAYLOAD_MAX_BYTES": 1021149,
+      "POLICY_LIMIT_BYTES": 786432,
+      "ROOT_CAUSE": "adaptiveShadowDecision.shadowComparison.excluded and candidateEligibility were per-candidate lists inside the queryable frontier projection (about 300 bytes per contract); a full SPY chain (about 2.9k puts) pushed the projection over the 768 KiB inline policy -> CANONICAL_FRONTIER_POLICY_PAYLOAD_TOO_LARGE -> HTTP 503 -> evidence cycle not persisted",
+      "FIX_SHA": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "FIX_PROPERTIES": ["exact total counts", "exact reason counts", "complete-list hash", "explicit truncation state (storageState BOUNDED_PROJECTION_FULL_LIST_IN_COMPRESSED_CYCLE_ARCHIVE + truncated flag)", "bounded queryable projection (constant ~55 KB)", "complete evidence in the compressed cycle archive"],
+      "REGRESSION_TEST": "tests/phase3-frontier-projection-bound.test.ts",
+      "CURRENT_STATUS": "FIXED_DEPLOYED_POST_FIX_RUNTIME_OBSERVED: deployed 2026-10-02 18:18Z; three complete full-chain SPY scans persisted from 18:26Z with no payload error. Candidate-level detail of the 32 failed cycles was never persisted and is classified LOST_DUE_TO_CONFIRMED_RUNTIME_DEFECT (not unknown market evidence).",
+      "RELATED_IMPACT": "Command-5A marks missed with HOST_OFFLINE during the outage window"
+    }
+  ]
+}
