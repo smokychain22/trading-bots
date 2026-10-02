@@ -56,12 +56,12 @@
       "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 6,
-      "NOT_OBSERVABLE_YET": 22,
+      "SOURCE_ONLY": 16,
+      "NOT_OBSERVABLE_YET": 12,
       "DEPLOYED_NOT_YET_OBSERVED": 38,
       "CURRENT_RELEASE_REAL_OBSERVED": 8
     },
-    "unreleasedRowCount": 0,
+    "unreleasedRowCount": 10,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -465,9 +465,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "COMPANY_EVENT_POLICY",
@@ -636,9 +636,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "PROFIT_MANAGEMENT",
@@ -655,9 +655,9 @@
       "empApplicable": 1,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "LOSS_MANAGEMENT",
@@ -674,9 +674,9 @@
       "empApplicable": 1,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "ROLL_ECONOMICS",
@@ -693,9 +693,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "ASSIGNMENT_HANDLING",
@@ -712,9 +712,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "RECOVERY_DECISION",
@@ -731,9 +731,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "COVERED_CALL_MANAGEMENT",
@@ -750,9 +750,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "WHOLE_CHAIN_ACCOUNTING",
@@ -769,9 +769,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "ORDER_INTENT_STATE_MACHINE",
@@ -807,9 +807,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "IDEMPOTENT_CLIENT_ORDER_ID",

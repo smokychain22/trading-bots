@@ -121,7 +121,8 @@ const rawRows = [
 const observedAtDeployed = new Set(['ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
   'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE']);
 // Rows whose runtime source changed after the deployed release: committed, not released.
-const unreleasedIds = new Set([]);
+const unreleasedIds = new Set(['MANAGEMENT_ACTION_FRONTIER', 'ROLL_ECONOMICS', 'RECOVERY_DECISION', 'COVERED_CALL_MANAGEMENT', 'WHOLE_CHAIN_ACCOUNTING',
+  'PAPER_ORDER_COORDINATOR', 'PROFIT_MANAGEMENT', 'LOSS_MANAGEMENT', 'ASSIGNMENT_HANDLING', 'C_COVERED_CALL']);
 
 export const rows = rawRows.map((row) => {
   const everObserved = Boolean(row.runtime);
