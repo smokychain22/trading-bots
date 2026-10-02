@@ -41,3 +41,42 @@ test('regression: a sub-tick SELL quote cannot be rounded up above the ask - it 
   const locked=decideAdaptiveLimit({side:'SELL',quote:{...q,bid:10.005,ask:10.005},attempt:0,previousLimit:null,economicBoundary:10.005,economicsRemainPositive:true,policy});
   assert.equal(locked.action,'CANCEL');
 });
+
+// P2-11: every policy-decidable quote yields a typed PLACE / REPLACE / CANCEL, never an exception, and every placed limit is
+// inside the quoted BBO and on the right side of the economic boundary.
+test('P2-11 boundary matrix: typed result, limit inside BBO, boundary respected, for both sides and every attempt',()=>{
+  const quotes:readonly [string,number,number][]=[['bid == ask',10,10],['sub-tick bid/ask',0.5025,0.5075],['one-tick spread',10,10.01],
+    ['zero bid',0,0.02],['very small price',0.0101,0.0103],['normal price',189.97,190.03],['wide spread',1,1.5],['locked sub-tick',10.005,10.005],
+    ['tick-aligned penny',1.23,1.24]];
+  for(const [label,bid,ask] of quotes){
+    for(const side of ['BUY','SELL'] as const){
+      for(const attempt of [0,1,2]){
+        for(const boundary of [bid,(bid+ask)/2,ask,ask+1,Math.max(0.0001,bid-1)]){
+          const result=decideAdaptiveLimit({side,quote:{...q,bid,ask},attempt,previousLimit:null,economicBoundary:boundary,economicsRemainPositive:true,policy});
+          assert.ok(['PLACE','REPLACE','CANCEL'].includes(result.action),`${label} ${side} ${attempt} ${boundary}`);
+          if(result.action==='CANCEL'){assert.equal(result.limitPrice,null);continue;}
+          const limit=result.limitPrice as number;
+          assert.ok(limit>0,`${label}: positive limit`);
+          assert.ok(limit>=bid-1e-9&&limit<=ask+1e-9,`${label} ${side}: ${limit} inside [${bid},${ask}]`);
+          if(side==='SELL')assert.ok(limit>=boundary-1e-9,`${label} SELL ${limit} >= floor ${boundary}`);
+          else assert.ok(limit<=boundary+1e-9,`${label} BUY ${limit} <= ceiling ${boundary}`);
+        }
+      }
+    }
+  }
+});
+
+test('P2-11 named cases: bid==ask places at the locked price; floor == ask places at ask; ask below floor cancels; rounded BUY below bid cancels',()=>{
+  const place=(side:'BUY'|'SELL',bid:number,ask:number,boundary:number,attempt=0)=>decideAdaptiveLimit({side,quote:{...q,bid,ask},attempt,previousLimit:null,economicBoundary:boundary,economicsRemainPositive:true,policy});
+  assert.equal(place('SELL',10,10,10).limitPrice,10);
+  assert.equal(place('BUY',10,10,10).limitPrice,10);
+  assert.equal(place('SELL',189.97,190.03,190.03).limitPrice,190.03,'floor == ask');
+  assert.equal(place('SELL',189.97,190.03,190.04).reason,'ECONOMIC_BOUNDARY_UNREACHABLE','ask below the floor');
+  assert.equal(place('SELL',189.97,190.03,189.5).limitPrice,190.03,'floor between: starts at the favourable ask');
+  assert.equal(place('SELL',189.97,190.03,190,2).limitPrice,190,'final concession stops at the floor, not the bid');
+  assert.equal(place('BUY',0,0.02,0.02).limitPrice,0.01,'zero bid buy-to-close uses one tick');
+  assert.equal(place('SELL',0,0.02,0.01).action,'CANCEL','a SELL never prices against a zero bid');
+  const subTickBuy=place('BUY',0.5025,0.5075,0.51);
+  assert.equal(subTickBuy.action,'CANCEL'); assert.equal(subTickBuy.reason,'LIMIT_OUTSIDE_QUOTED_BBO');
+  assert.equal(place('BUY',10,10.01,10.01,2).limitPrice,10.01);
+});

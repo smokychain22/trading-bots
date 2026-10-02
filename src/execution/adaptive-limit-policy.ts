@@ -92,6 +92,12 @@ export function decideAdaptiveLimit(input: {
     return { policyVersion: adaptiveLimitPolicyVersion, action: 'CANCEL', limitPrice: null,
       mid, spread, spreadPct, microprice, reason: 'ECONOMIC_BOUNDARY_UNREACHABLE' };
   }
+  // Every placed limit must sit inside the quoted BBO (the command assembler rejects anything outside). Tick rounding of a
+  // sub-tick quote can push a BUY below the bid; that is typed CANCEL here, never an uncaught assembly exception later.
+  if (limitPrice < bid - 1e-9 || limitPrice > ask + 1e-9) {
+    return { policyVersion: adaptiveLimitPolicyVersion, action: 'CANCEL', limitPrice: null,
+      mid, spread, spreadPct, microprice, reason: 'LIMIT_OUTSIDE_QUOTED_BBO' };
+  }
   if (input.side === 'SELL' && limitPrice < input.economicBoundary
     || input.side === 'BUY' && limitPrice > input.economicBoundary) {
     return { policyVersion: adaptiveLimitPolicyVersion, action: 'CANCEL', limitPrice: null,

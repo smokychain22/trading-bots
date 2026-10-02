@@ -734,3 +734,29 @@ test('P2-04 submit time: a fresh broker inventory read must agree; no source / f
   assert.equal(quoteCalls, 0, 'no quote is fetched for any blocked stock exit');
   assert.equal((await attempt(known(100))).state, 'READY_TO_SUBMIT');
 });
+
+test('P2-11: prepareMasterPaperAction returns a typed state (never throws) for every sub-tick, locked, zero-bid or floor-crossing quote', async () => {
+  const typed = ['BLOCKED', 'NO_QUOTE', 'QUOTE_REJECTED', 'PRICE_REJECTED', 'READY_TO_SUBMIT'];
+  const sell = sellStockState(stockRead());
+  for (const [bid, ask] of [[190, 190], [189.995, 190.004], [190.001, 190.002], [189.99, 190.01], [0, 0.01], [0.0001, 0.0002], [190, 190.1], [200, 200.1], [100, 101]] as const) {
+    const result = await flow(sell, { AAPL: stockQuote(bid, ask) }, { committedShortCallContracts: 0 });
+    for (const prepared of result.prepared) {
+      assert.ok(typed.includes(prepared.state), `SELL ${bid}/${ask}: ${prepared.state}`);
+      if (prepared.state === 'READY_TO_SUBMIT') {
+        const limit = Number(prepared.command?.request.limit_price);
+        assert.ok(limit >= bid - 1e-9 && limit <= ask + 1e-9 && limit >= 190 - 1e-9, `SELL ${bid}/${ask} limit ${limit}`);
+      }
+    }
+  }
+  const close = managed({ bid: 0.15, ask: 0.2, observedAt: T_NEAR });
+  for (const [bid, ask] of [[0.15, 0.2], [0.1525, 0.1575], [0, 0.02], [0.2, 0.2], [0.2, 0.2001], [0.005, 0.0051]] as const) {
+    const result = await flow(close, { AAPL261016P00200000: quoteFor('AAPL261016P00200000', bid, ask) });
+    for (const prepared of result.prepared) {
+      assert.ok(typed.includes(prepared.state), `BUY ${bid}/${ask}: ${prepared.state}`);
+      if (prepared.state === 'READY_TO_SUBMIT') {
+        const limit = Number(prepared.command?.request.limit_price);
+        assert.ok(limit >= bid - 1e-9 && limit <= ask + 1e-9 && limit <= 0.2 + 1e-9, `BUY ${bid}/${ask} limit ${limit}`);
+      }
+    }
+  }
+});
