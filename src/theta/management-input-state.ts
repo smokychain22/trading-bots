@@ -11,6 +11,10 @@ import type { ManagementCandidateDiscovery } from './management-candidate-eviden
 import { loadManagementEntryThesis, type ManagementEntryThesis } from './management-entry-thesis.js';
 import type { BrokerStockInventoryEvidence } from './stock-share-reconciliation.js';
 
+/** Staleness limits of the BROKER evidence a management decision is built from (named, not inline; the pre-submit quote window is a separate policy). */
+export const managementBrokerQuoteMaxAgeMs = 30_000;
+export const managementBrokerAccountMaxAgeMs = 180_000;
+
 export const managementInputVersion = 'theta-management-input-v5' as const;
 
 export interface ManagementAssignmentCapacityEvidence {
@@ -499,11 +503,11 @@ export function assembleManagementInput(row: Row, input: {
   if (hasOpenOption && (bid === null || ask === null || bid < 0 || ask <= 0 || bid > ask || row.quote_as_of == null)) hardBlockers.push('EXECUTABLE_QUOTE_UNAVAILABLE');
   if (hasOpenOption && text(row.quote_quality) !== 'GOOD') hardBlockers.push('BROKER_DATA_INVALID');
   const quoteAgeMs = row.quote_as_of == null ? null : Date.parse(input.observedAt) - Date.parse(String(row.quote_as_of));
-  if (quoteAgeMs !== null && (!Number.isFinite(quoteAgeMs) || quoteAgeMs < 0 || quoteAgeMs > 30_000)) {
+  if (quoteAgeMs !== null && (!Number.isFinite(quoteAgeMs) || quoteAgeMs < 0 || quoteAgeMs > managementBrokerQuoteMaxAgeMs)) {
     hardBlockers.push('BROKER_DATA_STALE');
   }
   const accountAgeMs = row.account_as_of == null ? null : Date.parse(input.observedAt) - Date.parse(String(row.account_as_of));
-  if (accountAgeMs === null || !Number.isFinite(accountAgeMs) || accountAgeMs < 0 || accountAgeMs > 180_000) {
+  if (accountAgeMs === null || !Number.isFinite(accountAgeMs) || accountAgeMs < 0 || accountAgeMs > managementBrokerAccountMaxAgeMs) {
     hardBlockers.push('BROKER_DATA_STALE');
   }
   if (contracts !== null && contracts < 0) hardBlockers.push('INVALID_CONTRACT');
