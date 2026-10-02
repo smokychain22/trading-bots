@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import { jsonValueSchema } from '../market/fusion-snapshot.js';
+import { accountCapacityBindingConstraints, accountPolicyIncompatibilityBlocker, isAccountCapacityBinding } from './account-capacity-zero.js';
 
 export const decisionEvidenceVersion = 'theta-decision-evidence-v1' as const;
 
@@ -147,7 +148,7 @@ const blockerClass = (reason:string):HardGateCode|null => {
   if(reason.startsWith('AEGIS_'))return 'AEGIS_HARD_VETO';
   if(reason.startsWith('EXECUTION_QUOTE_REQUIRED:')||reason.includes('EXECUTABLE_STOCK_PRICE'))return 'EXECUTABLE_QUOTE_UNAVAILABLE';
   if(reason.includes('MULTIPLIER'))return 'MULTIPLIER_UNKNOWN';
-  if(reason==='NO_ASSIGNMENT_CAPACITY')return 'ASSIGNMENT_CAPACITY_INSUFFICIENT';
+  if(reason==='NO_ASSIGNMENT_CAPACITY'||reason===accountPolicyIncompatibilityBlocker)return 'ASSIGNMENT_CAPACITY_INSUFFICIENT';
   if(reason==='ROUTER_NOT_APPLICABLE'||reason.includes('STOCK_INVENTORY'))return 'ACCOUNT_STATE_INCOMPATIBLE';
   if(reason.startsWith('THETA_Q_INFEASIBLE_REASON:')||reason==='THETA_Q_ACTION_INFEASIBLE')return 'STRATEGY_ECONOMIC_REJECT';
   if(reason.startsWith('THETA_Q_NOT_SENT_UPSTREAM_REJECT:')||reason==='THETA_Q_EVALUATION_STATE_MISSING'
@@ -167,7 +168,7 @@ const softFamily=(reason:string):z.infer<typeof softEvidenceFamily>|null => {
   return map[prefix??'']??null;
 };
 
-const requiredUnknownReason=(reason:string):boolean => reason==='AEGIS_STATE_UNKNOWN'
+const requiredUnknownReason=(reason:string):boolean => reason==='AEGIS_STATE_UNKNOWN'||reason==='AEGIS_RISK_CAPACITY_UNKNOWN'
   ||reason==='ASSIGNMENT_CAPACITY_UNKNOWN'||reason==='EVENT_STATE_UNKNOWN'||reason==='DELTA_UNKNOWN'
   ||reason==='OPEN_INTEREST_UNKNOWN'||reason==='VOLUME_UNKNOWN'||reason.startsWith('EXECUTION_QUOTE_REQUIRED:');
 
@@ -209,11 +210,11 @@ export function buildGlobalWaitEvidenceFromFrontier(input:{
   const unclassifiedUnknownEvidence=countUnknownCandidates((value)=>!requiredUnknownReason(value)&&!optionalUnknownReason(value));
   const hardKeys=new Set(Object.keys(hardGateCounts));
   const sizingZeroCandidates=candidates.filter((candidate)=>candidate.sizing.quantity===0);
-  const aegisHeld=sizingZeroCandidates.filter((candidate)=>candidate.sizing.bindingConstraint?.startsWith('AEGIS_')===true
+  // CAPZERO-LABEL: an AEGIS-assessed risk-capacity zero (AEGIS_RISK_CAPACITY) is a capacity outcome, not an AEGIS veto.
+  const aegisHeld=sizingZeroCandidates.filter((candidate)=>(candidate.sizing.bindingConstraint?.startsWith('AEGIS_')===true
+    &&!isAccountCapacityBinding(candidate.sizing.bindingConstraint))
     ||candidate.hardBlockers.some((value)=>value.startsWith('AEGIS_'))).length;
-  const capacityZero=sizingZeroCandidates.some((candidate)=>['RISK_BUDGET','COLLATERAL_CAP','CONCENTRATION_CAP',
-    'ASSIGNMENT_CAPACITY_CAP','TAIL_RISK_CAP','CORRELATION_CAP','LIQUIDITY_CAP','BROKER_ALLOWED',
-    'BUYING_POWER_AFFORDABLE','REAL_ASSIGNMENT_CAPACITY'].includes(candidate.sizing.bindingConstraint??''));
+  const capacityZero=sizingZeroCandidates.some((candidate)=>accountCapacityBindingConstraints.has(candidate.sizing.bindingConstraint??''));
   const reason:GlobalWaitEvidence['reason']=hardKeys.has('STRATEGY_EVALUATION_INVALID')
     ||unknownSafetyBlocked>0||unclassified.size>0||unclassifiedUnknownReasons.length>0?'DATA_INSUFFICIENT'
     :hardKeys.has('AEGIS_HARD_VETO')||aegisHeld>0?'RISK_VETO'

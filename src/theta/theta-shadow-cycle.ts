@@ -31,6 +31,7 @@ import {
 import { buildOptionomicsFeatureSnapshot } from './optionomics-feature-engine.js';
 import {
   deriveAccountExposure,
+  deriveCommittedShortCallContracts,
   deriveCandidateCapacityAssessment,
   mergeDerivedExposureIntoAegisInputs,
   type CandidateCapacityPolicy,
@@ -64,6 +65,8 @@ import { applyCompanyEventPaperPolicy, classifyPaperInstrument,
 import { assessPortfolioCorrelation, type PortfolioCorrelationObservation } from './portfolio-correlation-evidence.js';
 import { deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.js';
 import { classifyMethodInputProvenance, type MethodInputProvenance } from './profitability-method-input-provenance.js';
+import { wholeContractsAffordable } from './secured-contract-capacity.js';
+import { buildCycleQEntryFunnelSummary, type QEntryFunnelSummary } from './q-entry-funnel.js';
 
 /** Distinguish unshortlisted chain contracts from missing Q finalist responses. */
 export function completeConventionalFrontierEvaluationCoverage(
@@ -71,6 +74,7 @@ export function completeConventionalFrontierEvaluationCoverage(
   finalistOptionSymbols: ReadonlySet<string>,
   evaluations: NonNullable<NewRiskOrchestrationResult['thetaQCandidateEvaluation']>,
   lattice: { readonly dteMin: number; readonly dteMax: number },
+  accountPolicyProof?: (optionSymbol: string) => { readonly state: string; readonly bindingPolicies: string[] } | null,
 ): NonNullable<NewRiskOrchestrationResult['thetaQCandidateEvaluation']> {
   const complete: Record<string, NonNullable<NewRiskOrchestrationResult['thetaQCandidateEvaluation']>[string]> = {
     ...evaluations,
@@ -78,8 +82,10 @@ export function completeConventionalFrontierEvaluationCoverage(
   for (const contract of contracts) {
     if (contract.optionType !== 'PUT' || contract.dte < lattice.dteMin || contract.dte > lattice.dteMax) continue;
     if (Object.hasOwn(complete, contract.optionSymbol) || finalistOptionSymbols.has(contract.optionSymbol)) continue;
+    const proof = accountPolicyProof?.(contract.optionSymbol) ?? null;
     complete[contract.optionSymbol] = {
       state: 'NOT_EVALUATED_SHORTLIST_BOUND', reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH',
+      ...(proof === null ? {} : { accountPolicyIncompatibility: proof }),
     };
   }
   return complete;
@@ -87,7 +93,8 @@ export function completeConventionalFrontierEvaluationCoverage(
 
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
-  candidates: readonly { readonly optionSymbol: string; readonly brokerAllowedQty: number }[],
+  candidates: readonly { readonly optionSymbol: string; readonly brokerAllowedQty: number;
+    readonly riskCapacityQtyCap?: number | null }[],
   aegisByOptionSymbol?: Readonly<Record<string, {
     readonly newRiskState: NonNullable<NewRiskOrchestrationResult['aegis']>['newRiskState'];
     readonly families?: readonly { readonly family: string; readonly state: string;
@@ -95,12 +102,17 @@ export function conventionalFrontierRiskLookups(
   }>>,
 ): {
   readonly brokerAllowedQtyByCandidateId: Readonly<Record<string, number>>;
+  /** Quantity AEGIS was evaluated at; null = UNKNOWN (never defaulted). */
+  readonly riskCapacityQtyByCandidateId: Readonly<Record<string, number | null>>;
   readonly aegisNewRiskStateByCandidateId: Readonly<Record<string, NonNullable<NewRiskOrchestrationResult['aegis']>['newRiskState']>> | undefined;
   readonly aegisBindingReasonsByCandidateId: Readonly<Record<string, readonly string[]>> | undefined;
 } {
   return {
     brokerAllowedQtyByCandidateId: Object.fromEntries(candidates.map((candidate) => [
       `THETA_CONVENTIONAL:${candidate.optionSymbol}`, candidate.brokerAllowedQty,
+    ])),
+    riskCapacityQtyByCandidateId: Object.fromEntries(candidates.map((candidate) => [
+      `THETA_CONVENTIONAL:${candidate.optionSymbol}`, candidate.riskCapacityQtyCap ?? null,
     ])),
     aegisNewRiskStateByCandidateId: aegisByOptionSymbol === undefined ? undefined : Object.fromEntries(
       Object.entries(aegisByOptionSymbol).map(([optionSymbol, assessment]) => [
@@ -309,6 +321,9 @@ export interface ThetaShadowCycleResult {
   readonly orchestration: NewRiskOrchestrationResult | null;
   readonly strategyFrontier: CanonicalStrategyFrontier | null;
   readonly strategyQualityDiagnostics: StrategyQualityShadowDiagnostic | null;
+  /** Q-FUNNEL-001: bounded per-stage attribution of the Conventional put funnel. Additive and optional (absent on archived
+   * cycles); diagnostic only, never an input to any decision, size or hash-bound replay. */
+  readonly qEntryFunnel?: QEntryFunnelSummary | null;
   // Phase 1 Zero-Unknown Reclosure Pass 3 (T0 replay wiring): the EXACT
   // object passed to buildCanonicalStrategyFrontier for this cycle -- never
   // a parallel reconstruction. Callers building a T0ReplayBundle
@@ -1322,6 +1337,13 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       latticeConfig: config.latticeConfig,
       policy: config.finalistQuoteRefreshPolicy,
       asOf: finalistChosenAt,
+      capital: {
+        equity: account?.equity ?? null,
+        buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
+        hardTickerConcentrationLimitPct: typeof config.aegisPolicy.maxTickerConcentrationPct === 'number'
+          && typeof config.aegisPolicy.hardCapMultiplier === 'number'
+          ? config.aegisPolicy.maxTickerConcentrationPct * config.aegisPolicy.hardCapMultiplier : null,
+      },
     });
     const finalistSymbols = new Set(finalists.map((contract) => contract.optionSymbol));
     const refreshObservations: FinalistQuoteRefreshObservation[] = [];
@@ -1523,8 +1545,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       }
       const availableOptionBuyingPower = account?.optionsBuyingPower ?? account?.buyingPower ?? null;
       const collateralPerContract = contract.strike * contract.multiplier;
-      const brokerAllowedQty = availableOptionBuyingPower !== null && availableOptionBuyingPower >= 0
-        && collateralPerContract > 0 ? Math.floor(availableOptionBuyingPower / collateralPerContract) : 0;
+      const brokerAllowedQty = wholeContractsAffordable(availableOptionBuyingPower, collateralPerContract) ?? 0;
       candidates.push({
         candidateId: contract.optionSymbol, contract, entryPremiumPerShare: contract.bid,
         severeDrawdownProbability: null, ivRank: null, brokerAllowedQty,
@@ -1738,6 +1759,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     // broker position snapshot cannot establish it, so this remains UNKNOWN
     // until the chain is resolved by the lifecycle/accounting integration.
     wholeChainEconomicBasisPerShare: null,
+    // Open short calls and pending sell-to-open calls consume covered capacity. If either broker
+    // read failed, the commitment is UNKNOWN (null), never assumed to be zero.
+    committedShortCallContracts: positionsEvidence.quality === 'GOOD' && openOrdersEvidence.quality === 'GOOD'
+      ? deriveCommittedShortCallContracts(underlying, positions, openOrders) : null,
   };
   const optionomicsSnapshotState = fusionSnapshot.snapshot.optionomicsFeatureState;
   const optionomicsDerivedContext = optionomicsSnapshotState !== null && typeof optionomicsSnapshotState === 'object'
@@ -1745,6 +1770,18 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     ? optionomicsSnapshotState.features ?? null : null;
   const conventionalSource = canonicalThetaStrategySources.find((source) => source.branch === 'THETA_CONVENTIONAL');
   if (conventionalSource === undefined) throw new Error('THETA_CONVENTIONAL_SOURCE_MISSING');
+  const candidateCapacityPolicyKeys: ReadonlyArray<keyof CandidateCapacityPolicy> = [
+    'hardCapMultiplier',
+    'maxTickerConcentrationPct', 'maxSectorConcentrationPct', 'maxCorrelationClusterPct',
+    'maxPortfolioCapitalAtRiskPct', 'maxInventoryCapacityPct', 'maxAssignmentCapacityPct',
+    'maxRecoveryCapacityPct',
+  ];
+  const capacityPolicyComplete = candidateCapacityPolicyKeys.every((key) =>
+    typeof config.aegisPolicy[key] === 'number' && Number.isFinite(config.aegisPolicy[key]) && (config.aegisPolicy[key] as number) > 0)
+    && typeof config.aegisPolicy.hardCapMultiplier === 'number' && config.aegisPolicy.hardCapMultiplier > 1;
+  const candidateCapacityPolicy = capacityPolicyComplete
+    ? Object.fromEntries(candidateCapacityPolicyKeys.map((key) => [key, config.aegisPolicy[key]])) as unknown as CandidateCapacityPolicy
+    : null;
   const strategyFrontierFor = (
     routing: NewRiskOrchestrationResult['routing'],
     aegis: NewRiskOrchestrationResult['aegis'],
@@ -1756,13 +1793,29 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   ): { readonly frontier: CanonicalStrategyFrontier; readonly input: CanonicalStrategyFrontierInput } => {
     const conventionalRisk = conventionalFrontierRiskLookups(candidatesWithCapacity.map((candidate) => ({
       optionSymbol: candidate.contract.optionSymbol, brokerAllowedQty: candidate.brokerAllowedQty,
+      riskCapacityQtyCap: candidate.riskCapacityQtyCap,
     })), aegisByCandidateId);
+    const mergedBySymbol = new Map(mergedContractsForSnapshot.map((entry) => [entry.optionSymbol, entry] as const));
     const qEvaluationForFrontier = thetaQCandidateEvaluation === undefined ? undefined
       : completeConventionalFrontierEvaluationCoverage(
         mergedContractsForSnapshot,
         new Set(candidatesWithCapacity.map((candidate) => candidate.contract.optionSymbol)),
         thetaQCandidateEvaluation,
         conventionalSource.lattice,
+        (optionSymbol) => {
+          // SIZE-ZERO-LABEL-01: prove account-policy incompatibility for non-finalists from account + policy alone (no AEGIS call).
+          const contract = mergedBySymbol.get(optionSymbol);
+          if (contract === undefined || !exposureDerivationTrustworthy || candidateCapacityPolicy === null) return null;
+          const collateral = contract.strike * contract.multiplier;
+          const availableBuyingPower = account?.optionsBuyingPower ?? account?.buyingPower ?? null;
+          const compatibility = assessStrategyAccountPolicyCompatibility({
+            strategy: 'THETA_CONVENTIONAL', underlying: contract.underlying, marketApplicable: true,
+            minimumCapitalRequired: collateral, brokerAllowedQty: wholeContractsAffordable(availableBuyingPower, collateral),
+            exposure: derivedExposure, policy: candidateCapacityPolicy,
+          });
+          return compatibility.state === 'STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE' || compatibility.state === 'ACCOUNT_INFEASIBLE_BROKER_CAPACITY'
+            ? { state: compatibility.state, bindingPolicies: [...compatibility.bindingPolicies] } : null;
+        },
       );
     const frontierInput: CanonicalStrategyFrontierInput = {
     snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
@@ -1779,6 +1832,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     openingCostPolicy: canonicalOpeningCostPolicyFromUnknown(config.costAssumptions),
     maxAdverseGap60d: maxAdverseGap,
     brokerAllowedQtyByCandidateId: conventionalRisk.brokerAllowedQtyByCandidateId,
+    riskCapacityQtyByCandidateId: conventionalRisk.riskCapacityQtyByCandidateId,
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
     aegisNewRiskStateByCandidateId: conventionalRisk.aegisNewRiskStateByCandidateId,
     aegisBindingReasonsByCandidateId: conventionalRisk.aegisBindingReasonsByCandidateId,
@@ -1807,7 +1861,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
     thetaQDecision?: NewRiskOrchestrationResult['receipt'],
     thetaQCandidateEvaluation?: NewRiskOrchestrationResult['thetaQCandidateEvaluation'],
-  ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics' | 'canonicalFrontierInput' | 'methodInputProvenance'> => {
+  ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics' | 'canonicalFrontierInput' | 'methodInputProvenance' | 'qEntryFunnel'> => {
     const { frontier: strategyFrontier, input: canonicalFrontierInput } = strategyFrontierFor(
       routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision, thetaQCandidateEvaluation);
     const executedMethodIds = deriveRealCurrentWorkerEvidence({ strategyFrontier, orchestration: { routing, thetaQ } });
@@ -1815,10 +1869,43 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       executedMethodIds, routerPortfolioOrigin,
       aegisInputsOrigin: config.aegisInputsOrigin, marketDataOrigin: contractsEvidence.origin,
     });
+    let qEntryFunnel: QEntryFunnelSummary | null = null;
+    try {
+      const conventional = strategyFrontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates ?? [];
+      const evaluations = canonicalFrontierInput.thetaQCandidateEvaluationByOptionSymbol;
+      const fund = instrumentClassification.state === 'NON_COMPANY_FUND';
+      qEntryFunnel = buildCycleQEntryFunnelSummary({
+        contracts: mergedContractsForSnapshot,
+        account: {
+          equity: account?.equity ?? null, buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
+          instrumentApproval: instrumentClassification.paperBootstrapApproved ? { state: 'APPROVED', reason: null }
+            : { state: instrumentClassification.state === 'UNKNOWN' || instrumentClassification.state === 'CONFLICT' ? 'UNKNOWN' : 'NOT_APPROVED',
+              reason: `INSTRUMENT_${instrumentClassification.state}` },
+        },
+        eventState: macroRiskEvidence.state === 'KNOWN_TRUE' ? 'BLOCK' : macroRiskEvidence.state !== 'KNOWN_FALSE' ? 'UNKNOWN'
+          : fund ? 'NOT_APPLICABLE' : earningsEvidence.distanceTradingSessions === null ? 'UNKNOWN' : 'CLEAR',
+        earningsDistanceSessions: fund ? null : earningsEvidence.distanceTradingSessions,
+        conventionalCandidates: conventional.flatMap((candidate) => {
+          const optionSymbol = candidate.legs[0]?.optionSymbol;
+          if (optionSymbol === undefined) return [];
+          const state = evaluations?.[optionSymbol]?.state;
+          return [{
+            optionSymbol, aegisState: candidate.aegisState,
+            aegisBindingReasons: canonicalFrontierInput.aegisBindingReasonsByCandidateId?.[candidate.candidateId] ?? [],
+            quantity: candidate.sizing.quantity, bindingConstraint: candidate.sizing.bindingConstraint,
+            shortlistState: state === undefined ? 'UNKNOWN' as const : state === 'NOT_EVALUATED_SHORTLIST_BOUND' ? 'NOT_SELECTED' as const : 'FINALIST' as const,
+            entryBasis: candidate.entryEligibility?.basis,
+          }];
+        }),
+      });
+    } catch {
+      qEntryFunnel = null; // diagnostic only: an attribution failure must never affect the decision path
+    }
     return {
       strategyFrontier,
       canonicalFrontierInput,
       methodInputProvenance,
+      qEntryFunnel,
       strategyQualityDiagnostics: buildStrategyQualityShadowDiagnostic({
         contracts: mergedContractsForSnapshot,
         frontier: strategyFrontier,
@@ -1944,18 +2031,6 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     stressGapDetected: gapAssessment.stressGapDetected,
   };
 
-  const candidateCapacityPolicyKeys: ReadonlyArray<keyof CandidateCapacityPolicy> = [
-    'hardCapMultiplier',
-    'maxTickerConcentrationPct', 'maxSectorConcentrationPct', 'maxCorrelationClusterPct',
-    'maxPortfolioCapitalAtRiskPct', 'maxInventoryCapacityPct', 'maxAssignmentCapacityPct',
-    'maxRecoveryCapacityPct',
-  ];
-  const capacityPolicyComplete = candidateCapacityPolicyKeys.every((key) =>
-    typeof config.aegisPolicy[key] === 'number' && Number.isFinite(config.aegisPolicy[key]) && (config.aegisPolicy[key] as number) > 0)
-    && typeof config.aegisPolicy.hardCapMultiplier === 'number' && config.aegisPolicy.hardCapMultiplier > 1;
-  const candidateCapacityPolicy = capacityPolicyComplete
-    ? Object.fromEntries(candidateCapacityPolicyKeys.map((key) => [key, config.aegisPolicy[key]])) as unknown as CandidateCapacityPolicy
-    : null;
   const runtimeCandidates: RawCandidateInput[] = candidates.map((candidate) => {
     const spreadAssessment = aegisSpreadStressEvidence[candidate.contract.optionSymbol];
     const alpacaIvAssessment = aegisAlpacaIvStressEvidence[candidate.contract.optionSymbol];
@@ -2023,6 +2098,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       // Candidate-inclusive ratios below carry the real risk evidence into
       // AEGIS, which remains the sole risk authority for this stage.
       brokerAllowedQty: quantityAuthorities.brokerAllowedQty,
+      // RISK-CAP-01: AEGIS was evaluated at this quantity; canonical sizing may never exceed it.
+      riskCapacityQtyCap: quantityAuthorities.riskCapacityQtyCap,
       strategyAccountPolicyCompatibility,
       aegisInputOverrides: candidateOverrides,
     };

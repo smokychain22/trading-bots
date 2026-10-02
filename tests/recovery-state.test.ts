@@ -55,17 +55,22 @@ test('capital-days and opportunity cost stay UNKNOWN without caller-supplied ent
   assert.ok(recovery.dataCompleteness.requiresCallerInput.some((field) => field.startsWith('annualOpportunityCostRate')));
 });
 
-test('computes capital-days and opportunity cost honestly when the caller supplies entry data and a justified rate -- using the RECORDED reference when canonical is unavailable, and names that source', () => {
+test('computes capital-days and opportunity cost honestly when the caller supplies entry data and a justified rate -- sized on the CURRENT MARK (liquidation value), never the cost basis (P2-CHAIN-02)', () => {
   const recovery = buildRecoveryState(state(), '2026-08-13T14:00:00.000Z', 0.05);
   assert.ok(recovery.capitalDaysSoFar !== null && recovery.capitalDaysSoFar > 0);
   assert.ok(recovery.capitalOpportunityCostDollars !== null && recovery.capitalOpportunityCostDollars > 0);
-  assert.equal(recovery.capitalBasisSource, 'RECORDED_LOT_REFERENCE');
+  assert.equal(recovery.capitalSizingBasis, 'CURRENT_MARK_LIQUIDATION_VALUE');
+  // 180 mark x 100 shares x 5% x 30 days / 365 -- the 195 basis never enters
+  assert.ok(Math.abs((recovery.capitalOpportunityCostDollars as number) - 180 * 100 * 0.05 * (recovery.capitalDaysSoFar as number) / 365) < 1e-9);
 });
 
-test('with no basis available at all, capital opportunity cost stays UNKNOWN and capitalBasisSource is UNKNOWN -- never a fabricated zero-basis calculation', () => {
-  const recovery = buildRecoveryState(state({ stock_basis_per_share: null }), '2026-08-13T14:00:00.000Z', 0.05);
-  assert.equal(recovery.capitalOpportunityCostDollars, null);
-  assert.equal(recovery.capitalBasisSource, 'UNKNOWN');
+test('with no basis at all the cost is still computable (it needs only the mark); with no mark it stays UNKNOWN -- never a fabricated zero', () => {
+  const noBasis = buildRecoveryState(state({ stock_basis_per_share: null }), '2026-08-13T14:00:00.000Z', 0.05);
+  assert.ok(noBasis.capitalOpportunityCostDollars !== null && noBasis.capitalOpportunityCostDollars > 0);
+  assert.equal(noBasis.capitalSizingBasis, 'CURRENT_MARK_LIQUIDATION_VALUE');
+  const noMark = buildRecoveryState(state({ broker_position: null, snapshot_json: { underlyingState: {} } }), '2026-08-13T14:00:00.000Z', 0.05);
+  assert.equal(noMark.capitalOpportunityCostDollars, null);
+  assert.equal(noMark.capitalSizingBasis, 'UNKNOWN');
 });
 
 test('with complete wholeChainComponents, canonicalEffectiveBasisPerShare is the SAME figure computeEffectiveStockBasis itself produces -- never a second formula, basisSource/basisConfidence flip to canonical, and canonical distance/drawdown become known', () => {
@@ -80,7 +85,8 @@ test('with complete wholeChainComponents, canonicalEffectiveBasisPerShare is the
   // -- the canonical figure never overwrites it.
   assert.equal(recovery.recordedLotBasisReferencePerShare, 195);
   assert.notEqual(recovery.canonicalEffectiveBasisPerShare, 195);
-  assert.equal(recovery.capitalBasisSource, 'CANONICAL_WHOLE_CHAIN');
+  // capital is sized on the mark, so the canonical basis (like any basis) does not change it
+  assert.equal(recovery.capitalSizingBasis, 'CURRENT_MARK_LIQUIDATION_VALUE', 'never by the canonical (or any) basis');
 });
 
 test('with incomplete wholeChainComponents, canonicalEffectiveBasisPerShare/canonicalDistanceToBasisFraction stay null (never fabricated from partial data), and the reason names exactly which component was missing', () => {

@@ -281,7 +281,8 @@ export class ProductionPaperManagementCandidateSource {
       if(currentSnapshot!==null&&subject.currentContractId!==null&&subject.currentContractSymbol!==null){
         const quoteAt=currentSnapshot.quoteTimestamp===null?NaN:Date.parse(currentSnapshot.quoteTimestamp);
         const age=Date.parse(receivedAt)-quoteAt;
-        if(currentSnapshot.bid!==null&&currentSnapshot.bid>0&&currentSnapshot.ask!==null
+        // D6: the CURRENT short leg is persisted when it has a valid ask; a zero bid (worthless short) is still closable.
+        if(currentSnapshot.bid!==null&&currentSnapshot.bid>=0&&currentSnapshot.ask!==null&&currentSnapshot.ask>0
           &&currentSnapshot.ask>=currentSnapshot.bid&&Number.isFinite(age)
           &&age>=0&&age<=managementCandidateMaxQuoteAgeMs){
           quoteRows.push({symbol:subject.currentContractSymbol,id:subject.currentContractId,

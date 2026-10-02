@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { BrokerOrderRequest } from './broker.js';
+import { parseOccOptionSymbol } from '../theta/account-exposure.js';
 
 export type ThetaOrderAction =
   | 'OPEN_CSP' | 'CLOSE_CSP' | 'ROLL_CSP_CLOSE' | 'ROLL_CSP_OPEN'
@@ -13,6 +14,12 @@ export interface ThetaOrderInstruction {
   readonly clientOrderId: string;
   readonly confirmedCoveredShares?: number;
   readonly optionMultiplier?: number;
+  /**
+   * HDAC-05. Whole short-call contracts on this underlying that are ALREADY committed to other shares (open short calls
+   * plus pending sell-to-open call orders, excluding the call a roll is itself closing). Required for every covered-call
+   * open: `null`/undefined is UNKNOWN and blocks. Coverage must hold for (quantity + committed) contracts.
+   */
+  readonly committedShortCallContracts?: number | null;
 }
 const instructionSchema = z.object({
   action: z.enum(['OPEN_CSP', 'CLOSE_CSP', 'ROLL_CSP_CLOSE', 'ROLL_CSP_OPEN', 'OPEN_CC', 'CLOSE_CC', 'ROLL_CC_CLOSE', 'ROLL_CC_OPEN', 'SELL_STOCK']),
@@ -22,6 +29,7 @@ const instructionSchema = z.object({
   clientOrderId: z.string().min(1).max(48),
   confirmedCoveredShares: z.number().int().nonnegative().optional(),
   optionMultiplier: z.number().int().positive().optional(),
+  committedShortCallContracts: z.number().int().nonnegative().nullable().optional(),
 }).strict();
 
 const buyActions: readonly ThetaOrderAction[] = ['CLOSE_CSP', 'ROLL_CSP_CLOSE', 'CLOSE_CC', 'ROLL_CC_CLOSE'];
@@ -41,10 +49,25 @@ const optionPositionIntent: Readonly<Partial<Record<ThetaOrderAction, NonNullabl
 
 export function buildAlpacaLimitOrder(raw: ThetaOrderInstruction): BrokerOrderRequest {
   const input = instructionSchema.parse(raw);
+  // Action/instrument agreement: a short call can only be opened through an
+  // explicit covered-call action. A CSP action may never carry a call symbol
+  // (that would be an uncovered short call that skips the coverage check),
+  // and a covered-call action may never carry a put symbol.
+  const occ = parseOccOptionSymbol(input.symbol);
+  if (input.action === 'SELL_STOCK') {
+    if (occ !== null || /\d{6}[CP]\d{8}$/.test(input.symbol)) throw new Error('SELL_STOCK requires an equity symbol, not an option contract.');
+  } else if (input.action.includes('_CSP_') || input.action.endsWith('_CSP')) {
+    if (occ === null || occ.optionType !== 'PUT') throw new Error('CSP actions require an OCC put contract symbol.');
+  } else if (occ === null || occ.optionType !== 'CALL') {
+    throw new Error('Covered-call actions require an OCC call contract symbol.');
+  }
   if (coveredCallOpenActions.includes(input.action)) {
-    const multiplier = input.optionMultiplier ?? 100;
-    if (input.confirmedCoveredShares === undefined || input.confirmedCoveredShares < input.quantity * multiplier) {
-      throw new Error('Covered-call order requires confirmed share coverage.');
+    // A missing multiplier is UNKNOWN (adjusted contracts exist) -- never silently assumed to be 100 for a coverage check.
+    const multiplier = input.optionMultiplier;
+    const committed = input.committedShortCallContracts;
+    if (multiplier === undefined || input.confirmedCoveredShares === undefined || committed === undefined || committed === null
+      || input.confirmedCoveredShares < (input.quantity + committed) * multiplier) {
+      throw new Error('Covered-call order requires confirmed share coverage net of committed short calls, an explicit option multiplier and a known committed short-call count.');
     }
   }
   const positionIntent = optionPositionIntent[input.action];

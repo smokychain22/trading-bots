@@ -191,7 +191,7 @@ test('bootstrap management can open a fully covered call in bounded Paper eviden
     managementInputSnapshotId:'88888888-8888-4888-8888-888888888888',
     managementActionFrontierId:'99999999-9999-4999-8999-999999999999',
     strategyVersion:'theta-recovery-v1',action:'OPEN_CC',optionType:'CALL',symbol:'AAPL261016C00200000',
-    confirmedCoveredShares:100,executionTier:'PAPER_EVIDENCE',expectedAfterCostEv:null,empiricalEconomicsReady:false}),now,true);
+    confirmedCoveredShares:100,committedShortCallContracts:0,executionTier:'PAPER_EVIDENCE',expectedAfterCostEv:null,empiricalEconomicsReady:false}),now,true);
   assert.equal(result.state,'EXECUTED');
   assert.equal(result.execution?.submittedNow,true);
   assert.equal(broker.submitCalls,1);
@@ -229,7 +229,8 @@ test('a risk-reducing stock exit reaches the coordinator through a qualified Alp
   const {broker,handoff}=setup(stockQuote);const result=await handoff.execute(plan({decisionAuthority:'MANAGEMENT',
     managementInputSnapshotId:'88888888-8888-4888-8888-888888888888',
     managementActionFrontierId:'99999999-9999-4999-8999-999999999999',action:'SELL_STOCK',symbol:'AAPL',
-    optionContractId:null,optionType:null,multiplier:1,expectedAfterCostEv:null,empiricalEconomicsReady:false,aegisState:'HOLD_ONLY'}),now,true);
+    optionContractId:null,optionType:null,multiplier:1,expectedAfterCostEv:null,empiricalEconomicsReady:false,aegisState:'HOLD_ONLY',
+    committedShortCallContracts:0}),now,true);
   assert.equal(result.state,'EXECUTED');assert.equal(broker.submitCalls,1);
 });
 

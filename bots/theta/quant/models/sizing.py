@@ -48,6 +48,22 @@ class SizingResult:
     reasons: List[ReasonCode]
 
 
+def whole_contracts_affordable(capital: float, collateral_per_contract: float) -> int:
+    """Whole contracts ``capital`` secures, on integer cents (SIZE-FLOAT-01).
+
+    strike * 100 carries binary noise (1.09 * 100 == 109.00000000000001), so a plain floor division under-sizes an exact
+    fit. Collateral is rounded UP and capital DOWN at sub-cent precision, so this can never over-size.
+    """
+    try:
+        capital_cents = math.floor(round(capital * 1e6) / 1e4)
+        collateral_cents = math.ceil(round(collateral_per_contract * 1e6) / 1e4)
+    except OverflowError as error:
+        raise ValueError("collateral affordability overflow") from error
+    if collateral_cents <= 0:
+        raise ValueError("collateral affordability overflow")
+    return capital_cents // collateral_cents
+
+
 def compute_sizing(policy: SizingPolicy, inputs: SizingInputs) -> SizingResult:
     for owner, names in ((policy, ("risk_budget_qty_cap", "collateral_qty_cap", "concentration_qty_cap",
                                   "assignment_capacity_qty_cap", "tail_risk_qty_cap", "correlation_qty_cap", "liquidity_qty_cap")),
@@ -85,10 +101,10 @@ def compute_sizing(policy: SizingPolicy, inputs: SizingInputs) -> SizingResult:
         reasons.append(ReasonCode("INVALID_COLLATERAL", -1, "required_collateral_per_contract must be > 0."))
         return SizingResult(quantity=0, capital_required=None, binding_constraint="INVALID_INPUT", reasons=reasons)
 
-    affordable = inputs.buying_power // inputs.required_collateral_per_contract
-    if not math.isfinite(affordable):
-        raise ValueError("collateral affordability overflow")
-    collateral_affordable_qty = int(affordable)
+    if inputs.buying_power < 0:
+        collateral_affordable_qty = 0
+    else:
+        collateral_affordable_qty = whole_contracts_affordable(inputs.buying_power, inputs.required_collateral_per_contract)
 
     caps = {
         "RISK_BUDGET": policy.risk_budget_qty_cap,

@@ -48,7 +48,10 @@ export function decideAdaptiveLimit(input: {
 }): AdaptiveLimitDecision {
   validatePolicy(input.policy);
   const { bid, ask, bidSize, askSize } = input.quote;
-  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || bid > ask) {
+  // A BUY (buy-to-close, risk reducing) needs only a valid ask; a zero bid is a valid worthless-short quote. SELL always
+  // requires a strictly positive two-sided quote.
+  const bidInvalid = input.side === 'BUY' ? bid < 0 : bid <= 0;
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bidInvalid || ask <= 0 || bid > ask) {
     return { policyVersion: adaptiveLimitPolicyVersion, action: 'CANCEL', limitPrice: null,
       mid: null, spread: null, spreadPct: null, microprice: null, reason: 'QUOTE_INVALID' };
   }
@@ -81,7 +84,13 @@ export function decideAdaptiveLimit(input: {
   const bounded = input.side === 'SELL'
     ? Math.max(towardMarket, input.economicBoundary, bid)
     : Math.min(towardMarket, input.economicBoundary, ask);
-  const limitPrice = roundedTick(bounded, input.policy.tickSize, input.side);
+  let limitPrice = roundedTick(bounded, input.policy.tickSize, input.side);
+  // A zero bid floors a BUY at 0; an order needs a positive limit, so use one tick (still bounded by boundary and ask below).
+  if (input.side === 'BUY' && limitPrice <= 0) limitPrice = input.policy.tickSize;
+  if (input.side === 'BUY' && limitPrice > ask) {
+    return { policyVersion: adaptiveLimitPolicyVersion, action: 'CANCEL', limitPrice: null,
+      mid, spread, spreadPct, microprice, reason: 'ECONOMIC_BOUNDARY_UNREACHABLE' };
+  }
   if (input.side === 'SELL' && limitPrice < input.economicBoundary
     || input.side === 'BUY' && limitPrice > input.economicBoundary) {
     return { policyVersion: adaptiveLimitPolicyVersion, action: 'CANCEL', limitPrice: null,

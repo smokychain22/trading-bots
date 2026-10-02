@@ -51,7 +51,7 @@ test('PostgreSQL behavior diagnostics are immutable, replay-safe, and count cons
   }
 });
 
-test('PostgreSQL persists the v6 exact zero-quantity breakdown and classifies by evaluated causes only', {
+test('PostgreSQL persists the v7 exact zero-quantity breakdown and classifies by evaluated causes only', {
   skip: !process.env.TEST_DATABASE_URL,
 }, async () => {
   const connectionString = process.env.TEST_DATABASE_URL;
@@ -78,11 +78,11 @@ test('PostgreSQL persists the v6 exact zero-quantity breakdown and classifies by
       liquidityRejectionCount:0,hardGateCounts:{},finalAction:'SYSTEM_HOLD',waitReasons:[],bestRejectedCandidates:[],
       antiParalysisFindings:[],actionPlansReady:0,actionPlanBlockers:[],
     });
-    assert.equal(persisted.contractVersion,'theta-runtime-behavior-diagnostic-v6');
+    assert.equal(persisted.contractVersion,'theta-runtime-behavior-diagnostic-v7');
     assert.notEqual(persisted.waitClassification,'RISK_WAIT');
     const row = await pool.query(`SELECT contract_version,wait_classification,quantity_zero_count,diagnostic_json
       FROM research.theta_runtime_behavior_diagnostic WHERE scan_id=$1`,[scanId]);
-    assert.equal(row.rows[0].contract_version,'theta-runtime-behavior-diagnostic-v6');
+    assert.equal(row.rows[0].contract_version,'theta-runtime-behavior-diagnostic-v7');
     assert.equal(row.rows[0].quantity_zero_count,100,'the historical column keeps counting every zero-quantity candidate');
     assert.equal(row.rows[0].diagnostic_json.riskEvaluatedZeroCount,0);
     assert.deepEqual(row.rows[0].diagnostic_json.sizingZeroBreakdown,{ BRANCH_NOT_APPLICABLE:40, Q_REJECTED_UPSTREAM:60 });

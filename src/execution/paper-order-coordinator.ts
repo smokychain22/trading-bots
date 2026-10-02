@@ -5,6 +5,7 @@ import type { OrderIntentState } from '../theta/order-intent-state.js';
 import { assertValidOrderIntentTransition, isValidOrderIntentTransition } from '../theta/order-intent-state.js';
 import { brokerOrderIntentState } from './broker-order-state.js';
 import { thetaActionOpensNewRisk } from './order-construction.js';
+import { parseOccOptionSymbol } from '../theta/account-exposure.js';
 
 export interface PersistedPaperOrderIntent {
   readonly orderIntentId: string;
@@ -63,6 +64,10 @@ export type PaperOrderGate = Omit<ExecutionGateContext,
   'intentPersisted' | 'accountKind' | 'environment' | 'clientOrderId' | 'quantity' | 'operation'>;
 
 function validateAuthorizationEvidence(intent: PersistedPaperOrderIntent | PrepareIntentInput): void {
+  // Defense in depth behind buildAlpacaLimitOrder: a persisted sell order on a call contract is only
+  // legitimate as an explicit covered-call open. Any other action carrying it is an uncovered short call.
+  if (intent.request.side === 'sell' && parseOccOptionSymbol(intent.request.symbol)?.optionType === 'CALL'
+    && intent.action !== 'OPEN_CC' && intent.action !== 'ROLL_CC_OPEN') throw new Error('SHORT_CALL_REQUIRES_COVERED_CALL_ACTION');
   const evidence = intent.authorizationEvidence;
   if (!['PAPER_EVIDENCE', 'EMPIRICALLY_PROMOTED_PAPER'].includes(evidence.executionTier)) throw new Error('LIVE_EXECUTION_NOT_AUTHORIZED');
   if (![evidence.canonicalQuantity, evidence.paperEvidenceQuantity, intent.request.qty].every(value => Number.isSafeInteger(value) && value > 0)

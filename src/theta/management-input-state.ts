@@ -34,6 +34,73 @@ export interface ManagementAssignmentCapacityEvidence {
   readonly reason: string | null;
 }
 
+/** Raw result of ONE bounded Alpaca stock quote read (fetchLatestStockQuote shape). Never a bid/ask invented here. */
+export interface ManagementStockQuoteRead {
+  readonly bid: number | null;
+  readonly ask: number | null;
+  readonly bidSize: number | null;
+  readonly askSize: number | null;
+  readonly timestamp: string | null;
+  readonly feed: 'iex' | 'sip';
+}
+
+/** Injected reader: production passes fetchLatestStockQuote bound to the paper Alpaca config; tests pass a mock. */
+export type ManagementStockQuoteReader = (symbol: string) => Promise<ManagementStockQuoteRead>;
+
+export interface ManagementStockQuoteReadOutcome {
+  readonly quote: ManagementStockQuoteRead | null;
+  readonly readFailed: boolean;
+  readonly receivedAt: string;
+}
+
+/**
+ * Executable stock bid/ask evidence for SELL_STOCK. KNOWN only when the quote is two-sided, positive, uncrossed, timestamped,
+ * not in the future and not older than managementStockQuoteMaximumAgeMs at the decision time. Anything else is UNKNOWN with a
+ * typed reason and NO usable prices are retained as authority (the policy emits no stock evidence for UNKNOWN).
+ */
+export interface ManagementStockExecutionQuote {
+  readonly state: 'KNOWN' | 'UNKNOWN';
+  readonly source: 'ALPACA_STOCK_QUOTE';
+  readonly symbol: string;
+  readonly feed: 'iex' | 'sip' | null;
+  readonly bid: number | null;
+  readonly ask: number | null;
+  readonly bidSize: number | null;
+  readonly askSize: number | null;
+  readonly providerTimestamp: string | null;
+  readonly receivedAt: string | null;
+  readonly ageMs: number | null;
+  readonly reason: 'STOCK_QUOTE_READ_FAILED' | 'STOCK_QUOTE_MISSING' | 'STOCK_QUOTE_TIMESTAMP_MISSING'
+    | 'STOCK_QUOTE_TIMESTAMP_IN_FUTURE' | 'STOCK_QUOTE_STALE' | 'STOCK_QUOTE_NONPOSITIVE_BID'
+    | 'STOCK_QUOTE_NONPOSITIVE_ASK' | 'STOCK_QUOTE_CROSSED' | null;
+}
+
+export const managementStockQuoteMaximumAgeMs = 30_000;
+
+const positiveFinite = (value: number | null): value is number => value !== null && Number.isFinite(value) && value > 0;
+
+/** Pure fail-closed classification of a stock quote read against the (later frozen) decision time. */
+export function classifyManagementStockQuote(symbol: string, outcome: ManagementStockQuoteReadOutcome,
+  decisionAsOf: string): ManagementStockExecutionQuote {
+  const quote = outcome.quote;
+  const unknown = (reason: NonNullable<ManagementStockExecutionQuote['reason']>, ageMs: number | null = null): ManagementStockExecutionQuote => ({
+    state: 'UNKNOWN', source: 'ALPACA_STOCK_QUOTE', symbol, feed: quote?.feed ?? null, bid: null, ask: null, bidSize: null, askSize: null,
+    providerTimestamp: quote?.timestamp ?? null, receivedAt: outcome.receivedAt, ageMs, reason,
+  });
+  if (outcome.readFailed) return unknown('STOCK_QUOTE_READ_FAILED');
+  if (quote === null || quote.bid === null || quote.ask === null) return unknown('STOCK_QUOTE_MISSING');
+  if (quote.timestamp === null || !Number.isFinite(Date.parse(quote.timestamp))) return unknown('STOCK_QUOTE_TIMESTAMP_MISSING');
+  const ageMs = Date.parse(decisionAsOf) - Date.parse(quote.timestamp);
+  if (!Number.isFinite(ageMs) || ageMs < 0) return unknown('STOCK_QUOTE_TIMESTAMP_IN_FUTURE');
+  if (ageMs > managementStockQuoteMaximumAgeMs) return unknown('STOCK_QUOTE_STALE', ageMs);
+  if (!positiveFinite(quote.bid)) return unknown('STOCK_QUOTE_NONPOSITIVE_BID', ageMs);
+  if (!positiveFinite(quote.ask)) return unknown('STOCK_QUOTE_NONPOSITIVE_ASK', ageMs);
+  if (quote.bid > quote.ask) return unknown('STOCK_QUOTE_CROSSED', ageMs);
+  return { state: 'KNOWN', source: 'ALPACA_STOCK_QUOTE', symbol, feed: quote.feed, bid: quote.bid, ask: quote.ask,
+    bidSize: quote.bidSize, askSize: quote.askSize, providerTimestamp: quote.timestamp, receivedAt: outcome.receivedAt,
+    ageMs, reason: null };
+}
+
 export interface ManagementDecisionEvidenceBundle {
   readonly decisionAsOf: string;
   readonly reconciliationObservedAt: string | null;
@@ -58,6 +125,8 @@ export interface ManagementInputState {
   readonly observedAt: string;
   readonly evidenceBundle: ManagementDecisionEvidenceBundle;
   readonly managementCandidateDiscovery?: ManagementCandidateDiscovery | null;
+  /** One bounded stock quote read per underlying per scan; present only when a reader was supplied and shares are held. */
+  readonly stockExecutionQuote?: ManagementStockExecutionQuote;
   readonly originalEntryThesis?: ManagementEntryThesis;
   readonly wholeChainComponentEvidence?: WholeChainComponentEvidence;
   readonly wholeChainComponents?: WholeChainComponents | null;
@@ -222,6 +291,7 @@ export function assembleManagementInput(row: Row, input: {
   readonly reconciliationSnapshotId: string;
   readonly observedAt: string;
   readonly managementCandidateDiscovery?: ManagementCandidateDiscovery | null;
+  readonly stockQuoteRead?: ManagementStockQuoteReadOutcome | null;
 }): ManagementInputState {
   const candidateDiscovery = input.managementCandidateDiscovery ?? null;
   const candidateQuotes = candidateDiscovery === null ? [] : [
@@ -393,7 +463,9 @@ export function assembleManagementInput(row: Row, input: {
 
   const hardBlockers: string[] = [];
   if (hasOpenOption && multiplier === null) hardBlockers.push('MULTIPLIER_UNKNOWN');
-  if (hasOpenOption && (bid === null || ask === null || bid <= 0 || ask <= 0 || bid > ask || row.quote_as_of == null)) hardBlockers.push('EXECUTABLE_QUOTE_UNAVAILABLE');
+  // D6: a buy-to-close needs only a valid ASK. A zero BID (worthless short) is a valid, closable quote; a negative bid,
+  // a missing/non-positive ask, a crossed quote, or a missing timestamp is not.
+  if (hasOpenOption && (bid === null || ask === null || bid < 0 || ask <= 0 || bid > ask || row.quote_as_of == null)) hardBlockers.push('EXECUTABLE_QUOTE_UNAVAILABLE');
   if (hasOpenOption && text(row.quote_quality) !== 'GOOD') hardBlockers.push('BROKER_DATA_INVALID');
   const quoteAgeMs = row.quote_as_of == null ? null : Date.parse(input.observedAt) - Date.parse(String(row.quote_as_of));
   if (quoteAgeMs !== null && (!Number.isFinite(quoteAgeMs) || quoteAgeMs < 0 || quoteAgeMs > 30_000)) {
@@ -416,6 +488,8 @@ export function assembleManagementInput(row: Row, input: {
     reconciliationSnapshotId: input.reconciliationSnapshotId,
     fusionSnapshotId: text(row.fusion_snapshot_id), chainId: String(row.chain_id), observedAt: input.observedAt,
     evidenceBundle: { ...evidenceBundle, fusionSnapshotHash: text(row.fusion_content_hash) }, managementCandidateDiscovery:candidateDiscovery,
+    ...(stockShares > 0 && input.stockQuoteRead != null
+      ? { stockExecutionQuote: classifyManagementStockQuote(String(row.underlying), input.stockQuoteRead, input.observedAt) } : {}),
     originalEntryThesis: loadManagementEntryThesis(row.original_entry_thesis, {
       decisionId: row.original_decision_id, snapshotId: row.original_snapshot_id,
       decidedAt: row.original_decided_at, underlying: String(row.underlying), managementAsOf: input.observedAt,
@@ -491,7 +565,8 @@ export class PostgresManagementInputStore {
   }
 
   async assembleAndPersistOpenChains(connectionId: string, reconciliationSnapshotId: string, observedAt: string,
-    candidateDiscoveryByChain: ReadonlyMap<string,ManagementCandidateDiscovery> = new Map()): Promise<readonly ManagementInputState[]> {
+    candidateDiscoveryByChain: ReadonlyMap<string,ManagementCandidateDiscovery> = new Map(),
+    stockQuoteReader?: ManagementStockQuoteReader): Promise<readonly ManagementInputState[]> {
     const result = await this.pool.query(`
       SELECT ec.chain_id,ec.lifecycle_state,u.underlying_id,u.symbol AS underlying,
         original_entry.decision_id AS original_decision_id,original_entry.fusion_snapshot_id AS original_snapshot_id,
@@ -599,11 +674,28 @@ export class PostgresManagementInputStore {
     // The query may fetch an observation received after broker reconciliation.
     // Freeze the decision only after its evidence has been read, never at the
     // earlier reconciliation timestamp.
+    // SELL_STOCK executable evidence: ONE bounded stock quote read per underlying that holds shares, read BEFORE the
+    // decision time is frozen. A thrown/failed read becomes a typed UNKNOWN (never a price); no reader means no evidence.
+    const stockQuotes = new Map<string, ManagementStockQuoteReadOutcome>();
+    if (stockQuoteReader !== undefined) {
+      for (const row of result.rows) {
+        const symbol = String(row.underlying);
+        const held = numeric(row.open_stock_shares);
+        if (held === null || held <= 0 || stockQuotes.has(symbol)) continue;
+        try {
+          const quote = await stockQuoteReader(symbol);
+          stockQuotes.set(symbol, { quote, readFailed: false, receivedAt: new Date().toISOString() });
+        } catch {
+          stockQuotes.set(symbol, { quote: null, readFailed: true, receivedAt: new Date().toISOString() });
+        }
+      }
+    }
     const decisionAsOf = new Date().toISOString();
     if (Date.parse(decisionAsOf) < Date.parse(observedAt)) throw new Error('MANAGEMENT_DECISION_CLOCK_BEFORE_RECONCILIATION');
     const states: ManagementInputState[] = result.rows.map((row) => assembleManagementInput(row, {
       managementInputSnapshotId: randomUUID(), reconciliationSnapshotId, observedAt:decisionAsOf,
       managementCandidateDiscovery:candidateDiscoveryByChain.get(String(row.chain_id)) ?? null,
+      stockQuoteRead: stockQuotes.get(String(row.underlying)) ?? null,
     }));
     if (states.length === 0) return [];
     // Each ledger read owns/releases its transaction before the persistence

@@ -29,9 +29,18 @@ export interface ManagementActionEconomics {
 }
 
 export interface ManagementActionExecutionEvidence {
+  /** UNIT: USD PER SHARE option price (never a USD total). Buy-to-close: the maximum ask-side price we will pay. */
   readonly closeEconomicBoundary: number | null;
+  /** UNIT: USD PER SHARE option price. Sell-to-open: the minimum bid-side price we will accept. */
   readonly openEconomicBoundary: number | null;
+  /** UNIT: USD per share of stock. A FLOOR: the minimum acceptable sale price, set <= the current executable bid (never above it). */
   readonly stockEconomicBoundary: number | null;
+  /**
+   * For new-risk legs (roll-open / covered call) and rolls: the deterministic forward economics clear the HOLD baseline.
+   * For a risk-REDUCING close (CLOSE_FULL / CLOSE_CC / SELL_STOCK) the meaning is deliberately narrower: "closing is the action whose
+   * forward utility beats HOLD" -- it is NOT a claim of positive after-cost EV (`expectedAfterCostEv` stays null and
+   * `empiricalEconomicsReady` false).
+   */
   readonly economicsRemainPositive: boolean;
   readonly expectedAfterCostEv: number | null;
   readonly empiricalEconomicsReady: boolean;
@@ -101,7 +110,11 @@ export interface ManagementActionFrontier {
 
 const actionSets: Readonly<Partial<Record<ManagementInputState['lifecycleState'], readonly ManagementFrontierAction[]>>> = {
   CSP_OPEN: ['HOLD', 'CLOSE_FULL', 'ROLL', 'LET_EXPIRE', 'ACCEPT_ASSIGNMENT', 'REDEPLOY'],
-  STOCK_HELD: ['RECOVERY_WAIT', 'SELL_STOCK', 'SELL_CC'],
+  // MGMT-STOCKHELD-ACTION-EDGE: the lifecycle table (runtime-state.ts) allows only STOCK_HELD -> RECOVERY_WAIT, and the
+  // fill applier (postgres-lifecycle-application-store.ts) applies COVERED_CALL_OPEN / STOCK_DISPOSAL only from
+  // RECOVERY_WAIT. Offering SELL_STOCK / SELL_CC here could submit a broker order whose fill can never be applied to the
+  // ledger. STOCK_HELD therefore offers only the passive wait that advances it; exits begin at RECOVERY_WAIT.
+  STOCK_HELD: ['RECOVERY_WAIT'],
   RECOVERY_WAIT: ['RECOVERY_WAIT', 'SELL_STOCK', 'SELL_CC'],
   CC_OPEN: ['HOLD_CC', 'CLOSE_CC', 'ROLL_CC', 'ALLOW_CALL_AWAY'],
 };
@@ -127,6 +140,10 @@ function evaluateAction(input: ManagementInputState, action: ManagementFrontierA
     blockers.push('NO_OPEN_STOCK_INVENTORY');
   }
   if (action === 'SELL_STOCK' && input.economics.stockMarkPerShare === null) blockers.push('EXECUTABLE_STOCK_PRICE_UNKNOWN');
+  // Selling the shares under a short call on this chain would leave an uncovered short call.
+  if (action === 'SELL_STOCK' && input.contract.optionType === 'CALL' && (input.contract.contracts ?? 0) > 0) {
+    blockers.push('SHORT_CALL_OPEN_AGAINST_SHARES');
+  }
   const optionOtm = input.market.spot !== null && input.contract.strike !== null && input.contract.optionType !== null
     ? input.contract.optionType === 'PUT' ? input.market.spot > input.contract.strike : input.market.spot < input.contract.strike
     : null;

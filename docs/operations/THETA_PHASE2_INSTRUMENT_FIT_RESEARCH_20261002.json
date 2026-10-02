@@ -1,0 +1,107 @@
+{
+  "contractVersion": "theta-phase2-instrument-fit-research-v1",
+  "generatedOn": "2026-10-02",
+  "authority": "RESEARCH_ONLY",
+  "approvesAnyInstrument": false,
+  "recommendsAnyInstrument": false,
+  "providerCallsMade": false,
+  "secretsRead": false,
+  "question": "Could lower-notional optionable instruments mechanically fit the current capital policy?",
+  "answer": {
+    "arithmeticAnswer": "YES_IN_PRINCIPLE",
+    "empiricalOfflineAnswer": "UNKNOWN_NO_OFFLINE_UNIVERSE_PRICE_DATA",
+    "explanation": "Under the measured Paper policy a cash-secured put needs collateral = strike x 100 below the ticker hard-veto threshold (strike <= 224.99 for ALLOW_REDUCED, <= 149.99 for full-cap sizing). That is arithmetic and is true of any optionable underlying whose listed strikes sit below those levels. No offline dataset in this repository enumerates optionable instruments with prices other than the archived SPY chain, so which named instruments actually have listable, liquid, in-policy puts cannot be established offline. The existing audit documents only that IYM, KORU and ZSL had share prices below roughly 225 without recording the prices. Capital fit is also only one gate: every instrument other than SPY is blocked today by the owner-approved manifest (not approved) and by the missing relative-strength policy, independent of capital.",
+    "notAnApproval": true
+  },
+  "capitalPolicyBasis": {
+    "source": "docs/operations/THETA_TODAY_PROGRESS_20261001_DEEP_AUDIT.md (read-only Alpaca Paper account measurement recorded 2026-10-01)",
+    "equityUsd": 99999.96,
+    "optionsBuyingPowerUsd": 99999.96,
+    "tickerConcentrationSoftCapPct": 0.15,
+    "hardCapMultiplier": 1.5,
+    "tickerSoftCapUsd": 14999.99,
+    "tickerHardVetoThresholdUsd": 22499.99,
+    "collateralFormula": "strike x multiplier(100), single multiplier, dollars",
+    "maxStrikeBelowHardVeto": 224.99,
+    "maxStrikeBelowSoftCap": 149.99,
+    "note": "Figures are recorded from the cited document, not re-measured here (no provider call)."
+  },
+  "rowSchema": ["symbol", "productType", "sharePrice", "optionable", "collateralScale", "liquidityIndicators", "classificationEvidenceAvailable", "leveragedInverse", "eventPolicyAvailable", "relativeStrengthAvailable"],
+  "rows": [
+    {
+      "symbol": "SPY",
+      "productType": "EXCHANGE_TRADED_FUND",
+      "sharePrice": null,
+      "optionable": true,
+      "collateralScale": {
+        "basis": "ARCHIVED_ENUMERATED_CHAIN_PER_AUDIT",
+        "cheapestEnumeratedPutCollateralUsd": 30000,
+        "medianCollateralUsd": 75200,
+        "maxCollateralUsd": 100000,
+        "fitsHardVetoThreshold": false,
+        "approximateSharePriceUsdPerAudit": 715
+      },
+      "liquidityIndicators": {
+        "putsPassingAllQLiquidityGates": 363,
+        "enumeratedPuts": 2619,
+        "basis": "ARCHIVED_CYCLE_E9F4B10F_PER_AUDIT"
+      },
+      "classificationEvidenceAvailable": true,
+      "leveragedInverse": false,
+      "eventPolicyAvailable": "UNKNOWN",
+      "relativeStrengthAvailable": "OWNER_POLICY_REQUIRED",
+      "notes": "Only approved manifest entry (official issuer evidence). Capital-incompatible at current equity: zero enumerated SPY puts clear the ticker hard-veto threshold. sharePrice left null: the audit gives only 'near 715', not a dated quote."
+    },
+    {
+      "symbol": "IYM",
+      "productType": "UNKNOWN",
+      "sharePrice": null,
+      "optionable": "UNKNOWN",
+      "collateralScale": { "basis": "AUDIT_BOUND_ONLY", "sharePriceUpperBoundUsd": 225, "exactCollateralUsd": null },
+      "liquidityIndicators": "UNKNOWN",
+      "classificationEvidenceAvailable": false,
+      "leveragedInverse": "UNKNOWN",
+      "eventPolicyAvailable": "UNKNOWN",
+      "relativeStrengthAvailable": "OWNER_POLICY_REQUIRED",
+      "notes": "Named as a discovered universe member in the 2026-10-01 audit with share price below about 225. Optionability is asserted only by the audit funnel, not by archived evidence in this repo; no classification evidence exists. Not approved."
+    },
+    {
+      "symbol": "KORU",
+      "productType": "UNKNOWN",
+      "sharePrice": null,
+      "optionable": "UNKNOWN",
+      "collateralScale": { "basis": "AUDIT_BOUND_ONLY", "sharePriceUpperBoundUsd": 225, "exactCollateralUsd": null },
+      "liquidityIndicators": "UNKNOWN",
+      "classificationEvidenceAvailable": false,
+      "leveragedInverse": "UNKNOWN",
+      "eventPolicyAvailable": "UNKNOWN",
+      "relativeStrengthAvailable": "OWNER_POLICY_REQUIRED",
+      "notes": "The audit describes it as a 3x product needing an explicit product-risk policy; that is a repository note, not issuer classification evidence, so leveragedInverse stays UNKNOWN here. Not approved. Ownership input was UNKNOWN in observed cycles."
+    },
+    {
+      "symbol": "ZSL",
+      "productType": "UNKNOWN",
+      "sharePrice": null,
+      "optionable": "UNKNOWN",
+      "collateralScale": { "basis": "AUDIT_BOUND_ONLY", "sharePriceUpperBoundUsd": 225, "exactCollateralUsd": null },
+      "liquidityIndicators": "UNKNOWN",
+      "classificationEvidenceAvailable": false,
+      "leveragedInverse": "UNKNOWN",
+      "eventPolicyAvailable": "UNKNOWN",
+      "relativeStrengthAvailable": "OWNER_POLICY_REQUIRED",
+      "notes": "The audit describes it as a -2x product needing an explicit product-risk policy; repository note only, not issuer evidence. Not approved."
+    }
+  ],
+  "missingOfflineData": [
+    "dated share prices for any non-SPY instrument",
+    "archived option chains or listed-strike ranges for any non-SPY instrument",
+    "issuer or exchange classification evidence for any non-SPY instrument",
+    "per-instrument event or corporate-action coverage",
+    "an owner-defined relative-strength policy (benchmark, window, scale)"
+  ],
+  "nextActions": [
+    { "owner": "OWNER", "action": "Decide whether any non-SPY instrument should be proposed; this file approves nothing." },
+    { "owner": "OWNER_POLICY", "action": "Define relativeStrength benchmark, window and scale before any non-fund instrument can become data-complete." },
+    { "owner": "FUTURE_MARKET", "action": "Capture read-only price/chain archives for owner-nominated symbols during a market session to answer the empirical question." }
+  ]
+}

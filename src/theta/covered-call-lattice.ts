@@ -329,8 +329,11 @@ function dominates(a: CoveredCallAssessment, b: CoveredCallAssessment): boolean 
     if (dimA.value === null && dimB.value === null) continue;
     if (dimA.value === null || dimB.value === null) return false;
     comparedAny = true;
-    const normA = dimA.higherIsBetter ? dimA.value : -dimA.value;
-    const normB = dimB.higherIsBetter ? dimB.value : -dimB.value;
+    // P2-CHAIN-04: compare as INTEGER CENTS. Spreads/premiums are products of binary-float quotes (for example
+    // (0.3 - 0.1) * 100 = 20.000000000000004), so a raw `<`/`>` can declare dominance from float dust alone.
+    const toCents = (value: number): number => Math.round(value * 100);
+    const normA = dimA.higherIsBetter ? toCents(dimA.value) : -toCents(dimA.value);
+    const normB = dimB.higherIsBetter ? toCents(dimB.value) : -toCents(dimB.value);
     if (normA < normB) return false;
     if (normA > normB) strictlyBetterSomewhere = true;
   }

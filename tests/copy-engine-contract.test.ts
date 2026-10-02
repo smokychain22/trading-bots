@@ -61,6 +61,21 @@ test("master quantity five adapts to follower quantities two, one, and zero", ()
   assert.equal(zero.executionAuthorized, false);
 });
 
+test("SIZE-FLOAT-01: follower collateral capacity uses integer cents; decimal-noise collateral never under-sizes an exact fit", () => {
+  assert.ok(1.09 * 100 > 109);
+  const at = (capital: number, collateral = 1.09 * 100) => planFollowerCopy(event({ masterQuantity: 5, masterFilledQuantity: 5 }),
+    follower({ authorizedCapitalRemaining: capital, collateralPerContract: collateral })).intendedQuantity;
+  assert.equal(at(109), 1);
+  assert.equal(at(108.99), 0);
+  assert.equal(at(218), 2);
+  assert.equal(at(217.99), 1);
+  assert.equal(at(1_000_000), 5, "still capped by the master quantity / per-position maximum");
+  // zero-capacity is a valid outcome; invalid collateral/capital is rejected by the state schema before sizing
+  assert.equal(at(0), 0);
+  assert.throws(() => at(20_000, 0));
+  assert.throws(() => at(-5));
+});
+
 test('master close or roll before follower fill must reconcile the pending order without planning duplicate exposure', () => {
   for (const action of ['OPEN_CSP', 'CLOSE_CSP', 'ROLL_CSP_OPEN', 'ROLL_CSP_CLOSE', 'OPEN_CC'] as const) {
     const plan = planFollowerCopy(event({ action }), follower({ brokerOrderState: 'PENDING' }));

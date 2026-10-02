@@ -59,11 +59,34 @@ test('days extended and incremental capital are computed and exposed on the winn
   assert.equal(best?.incrementalCapitalDollars, -500);
 });
 
-test('released capital is not charged as additional capital and ties are provider-order independent', () => {
+test('with a zero weight released capital is free, and ties are provider-order independent', () => {
   const a = candidate({ optionContractId: 'a' }), b = candidate({ optionContractId: 'b' });
-  assert.equal(evaluateRollCandidates(oldLeg, null, [a], 1).bestCandidate?.rollIncrementalUtility, 50);
+  assert.equal(evaluateRollCandidates(oldLeg, null, [a], 0).bestCandidate?.rollIncrementalUtility, 50);
   assert.equal(evaluateRollCandidates(oldLeg, null, [a, b], 1).bestCandidate?.candidate.optionContractId,
     evaluateRollCandidates(oldLeg, null, [b, a], 1).bestCandidate?.candidate.optionContractId);
+});
+
+test('D4: extending the SAME collateral for more days is priced as capital-days (forward economics, no new weight)', () => {
+  const same = candidate({ optionContractId: 'same', strike: 200, expiration: '2027-04-16', openCreditDollars: 150, capitalCommittedDollars: 20_000 });
+  const days = 182; // 2026-10-16 -> 2027-04-16
+  // no asOf: the extension alone, newCapital x days(oldExpiry -> newExpiry)
+  const noAsOf = evaluateRollCandidates(oldLeg, 0, [same], 1).assessments[0];
+  assert.equal(noAsOf?.daysExtended, days);
+  assert.equal(noAsOf?.incrementalCapitalDollars, 0, 'the dollars of collateral are unchanged ...');
+  assert.equal(noAsOf?.incrementalCapitalDays, 20_000 * days, '... but the extra days are capital-days');
+  assert.equal(noAsOf?.rollIncrementalUtility, 50 - 20_000 * days, 'a weight of 1 per USD-day now prices a six-month extension');
+  // with asOf the overlap period is exact: new 20,000 x days(asOf -> 2027-04-16) - old 20,000 x days(asOf -> 2026-10-16)
+  const asOf = '2026-09-12T00:00:00Z';
+  const exact = evaluateRollCandidates(oldLeg, 0, [same], 1, asOf).assessments[0];
+  assert.ok(Math.abs((exact?.incrementalCapitalDays ?? 0) - 20_000 * days) < 1e-6, 'same collateral => the difference is exactly the extension');
+  // weight 0 stays inert: ranking is pure net credit, never an invented penalty
+  assert.equal(evaluateRollCandidates(oldLeg, 0, [same], 0, asOf).assessments[0]?.rollIncrementalUtility, 50);
+  // a roll that does NOT extend and does not add collateral pays nothing
+  const flat = candidate({ optionContractId: 'flat', expiration: oldLeg.expiration as string, capitalCommittedDollars: 20_000, openCreditDollars: 150 });
+  assert.equal(evaluateRollCandidates(oldLeg, 0, [flat], 1, asOf).assessments[0]?.rollIncrementalUtility, 50);
+  // unknown collateral keeps the candidate unrankable, never a zero penalty
+  const unknown = candidate({ optionContractId: 'unk', capitalCommittedDollars: null });
+  assert.equal(evaluateRollCandidates(oldLeg, 0, [unknown], 1, asOf).assessments[0]?.rollIncrementalUtility, null);
 });
 
 test('nonfinite roll economics never rank or produce a fabricated finite utility', () => {

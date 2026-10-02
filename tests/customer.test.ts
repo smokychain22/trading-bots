@@ -112,6 +112,16 @@ test("demo economic equity, drawdown, attribution and open chain reconcile", () 
   assert.equal(chain.capital_days, 18000 * 24);
   assert.equal(performance.track_record.independent_n, null);
 });
+test("SIZE-FLOAT-01: illustrative sizing uses integer-cent affordability so decimal-noise collateral cannot under-size an exact fit", () => {
+  // 1.09 * 100 = 109.00000000000001 in binary floating point: plain floor(109 / cost) is 0 for an exactly affordable lot.
+  const noisy = { ...input, strike: 1.09, premium: 0.5, costs_per_contract: 0, max_contracts: 10, stock_at_exit: 2 };
+  assert.ok(1.09 * 100 > 109);
+  assert.equal(simulateCapital({ ...noisy, capital: 109 }).quantity, 1);
+  assert.equal(simulateCapital({ ...noisy, capital: 108.99 }).quantity, 0);
+  assert.equal(simulateCapital({ ...noisy, capital: 218 }).quantity, 2);
+  assert.equal(simulateCapital({ ...noisy, capital: 217.99 }).quantity, 1);
+  assert.equal(simulateCapital({ ...noisy, capital: 109, max_contracts: 0 }).quantity, 0);
+});
 test("illustrative sizing allows zero, excludes premium from collateral and includes stock losses", () => {
   assert.equal(simulateCapital(input).economic_pnl, -352);
   assert.equal(simulateCapital({ ...input, capital: 5001 }).quantity, 0);

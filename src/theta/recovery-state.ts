@@ -1,7 +1,7 @@
 import type { ManagementInputState } from './management-input-state.js';
 import { computeEffectiveStockBasis, type WholeChainComponents } from './whole-chain-economics.js';
 
-export const recoveryStateVersion = 'theta-recovery-state-v2' as const;
+export const recoveryStateVersion = 'theta-recovery-state-v3' as const;
 
 /**
  * A structured state vector for an assigned/held stock position deciding
@@ -80,13 +80,11 @@ export interface RecoveryState {
   readonly coveredCallCandidateQualityKnown: boolean;
   readonly capitalDaysSoFar: number | null;
   /**
-   * Capital opportunity cost is treated as BASIS-INDEPENDENT-ish evidence
-   * (per the standing directive: THETA may still evaluate this even when
-   * canonical basis is UNKNOWN) -- it uses whichever basis reference is
-   * actually available (canonical when known, the recorded-lot reference
-   * otherwise) purely to size "how much capital is tied up," not to make
-   * a whole-chain P&L claim. `capitalBasisSource` names which one backed
-   * it, so this is never silently conflated with a canonical P&L figure.
+   * Capital opportunity cost is sized on the CURRENT LIQUIDATION VALUE of the held shares (mark x shares), the capital
+   * that selling would actually release. It deliberately does NOT use cost basis (canonical or recorded): a basis
+   * above the mark is a sunk, historical loss, and sizing capital by it would make the opportunity cost of waiting --
+   * and therefore SELL_STOCK's utility -- grow with the size of the loss (P2-CHAIN-02). It needs no basis at all, so
+   * THETA can still evaluate it when canonical basis is UNKNOWN. UNKNOWN (null) when the mark is unknown.
    */
   readonly capitalOpportunityCostDollars: number | null;
   /** Elapsed cost above is historical context, never a avoidable forward cost. */
@@ -94,7 +92,8 @@ export interface RecoveryState {
   readonly forwardHorizonDays: number | null;
   readonly forwardCapitalDays: number | null;
   readonly capitalDaysUnit: 'USD_CALENDAR_DAYS';
-  readonly capitalBasisSource: BasisSource;
+  /** What sized the capital figures above: the current liquidation value, never a cost basis. */
+  readonly capitalSizingBasis: 'CURRENT_MARK_LIQUIDATION_VALUE' | 'UNKNOWN';
   readonly portfolioBurdenDataPresent: boolean;
   readonly dataCompleteness: {
     readonly missingUpstreamFields: readonly string[];
@@ -158,14 +157,9 @@ export function buildRecoveryState(
   const referenceDistanceToBasisFraction = fraction(stockMarkPerShare, recordedLotBasisReferencePerShare);
 
   const capitalDaysSoFar = daysBetween(assignedAtObservedAt, state.observedAt);
-  // Capital opportunity cost is basis-independent-ish evidence -- it may
-  // use whichever basis is actually available (canonical preferred, the
-  // recorded-lot reference otherwise) purely to size capital locked, and
-  // `capitalBasisSource` names which one, so it is never silently
-  // conflated with a canonical whole-chain P&L claim.
-  const capitalBasisReference = canonicalEffectiveBasisPerShare ?? recordedLotBasisReferencePerShare;
-  const capitalLocked = finite(capitalBasisReference) && capitalBasisReference >= 0 && finite(openStockShares) && openStockShares > 0
-    ? capitalBasisReference * openStockShares : null;
+  // Capital released by selling is mark x shares (liquidation value). Cost basis is sunk and never sizes it.
+  const capitalLocked = finite(stockMarkPerShare) && stockMarkPerShare >= 0 && finite(openStockShares) && openStockShares > 0
+    ? stockMarkPerShare * openStockShares : null;
   const validRate = finite(annualOpportunityCostRate) && annualOpportunityCostRate >= 0;
   const rawOpportunityCost = finite(capitalLocked) && capitalDaysSoFar !== null && validRate
     ? capitalLocked * annualOpportunityCostRate * (capitalDaysSoFar / 365) : null;
@@ -198,7 +192,7 @@ export function buildRecoveryState(
     coveredCallCandidateQualityKnown: false, capitalDaysSoFar, capitalOpportunityCostDollars,
     forwardOpportunityCostDollars, forwardHorizonDays: validHorizon ? forwardHorizonDays : null,
     forwardCapitalDays, capitalDaysUnit: 'USD_CALENDAR_DAYS',
-    capitalBasisSource: finite(capitalBasisReference) ? basisSource : 'UNKNOWN',
+    capitalSizingBasis: capitalLocked !== null ? 'CURRENT_MARK_LIQUIDATION_VALUE' : 'UNKNOWN',
     portfolioBurdenDataPresent: state.context.concentration !== null,
     dataCompleteness: {
       missingUpstreamFields: ['realized_volatility_feed', 'covered_call_candidate_quality_scoring'],

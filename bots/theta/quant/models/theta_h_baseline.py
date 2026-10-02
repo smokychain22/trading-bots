@@ -123,6 +123,13 @@ class ThetaHPolicy:
             reasons.append(ReasonCode("VOLUME_UNKNOWN", -1, "Volume is UNKNOWN, not assumed acceptable or zero."))
         elif c.volume < p.min_volume:
             reasons.append(ReasonCode("VOLUME_BELOW_FLOOR", -1, f"volume {c.volume} below floor {p.min_volume}."))
+        # Short-DTE hazards that are UNKNOWN are never assumed safe (UNKNOWN is not zero).
+        if c.gamma is None:
+            reasons.append(ReasonCode("GAMMA_UNKNOWN", -1, "Gamma is UNKNOWN, not assumed acceptable or zero."))
+        if c.overnight_gap_history_pct is None:
+            reasons.append(ReasonCode("OVERNIGHT_GAP_HISTORY_UNKNOWN", -1, "Overnight gap history is UNKNOWN, not assumed zero."))
+        if c.earnings_distance_days is None:
+            reasons.append(ReasonCode("EARNINGS_DISTANCE_UNKNOWN", -1, "Earnings distance is UNKNOWN, not assumed clear."))
         if c.earnings_distance_days is not None and c.earnings_distance_days <= p.earnings_exclusion_days:
             reasons.append(ReasonCode("EARNINGS_TOO_NEAR", -1, f"earnings_distance_days={c.earnings_distance_days}"))
         if c.gamma is not None and abs(c.gamma) > p.max_gamma_exposure:

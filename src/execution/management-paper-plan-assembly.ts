@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ManagementActionFrontier, ManagementFrontierAction } from '../theta/management-action-frontier.js';
 import type { ManagementInputState } from '../theta/management-input-state.js';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
+import { coveredCallContractCapacity } from '../theta/secured-contract-capacity.js';
 import { applyPaperEvidenceRiskCap } from './execution-authorization-tier.js';
 import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
 import type { ThetaOrderAction } from './order-construction.js';
@@ -27,6 +28,24 @@ export type ManagementExecutionLegCompilation =
   | { readonly state: 'BLOCKED'; readonly legs: readonly []; readonly blockers: readonly string[] }
   | { readonly state: 'READY'; readonly legs: readonly ManagementExecutionLegDirective[]; readonly blockers: readonly [] };
 
+/** One non-terminal management action plan or order intent already existing for the chain. */
+export interface ManagementChainInFlightEntry {
+  readonly source: 'ACTION_PLAN' | 'ORDER_INTENT';
+  readonly id: string;
+  /** The decision that created it. An entry of THIS assembly's own decision is an idempotent replay, not a conflict. */
+  readonly decisionId: string | null;
+}
+
+/**
+ * MGMT-CROSS-CYCLE-DUP. Plan and order-intent unique keys are per frontier / decision, so a later cycle (new frontier ->
+ * new decision) re-selecting the same close or roll while the first order is still READY / working / unknown would emit a
+ * second equivalent order for the same chain. This explicit input names what already exists for the chain. It has no
+ * default: absent or UNKNOWN blocks.
+ */
+export type ManagementChainInFlightState =
+  | { readonly state: 'KNOWN'; readonly entries: readonly ManagementChainInFlightEntry[] }
+  | { readonly state: 'UNKNOWN' };
+
 export interface ManagementPaperPlanAssemblyInput {
   readonly state: ManagementInputState;
   readonly frontier: ManagementActionFrontier;
@@ -39,6 +58,14 @@ export interface ManagementPaperPlanAssemblyInput {
   readonly killSwitchActive: boolean;
   readonly paperEvidenceRiskCap: number;
   readonly executionLegs: readonly ManagementExecutionLegDirective[];
+  /** Absent === UNKNOWN === blocked (see ManagementChainInFlightState). */
+  readonly chainInFlight?: ManagementChainInFlightState;
+  /**
+   * HDAC-05. Whole short-call contracts already committed on this underlying across the ACCOUNT (open short calls of any
+   * chain plus pending sell-to-open call orders; see deriveCommittedShortCallContracts). It INCLUDES the call a ROLL_CC is
+   * closing, which is netted out here. null / absent is UNKNOWN and blocks any covered-call open.
+   */
+  readonly committedShortCallContracts?: number | null;
   readonly now: string;
   readonly decisionExpiresAt: string;
 }
@@ -237,12 +264,49 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
   if (!uuid.safeParse(input.state.managementInputSnapshotId).success) blockers.push('MANAGEMENT_INPUT_ID_INVALID');
   if (!uuid.safeParse(input.state.underlyingId).success) blockers.push('UNDERLYING_ID_INVALID');
 
+  const authorityRef = `management:${input.managementActionFrontierId}:${selected}`;
+  const decisionId = deterministicRuntimeUuid(`management-decision:${authorityRef}`);
+  // MGMT-CROSS-CYCLE-DUP: any other non-terminal plan/order for this chain blocks a new management order.
+  const inFlight = input.chainInFlight;
+  let noEquivalentExposureConflict = false;
+  if (inFlight === undefined || inFlight.state !== 'KNOWN') blockers.push('MANAGEMENT_CHAIN_IN_FLIGHT_STATE_UNKNOWN');
+  else {
+    const conflicts = inFlight.entries.filter((entry) => entry.decisionId !== decisionId);
+    if (conflicts.length > 0) blockers.push('MANAGEMENT_EQUIVALENT_ORDER_IN_FLIGHT');
+    else noEquivalentExposureConflict = true;
+  }
+
   const required = managementOrderActions[selected] ?? [];
   if (required.length === 0) blockers.push(`MANAGEMENT_ACTION_NOT_CONNECTED:${selected}`);
   if (input.executionLegs.length !== required.length
     || input.executionLegs.some((leg, index) => leg.action !== required[index])) blockers.push('MANAGEMENT_EXECUTION_LEG_SEQUENCE_INVALID');
-  for (const leg of input.executionLegs) {
+  const netCommitted = new Map<number, number>();
+  for (const [index, leg] of input.executionLegs.entries()) {
     validateLegIdentity(input.state, leg, blockers);
+    if (leg.action === 'OPEN_CC' || leg.action === 'ROLL_CC_OPEN') {
+      // HDAC-05: coverage is ACCOUNT-NET. Shares already backing another short call (sibling chain, pending sell-to-open)
+      // are not free. A roll's own close frees the contracts it is closing.
+      const previous = input.executionLegs[index - 1];
+      const ownClosing = leg.action === 'OPEN_CC' ? 0
+        : previous?.action === 'ROLL_CC_CLOSE' ? previous.canonicalQuantity : null;
+      const committed = input.committedShortCallContracts ?? null;
+      const net = committed === null || ownClosing === null ? null : committed - ownClosing;
+      if (net === null || !Number.isSafeInteger(net) || net < 0) blockers.push(`COMMITTED_SHORT_CALLS_UNKNOWN:${leg.action}`);
+      else {
+        const capacity = coveredCallContractCapacity(leg.confirmedCoveredShares ?? null, net, 0, leg.multiplier);
+        if (capacity === null || capacity < leg.canonicalQuantity) blockers.push(`COVERED_CALL_ACCOUNT_NET_COVERAGE_INSUFFICIENT:${leg.action}`);
+        netCommitted.set(index, net);
+      }
+    }
+    if (leg.action === 'SELL_STOCK') {
+      // Selling the underlying must never leave a short call uncovered. Chain coverage is account-net and the stock leg only
+      // knows this chain's shares, so the account must be PROVEN to carry no short calls (or pending sell-to-open) on this
+      // underlying. Unknown blocks; any committed call blocks (close or let it resolve first).
+      const committed = input.committedShortCallContracts ?? null;
+      if (committed === null || !Number.isSafeInteger(committed) || committed < 0) blockers.push('COMMITTED_SHORT_CALLS_UNKNOWN:SELL_STOCK');
+      else if (committed > 0) blockers.push('STOCK_SALE_WITH_SHORT_CALLS_COMMITTED:SELL_STOCK');
+      else netCommitted.set(index, 0);
+    }
     if (leg.action !== 'SELL_STOCK' && !input.optionsCapabilityVerified) blockers.push(`OPTIONS_CAPABILITY_NOT_VERIFIED:${leg.action}`);
     if (opensRisk.has(leg.action) && !['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState ?? '')) {
       blockers.push(`AEGIS_NOT_APPROVED_FOR_NEW_RISK:${leg.action}`);
@@ -269,8 +333,6 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
     return { state: 'BLOCKED', decision: null, plans: [], blockers: [...new Set(blockers)] };
   }
 
-  const authorityRef = `management:${input.managementActionFrontierId}:${selected}`;
-  const decisionId = deterministicRuntimeUuid(`management-decision:${authorityRef}`);
   const actionGroupId = deterministicRuntimeUuid(`management-action-group:${authorityRef}`);
   const planIds = input.executionLegs.map((leg, index) => deterministicRuntimeUuid(
     `management-plan:${authorityRef}:${index + 1}:${leg.action}:${leg.symbol}`,
@@ -304,6 +366,7 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
         ? 'EMPIRICALLY_PROMOTED_PAPER' : 'PAPER_EVIDENCE',
       multiplier: leg.multiplier,
       ...(leg.confirmedCoveredShares === undefined ? {} : { confirmedCoveredShares: leg.confirmedCoveredShares }),
+      ...(netCommitted.has(index) ? { committedShortCallContracts: netCommitted.get(index) as number } : {}),
       action: leg.action,
       economicBoundary: leg.economicBoundary,
       economicsRemainPositive: leg.economicsRemainPositive,
@@ -313,7 +376,7 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
       hardValidityPassed: true,
       accountVerified: true,
       optionsCapabilityVerified: input.optionsCapabilityVerified,
-      noEquivalentExposureConflict: true,
+      noEquivalentExposureConflict,
       aegisState: input.aegisState as ManagementDecisionDraft['aegisAction'],
       killSwitchActive: false,
       decisionExpiresAt: input.decisionExpiresAt,

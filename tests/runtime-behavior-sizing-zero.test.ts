@@ -24,12 +24,16 @@ test('every zero-quantity cause is distinguished: upstream Q rejection, AEGIS no
   assert.equal(classifySizingZero(zero('AEGIS_NOT_REACHED_UPSTREAM')), 'AEGIS_NOT_REACHED');
   assert.equal(classifySizingZero(zero('UNDERLYING:UNDERLYING_SEVERELY_EXCEEDED', ['AEGIS_HARD_VETO'])), 'AEGIS_HARD_VETO');
   assert.equal(classifySizingZero(zero('AEGIS_HOLD_ONLY', ['AEGIS_HOLD_ONLY'])), 'AEGIS_HOLD_ONLY');
-  assert.equal(classifySizingZero(zero('REAL_ASSIGNMENT_CAPACITY', ['NO_ASSIGNMENT_CAPACITY'])), 'AEGIS_CAPACITY_ZERO');
+  assert.equal(classifySizingZero(zero('REAL_ASSIGNMENT_CAPACITY', ['NO_ASSIGNMENT_CAPACITY'])), 'ACCOUNT_CAPACITY_ZERO');
   assert.equal(classifySizingZero(zero('AEGIS_UNKNOWN')), 'AEGIS_REQUIRED_UNKNOWN');
   assert.equal(classifySizingZero(zero('COLLATERAL_INPUT_UNKNOWN')), 'SIZING_EVIDENCE_UNKNOWN');
   assert.equal(classifySizingZero(zero('LIQUIDITY:SPREAD_WIDENING_UNKNOWN')), 'AEGIS_REQUIRED_UNKNOWN');
   assert.equal(classifySizingZero(zero('LIQUIDITY:SPREAD_WIDENING_DETECTED')), 'AEGIS_RISK_FAMILY_BLOCK');
-  assert.equal(classifySizingZero(zero('BUYING_POWER_AFFORDABLE')), 'STRUCTURAL_SIZING_ZERO');
+  assert.equal(classifySizingZero(zero('BUYING_POWER_AFFORDABLE')), 'ACCOUNT_CAPACITY_ZERO', 'one canonical capacity-zero label for buying power and assignment capacity');
+  assert.equal(classifySizingZero(zero('SOME_UNLISTED_BINDING')), 'STRUCTURAL_SIZING_ZERO', 'residual only');
+  assert.equal(classifySizingZero(zero('AEGIS_RISK_CAPACITY')), 'ACCOUNT_CAPACITY_ZERO');
+  assert.equal(classifySizingZero(zero('AEGIS_RISK_CAPACITY_UNKNOWN')), 'AEGIS_REQUIRED_UNKNOWN');
+  assert.equal(classifySizingZero(zero('AEGIS_UNKNOWN', ['ACCOUNT_POLICY_INCOMPATIBILITY'])), 'ACCOUNT_CAPACITY_ZERO');
   assert.equal(classifySizingZero(zero('ROUTER_NOT_APPLICABLE')), 'BRANCH_NOT_APPLICABLE');
   assert.equal(classifySizingZero(zero('BUYING_POWER_AFFORDABLE', ['CONTRACT_NOT_EXECUTABLE'])), 'NO_EXECUTABLE_CANDIDATE');
   assert.equal(classifySizingZero({ hardBlockers: [], sizing: { quantity: 2, bindingConstraint: 'COLLATERAL' } }), null, 'a positive quantity has no zero cause');
@@ -55,13 +59,13 @@ test('a wait made only of never-evaluated zero-quantity candidates is NOT classi
   assert.ok(upstreamOnly.reasonCodes.includes('SIZING_ZERO_CAUSE:Q_REJECTED_UPSTREAM:60'));
   const vetoed = classifyRuntimeBehavior(input({ riskEvaluatedZeroCount: 3, aegisVetoCount: 3, sizingZeroBreakdown: { AEGIS_HARD_VETO: 3 } }));
   assert.equal(vetoed.waitClassification, 'RISK_WAIT');
-  const capacity = classifyRuntimeBehavior(input({ riskEvaluatedZeroCount: 1, sizingZeroBreakdown: { AEGIS_CAPACITY_ZERO: 1 } }));
+  const capacity = classifyRuntimeBehavior(input({ riskEvaluatedZeroCount: 1, sizingZeroBreakdown: { ACCOUNT_CAPACITY_ZERO: 1 } }));
   assert.equal(capacity.waitClassification, 'RISK_WAIT');
 });
 
 test('historical (pre-v6) inputs keep their historical meaning: a missing breakdown falls back to the old quantity-zero rule', () => {
   assert.equal(classifyRuntimeBehavior(input({ quantityZeroCount: 2 })).waitClassification, 'RISK_WAIT');
-  assert.equal(runtimeBehaviorDiagnosticVersion, 'theta-runtime-behavior-diagnostic-v6');
+  assert.equal(runtimeBehaviorDiagnosticVersion, 'theta-runtime-behavior-diagnostic-v7');
 });
 
 test('shortlist-bound and not-sent markers are non-evaluation labels, not a dominant hard gate', () => {

@@ -64,6 +64,7 @@ const entryEligibilitySchema = z.object({
 const thetaQCandidateEvaluationSchema = z.object({
   state: z.enum(['EVALUATED_FEASIBLE', 'EVALUATED_INFEASIBLE', 'NOT_SENT_UPSTREAM_REJECT', 'NOT_EVALUATED_SHORTLIST_BOUND', 'RESPONSE_GAP']),
   reasonCode: z.string().nullable(),
+  accountPolicyIncompatibility: z.object({ state: z.string(), bindingPolicies: z.array(z.string()) }).optional(),
 });
 
 const thetaQDecisionSchema = z.object({
@@ -117,6 +118,7 @@ export const t0ReplayBundleSchema = z.object({
   buyingPower: z.number().nullable().optional(),
   brokerAllowedQty: z.number().int().nonnegative().optional(),
   brokerAllowedQtyByCandidateId: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  riskCapacityQtyByCandidateId: z.record(z.string(), z.number().int().nonnegative().nullable()).optional(),
   sizingPolicy: canonicalSizingPolicySchema.optional(),
   openingCostPolicy: canonicalOpeningCostPolicySchema.nullable().optional(),
   maxAdverseGap60d: z.number().finite().nullable().optional(),
@@ -183,6 +185,7 @@ export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0Re
     assignmentCapacityQty: input.assignmentCapacityQty, buyingPower: input.buyingPower ?? null,
     brokerAllowedQty: input.brokerAllowedQty,
     brokerAllowedQtyByCandidateId: input.brokerAllowedQtyByCandidateId,
+    ...(input.riskCapacityQtyByCandidateId === undefined ? {} : { riskCapacityQtyByCandidateId: input.riskCapacityQtyByCandidateId }),
     sizingPolicy: input.sizingPolicy,
     openingCostPolicy: input.openingCostPolicy,
     maxAdverseGap60d: input.maxAdverseGap60d ?? null,
@@ -227,6 +230,7 @@ export function replayFromT0Bundle(bundle: T0ReplayBundle): CanonicalStrategyFro
     assignmentCapacityQty: parsed.assignmentCapacityQty, buyingPower: parsed.buyingPower ?? null,
     brokerAllowedQty: parsed.brokerAllowedQty,
     brokerAllowedQtyByCandidateId: parsed.brokerAllowedQtyByCandidateId,
+    riskCapacityQtyByCandidateId: parsed.riskCapacityQtyByCandidateId,
     sizingPolicy: parsed.sizingPolicy,
     openingCostPolicy: parsed.openingCostPolicy,
     maxAdverseGap60d: parsed.maxAdverseGap60d ?? null,

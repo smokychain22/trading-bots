@@ -245,3 +245,14 @@ test('T0 rejects future observations and unknown router strategies before replay
   firstRoute.strategyFamily = 'THETA_UNKNOWN';
   assert.throws(() => replayFromT0Bundle(unknownStrategy as unknown as T0ReplayBundle));
 });
+
+test('RISK-CAP-01: riskCapacityQtyByCandidateId round-trips through the bundle and replays to the identical hash; a legacy bundle without it still replays', () => {
+  const withCapacity: CanonicalStrategyFrontierInput = { ...realCycleInput,
+    riskCapacityQtyByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': 1, 'THETA_CONVENTIONAL:OTHER': null } };
+  const bundle = buildT0ReplayBundle(withCapacity);
+  assert.deepEqual(bundle.riskCapacityQtyByCandidateId, withCapacity.riskCapacityQtyByCandidateId);
+  assert.equal(replayFromT0Bundle(JSON.parse(JSON.stringify(bundle)) as T0ReplayBundle).contentHash, bundle.expectedFrontierContentHash);
+  const legacy = buildT0ReplayBundle(realCycleInput);
+  assert.ok(!('riskCapacityQtyByCandidateId' in legacy), 'absent field stays absent (archived-bundle shape unchanged)');
+  assert.equal(replayFromT0Bundle(JSON.parse(JSON.stringify(legacy)) as T0ReplayBundle).contentHash, legacy.expectedFrontierContentHash);
+});

@@ -655,6 +655,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       aegisState:selected?.aegisState??cycle?.orchestration?.aegis?.newRiskState??null,
       entrySafetyPolicy:entrySafetyBySymbol.get(member.symbol)??null,
       runtimeTelemetry:cycle===null?null:buildFirstPaperRuntimeTelemetry({frontier,alpacaQuoteState:quoteState}),
+      qEntryFunnel:cycle?.qEntryFunnel??null,
       cycleBlockers:cycle?.blockers??[],preSubmit:readOnlyPreSubmitProofs.find((proof)=>proof.symbol===member.symbol)??null};
   });
   const requiredProviderBlockers=[...new Set([...runtimeSafetyBlockers,...discoveryBlockers,...scan.missingScope,

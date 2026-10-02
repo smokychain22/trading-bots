@@ -191,7 +191,11 @@ def route_strategies(
 
     # THETA-A: only relevant when assignment risk is present or stock is
     # already held from a prior assignment.
-    if lifecycle in (LifecycleState.ASSIGNMENT_RISK, LifecycleState.STOCK_HELD, LifecycleState.RECOVERY) or portfolio.assignment_imminent:
+    # STOCK_HELD / RECOVERY are lifecycle LABELS, not inventory: without broker-confirmed shares they
+    # cannot make THETA-A applicable (no synthetic inventory from lifecycle or historical option intent).
+    stock_confirmed = portfolio.stock_shares_held > 0
+    stock_lifecycle = lifecycle in (LifecycleState.STOCK_HELD, LifecycleState.RECOVERY) and stock_confirmed
+    if lifecycle == LifecycleState.ASSIGNMENT_RISK or stock_lifecycle or portfolio.assignment_imminent:
         results.append(_eligible(StrategyFamily.THETA_A, EligibilityState.ELIGIBLE_PRIMARY,
                                   "ASSIGNMENT_OR_STOCK_PRESENT", f"lifecycle_state={lifecycle.value}", policy))
     elif portfolio.assignment_imminent is None:

@@ -32,7 +32,8 @@ import {
   MasterPaperActionHandoff, classifyMasterPaperActionExecution, paperBootstrapPreSubmitQuoteAgePolicy,
 } from '../execution/master-paper-action-handoff.js';
 import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives } from '../execution/management-paper-plan-assembly.js';
-import { AlpacaProviderError } from './alpaca-provider.js';
+import { readCommittedShortCallContracts, readManagementChainInFlight } from '../execution/management-chain-inflight.js';
+import { AlpacaProviderError, fetchLatestStockQuote } from './alpaca-provider.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
 import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.js';
 import { PostgresP2EEvidenceStore } from './p2e-evidence-store.js';
@@ -484,6 +485,8 @@ export async function runAutonomousRuntimeCycle(
           .discover(master.connectionId,reconciliation.snapshotId);
         const states = await managementStore.assembleAndPersistOpenChains(
           master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,candidateDiscovery,
+          // SELL_STOCK executable evidence: one bounded Alpaca IEX stock quote read per underlying holding shares.
+          (symbol)=>fetchLatestStockQuote(master.alpaca,symbol,'iex'),
         );
         if (states.length === 0) return skipped('NO_OPEN_THETA_CHAINS');
         // Persist research-only profit-preservation and strategy-switching
@@ -509,7 +512,15 @@ export async function runAutonomousRuntimeCycle(
             ? rawAegis as 'ALLOW_FULL'|'ALLOW_REDUCED'|'HOLD_ONLY'|'HARD_VETO':null;
           const compiled=compileManagementExecutionLegDirectives(state,persisted.frontier);
           if(compiled.state==='BLOCKED')return degraded(compiled.blockers[0]??'MANAGEMENT_LEG_COMPILATION_BLOCKED',retryAt);
-          const assembly=assembleManagementPaperPlans({state,frontier:persisted.frontier,
+          // MGMT-CROSS-CYCLE-DUP / HDAC-05 evidence. Both reads fail closed (UNKNOWN / null blocks the assembly).
+          const chainInFlight=compiled.state==='READY'&&master.executionAccountId!==null
+            ?await readManagementChainInFlight(pool,master.executionAccountId,state.chainId):{state:'UNKNOWN' as const};
+          const opensCall=compiled.state==='READY'&&compiled.legs.some((leg)=>leg.action==='OPEN_CC'||leg.action==='ROLL_CC_OPEN'||leg.action==='SELL_STOCK');
+          const committedShortCallContracts=opensCall&&master.executionAccountId!==null
+            ?await readCommittedShortCallContracts(pool,{executionAccountId:master.executionAccountId,
+              reconciliationSnapshotId:reconciliation.snapshotId,underlying:state.underlying,
+              externalOrUnknownCount:reconciliation.externalOrUnknownCount}):null;
+          const assembly=assembleManagementPaperPlans({state,frontier:persisted.frontier,chainInFlight,committedShortCallContracts,
             managementActionFrontierId:persisted.managementActionFrontierId,
             executionAccountId:master.executionAccountId,strategyVersion,accountStatus:reconciliation.accountStatus,
             optionsCapabilityVerified:master.optionsCapabilityVerified,aegisState,
@@ -517,7 +528,11 @@ export async function runAutonomousRuntimeCycle(
             paperEvidenceRiskCap:environment.PAPER_EVIDENCE_RISK_CAP,executionLegs:compiled.legs,
             now:reconciliation.observedAt,decisionExpiresAt:new Date(Date.parse(reconciliation.observedAt)+30_000).toISOString()});
           if(assembly.state==='READY')await actionPlanStore.publishManagementPlans(assembly.decision,assembly.plans,reconciliation.observedAt);
-          if(assembly.state==='BLOCKED')return degraded(assembly.blockers[0]??'MANAGEMENT_ACTION_PLAN_BLOCKED',retryAt);
+          if(assembly.state==='BLOCKED'){
+            // An earlier order for this chain is still in flight: that is expected, not a degraded job; keep scanning other chains.
+            if(assembly.blockers.length>0&&assembly.blockers.every((blocker)=>blocker==='MANAGEMENT_EQUIVALENT_ORDER_IN_FLIGHT'))continue;
+            return degraded(assembly.blockers[0]??'MANAGEMENT_ACTION_PLAN_BLOCKED',retryAt);
+          }
         }
         if (states.some((state) => state.hardBlockers.length > 0)) {
           return degraded('MANAGEMENT_HARD_BLOCKERS_PRESENT', retryAt);

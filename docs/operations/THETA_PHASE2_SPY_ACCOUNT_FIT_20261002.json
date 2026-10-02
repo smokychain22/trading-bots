@@ -1,0 +1,209 @@
+{
+  "schema": "theta-phase2-spy-account-fit-v1",
+  "generatedFor": "2026-10-02",
+  "source": {
+    "archivedCycleId": "e9f4b10f-7d76-4612-bceb-0c4f50bf617e",
+    "originatingSourceSha": "c3d8868265426d870e50352b06d8d252c68a16c9",
+    "evaluatedWith": "current checkout canonical code (buildCanonicalStrategyFrontier / deriveCandidateCapacityAssessment), offline, no provider or broker calls",
+    "note": "Derived numbers only. Q-structural-valid = bootstrap conventional gates (DTE 25-60, abs delta <= 0.5, OI >= 50, volume >= 10, two-sided quote, spread <= 15%, quote age <= 30s)."
+  },
+  "account": {
+    "equityUsd": 99999.96,
+    "optionsBuyingPowerUsd": 99999.96,
+    "existingShortPutCollateralUsd": 0,
+    "pendingExposureUsd": 0,
+    "stockInventoryUsd": 0
+  },
+  "policy": {
+    "tickerSoftCapPct": 0.15,
+    "hardCapMultiplier": 1.5,
+    "tickerSoftCapUsd": 14999.994,
+    "tickerHardThresholdUsd": 22499.991,
+    "reducedStateMultiplier": 0.5,
+    "collateralUnit": "strike * multiplier(100), applied exactly once"
+  },
+  "chain": {
+    "totalPuts": 2619,
+    "allPutsCollateral": {
+      "min": 30000,
+      "median": 75200,
+      "max": 100000
+    },
+    "allPutsStrike": {
+      "min": 300,
+      "median": 752,
+      "max": 1000
+    },
+    "conventionalDteWindowCount": 961,
+    "qFunnel": {
+      "puts": 2619,
+      "dte": 961,
+      "delta": 643,
+      "openInterest": 550,
+      "volume": 392,
+      "twoSidedQuote": 392,
+      "spread": 363,
+      "quoteAge": 363
+    }
+  },
+  "qStructuralValid": {
+    "count": 363,
+    "collateralUsd": {
+      "min": 37500,
+      "median": 71600,
+      "max": 77000
+    },
+    "strike": {
+      "min": 375,
+      "median": 716,
+      "max": 770
+    }
+  },
+  "baseline": {
+    "equityMultiple": 1,
+    "equity": 99999.96,
+    "softCapUsd": 14999.994,
+    "hardThresholdUsd": 22499.991,
+    "qValidCount": 363,
+    "softCapFitCount": 0,
+    "hardCapFitCount": 0,
+    "finalQtyAtLeastOneCount": 0,
+    "fullStructuralSizeCount": 0,
+    "finalQtyDistribution": {
+      "0": 363
+    },
+    "bindingConstraintDistribution": {
+      "AEGIS_HARD_VETO": 363
+    },
+    "finalQtyExceedsRiskCapacityQtyCount": 0,
+    "finalQtyBreachesHardTickerThresholdCount": 0
+  },
+  "scaleScenarios": [
+    {
+      "equityMultiple": 0.5,
+      "equity": 49999.98,
+      "softCapUsd": 7499.997,
+      "hardThresholdUsd": 11249.9955,
+      "qValidCount": 363,
+      "softCapFitCount": 0,
+      "hardCapFitCount": 0,
+      "finalQtyAtLeastOneCount": 0,
+      "fullStructuralSizeCount": 0,
+      "finalQtyDistribution": {
+        "0": 363
+      },
+      "bindingConstraintDistribution": {
+        "AEGIS_HARD_VETO": 363
+      },
+      "finalQtyExceedsRiskCapacityQtyCount": 0,
+      "finalQtyBreachesHardTickerThresholdCount": 0
+    },
+    {
+      "equityMultiple": 1,
+      "equity": 99999.96,
+      "softCapUsd": 14999.994,
+      "hardThresholdUsd": 22499.991,
+      "qValidCount": 363,
+      "softCapFitCount": 0,
+      "hardCapFitCount": 0,
+      "finalQtyAtLeastOneCount": 0,
+      "fullStructuralSizeCount": 0,
+      "finalQtyDistribution": {
+        "0": 363
+      },
+      "bindingConstraintDistribution": {
+        "AEGIS_HARD_VETO": 363
+      },
+      "finalQtyExceedsRiskCapacityQtyCount": 0,
+      "finalQtyBreachesHardTickerThresholdCount": 0
+    },
+    {
+      "equityMultiple": 1.5,
+      "equity": 149999.94,
+      "softCapUsd": 22499.990999999998,
+      "hardThresholdUsd": 33749.9865,
+      "qValidCount": 363,
+      "softCapFitCount": 0,
+      "hardCapFitCount": 0,
+      "finalQtyAtLeastOneCount": 0,
+      "fullStructuralSizeCount": 0,
+      "finalQtyDistribution": {
+        "0": 363
+      },
+      "bindingConstraintDistribution": {
+        "AEGIS_HARD_VETO": 363
+      },
+      "finalQtyExceedsRiskCapacityQtyCount": 0,
+      "finalQtyBreachesHardTickerThresholdCount": 0
+    },
+    {
+      "equityMultiple": 2,
+      "equity": 199999.92,
+      "softCapUsd": 29999.988,
+      "hardThresholdUsd": 44999.982,
+      "qValidCount": 363,
+      "softCapFitCount": 0,
+      "hardCapFitCount": 6,
+      "finalQtyAtLeastOneCount": 6,
+      "fullStructuralSizeCount": 0,
+      "finalQtyDistribution": {
+        "0": 357,
+        "1": 6
+      },
+      "bindingConstraintDistribution": {
+        "AEGIS_HARD_VETO": 357,
+        "AEGIS_ALLOW_REDUCED": 6
+      },
+      "finalQtyExceedsRiskCapacityQtyCount": 0,
+      "finalQtyBreachesHardTickerThresholdCount": 0
+    },
+    {
+      "equityMultiple": 3,
+      "equity": 299999.88,
+      "softCapUsd": 44999.981999999996,
+      "hardThresholdUsd": 67499.973,
+      "qValidCount": 363,
+      "softCapFitCount": 6,
+      "hardCapFitCount": 99,
+      "finalQtyAtLeastOneCount": 99,
+      "fullStructuralSizeCount": 6,
+      "finalQtyDistribution": {
+        "0": 264,
+        "1": 93,
+        "3": 6
+      },
+      "bindingConstraintDistribution": {
+        "AEGIS_ALLOW_REDUCED": 93,
+        "AEGIS_HARD_VETO": 264,
+        "COLLATERAL_CAP": 6
+      },
+      "finalQtyExceedsRiskCapacityQtyCount": 6,
+      "finalQtyBreachesHardTickerThresholdCount": 6
+    },
+    {
+      "equityMultiple": 5,
+      "equity": 499999.8,
+      "softCapUsd": 74999.97,
+      "hardThresholdUsd": 112499.955,
+      "qValidCount": 363,
+      "softCapFitCount": 289,
+      "hardCapFitCount": 363,
+      "finalQtyAtLeastOneCount": 363,
+      "fullStructuralSizeCount": 263,
+      "finalQtyDistribution": {
+        "1": 100,
+        "3": 263
+      },
+      "bindingConstraintDistribution": {
+        "AEGIS_ALLOW_REDUCED": 100,
+        "COLLATERAL_CAP": 263
+      },
+      "finalQtyExceedsRiskCapacityQtyCount": 263,
+      "finalQtyBreachesHardTickerThresholdCount": 263
+    }
+  ],
+  "classification": {
+    "zeroFitClass": "ACCOUNT_POLICY_INCOMPATIBILITY",
+    "reason": "minimum executable unit (one contract, strike*100) alone reaches the AEGIS hard underlying-concentration threshold; not a market, Q or AEGIS-logic failure"
+  }
+}

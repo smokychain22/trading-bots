@@ -340,6 +340,38 @@ export function deriveAccountExposure(
 }
 
 /**
+ * Contracts already committed as short calls on `underlying`: open short call positions plus pending
+ * sell-to-open call orders. Any unparseable, zero/fractional or unclassifiable call-related row makes
+ * the whole figure UNKNOWN (null) -- it is never silently treated as zero.
+ */
+export function deriveCommittedShortCallContracts(
+  underlying: string,
+  positions: readonly AlpacaPositionSnapshot[],
+  openOrders: readonly AlpacaOpenOrderSnapshot[],
+): number | null {
+  let committed = 0;
+  for (const position of positions) {
+    if (position.assetClass !== 'us_option') continue;
+    const parsed = parseOccOptionSymbol(position.symbol);
+    if (parsed === null) return null; // an unreadable option row could be a short call on this underlying
+    if (parsed.underlying !== underlying || parsed.optionType !== 'CALL') continue;
+    const quantity = position.quantity ?? null;
+    if (quantity === null || !Number.isSafeInteger(quantity) || quantity === 0) return null;
+    if (position.side === 'short' || quantity < 0) committed += Math.abs(quantity);
+  }
+  for (const order of openOrders) {
+    const parsed = order.symbol === null ? null : parseOccOptionSymbol(order.symbol);
+    if (order.symbol !== null && parsed === null) continue; // not an option contract (e.g. an equity order)
+    if (parsed !== null && (parsed.underlying !== underlying || parsed.optionType !== 'CALL')) continue;
+    if (order.positionIntent === 'buy_to_close' || order.positionIntent === 'buy_to_open' || order.positionIntent === 'sell_to_close') continue;
+    if (parsed === null || order.positionIntent === null) return null; // cannot prove it is not a short call
+    if (order.quantity === null || !Number.isSafeInteger(order.quantity) || order.quantity <= 0) return null;
+    committed += order.quantity; // sell_to_open call
+  }
+  return committed;
+}
+
+/**
  * Recovery capacity is the broker-marked value of inventory tied to an
  * unresolved assignment/recovery lifecycle, not all stock in the account.
  * The caller supplies lifecycle authority from the durable chain ledger.

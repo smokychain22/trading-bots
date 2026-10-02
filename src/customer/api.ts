@@ -53,6 +53,8 @@ import { buildR8Readiness, deriveR8ReadinessInput } from "../theta/r8-readiness.
 import { assessReconciliationReadiness, assessRequiredProviderReadiness, assessRuntimeFirstPaperReadiness, buildThetaFirstPaperReadiness,
   type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
 import { canonicalPreVpsUnknownAuditSummary } from "../theta/pre-vps-unknown-register.js";
+import { paperBootstrapManagementPolicyStatus } from "./management-policy-status.js";
+import { wholeContractsAffordable } from "../theta/secured-contract-capacity.js";
 
 function readStatusDatabase(databaseUrl: string | undefined, pauseNewOrders: boolean) {
   return readSequentially([
@@ -97,7 +99,7 @@ export function simulateCapital(raw: unknown) {
   const cost = input.strike * 100 + input.costs_per_contract;
   const allowedDte = input.dte >= input.min_dte && input.dte <= input.max_dte;
   const quantity = allowedDte
-    ? Math.min(input.max_contracts, Math.floor(input.capital / cost))
+    ? Math.min(input.max_contracts, wholeContractsAffordable(input.capital, cost) ?? 0)
     : 0;
   const assignment = quantity > 0 && input.stock_at_exit < input.strike;
   const premium = quantity * input.premium * 100;
@@ -690,13 +692,7 @@ application_name:'theta-api-optionomics-qualification'});
             blockers: ["INSUFFICIENT_RESOLVED_PAPER_EVIDENCE"],
           },
           management_policy_promotion: { status: "NOT_PROMOTED_UNAVAILABLE" },
-          paper_bootstrap_management_policy: {
-            status: "READY",
-            policy_version: "theta-paper-bootstrap-management-policy-v1",
-            authority: "PAPER_BOOTSTRAP_MANAGEMENT_POLICY",
-            empirical_profitability_claimed: false,
-            new_risk_management_actions: "DISABLED",
-          },
+          paper_bootstrap_management_policy: paperBootstrapManagementPolicyStatus(executionControl),
           execution_control: {
             environment: "PAPER",
             live_host_allowed: false,

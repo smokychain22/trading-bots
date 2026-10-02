@@ -44,6 +44,8 @@ export interface ApprovedMasterPaperActionPlan {
   readonly firstCanaryCompleted?:boolean;
   readonly multiplier: number;
   readonly confirmedCoveredShares?: number;
+  /** HDAC-05: short-call contracts already committed on this underlying (net of a roll's own close). Required to open a call. */
+  readonly committedShortCallContracts?: number;
   readonly action: ThetaOrderAction;
   readonly economicBoundary: number;
   readonly economicsRemainPositive: boolean;
@@ -76,6 +78,7 @@ export const masterPaperActionPlanSchema = z.object({
   paperEvidenceQuantity:z.number().int().nonnegative(),paperEvidenceRiskCap:z.number().int().nonnegative(),
   paperEvidenceCapReason:z.enum(['PAPER_EVIDENCE_RISK_CAP','CANONICAL_QUANTITY_LOWER','QUANTITY_ZERO']),
   executionTier:z.enum(executionAuthorizationTiers),multiplier:z.number().int().positive(),confirmedCoveredShares:z.number().int().nonnegative().optional(),
+  committedShortCallContracts:z.number().int().nonnegative().optional(),
   firstCanaryCompleted:z.boolean().optional(),
   action:z.enum(['OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK']),
   economicBoundary:z.number().positive().finite(),economicsRemainPositive:z.boolean(),expectedAfterCostEv:z.number().finite().nullable(),
@@ -205,6 +208,11 @@ export async function prepareMasterPaperAction(
   if(!plan.accountVerified)blockers.push('MASTER_ACCOUNT_NOT_VERIFIED');
   if(!plan.optionsCapabilityVerified&&plan.action!=='SELL_STOCK')blockers.push('OPTIONS_CAPABILITY_NOT_VERIFIED');
   if(!plan.noEquivalentExposureConflict)blockers.push('EQUIVALENT_EXPOSURE_CONFLICT');
+  if((plan.action==='OPEN_CC'||plan.action==='ROLL_CC_OPEN')&&(plan.committedShortCallContracts===undefined
+    ||(plan.confirmedCoveredShares??0)<(plan.quantity+plan.committedShortCallContracts)*plan.multiplier))
+    blockers.push('COVERED_CALL_ACCOUNT_NET_COVERAGE_NOT_CONFIRMED');
+  // Independent of plan assembly: a stock exit must carry proof that no short call is committed on the account's underlying.
+  if(plan.action==='SELL_STOCK'&&plan.committedShortCallContracts!==0)blockers.push('STOCK_SALE_SHORT_CALL_COVERAGE_NOT_CONFIRMED');
   if(plan.killSwitchActive)blockers.push('KILL_SWITCH_ACTIVE');
   if(!marketOpen)blockers.push('MARKET_CLOSED');
   if(!plan.economicsRemainPositive)blockers.push('FORWARD_ECONOMICS_NOT_POSITIVE');
@@ -239,6 +247,8 @@ export async function prepareMasterPaperAction(
     ||parsedIdentity.optionType!==plan.optionType))return blocked('QUOTE_REJECTED',['OPTION_PLAN_IDENTITY_INVALID'],quote);
   const qualification=qualifyExecutionOptionQuote({quote,expectedContractId:plan.symbol,nowUtc:evaluatedAt,
     maximumAgeMs:maximumQuoteAgeMs as number,marketOpen,usage:'MASTER_PAPER',
+    // D6: only a risk-reducing buy-to-close of an option may price against a zero bid (a valid ask is still required).
+    allowZeroBid:sideFor(plan.action)==='BUY'&&plan.optionType!==null&&!opensNewRisk,
     expectedOptionIdentity:parsedIdentity===null?null:{underlying:parsedIdentity.underlying,optionSymbol:plan.symbol,
       expiration:parsedIdentity.expiration,strike:parsedIdentity.strike,optionType:parsedIdentity.optionType,
       multiplier:plan.multiplier}});
@@ -260,6 +270,7 @@ export async function prepareMasterPaperAction(
     decisionId:plan.decisionId,candidateId:plan.candidateId,strategyVersion:plan.strategyVersion,chainId:plan.chainId,
     optionContractId:plan.optionContractId,underlyingId:plan.underlyingId,symbol:plan.symbol,quantity:plan.quantity,
     multiplier:plan.multiplier,...(plan.confirmedCoveredShares===undefined?{}:{confirmedCoveredShares:plan.confirmedCoveredShares}),
+    ...(plan.committedShortCallContracts===undefined?{}:{committedShortCallContracts:plan.committedShortCallContracts}),
     limitPrice:pricing.limitPrice,pricingPolicyVersion:pricing.policyVersion,
     quote:{source:'ALPACA',feed:plan.action==='SELL_STOCK'?'IEX':alpaca?'OPRA':'INDICATIVE',
       semantics:quote.sourceSemantics as 'CONSOLIDATED_NBBO'|'PAPER_INDICATIVE_REFERENCE',bid:quote.bid,ask:quote.ask,

@@ -31,9 +31,10 @@ test('exact option action payloads carry explicit position intent and never infe
   ];
   for (const [action, side, positionIntent] of cases) {
     const request = buildAlpacaLimitOrder({
-      action, symbol: action === 'SELL_STOCK' ? 'AAPL' : 'AAPL261016P00150000', quantity: 1,
+      action, symbol: action === 'SELL_STOCK' ? 'AAPL' : action.includes('CC') ? 'AAPL261016C00150000' : 'AAPL261016P00150000', quantity: 1,
       limitPrice: 1.25, clientOrderId: `theta-${action.toLowerCase()}`,
       confirmedCoveredShares: action.includes('CC') ? 100 : undefined,
+      ...(action.includes('CC') ? { optionMultiplier: 100, committedShortCallContracts: 0 } : {}),
     });
     assert.deepEqual({ side: request.side, type: request.type, time: request.time_in_force, price: request.limit_price, qty: request.qty },
       { side, type: 'limit', time: 'day', price: '1.25', qty: 1 });

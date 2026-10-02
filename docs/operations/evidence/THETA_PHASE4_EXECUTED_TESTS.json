@@ -1,7 +1,7 @@
 {
   "version": "theta-phase4-executed-evidence-v1",
-  "observedAt": "2026-10-02T08:41:31.436Z",
-  "checkoutHead": "bcd51fdd5b17a2c92e54aa3cd354762e167f6578",
+  "observedAt": "2026-10-02T10:29:18.599Z",
+  "checkoutHead": "15deb8a40868adc3c6925f716ac2fda7d8f5ba6b",
   "identityAuthority": "PER_FILE_HASHES_INCLUDE_UNCOMMITTED_CHANGES",
   "command": "node --import tsx tools/theta-phase3-executed-evidence.ts --phase=4",
   "executionSucceeded": true,
@@ -17,7 +17,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "0d80ac3ba88507394d612d14d9e16014b974f3279c011274038fc1d9e403145e",
+        "src/theta/canonical-strategy-frontier.ts": "695488283c8eb635516335bf286f255844921e21a938363c3ce3f189d4dbba00",
         "src/theta/common-horizon-economics.ts": "d30697bbb28e3310404e51e54edab443043ad26ed4a140cc8e13d3e51d67e9c1",
         "tests/phase3-strategy-economics-formulas.test.ts": "9b253dbaf63d2380ce1b3d6a3100c2b1c61fa4c1f0f4ecaccf4fe44039d6f31a"
       },
@@ -26,21 +26,21 @@
           "file": "tests/phase3-strategy-economics-formulas.test.ts",
           "name": "CLOSED (Phase 3, THETA-Q-CSP-MAXLOSS-NOT-POPULATED): Q single-leg CSP maxLoss now matches the Command 3 formula (strike*multiplier - creditReceived, gross of costs) instead of always being null",
           "state": "PASS",
-          "durationMs": 2.4457,
+          "durationMs": 3.2909,
           "line": 1
         },
         {
           "file": "tests/phase3-strategy-economics-formulas.test.ts",
           "name": "capital-days is first-class on both Q and D economics (capitalDayYield present, computed from real dte)",
           "state": "PASS",
-          "durationMs": 6.2662,
+          "durationMs": 11.8418,
           "line": 1
         },
         {
           "file": "tests/phase3-strategy-economics-formulas.test.ts",
           "name": "Phase 4 missing opening-cost policy stays UNKNOWN rather than becoming zero cost",
           "state": "PASS",
-          "durationMs": 2.829,
+          "durationMs": 4.6405,
           "line": 1
         }
       ]
@@ -56,7 +56,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "0d80ac3ba88507394d612d14d9e16014b974f3279c011274038fc1d9e403145e",
+        "src/theta/canonical-strategy-frontier.ts": "695488283c8eb635516335bf286f255844921e21a938363c3ce3f189d4dbba00",
         "tests/canonical-strategy-frontier.test.ts": "9fa7187f1326fdd89ad37269a4af9d15ebf4e1273bd92ece966ec128b31191b4"
       },
       "executedTests": [
@@ -64,14 +64,14 @@
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "hold-strike evaluates 2-5 DTE near-expiry contracts without treating missing delta as a hard veto",
           "state": "PASS",
-          "durationMs": 1.1641,
+          "durationMs": 3.5076,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "actual canonical H and D enumeration reaches method provenance without granting realness to fixtures",
           "state": "PASS",
-          "durationMs": 1.6737,
+          "durationMs": 7.5333,
           "line": 1
         }
       ]
@@ -87,7 +87,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "0d80ac3ba88507394d612d14d9e16014b974f3279c011274038fc1d9e403145e",
+        "src/theta/canonical-strategy-frontier.ts": "695488283c8eb635516335bf286f255844921e21a938363c3ce3f189d4dbba00",
         "tests/canonical-strategy-frontier.test.ts": "9fa7187f1326fdd89ad37269a4af9d15ebf4e1273bd92ece966ec128b31191b4",
         "tests/phase3-strategy-economics-formulas.test.ts": "9b253dbaf63d2380ce1b3d6a3100c2b1c61fa4c1f0f4ecaccf4fe44039d6f31a"
       },
@@ -96,42 +96,42 @@
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "defined-risk frontier prices both legs with the broker multiplier and keeps the branch research-only",
           "state": "PASS",
-          "durationMs": 1.661,
+          "durationMs": 3.5568,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "bounded defined-risk enumeration is invariant to provider contract order",
           "state": "PASS",
-          "durationMs": 375.7959,
+          "durationMs": 1069.2234,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "duplicate D contracts cannot inflate bounded spread pair enumeration",
           "state": "PASS",
-          "durationMs": 3.2477,
+          "durationMs": 4.9412,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "defined-risk plan records Level 3 MLeg support while remaining locked and non-submittable",
           "state": "PASS",
-          "durationMs": 1.3436,
+          "durationMs": 3.2985,
           "line": 1
         },
         {
           "file": "tests/phase3-strategy-economics-formulas.test.ts",
           "name": "CORE CLAIM (3F): defined-risk maxLoss/maxProfit/breakEven exactly match the documented formula",
           "state": "PASS",
-          "durationMs": 24.2246,
+          "durationMs": 35.9707,
           "line": 1
         },
         {
           "file": "tests/phase3-strategy-economics-formulas.test.ts",
           "name": "defined-risk rejects an impossible credit at or above spread width",
           "state": "PASS",
-          "durationMs": 3.1046,
+          "durationMs": 4.6833,
           "line": 1
         }
       ]
@@ -147,40 +147,40 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/management-input-state.ts": "b34aac1078f2a6fd03d4669696980f79c3366fd501ae8485c15f1b115880bef9",
-        "src/theta/paper-bootstrap-management-policy.ts": "f1e146797ccf78103c4a253da3be1220d657dc9a75faf3e59f42207336cc217e",
+        "src/theta/management-input-state.ts": "5c234b3ec31bd6328a2114721d30c9e51664b27f1f3227270a2a82bbac60a388",
+        "src/theta/paper-bootstrap-management-policy.ts": "7ddbd29e124b33a6173dce7998af8e29c0e8c8ffac6755a8bd26c3d8cadd0c4b",
         "src/theta/postgres-whole-chain-components-repository.ts": "7e98f8fd5bcd829481d0e9ee5cd838b8142c3cb82d6d7cc7814afb5b48fde817",
-        "src/theta/recovery-state.ts": "37e12c3f9a35c075e9ab60bc73f76ceaa853daaaf679c28da46993b908dd8122",
+        "src/theta/recovery-state.ts": "2913cb7b9548554e7fc0418e535bc39ddb45d4e7ead6b93a195e9149c5c9d329",
         "tests/management-whole-chain-wiring.test.ts": "fc54bfde12a82cbf05b20d6764249af01ca81c8d407b2d8ab91ef3086295778b",
-        "tests/paper-bootstrap-management-policy.test.ts": "79c0237ebaebae7e5889dcb0b18a70a12f16165b4e70d95634594be0f2e90a44"
+        "tests/paper-bootstrap-management-policy.test.ts": "47b53d15550d3e3da754bc07ec008375e2a763ebc1076bfe3a66e0cd16c7ad24"
       },
       "executedTests": [
         {
           "file": "tests/management-whole-chain-wiring.test.ts",
           "name": "resident management assembly loads canonical whole-chain components sequentially before persisting and evaluating policy",
           "state": "PASS",
-          "durationMs": 45.718,
+          "durationMs": 56.7392,
           "line": 1
         },
         {
           "file": "tests/management-whole-chain-wiring.test.ts",
           "name": "canonical whole-chain binding rejects identity hash and projection tampering and preserves unknown fees",
           "state": "PASS",
-          "durationMs": 4.2657,
+          "durationMs": 7.2828,
           "line": 1
         },
         {
           "file": "tests/paper-bootstrap-management-policy.test.ts",
           "name": "RECOVERY_WAIT/SELL_STOCK/SELL_CC can EACH win rationally -- no action carries a hidden permanent law over the other two",
           "state": "PASS",
-          "durationMs": 0.9254,
+          "durationMs": 2.1445,
           "line": 1
         },
         {
           "file": "tests/paper-bootstrap-management-policy.test.ts",
           "name": "past recovery holding cost cannot manufacture an avoidable forward cost or force stock sale",
           "state": "PASS",
-          "durationMs": 0.6538,
+          "durationMs": 1.4147,
           "line": 1
         }
       ]
@@ -196,8 +196,8 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/covered-call-lattice.ts": "4a0fe76f8c6ac9941ae3769d37d96915dc742f4a9371e73132fe9b729245e8ec",
-        "src/theta/paper-bootstrap-management-policy.ts": "f1e146797ccf78103c4a253da3be1220d657dc9a75faf3e59f42207336cc217e",
+        "src/theta/covered-call-lattice.ts": "d58bf5aa39ccdfa1299b92523b28b42e13d72ceeacc1b61e5fb0ecdd83c4115f",
+        "src/theta/paper-bootstrap-management-policy.ts": "7ddbd29e124b33a6173dce7998af8e29c0e8c8ffac6755a8bd26c3d8cadd0c4b",
         "tests/covered-call-lattice.test.ts": "e708722562469d76769c49595d1c8ced7982aef32cf415a6ee69a0ce4e81ae94"
       },
       "executedTests": [
@@ -205,28 +205,28 @@
           "file": "tests/covered-call-lattice.test.ts",
           "name": "partial covered-call call-away preserves uncovered inventory and all prior chain losses",
           "state": "PASS",
-          "durationMs": 0.3756,
+          "durationMs": 0.4177,
           "line": 1
         },
         {
           "file": "tests/covered-call-lattice.test.ts",
           "name": "covered-call lattice cannot rank uncovered or malformed contract quantities",
           "state": "PASS",
-          "durationMs": 0.4196,
+          "durationMs": 0.4243,
           "line": 1
         },
         {
           "file": "tests/covered-call-lattice.test.ts",
           "name": "a higher-premium call with unknown event risk cannot Pareto-eliminate a proven-safe call",
           "state": "PASS",
-          "durationMs": 0.3632,
+          "durationMs": 0.3546,
           "line": 1
         },
         {
           "file": "tests/covered-call-lattice.test.ts",
           "name": "covered-call utility ties select the same exact contract under input permutation",
           "state": "PASS",
-          "durationMs": 28.1847,
+          "durationMs": 25.7892,
           "line": 1
         }
       ]
@@ -243,9 +243,9 @@
       "blockers": [],
       "sourceHashes": {
         "src/theta/common-horizon-economics.ts": "d30697bbb28e3310404e51e54edab443043ad26ed4a140cc8e13d3e51d67e9c1",
-        "src/theta/whole-chain-component-evidence.ts": "5336675a910db5452115fa9775dc769fe99206a4600dd5979b1c7a43f71b39a1",
-        "src/theta/whole-chain-economics.ts": "d1fd8a4ad5cdd7f6069c1796cff001e5f681ee6ac7c945c0dc5f6637105d74d2",
-        "tests/paper-bootstrap-management-policy.test.ts": "79c0237ebaebae7e5889dcb0b18a70a12f16165b4e70d95634594be0f2e90a44",
+        "src/theta/whole-chain-component-evidence.ts": "df864d350d477da0bbbf531c4404ca66a922167f87bb622f850f2fe2646749eb",
+        "src/theta/whole-chain-economics.ts": "46b5ffee6257957f801833d5b2164098305f399455368c14066bdcf2875349f6",
+        "tests/paper-bootstrap-management-policy.test.ts": "47b53d15550d3e3da754bc07ec008375e2a763ebc1076bfe3a66e0cd16c7ad24",
         "tests/phase3-strategy-economics-formulas.test.ts": "9b253dbaf63d2380ce1b3d6a3100c2b1c61fa4c1f0f4ecaccf4fe44039d6f31a",
         "tests/whole-chain-economics.test.ts": "f492fc21993c0c4bbc1eb070ffc2cf93940312ebe2ec69ef5cdec2650a3eeab5"
       },
@@ -254,49 +254,49 @@
           "file": "tests/whole-chain-economics.test.ts",
           "name": "partial stock exits preserve realized losses and remaining unrealized P&L together",
           "state": "PASS",
-          "durationMs": 3.4937,
+          "durationMs": 4.2422,
           "line": 1
         },
         {
           "file": "tests/whole-chain-economics.test.ts",
           "name": "missing partial stock exit proceeds cannot disappear behind a known remaining mark",
           "state": "PASS",
-          "durationMs": 0.6544,
+          "durationMs": 0.5205,
           "line": 1
         },
         {
           "file": "tests/whole-chain-economics.test.ts",
           "name": "CASH-FLOW IDENTITY: wholeChainPnl equals the exact sum of every actual leg cash flow, for a full CSP-to-call-away chain",
           "state": "PASS",
-          "durationMs": 0.2181,
+          "durationMs": 0.2551,
           "line": 1
         },
         {
           "file": "tests/phase3-strategy-economics-formulas.test.ts",
           "name": "after-cost EV is always typed null on both Q and D -- delta is never substituted as a probability (STAT-001)",
           "state": "PASS",
-          "durationMs": 10.9706,
+          "durationMs": 9.8061,
           "line": 1
         },
         {
           "file": "tests/phase3-strategy-economics-formulas.test.ts",
           "name": "Phase 4 monotonicity: higher fees and slippage cannot improve cost-adjusted outcomes",
           "state": "PASS",
-          "durationMs": 4.1355,
+          "durationMs": 5.1216,
           "line": 1
         },
         {
           "file": "tests/phase3-strategy-economics-formulas.test.ts",
           "name": "Phase 4 monotonicity: higher collateral cannot improve capital-day efficiency when net premium is unchanged",
           "state": "PASS",
-          "durationMs": 3.5849,
+          "durationMs": 3.9106,
           "line": 1
         },
         {
           "file": "tests/paper-bootstrap-management-policy.test.ts",
           "name": "roll and recovery report dollars times calendar days instead of labeling elapsed days as capital exposure",
           "state": "PASS",
-          "durationMs": 1.3152,
+          "durationMs": 1.6916,
           "line": 1
         }
       ]
@@ -320,28 +320,28 @@
           "file": "tests/profit-taking-replay.test.ts",
           "name": "all 17 registered challengers execute offline and preserve explicit after-cost fill assumptions",
           "state": "PASS",
-          "durationMs": 42.7513,
+          "durationMs": 72.4934,
           "line": 1
         },
         {
           "file": "tests/profit-taking-replay.test.ts",
           "name": "a missing continuation model remains unresolved, never a zero EV or forced hold",
           "state": "PASS",
-          "durationMs": 1.6626,
+          "durationMs": 1.787,
           "line": 1
         },
         {
           "file": "tests/profit-taking-replay.test.ts",
           "name": "future evidence and stale BBO cannot create counterfactual fills",
           "state": "PASS",
-          "durationMs": 2.2999,
+          "durationMs": 2.0692,
           "line": 1
         },
         {
           "file": "tests/profit-taking-replay.test.ts",
           "name": "high captured profit can hold when forward economics remain better",
           "state": "PASS",
-          "durationMs": 3.1581,
+          "durationMs": 35.0912,
           "line": 1
         }
       ]
@@ -367,42 +367,42 @@
           "file": "tests/shadow-management-policy.test.ts",
           "name": "a deteriorated 30 percent winner records giveback but still needs a forward model",
           "state": "PASS",
-          "durationMs": 0.9742,
+          "durationMs": 2.5995,
           "line": 1
         },
         {
           "file": "tests/shadow-management-policy.test.ts",
           "name": "unknown peak stays unknown instead of becoming zero giveback",
           "state": "PASS",
-          "durationMs": 0.4857,
+          "durationMs": 0.9438,
           "line": 1
         },
         {
           "file": "tests/shadow-management-policy.test.ts",
           "name": "full premium capture has zero remaining reward without implying an automatic exit",
           "state": "PASS",
-          "durationMs": 0.5521,
+          "durationMs": 1.5484,
           "line": 1
         },
         {
           "file": "tests/position-path-state.test.ts",
           "name": "position path excludes future and same-time history instead of manufacturing a historical peak",
           "state": "PASS",
-          "durationMs": 29.6223,
+          "durationMs": 62.0747,
           "line": 1
         },
         {
           "file": "tests/position-path-state.test.ts",
           "name": "position path hash binds history and stays deterministic under input order permutations",
           "state": "PASS",
-          "durationMs": 3.8497,
+          "durationMs": 4.6909,
           "line": 1
         },
         {
           "file": "tests/position-path-state.test.ts",
           "name": "covered-call path uses stock capital and call breakeven, never put collateral and put breakeven",
           "state": "PASS",
-          "durationMs": 1.5203,
+          "durationMs": 1.9746,
           "line": 1
         }
       ]
@@ -419,8 +419,8 @@
       "blockers": [],
       "sourceHashes": {
         "src/theta/loss-state-vector.ts": "5e36d3cdb92c335ee8ddb14538b9739684fe2e44a5f1487876d2a6e69bf266cd",
-        "src/theta/management-action-frontier.ts": "78116208a51809741de6c4ba0d660f66d861cba392c4ca021cad6226f0047998",
-        "src/theta/paper-bootstrap-management-policy.ts": "f1e146797ccf78103c4a253da3be1220d657dc9a75faf3e59f42207336cc217e",
+        "src/theta/management-action-frontier.ts": "1b47169b67a4b13367e26a925b787b489925af583c572550441146a7663ff6a8",
+        "src/theta/paper-bootstrap-management-policy.ts": "7ddbd29e124b33a6173dce7998af8e29c0e8c8ffac6755a8bd26c3d8cadd0c4b",
         "tests/management-action-frontier.test.ts": "e8564ceea7ee3ccc5dcbee6d120173e2ec1956d87b2199e8e88dac8b4ca35911"
       },
       "executedTests": [
@@ -428,35 +428,35 @@
           "file": "tests/management-action-frontier.test.ts",
           "name": "CSP management enumerates the full required action surface",
           "state": "PASS",
-          "durationMs": 2.4593,
+          "durationMs": 5.1352,
           "line": 1
         },
         {
           "file": "tests/management-action-frontier.test.ts",
           "name": "assigned stock compares recovery wait, stock sale, and covered call without forcing a CC",
           "state": "PASS",
-          "durationMs": 1.5503,
+          "durationMs": 1.2377,
           "line": 1
         },
         {
           "file": "tests/management-action-frontier.test.ts",
           "name": "covered call management exposes hold, close, roll, and call-away",
           "state": "PASS",
-          "durationMs": 1.0127,
+          "durationMs": 1.6247,
           "line": 1
         },
         {
           "file": "tests/management-action-frontier.test.ts",
           "name": "complete same-snapshot economics can select a risk-reducing CSP close",
           "state": "PASS",
-          "durationMs": 2.4867,
+          "durationMs": 2.6079,
           "line": 1
         },
         {
           "file": "tests/management-action-frontier.test.ts",
           "name": "incomplete or stale policy evidence cannot displace passive management",
           "state": "PASS",
-          "durationMs": 2.3174,
+          "durationMs": 1.2877,
           "line": 1
         }
       ]
@@ -473,8 +473,8 @@
       "blockers": [],
       "sourceHashes": {
         "src/theta/management-entry-thesis.ts": "27f3494dc17c255177fd344cad10fe8afbcf059740241f056b904cde3f38b71f",
-        "src/theta/management-input-state.ts": "b34aac1078f2a6fd03d4669696980f79c3366fd501ae8485c15f1b115880bef9",
-        "src/theta/postgres-theta-cycle-store.ts": "d47456858c9b455dd934475b14cdb44547c81cca0275ebf262b2ae4cb46b4b35",
+        "src/theta/management-input-state.ts": "5c234b3ec31bd6328a2114721d30c9e51664b27f1f3227270a2a82bbac60a388",
+        "src/theta/postgres-theta-cycle-store.ts": "f478428fa9b0eca8fc5bae7537293d949ab53cefaf57169c28d4cc99c4aa5a46",
         "src/theta/thesis-invalidation.ts": "950954403ae3704472255a0be138449ec5940fc929bcc2d675701c1a1eb22a81",
         "tests/entry-thesis-receipt.test.ts": "94a07767422e667754ce60b7e7af82825129fb40b7d79785efeba6daab54b3a4"
       },
@@ -483,21 +483,21 @@
           "file": "tests/entry-thesis-receipt.test.ts",
           "name": "persisted original entry thesis reaches management without rewriting its identity or treating price loss as thesis failure",
           "state": "PASS",
-          "durationMs": 19.4898,
+          "durationMs": 22.2787,
           "line": 1
         },
         {
           "file": "tests/entry-thesis-receipt.test.ts",
           "name": "original thesis loader rejects missing malformed future mismatched and semantically invalid evidence",
           "state": "PASS",
-          "durationMs": 2.3676,
+          "durationMs": 3.3663,
           "line": 1
         },
         {
           "file": "tests/entry-thesis-receipt.test.ts",
           "name": "management thesis health evaluates qualified current conditions without equating price loss with failure",
           "state": "PASS",
-          "durationMs": 8.8283,
+          "durationMs": 13.8081,
           "line": 1
         }
       ]
@@ -513,45 +513,45 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/paper-bootstrap-management-policy.ts": "f1e146797ccf78103c4a253da3be1220d657dc9a75faf3e59f42207336cc217e",
-        "src/theta/roll-incremental-utility.ts": "a2df803f48d131537ce7c5f7594b2d9418d86240cba795842c153dcd7fe62a73",
+        "src/theta/paper-bootstrap-management-policy.ts": "7ddbd29e124b33a6173dce7998af8e29c0e8c8ffac6755a8bd26c3d8cadd0c4b",
+        "src/theta/roll-incremental-utility.ts": "e222b2b7aacaa6efb2f3fc7c3ce99c0cce9f1e4d95ebe4adfd4dd31d387deb66",
         "tests/broker-fill-lifecycle-router.test.ts": "576baaa14cc1c59eee592cd37184567722188c9f0921322ef3bf0cca9f3bd280",
-        "tests/paper-bootstrap-management-policy.test.ts": "79c0237ebaebae7e5889dcb0b18a70a12f16165b4e70d95634594be0f2e90a44"
+        "tests/paper-bootstrap-management-policy.test.ts": "47b53d15550d3e3da754bc07ec008375e2a763ebc1076bfe3a66e0cd16c7ad24"
       },
       "executedTests": [
         {
           "file": "tests/broker-fill-lifecycle-router.test.ts",
           "name": "terminal partial roll close never authorizes a successor leg",
           "state": "PASS",
-          "durationMs": 0.8448,
+          "durationMs": 0.8733,
           "line": 1
         },
         {
           "file": "tests/broker-fill-lifecycle-router.test.ts",
           "name": "a confirmed roll close records the old loss without requiring an opening fill",
           "state": "PASS",
-          "durationMs": 0.6272,
+          "durationMs": 0.7016,
           "line": 1
         },
         {
           "file": "tests/broker-fill-lifecycle-router.test.ts",
           "name": "roll is one atomic close-old plus open-new application and preserves the old loss",
           "state": "PASS",
-          "durationMs": 0.578,
+          "durationMs": 0.8546,
           "line": 1
         },
         {
           "file": "tests/paper-bootstrap-management-policy.test.ts",
           "name": "ROLL never uses the midpoint as the deterministic new-leg credit -- it uses the bid side",
           "state": "PASS",
-          "durationMs": 0.8903,
+          "durationMs": 1.0991,
           "line": 1
         },
         {
           "file": "tests/paper-bootstrap-management-policy.test.ts",
           "name": "single roll rejects overflowing known quotes instead of claiming complete economics",
           "state": "PASS",
-          "durationMs": 0.5051,
+          "durationMs": 1.0188,
           "line": 1
         }
       ]
@@ -567,8 +567,8 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/management-action-frontier.ts": "78116208a51809741de6c4ba0d660f66d861cba392c4ca021cad6226f0047998",
-        "src/theta/whole-chain-economics.ts": "d1fd8a4ad5cdd7f6069c1796cff001e5f681ee6ac7c945c0dc5f6637105d74d2",
+        "src/theta/management-action-frontier.ts": "1b47169b67a4b13367e26a925b787b489925af583c572550441146a7663ff6a8",
+        "src/theta/whole-chain-economics.ts": "46b5ffee6257957f801833d5b2164098305f399455368c14066bdcf2875349f6",
         "tests/broker-lifecycle-evidence.test.ts": "a33b551db0ad6cef6254583c4fd7c69bd659a1e222380f6b99ee3bb19494ef4f"
       },
       "executedTests": [
@@ -576,42 +576,42 @@
           "file": "tests/broker-lifecycle-evidence.test.ts",
           "name": "moneyness or a disappeared position cannot confirm assignment without broker activity",
           "state": "PASS",
-          "durationMs": 3.6884,
+          "durationMs": 4.5257,
           "line": 1
         },
         {
           "file": "tests/broker-lifecycle-evidence.test.ts",
           "name": "broker assignment plus exact stock appearance confirms the full recovery path",
           "state": "PASS",
-          "durationMs": 0.7919,
+          "durationMs": 0.7435,
           "line": 1
         },
         {
           "file": "tests/broker-lifecycle-evidence.test.ts",
           "name": "short-put expiry returns to cash only after broker OPEXP evidence",
           "state": "PASS",
-          "durationMs": 0.3556,
+          "durationMs": 0.3808,
           "line": 1
         },
         {
           "file": "tests/broker-lifecycle-evidence.test.ts",
           "name": "covered-call assignment confirms call-away only when shares leave the account",
           "state": "PASS",
-          "durationMs": 0.4851,
+          "durationMs": 0.7653,
           "line": 1
         },
         {
           "file": "tests/broker-lifecycle-evidence.test.ts",
           "name": "unknown multiplier is non-reconcilable and never defaults to 100",
           "state": "PASS",
-          "durationMs": 0.3052,
+          "durationMs": 0.317,
           "line": 1
         },
         {
           "file": "tests/broker-lifecycle-evidence.test.ts",
           "name": "unknown broker stock quantity never becomes zero during assignment classification",
           "state": "PASS",
-          "durationMs": 0.327,
+          "durationMs": 0.3779,
           "line": 1
         }
       ]
@@ -625,5 +625,5 @@
   "providerRequests": 0,
   "brokerMutations": 0,
   "scope": "REVIEWED_SOURCE_ENGINEERING_NOT_L7_OR_EMPIRICAL",
-  "artifactHash": "dd0848a98397bc73905c62f1f58cb7ee8b01e144c9aef740c9df40a8140996af"
+  "artifactHash": "4c6486f2a124d6e1ae15d7d870eecd5f7fb071f57fe406799826117e5fb6eacd"
 }

@@ -140,7 +140,10 @@ test('CSP_OPEN with multiple roll candidates picks the one with the best RollInc
       // capital committed than the old leg -- cheap to carry.
       rollCandidate({ optionContractId: 'near-and-small', strike: 195, expiration: '2026-10-23', bid: 1.6, ask: 1.7 }),
     ],
-    rollIncrementalCapitalDayWeight: 0.005,
+    // D4: the weight now prices capital-DAYS of the replacement (collateral x days held beyond the old leg), so even the
+    // near candidate pays for its 7 extra days. 0.0002/USD-day keeps the original intent: near-and-small clears HOLD,
+    // far-and-big's 4-month extension swallows its larger credit.
+    rollIncrementalCapitalDayWeight: 0.0002,
   };
   const evidence = evaluatePaperBootstrapManagementPolicy(withCandidates);
   assert.equal(evidence?.selectedAction, 'ROLL');
@@ -168,10 +171,11 @@ test('ROLL never uses the midpoint as the deterministic new-leg credit -- it use
   const withCandidate = { ...input, rollCandidate: rollCandidate({ bid: 1.5, ask: 1.6 }) };
   const evidence = evaluatePaperBootstrapManagementPolicy(withCandidate);
   const execution = evidence?.actionValues.find((value) => value.action === 'ROLL')?.executionEvidence;
-  // openEconomicBoundary is the new leg's credit; currentMark (close cost)
-  // is now the ASK side (110), so deterministicNetCredit = 150 - 110 = 40,
-  // never the mid-based 155 - 105 = 50 this would have been before the fix.
-  assert.equal(execution?.openEconomicBoundary, 150);
+  // openEconomicBoundary is the new leg's minimum acceptable credit in USD PER SHARE (the unit the limit policy consumes):
+  // the bid, 1.5, never the mid 1.55. The dollar figures stay in deterministicNetCredit = 150 - 110 = 40 (close cost is the
+  // ASK side), never the mid-based 155 - 105 = 50 this would have been before the fix.
+  assert.equal(execution?.openEconomicBoundary, 1.5);
+  assert.equal(execution?.closeEconomicBoundary, 1.1, 'maximum price to buy back the old leg: the ask, per share');
   assert.ok(execution?.deterministicNetCredit !== null && Math.abs((execution.deterministicNetCredit ?? 0) - 40) < 1e-9);
   const rollValue = evidence?.actionValues.find((value) => value.action === 'ROLL');
   assert.ok(rollValue?.reasons.some((reason) => reason.startsWith('OPEN_CREDIT_BID_SIDE_150')));
@@ -183,7 +187,7 @@ test('ROLL_CC never uses the midpoint as the deterministic new-leg credit -- it 
   const withCandidate = { ...input, ccCandidate: rollCandidate({ optionType: 'CALL', bid: 1.5, ask: 1.6 }) };
   const evidence = evaluatePaperBootstrapManagementPolicy(withCandidate);
   const execution = evidence?.actionValues.find((value) => value.action === 'ROLL_CC')?.executionEvidence;
-  assert.equal(execution?.openEconomicBoundary, 150);
+  assert.equal(execution?.openEconomicBoundary, 1.5, 'per-share bid, not the 150 dollar total');
 });
 
 test('a crossed roll-candidate quote (bid > ask) is treated as unknown/ineligible, never used to compute a nonsensical credit', () => {
@@ -577,7 +581,8 @@ test('roll and recovery report dollars times calendar days instead of labeling e
   const recovery = state('RECOVERY_WAIT');
   const compared = evaluatePaperBootstrapManagementPolicy({ ...recovery, recoveryForwardHorizonDays: 10 });
   assert.equal(compared?.actionValues.find(value => value.action === 'RECOVERY_WAIT')?.incrementalCapitalDays,
-    (recovery.economics.stockBasisPerShare as number) * recovery.economics.openStockShares * 10);
+    // P2-CHAIN-02: capital released by selling is mark x shares (liquidation value), not cost basis x shares.
+    (recovery.economics.stockMarkPerShare as number) * recovery.economics.openStockShares * 10);
 });
 
 test('ROLL_CC with multiple candidates picks the best combination of NetRollCredit and AdditionalUpsideDollars, not merely the largest credit', () => {

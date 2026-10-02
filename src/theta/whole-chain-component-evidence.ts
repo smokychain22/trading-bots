@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { classifyFeeEvidence, type CostBasisKind } from './cost-basis-typing.js';
 
 export const wholeChainComponentEvidenceVersion = 'theta-whole-chain-component-evidence-v3' as const;
 
@@ -48,6 +49,8 @@ export interface WholeChainComponentsInput {
   readonly coveredCallCloseCosts: number | null;
   readonly stockSaleOrCallAwayProceeds: number | null;
   readonly fees: number;
+  /** Present only when the fee sources are proven broker relations (trade.fill / trade.fee_event). */
+  readonly feeBasis?: CostBasisKind;
   readonly executionCostNotEmbeddedInCashflows: 0;
   readonly tcaExecutionShortfall: number | null;
   readonly currentStockMarkPerShare: number | null;
@@ -141,6 +144,10 @@ export function componentsFromEvidence(evidence: Omit<WholeChainComponentEvidenc
     const times = [field.asOf, ...field.sources.map(item => item.observedAt).filter((time): time is string => time !== null)];
     if (times.some(time => !Number.isFinite(Date.parse(time)) || Date.parse(time) > decisionMs)) blockers.push(`${name}:PIT_INVALID`);
   }
+  // A modeled/assumed cost must never be accepted as the broker-actual fee of a
+  // realized whole chain. Unproven-but-neutral origins keep their prior behavior.
+  const feeBasis = classifyFeeEvidence(evidence.fees);
+  if (feeBasis === 'MODELED_OPENING_COST') blockers.push('fees:MODELED_NOT_BROKER_ACTUAL');
   const assigned = evidence.stockSharesAssigned.value, open = evidence.openStockShares.value;
   if (assigned !== null && open !== null && (assigned < 0 || open < 0 || open > assigned)) {
     blockers.push('stockShares:INVALID_IDENTITY');
@@ -160,6 +167,7 @@ export function componentsFromEvidence(evidence: Omit<WholeChainComponentEvidenc
       coveredCallCloseCosts: evidence.coveredCallCloseCosts.value,
       stockSaleOrCallAwayProceeds: evidence.stockSaleOrCallAwayProceeds.value,
       fees: evidence.fees.value as number,
+      ...(feeBasis === 'BROKER_ACTUAL_FEE' ? { feeBasis } : {}),
       executionCostNotEmbeddedInCashflows: 0,
       tcaExecutionShortfall: evidence.tcaExecutionShortfall.value,
       currentStockMarkPerShare: evidence.currentStockMarkPerShare.value,

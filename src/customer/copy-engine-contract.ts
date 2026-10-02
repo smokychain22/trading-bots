@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { wholeContractsAffordable } from "../theta/secured-contract-capacity.js";
 
 export const copyEngineContractVersion = "theta-copy-engine-v1" as const;
 
@@ -291,7 +292,8 @@ export function planFollowerCopy(
 
   const collateralCapacity = Math.min(
     follower.maxContractsPerPosition,
-    Math.floor(follower.authorizedCapitalRemaining / follower.collateralPerContract),
+    // Integer-cent affordability; invalid capital/collateral yields zero capacity (a valid, fail-closed sizing outcome).
+    wholeContractsAffordable(follower.authorizedCapitalRemaining, follower.collateralPerContract) ?? 0,
   );
   const riskCapacities = [follower.assignmentCapacityContracts,follower.tailCapacityContracts,
     follower.concentrationCapacityContracts];

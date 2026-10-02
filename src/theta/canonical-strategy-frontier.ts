@@ -5,7 +5,8 @@ import type { NormalizedOptionContract } from './option-contract.js';
 import type { StrategyFamily, StrategyRoutingResponse } from './strategy-router-contract.js';
 import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
 import { buildAdaptiveShadowDecisionReceipt, type AdaptiveShadowDecisionReceipt } from './adaptive-decision-brain.js';
-import { securedContractCapacity } from './secured-contract-capacity.js';
+import { accountPolicyIncompatibilityBlocker } from './account-capacity-zero.js';
+import { coveredCallContractCapacity, securedContractCapacity, wholeContractsAffordable } from './secured-contract-capacity.js';
 import { buildCapitalBudgetEvidence, type CapitalBudgetAccountEvidence, type CapitalBudgetEvidence } from './capital-budget-evidence.js';
 import type { NewRiskDecisionReceipt } from './decision-assembly.js';
 import type { ThetaQCandidateEvaluationEntry } from './new-risk-orchestrator.js';
@@ -255,12 +256,23 @@ export interface CanonicalStrategyFrontierInput {
     readonly currentPrice: number | null;
     readonly brokerCostBasisPerShare: number | null;
     readonly wholeChainEconomicBasisPerShare: number | null;
+    /** Open short-call contracts plus pending sell-to-open call contracts on this underlying. `undefined`
+     * keeps the legacy gross-share capacity; `null` is UNKNOWN and blocks covered-call sizing. */
+    readonly committedShortCallContracts?: number | null;
   } | null;
   readonly assignmentCapacityQty: number | null;
   readonly buyingPower?: number | null;
   readonly capitalBudgetAccountEvidence?: CapitalBudgetAccountEvidence | null;
   readonly brokerAllowedQty?: number;
   readonly brokerAllowedQtyByCandidateId?: Readonly<Record<string, number>>;
+  /**
+   * RISK-CAP-01: the whole-contract quantity at which candidate-inclusive AEGIS was evaluated
+   * (deriveCandidateCapacityAssessment().quantityCap). Final OPEN_CSP quantity may never exceed it.
+   * `undefined` (field absent, archived/legacy bundle) means "not supplied" and adds no cap. Once the map is supplied,
+   * a Conventional candidate with a missing or null entry is UNKNOWN capacity and sizes to zero (fail closed).
+   * Other branches are capped only when they carry an explicit entry.
+   */
+  readonly riskCapacityQtyByCandidateId?: Readonly<Record<string, number | null>>;
   readonly sizingPolicy?: CanonicalSizingPolicy;
   readonly openingCostPolicy?: CanonicalOpeningCostPolicy | null;
   readonly maxAdverseGap60d?: number | null;
@@ -433,6 +445,12 @@ function structuralSizing(
   if (brokerAllowedQty !== undefined) namedCaps.push(['BROKER_ALLOWED', brokerAllowedQty]);
   namedCaps.forEach(([name, value]) => recordCap(name, value));
   if (brokerAllowedQty === undefined) recordCap('BROKER_ALLOWED', undefined);
+  const riskCapacityMap = action === 'OPEN_CSP' ? input.riskCapacityQtyByCandidateId : undefined;
+  let riskCapacityState: SizingCapState | null = null;
+  if (riskCapacityMap !== undefined && (Object.hasOwn(riskCapacityMap, candidateId) || candidateId.startsWith('THETA_CONVENTIONAL:'))) {
+    riskCapacityState = sizingCapState(Object.hasOwn(riskCapacityMap, candidateId) ? riskCapacityMap[candidateId] : undefined);
+    recordCap('AEGIS_RISK_CAPACITY', riskCapacityState.state === 'KNOWN' ? riskCapacityState.value : null);
+  }
   const capStates = namedCaps.map(([name, value]) => [name, sizingCapState(value)] as const);
   const invalidCaps = capStates.filter(([, state]) => state.state === 'INVALID').map(([name]) => name);
   if (invalidCaps.length > 0) {
@@ -452,8 +470,13 @@ function structuralSizing(
       recordCap('BUYING_POWER_AFFORDABLE', null);
       return result(0, 'COLLATERAL_INPUT_UNKNOWN', ['BUYING_POWER_OR_COLLATERAL_UNKNOWN']);
     }
-    parsed.push(['BUYING_POWER_AFFORDABLE', Math.floor(buyingPower / collateral)]);
-    recordCap('BUYING_POWER_AFFORDABLE', Math.floor(buyingPower / collateral));
+    const affordableQty = wholeContractsAffordable(buyingPower, collateral);
+    if (affordableQty === null) {
+      recordCap('BUYING_POWER_AFFORDABLE', null);
+      return result(0, 'COLLATERAL_INPUT_UNKNOWN', ['BUYING_POWER_OR_COLLATERAL_UNKNOWN']);
+    }
+    parsed.push(['BUYING_POWER_AFFORDABLE', affordableQty]);
+    recordCap('BUYING_POWER_AFFORDABLE', affordableQty);
     if (action === 'OPEN_CSP' && actionCapacityQty !== null) {
       parsed.push(['REAL_ASSIGNMENT_CAPACITY', Math.max(0, Math.floor(actionCapacityQty))]);
       recordCap('REAL_ASSIGNMENT_CAPACITY', actionCapacityQty);
@@ -465,6 +488,8 @@ function structuralSizing(
   for (const [name, value] of parsed.slice(1) as Array<[string, number]>) {
     if (value < quantity) [bindingConstraint, quantity] = [name, value];
   }
+  if (riskCapacityState?.state === 'KNOWN' && riskCapacityState.value < quantity)
+    [bindingConstraint, quantity] = ['AEGIS_RISK_CAPACITY', riskCapacityState.value];
   preAegisQuantity = quantity;
   const reducedMultiplierInput = policy?.reducedStateMultiplier;
   const reducedMultiplier = typeof reducedMultiplierInput === 'number' && Number.isFinite(reducedMultiplierInput)
@@ -482,6 +507,10 @@ function structuralSizing(
     return result(0, exactReasons[0] ?? (candidateAegisState === null
       ? (aegisNotReached ? 'AEGIS_NOT_REACHED_UPSTREAM' : 'AEGIS_UNKNOWN') : `AEGIS_${candidateAegisState}`),
       exactReasons.length>0?exactReasons:['AEGIS_DOES_NOT_PERMIT_NEW_RISK']);
+  }
+  if (riskCapacityState !== null && riskCapacityState.state !== 'KNOWN') {
+    return result(0, riskCapacityState.state === 'INVALID' ? 'AEGIS_RISK_CAPACITY_INVALID' : 'AEGIS_RISK_CAPACITY_UNKNOWN',
+      ['AEGIS_RISK_CAPACITY_UNKNOWN']);
   }
   if (candidateAegisState === 'ALLOW_REDUCED') {
     if (reducedMultiplier === null) return result(0, 'REDUCED_MULTIPLIER_UNKNOWN', ['REDUCED_MULTIPLIER_UNKNOWN']);
@@ -553,6 +582,9 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
   const candidateId = `${branch}:${contract.optionSymbol}`;
   const candidateAegisState = aegisStateFor(input, candidateId);
   const evidence = commonEvidence(contract, input, candidateId);
+  // RISK-CAP-01: an explicit null means the cycle could not derive the quantity AEGIS was evaluated at (UNKNOWN, never zero).
+  if (input.riskCapacityQtyByCandidateId !== undefined && Object.hasOwn(input.riskCapacityQtyByCandidateId, candidateId)
+    && input.riskCapacityQtyByCandidateId[candidateId] === null) evidence.unknownEvidence.push('AEGIS_RISK_CAPACITY_UNKNOWN');
   if (branch === 'THETA_CONVENTIONAL' && input.thetaQCandidateEvaluationByOptionSymbol !== undefined) {
     const qEvaluation = input.thetaQCandidateEvaluationByOptionSymbol[contract.optionSymbol];
     // Truthful per-state hard blockers -- see ThetaQCandidateEvaluationEntry's
@@ -577,7 +609,11 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
     } else if (qEvaluation.state === 'NOT_SENT_UPSTREAM_REJECT') {
       evidence.hardBlockers.push(`THETA_Q_NOT_SENT_UPSTREAM_REJECT:${qEvaluation.reasonCode}`);
     } else if (qEvaluation.state === 'NOT_EVALUATED_SHORTLIST_BOUND') {
-      evidence.hardBlockers.push('THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND');
+      // SIZE-ZERO-LABEL-01: when the cycle PROVED the minimum executable unit exceeds the account/risk policy (or broker
+      // capacity) without needing AEGIS, the candidate is an account-policy incompatibility, not an incomplete evaluation.
+      // Protection is unchanged: quantity stays 0 and the candidate is still not evaluated by Q/AEGIS.
+      evidence.hardBlockers.push(qEvaluation.accountPolicyIncompatibility === undefined
+        ? 'THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND' : accountPolicyIncompatibilityBlocker);
     } else if (qEvaluation.state === 'RESPONSE_GAP') {
       evidence.hardBlockers.push('THETA_Q_RESPONSE_GAP');
     }
@@ -666,6 +702,14 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
   if (netCredit === null) hardBlockers.push('MULTI_LEG_PRICE_UNKNOWN');
   else if (netCredit <= 0) hardBlockers.push('NON_POSITIVE_NET_CREDIT');
   else if (width > 0 && netCredit >= width) hardBlockers.push('NET_CREDIT_NOT_BELOW_SPREAD_WIDTH');
+  // A research-recorded (non-executable) quote may still support structural comparison, but a stale,
+  // crossed, or missing-quote leg makes the whole spread unusable: both legs must be usable together.
+  const unusableQuote = /quote stale|crossed BBO|quote unavailable|timestamp invalid/;
+  for (const [label, legContract] of [['SHORT', shortPut], ['LONG', longPut]] as const) {
+    if (!legContract.executable && unusableQuote.test(legContract.nonExecutableReason ?? '')) {
+      hardBlockers.push(`DEFINED_RISK_LEG_QUOTE_UNUSABLE:${label}`);
+    }
+  }
   const multiplier = shortPut.multiplier;
   const maxProfit = netCredit === null ? null : netCredit * multiplier;
   const maxLoss = netCredit === null ? null : (width - netCredit) * multiplier;
@@ -762,9 +806,15 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
   const candidateAegisState = aegisStateFor(input, candidateId);
   const evidence = commonEvidence(contract, input, candidateId);
   if (candidateAegisState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
-  const coveredQty = stock.shares === null ? null : Math.floor(stock.shares / contract.multiplier);
-  if (coveredQty === null) evidence.hardBlockers.push('STOCK_QUANTITY_UNKNOWN');
-  else if (coveredQty <= 0) evidence.hardBlockers.push('INSUFFICIENT_COVERED_SHARES');
+  const grossCoveredQty = stock.shares === null ? null : Math.floor(stock.shares / contract.multiplier);
+  const committedUnknown = stock.committedShortCallContracts === null;
+  const coveredQty = stock.committedShortCallContracts === undefined ? grossCoveredQty
+    : coveredCallContractCapacity(stock.shares, stock.committedShortCallContracts, 0, contract.multiplier);
+  if (stock.shares === null) evidence.hardBlockers.push('STOCK_QUANTITY_UNKNOWN');
+  else if (committedUnknown) evidence.hardBlockers.push('COVERED_CALL_COMMITMENT_UNKNOWN');
+  else if (coveredQty === null) evidence.hardBlockers.push('COVERED_CALL_CAPACITY_INVALID');
+  else if (coveredQty <= 0) evidence.hardBlockers.push(grossCoveredQty !== null && grossCoveredQty > 0
+    ? 'COVERED_SHARES_ALREADY_COMMITTED' : 'INSUFFICIENT_COVERED_SHARES');
   const premium = finite(contract.bid) ? contract.bid : null;
   const retainedUpside = stock.currentPrice === null ? null : (contract.strike - stock.currentPrice) * contract.multiplier;
   const callAwayProceeds = contract.strike * contract.multiplier;
@@ -1155,7 +1205,8 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     // but does not prove its economic inferiority. In particular, the
     // refresh budget and a missing Q response cannot earn GLOBAL_WAIT.
     const reason = evaluation === undefined ? 'EVALUATION_STATE_MISSING'
-      : evaluation.reasonCode === 'NOT_SELECTED_FOR_FINALIST_REFRESH' ? 'NOT_EVALUATED_SHORTLIST_BOUND'
+      : evaluation.reasonCode === 'NOT_SELECTED_FOR_FINALIST_REFRESH'
+        ? (evaluation.accountPolicyIncompatibility === undefined ? 'NOT_EVALUATED_SHORTLIST_BOUND' : accountPolicyIncompatibilityBlocker)
       : `${evaluation.state}:${evaluation.reasonCode ?? 'NO_RESPONSE'}`;
     incompleteReasonCounts[reason] = (incompleteReasonCounts[reason] ?? 0) + 1;
   }

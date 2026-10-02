@@ -154,6 +154,13 @@ export function projectCanonicalStrategyEvidence(
   });
 }
 
+export function canonicalSizingFor(cycle: ThetaShadowCycleResult, optionSymbol: string):
+  { readonly quantity: number; readonly bindingConstraint: string } | null {
+  const candidate = cycle.strategyFrontier?.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL')
+    ?.candidates.find((entry) => entry.candidateId === `THETA_CONVENTIONAL:${optionSymbol}`);
+  return candidate === undefined ? null : { quantity: candidate.sizing.quantity, bindingConstraint: candidate.sizing.bindingConstraint };
+}
+
 export function projectPersistableThetaCandidates(cycle:ThetaShadowCycleResult):readonly PersistableCandidate[]{
   const evaluated=[...(cycle.orchestration?.thetaQ?.candidates??[])];
   const known=new Set(evaluated.map((candidate)=>candidate.candidateId));
@@ -632,7 +639,9 @@ export class PostgresThetaCycleStore {
         action_feasible:row.evaluatedCandidate.actionFeasible,ev_net:row.evaluatedCandidate.economics?.ev_net ?? null,
         ownership_score:row.evaluatedCandidate.ownershipScore,
         capital_required:row.evaluatedCandidate.economics?.secured_collateral_per_contract ?? null,
-        metrics_json:{ thetaQ: row.evaluatedCandidate, decisionAlternative: alternative, contract: row.contract },
+        metrics_json:{ thetaQ: row.evaluatedCandidate, decisionAlternative: alternative, contract: row.contract,
+          // SIZE-VT-01: final canonical quantity (structuralSizing, AEGIS-aware); the Q-stage quantity is only a preliminary cap.
+          canonicalSizing: canonicalSizingFor(cycle, row.evaluatedCandidate.candidateId) },
         reasons:row.evaluatedCandidate.reasons };
     });
     const inserted = candidateRows.length === 0 ? { rows: [] } : await client.query<{ candidate_id: string }>(

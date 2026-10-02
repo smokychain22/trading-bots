@@ -13,7 +13,7 @@ test('pre-session configuration registry has one valid typed authority', () => {
   assert.equal(audit.invalidEntries.length, 0);
   assert.equal(audit.entryCount, presessionConfigurationRegistry.length);
   assert.equal(audit.entryCount, decisionCriticalConfigurationFields.length);
-  assert.equal(audit.entryCount, 34);
+  assert.equal(audit.entryCount, 35); // Q-OWN-FLOOR-001 registered ownership.thetaQAcceptabilityFloor
   assert.ok(Object.values(audit.invariants).every(Boolean));
 });
 

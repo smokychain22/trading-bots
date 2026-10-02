@@ -1,6 +1,6 @@
 import { forwardRollCashFlow } from './common-horizon-economics.js';
 
-export const rollIncrementalUtilityVersion = 'theta-roll-incremental-utility-v2' as const;
+export const rollIncrementalUtilityVersion = 'theta-roll-incremental-utility-v3' as const;
 
 /**
  * ROLL is a replacement trade: close the old leg, open a new one. This
@@ -40,6 +40,12 @@ export interface RollCandidateAssessment {
   readonly candidate: RollCandidateEconomics;
   readonly netCreditDollars: number | null;
   readonly incrementalCapitalDollars: number | null;
+  /**
+   * Forward-only capital-DAYS of the replacement versus the leg it replaces (USD x calendar days):
+   * newCapital x days(asOf -> newExpiry) - oldCapital x days(asOf -> oldExpiry). With no `asOf` it is the extension
+   * alone, newCapital x days(oldExpiry -> newExpiry). Extending the SAME collateral for more days is therefore priced.
+   */
+  readonly incrementalCapitalDays: number | null;
   readonly daysExtended: number | null;
   readonly rollIncrementalUtility: number | null;
   readonly reasons: readonly string[];
@@ -52,6 +58,13 @@ export interface RollComparisonResult {
   readonly assessments: readonly RollCandidateAssessment[];
   readonly bestCandidate: RollCandidateAssessment | null;
   readonly bestBeatsHold: boolean;
+}
+
+function fractionalDays(fromIso: string | null, toIso: string | null): number | null {
+  if (fromIso === null || toIso === null) return null;
+  const from = Date.parse(fromIso), to = Date.parse(toIso);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+  return Math.max(0, (to - from) / 86_400_000);
 }
 
 function daysBetween(fromIso: string | null, toIso: string | null): number | null {
@@ -70,7 +83,7 @@ function daysBetween(fromIso: string | null, toIso: string | null): number | nul
  */
 export function evaluateRollCandidates(
   oldLeg: RollOldLeg, sunkRealizedPnl: number | null,
-  candidates: readonly RollCandidateEconomics[], incrementalCapitalDayWeight: number,
+  candidates: readonly RollCandidateEconomics[], incrementalCapitalDayWeight: number, asOf: string | null = null,
 ): RollComparisonResult {
   if (!Number.isFinite(incrementalCapitalDayWeight) || incrementalCapitalDayWeight < 0) {
     throw new Error('ROLL_INCREMENTAL_UTILITY_INVALID_CAPITAL_DAY_WEIGHT');
@@ -90,25 +103,34 @@ export function evaluateRollCandidates(
     // that requirement is enforced explicitly here instead.
     if (oldLeg.closeCostDollars === null || candidate.openCreditDollars === null) {
       return {
-        candidate, netCreditDollars: null, incrementalCapitalDollars, daysExtended,
+        candidate, netCreditDollars: null, incrementalCapitalDollars, incrementalCapitalDays: null, daysExtended,
         rollIncrementalUtility: null, reasons: ['FORWARD_ECONOMICS_INCOMPLETE'],
       };
     }
+    const validCapital = (value: number | null): value is number => value !== null && Number.isFinite(value) && value >= 0;
+    // D4 (MGMT-ROLL-SAME-CAPITAL-EXTENSION): price capital-DAYS, not "incremental dollars x days extended". A roll that
+    // keeps the same collateral but holds it months longer commits that collateral for the extra days.
+    const newExposureDays = asOf === null ? fractionalDays(oldLeg.expiration, candidate.expiration) : fractionalDays(asOf, candidate.expiration);
+    const oldExposureDays = asOf === null ? 0 : fractionalDays(asOf, oldLeg.expiration);
+    const incrementalCapitalDays = validCapital(candidate.capitalCommittedDollars) && validCapital(oldLeg.capitalCommittedDollars)
+      && newExposureDays !== null && oldExposureDays !== null
+      ? candidate.capitalCommittedDollars * newExposureDays - (asOf === null ? 0 : oldLeg.capitalCommittedDollars * oldExposureDays) : null;
     const forward = forwardRollCashFlow(oldLeg.closeCostDollars, candidate.openCreditDollars);
     const netCreditDollars = forward.netCashFlow;
     if (!forward.complete || netCreditDollars === null) return { candidate, netCreditDollars: null,
-      incrementalCapitalDollars, daysExtended, rollIncrementalUtility: null, reasons: forward.reasons };
-    const capitalDayPenalty = incrementalCapitalDollars !== null && daysExtended !== null
-      ? incrementalCapitalDayWeight * Math.max(0, incrementalCapitalDollars) * daysExtended : null;
+      incrementalCapitalDollars, incrementalCapitalDays, daysExtended, rollIncrementalUtility: null, reasons: forward.reasons };
+    const capitalDayPenalty = incrementalCapitalDays !== null && Number.isFinite(incrementalCapitalDays)
+      ? incrementalCapitalDayWeight * Math.max(0, incrementalCapitalDays) : null;
     const rawUtility = capitalDayPenalty === null ? null : netCreditDollars - capitalDayPenalty;
     const rollIncrementalUtility = rawUtility !== null && Number.isFinite(rawUtility) ? rawUtility : null;
     const reasons = [
       `NET_CREDIT_${(netCreditDollars as number).toFixed(2)}`,
       daysExtended !== null ? `DAYS_EXTENDED_${daysExtended}` : 'DAYS_EXTENDED_UNKNOWN',
       incrementalCapitalDollars !== null ? `INCREMENTAL_CAPITAL_${incrementalCapitalDollars.toFixed(2)}` : 'INCREMENTAL_CAPITAL_UNKNOWN',
+      incrementalCapitalDays !== null ? `INCREMENTAL_CAPITAL_DAYS_${incrementalCapitalDays.toFixed(2)}` : 'INCREMENTAL_CAPITAL_DAYS_UNKNOWN',
       capitalDayPenalty === null ? 'CAPITAL_DAY_PENALTY_UNKNOWN' : `CAPITAL_DAY_PENALTY_${capitalDayPenalty.toFixed(2)}`,
     ];
-    return { candidate, netCreditDollars, incrementalCapitalDollars, daysExtended, rollIncrementalUtility, reasons };
+    return { candidate, netCreditDollars, incrementalCapitalDollars, incrementalCapitalDays, daysExtended, rollIncrementalUtility, reasons };
   });
 
   const ranked = assessments.filter((assessment): assessment is RollCandidateAssessment & { rollIncrementalUtility: number } =>

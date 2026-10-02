@@ -104,7 +104,8 @@ export interface WholeChainPnlBreakdown {
   readonly dividends: number | null;
   readonly fees: number;
   readonly wholeChainPnl: number | null;
-  readonly valuationIssues: readonly ('OPEN_OPTION_MARK_UNAVAILABLE' | 'STOCK_MARK_UNAVAILABLE' | 'DIVIDEND_LOT_UNAVAILABLE')[];
+  readonly valuationIssues: readonly ('OPEN_OPTION_MARK_UNAVAILABLE' | 'STOCK_MARK_UNAVAILABLE' | 'DIVIDEND_LOT_UNAVAILABLE'
+    | 'CLOSED_OPTION_REALIZED_PNL_UNAVAILABLE' | 'DISPOSED_STOCK_REALIZED_PNL_UNAVAILABLE')[];
   readonly hasUnresolvedOpenPositions: boolean;
 }
 
@@ -138,6 +139,9 @@ export function computeWholeChainPnl(
   const realizedStockPnl = lots.reduce((sum, lot) => sum + (lot.realizedPnl ?? 0), 0);
 
   const valuationIssues: WholeChainPnlBreakdown['valuationIssues'][number][] = [];
+  // An unparsed/malformed closed leg or disposed lot with a null realized P&L is UNKNOWN, never a realized zero.
+  if (legs.some((leg) => leg.closedAt !== null && leg.realizedPnl === null)) valuationIssues.push('CLOSED_OPTION_REALIZED_PNL_UNAVAILABLE');
+  if (lots.some((lot) => lot.disposedAt !== null && lot.realizedPnl === null)) valuationIssues.push('DISPOSED_STOCK_REALIZED_PNL_UNAVAILABLE');
   const latestRemaining=new Map<string,number>();
   for(const close of [...partialCloses].sort((left,right)=>left.occurredAt.localeCompare(right.occurredAt))){
     latestRemaining.set(close.optionLegId,close.remainingQuantityAfter);
@@ -174,6 +178,7 @@ export function computeWholeChainPnl(
     legs.some((leg) => leg.closedAt === null) || lots.some((lot) => lot.disposedAt === null);
 
   const wholeChainPnl = unrealizedStockPnl === null || unrealizedOptionPnl === null || dividendTotal === null
+    || valuationIssues.includes('CLOSED_OPTION_REALIZED_PNL_UNAVAILABLE') || valuationIssues.includes('DISPOSED_STOCK_REALIZED_PNL_UNAVAILABLE')
     ? null
     : realizedStockPnl + unrealizedStockPnl + realizedOptionPnl + unrealizedOptionPnl + dividendTotal - feeTotal;
 

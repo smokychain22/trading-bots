@@ -1,4 +1,4 @@
-export const paperBootstrapRuntimePolicyVersion = 'theta-paper-bootstrap-runtime-policy-v2' as const;
+export const paperBootstrapRuntimePolicyVersion = 'theta-paper-bootstrap-runtime-policy-v3' as const;
 
 // One source of truth for the deterministic Paper-bootstrap controls that are
 // shared by candidate construction, risk, sizing, and the final read-only
@@ -16,7 +16,15 @@ export const paperBootstrapRuntimePolicy = Object.freeze({
     minimumOpenInterest: 50,
     minimumVolume: 10,
     maximumSpreadPct: 0.15,
+    // Q-EARN-UNIT-001 (OWNER_POLICY): the runtime compares this against earningsEvidence.distanceTradingSessions (Optionomics
+    // expected_moves.earnings_in_sessions), i.e. TRADING SESSIONS. The frozen TRD says only "earnings exclusion default" and "days to
+    // event" with no number or calendar/session unit, so the unit is an owner decision; no calendar-day conversion is established.
     earningsExclusionDays: 5,
+  }),
+  // Q-OWN-FLOOR-001: the THETA-Q ownership-acceptability floor (router eligibility and Q candidate-stage floor). The value 0.3 is
+  // unchanged from the former inline literals in theta-shadow-once.ts; v3 only registers it.
+  ownership: Object.freeze({
+    thetaQAcceptabilityFloor: 0.3,
   }),
   quoteAge: Object.freeze({
     candidateMaximumSeconds: 30,
@@ -88,6 +96,7 @@ export const presessionConfigurationRegistry: readonly PresessionConfigurationEn
   entry('conventional.minimumVolume', paperBootstrapRuntimePolicy.conventional.minimumVolume, 'COUNT', 'STRUCTURAL_FILTER', 'ThetaQCandidateLattice'),
   entry('conventional.maximumSpreadPct', paperBootstrapRuntimePolicy.conventional.maximumSpreadPct, 'PERCENT_FRACTION', 'HARD_SAFETY', 'ExecutionQuality'),
   entry('conventional.earningsExclusionDays', paperBootstrapRuntimePolicy.conventional.earningsExclusionDays, 'DAYS', 'HARD_SAFETY', 'CompanyEventPaperPolicy'),
+  entry('ownership.thetaQAcceptabilityFloor', paperBootstrapRuntimePolicy.ownership.thetaQAcceptabilityFloor, 'PERCENT_FRACTION', 'STRUCTURAL_FILTER', 'ThetaQOwnershipFloor'),
   entry('aegis.hardCapMultiplier', paperBootstrapRuntimePolicy.aegis.hardCapMultiplier, 'MULTIPLIER', 'HARD_SAFETY', 'Aegis'),
   entry('aegis.compoundStressHoldCount', paperBootstrapRuntimePolicy.aegis.compoundStressHoldCount, 'COUNT', 'HARD_SAFETY', 'Aegis'),
   entry('aegis.maximumTickerConcentrationPct', paperBootstrapRuntimePolicy.aegis.maximumTickerConcentrationPct, 'PERCENT_FRACTION', 'HARD_SAFETY', 'Aegis'),
@@ -115,7 +124,7 @@ export const presessionConfigurationRegistry: readonly PresessionConfigurationEn
 export const decisionCriticalConfigurationFields: readonly string[] = Object.freeze([
   'conventional.minimumDte', 'conventional.maximumDte', 'conventional.deltaBands',
   'conventional.minimumOpenInterest', 'conventional.minimumVolume', 'conventional.maximumSpreadPct',
-  'conventional.earningsExclusionDays', 'quote.candidateMaximumSeconds', 'quote.finalistMaximumSeconds',
+  'conventional.earningsExclusionDays', 'ownership.thetaQAcceptabilityFloor', 'quote.candidateMaximumSeconds', 'quote.finalistMaximumSeconds',
   'quote.preSubmitMaximumMilliseconds', 'quote.goodMaximumSeconds', 'quote.staleMinimumSeconds',
   'sizing.riskBudgetQuantityCap', 'sizing.collateralQuantityCap', 'sizing.concentrationQuantityCap',
   'sizing.assignmentCapacityQuantityCap', 'sizing.tailRiskQuantityCap', 'sizing.correlationQuantityCap',
@@ -173,6 +182,8 @@ export function auditPresessionConfiguration(): PresessionConfigurationAudit {
         <= paperBootstrapRuntimePolicy.portfolioCorrelation.lookbackSessions
       && Number.isInteger(paperBootstrapRuntimePolicy.portfolioCorrelation.maxBarAgeCalendarDays)
       && paperBootstrapRuntimePolicy.portfolioCorrelation.maxBarAgeCalendarDays > 0,
+    ownershipFloorBounded: paperBootstrapRuntimePolicy.ownership.thetaQAcceptabilityFloor > 0
+      && paperBootstrapRuntimePolicy.ownership.thetaQAcceptabilityFloor <= 1,
     deltaBandsOrdered: paperBootstrapRuntimePolicy.conventional.deltaBands.every(([low, high]) => low >= 0 && high <= 1 && low < high),
   } as const;
   const pass = duplicateNames.size === 0 && unregisteredFields.length === 0

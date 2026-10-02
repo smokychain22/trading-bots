@@ -1,0 +1,1313 @@
+{
+  "document": "THETA_PHASE2_Q_FUNNEL_SENSITIVITY_20261002",
+  "classification": "RESEARCH_ONLY_DERIVED_NUMBERS_NO_PRODUCTION_CHANGE",
+  "funnelContractVersion": "theta-q-entry-funnel-v1",
+  "source": {
+    "archivedCycle": "e9f4b10f",
+    "archiveFamily": "CANONICAL_STRATEGY_CANDIDATE_EVIDENCE",
+    "extractSha256": "114efb77a83002901e26054999745abe8513a1318fd1f9dd2428a36a1307e25b",
+    "distinctPutsInArchive": 1263,
+    "conventionalWindowPuts": 961,
+    "holdStrikeOnlyPuts": 302,
+    "caveats": [
+      "The archive persisted 1,263 distinct SPY puts for this cycle (961 in the 25-60 DTE Q window plus 302 DTE 4-5 hold-strike puts); the 2,619-put enumeration quoted in the 2026-10-01 audit is not reproducible from the archive and is not used here.",
+      "Quote age is measured at the frontier asOf; the candidate-stage age was measured earlier, so ages here are an upper bound relative to the candidate stage.",
+      "Instrument approval and event policy are not observable per row; SPY is a qualified non-company fund (event window NOT_APPLICABLE) and the account is assumed approved. Three archived candidates did reach AEGIS and were vetoed on a capital reason, which shows approval was not the stopping stage.",
+      "AEGIS and quantity are modeled from the archived equity/buying power and the frozen concentration and quantity caps (parity-tested against the canonical sizing waterfall); no live AEGIS call was made.",
+      "The archive holds no puts with DTE 6-28 or above 60, so DTE_MIN looser (21) and DTE_MAX looser (65) cannot add candidates here; the unchanged counts reflect archive coverage, not insensitivity.",
+      "Baseline Q_VALID is one lower than the 2026-10-01 audit figure (363) because the frozen delta band is half-open: the single put with |delta| exactly 0.5 is excluded by theta_q_lattice.py (the audit counted |delta| <= 0.5).",
+      "Premium and capital scenarios are diagnostics, not policy proposals; no Production threshold is changed by this document."
+    ],
+    "quoteAgeSecondsAtAsOf": {
+      "p50": 2.458,
+      "p95": 4.043,
+      "max": 26.239
+    },
+    "reproduction": "Extract CANONICAL_STRATEGY_CANDIDATE_EVIDENCE rows (recordType BRANCH_CANDIDATE, branches THETA_CONVENTIONAL and THETA_HOLD_STRIKE) for the cycle from the local research parquet archive into a compact JSON, then run tools/theta-phase2-q-funnel-sensitivity.ts --input=<extract>."
+  },
+  "account": {
+    "equityDollars": 99999.96,
+    "buyingPowerDollars": 99999.96,
+    "tickerSoftCapDollars": 14999.99,
+    "tickerHardVetoDollars": 22499.99
+  },
+  "observedProductionReceipt": {
+    "conventionalCandidates": 961,
+    "evaluatedByQAndAegis": 5,
+    "receiptReasonCounts": {
+      "AEGIS_HARD_VETO": 3,
+      "THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND": 955,
+      "THETA_Q_ACTION_INFEASIBLE+THETA_Q_INFEASIBLE_REASON:VOLUME_BELOW_FLOOR": 2,
+      "THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND+NO_ASSIGNMENT_CAPACITY": 1
+    },
+    "interpretation": "Production labeled the unevaluated candidates only NOT_EVALUATED_SHORTLIST_BOUND; the funnel below attributes the same candidates to their exact known blockers."
+  },
+  "baselineFunnel": {
+    "stages": [
+      {
+        "stageId": "PUT_CONTRACT_IDENTITY",
+        "INPUT_COUNT": 1263,
+        "PASS_COUNT": 1263,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {}
+      },
+      {
+        "stageId": "INSTRUMENT_APPROVAL",
+        "INPUT_COUNT": 1263,
+        "PASS_COUNT": 1263,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {}
+      },
+      {
+        "stageId": "EXECUTABLE_ALPACA_QUOTE",
+        "INPUT_COUNT": 1263,
+        "PASS_COUNT": 1124,
+        "FAIL_COUNT": 139,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {
+          "CONTRACT_NOT_EXECUTABLE": 139,
+          "SPREAD_TOO_WIDE": 139
+        }
+      },
+      {
+        "stageId": "DELTA_KNOWN",
+        "INPUT_COUNT": 1124,
+        "PASS_COUNT": 1083,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 41,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {
+          "DELTA_UNKNOWN": 41
+        }
+      },
+      {
+        "stageId": "QUOTE_FRESHNESS",
+        "INPUT_COUNT": 1083,
+        "PASS_COUNT": 1083,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {}
+      },
+      {
+        "stageId": "DTE_WINDOW",
+        "INPUT_COUNT": 1083,
+        "PASS_COUNT": 914,
+        "FAIL_COUNT": 169,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {
+          "DTE_OUTSIDE_LATTICE": 169
+        }
+      },
+      {
+        "stageId": "DELTA_BAND",
+        "INPUT_COUNT": 914,
+        "PASS_COUNT": 595,
+        "FAIL_COUNT": 319,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {
+          "DELTA_OUTSIDE_ALL_BANDS": 319
+        }
+      },
+      {
+        "stageId": "SPREAD",
+        "INPUT_COUNT": 595,
+        "PASS_COUNT": 595,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {}
+      },
+      {
+        "stageId": "OPEN_INTEREST",
+        "INPUT_COUNT": 595,
+        "PASS_COUNT": 505,
+        "FAIL_COUNT": 90,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {
+          "OPEN_INTEREST_BELOW_FLOOR": 90
+        }
+      },
+      {
+        "stageId": "VOLUME",
+        "INPUT_COUNT": 505,
+        "PASS_COUNT": 362,
+        "FAIL_COUNT": 143,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {
+          "VOLUME_BELOW_FLOOR": 143
+        }
+      },
+      {
+        "stageId": "PREMIUM_ECONOMICS",
+        "INPUT_COUNT": 362,
+        "PASS_COUNT": 0,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 362,
+        "reasonCounts": {
+          "NO_PRODUCTION_PREMIUM_GATE": 362
+        }
+      },
+      {
+        "stageId": "QUOTE_AGE_BUDGET",
+        "INPUT_COUNT": 362,
+        "PASS_COUNT": 362,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {}
+      },
+      {
+        "stageId": "EVENT_WINDOW",
+        "INPUT_COUNT": 362,
+        "PASS_COUNT": 0,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 362,
+        "reasonCounts": {
+          "EVENT_POLICY_NOT_APPLICABLE": 362
+        }
+      },
+      {
+        "stageId": "FINALIST_SHORTLIST",
+        "INPUT_COUNT": 362,
+        "PASS_COUNT": 0,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 362,
+        "reasonCounts": {
+          "SHORTLIST_NOT_MODELED": 362
+        }
+      },
+      {
+        "stageId": "ENTRY_ELIGIBILITY",
+        "INPUT_COUNT": 362,
+        "PASS_COUNT": 0,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 362,
+        "reasonCounts": {
+          "ELIGIBILITY_NOT_OBSERVED": 362
+        }
+      },
+      {
+        "stageId": "CAPITAL_FIT",
+        "INPUT_COUNT": 362,
+        "PASS_COUNT": 362,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {}
+      },
+      {
+        "stageId": "AEGIS",
+        "INPUT_COUNT": 362,
+        "PASS_COUNT": 0,
+        "FAIL_COUNT": 362,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {
+          "AEGIS_HARD_VETO": 362
+        }
+      },
+      {
+        "stageId": "FINAL_QUANTITY",
+        "INPUT_COUNT": 0,
+        "PASS_COUNT": 0,
+        "FAIL_COUNT": 0,
+        "UNKNOWN_COUNT": 0,
+        "NOT_APPLICABLE_COUNT": 0,
+        "reasonCounts": {}
+      }
+    ],
+    "terminalReasonCounts": {
+      "EXECUTABLE_ALPACA_QUOTE:CONTRACT_NOT_EXECUTABLE+SPREAD_TOO_WIDE": 139,
+      "DTE_WINDOW:DTE_OUTSIDE_LATTICE": 169,
+      "DELTA_KNOWN:DELTA_UNKNOWN": 41,
+      "VOLUME:VOLUME_BELOW_FLOOR": 143,
+      "AEGIS:AEGIS_HARD_VETO": 362,
+      "DELTA_BAND:DELTA_OUTSIDE_ALL_BANDS": 319,
+      "OPEN_INTEREST:OPEN_INTEREST_BELOW_FLOOR": 90
+    },
+    "totals": {
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "FINALIST_REACHED": null,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "CAPITAL_FIT": 362,
+      "FINAL_QTY_POSITIVE": 0
+    },
+    "extinctionStage": "AEGIS",
+    "dominantBlocker": "AEGIS",
+    "contentHash": "ede987ca528772457c5cf0673bec758119c7930c13bdc74a1a1af83fd882afb7"
+  },
+  "finalistShortlist": {
+    "maxFinalists": 5,
+    "observedProductionEvaluated": {
+      "count": 5
+    },
+    "legacyOrderingReplica": {
+      "count": 5,
+      "Q_VALID": 4,
+      "AEGIS_REACHED": 4,
+      "FINAL_QTY_POSITIVE": 0,
+      "terminal": [
+        "AEGIS:AEGIS_HARD_VETO",
+        "AEGIS:AEGIS_HARD_VETO",
+        "AEGIS:AEGIS_HARD_VETO",
+        "AEGIS:AEGIS_HARD_VETO",
+        "VOLUME:VOLUME_BELOW_FLOOR"
+      ],
+      "collateralDollars": [
+        70200,
+        70600,
+        71600,
+        72200,
+        75600
+      ],
+      "overlapWithObservedProductionSet": 4,
+      "note": "Replica ordered on frontier-asOf quotes/Greeks; production ordered on the earlier candidate-stage merge, so ties and near-ties can resolve differently."
+    },
+    "gateAwareOrdering": {
+      "count": 5,
+      "Q_VALID": 5,
+      "AEGIS_REACHED": 5,
+      "FINAL_QTY_POSITIVE": 0,
+      "terminal": [
+        "AEGIS:AEGIS_HARD_VETO",
+        "AEGIS:AEGIS_HARD_VETO",
+        "AEGIS:AEGIS_HARD_VETO",
+        "AEGIS:AEGIS_HARD_VETO",
+        "AEGIS:AEGIS_HARD_VETO"
+      ],
+      "collateralDollars": [
+        70200,
+        70600,
+        70700,
+        72200,
+        75600
+      ]
+    }
+  },
+  "capitalArithmetic": {
+    "cheapestQValidPutCollateralDollars": 37500,
+    "cheapestQValidPutPctOfEquity": 0.375,
+    "equityNeededForOneContractNotToBeHardVetoed": 166667,
+    "equityNeededForFullSize": 250000
+  },
+  "variants": [
+    {
+      "scenario": "BASELINE",
+      "group": "BASELINE",
+      "parameters": "frozen paper-bootstrap runtime policy",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 362
+      },
+      "categoryCounts": {
+        "AEGIS": 362,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_TIGHTER:OPEN_INTEREST",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "minOpenInterest=60",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 356,
+      "CAPITAL_FIT_BUYING_POWER": 356,
+      "AEGIS_REACHED": 356,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 356
+      },
+      "categoryCounts": {
+        "AEGIS": 356,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 378,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 515,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_LOOSER:OPEN_INTEREST",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "minOpenInterest=40",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 366,
+      "CAPITAL_FIT_BUYING_POWER": 366,
+      "AEGIS_REACHED": 366,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 366
+      },
+      "categoryCounts": {
+        "AEGIS": 366,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 368,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 493,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_TIGHTER:VOLUME",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "minVolume=12",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 353,
+      "CAPITAL_FIT_BUYING_POWER": 353,
+      "AEGIS_REACHED": 353,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 353
+      },
+      "categoryCounts": {
+        "AEGIS": 353,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 381,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 585,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_LOOSER:VOLUME",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "minVolume=8",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 377,
+      "CAPITAL_FIT_BUYING_POWER": 377,
+      "AEGIS_REACHED": 377,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 377
+      },
+      "categoryCounts": {
+        "AEGIS": 377,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 357,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 523,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_TIGHTER:SPREAD",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "maxSpreadPct=0.12",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 359,
+      "CAPITAL_FIT_BUYING_POWER": 359,
+      "AEGIS_REACHED": 359,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 359
+      },
+      "categoryCounts": {
+        "AEGIS": 359,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 389,
+        "Q_STRICTNESS": 474
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 158,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 158,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_LOOSER:SPREAD",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "maxSpreadPct=0.18",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 367,
+      "CAPITAL_FIT_BUYING_POWER": 367,
+      "AEGIS_REACHED": 367,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 367
+      },
+      "categoryCounts": {
+        "AEGIS": 367,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 360,
+        "Q_STRICTNESS": 495
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 123,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 123,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_TIGHTER:QUOTE_AGE",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "candidateQuoteMaxAgeSeconds=24",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 362
+      },
+      "categoryCounts": {
+        "AEGIS": 362,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 374,
+        "Q_STRICTNESS": 486
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 141,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 2,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_LOOSER:QUOTE_AGE",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "candidateQuoteMaxAgeSeconds=36",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 362
+      },
+      "categoryCounts": {
+        "AEGIS": 362,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_TIGHTER:DELTA_UPPER_EDGE",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "deltaBands=[[0,0.25],[0.25,0.45]]",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 343,
+      "CAPITAL_FIT_BUYING_POWER": 343,
+      "AEGIS_REACHED": 343,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 343
+      },
+      "categoryCounts": {
+        "AEGIS": 343,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 368,
+        "Q_STRICTNESS": 511
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 492,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_LOOSER:DELTA_UPPER_EDGE",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "deltaBands=[[0,0.25],[0.25,0.55]]",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 377,
+      "CAPITAL_FIT_BUYING_POWER": 377,
+      "AEGIS_REACHED": 377,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 377
+      },
+      "categoryCounts": {
+        "AEGIS": 377,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 379,
+        "Q_STRICTNESS": 466
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 442,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_TIGHTER:DTE_MIN",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "minDte=30",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 251,
+      "CAPITAL_FIT_BUYING_POWER": 251,
+      "AEGIS_REACHED": 251,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 251
+      },
+      "categoryCounts": {
+        "AEGIS": 251,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 336,
+        "Q_STRICTNESS": 635
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 551,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_LOOSER:DTE_MIN",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "minDte=21",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 362
+      },
+      "categoryCounts": {
+        "AEGIS": 362,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_TIGHTER:DTE_MAX",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "maxDte=55",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 277,
+      "CAPITAL_FIT_BUYING_POWER": 277,
+      "AEGIS_REACHED": 277,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 277
+      },
+      "categoryCounts": {
+        "AEGIS": 277,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 247,
+        "Q_STRICTNESS": 698
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 584,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_LOOSER:DTE_MAX",
+      "group": "SINGLE_PARAMETER",
+      "parameters": "maxDte=65",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 362
+      },
+      "categoryCounts": {
+        "AEGIS": 362,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_TIGHTER:ALL",
+      "group": "COMBINED",
+      "parameters": "every parameter slightly tighter at once",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 144,
+      "CAPITAL_FIT_BUYING_POWER": 144,
+      "AEGIS_REACHED": 144,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 144
+      },
+      "categoryCounts": {
+        "AEGIS": 144,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 237,
+        "Q_STRICTNESS": 841
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 160,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 833,
+        "DELTA_BAND": 492,
+        "SPREAD": 158,
+        "OPEN_INTEREST": 515,
+        "VOLUME": 585,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 2,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "SLIGHTLY_LOOSER:ALL",
+      "group": "COMBINED",
+      "parameters": "every parameter slightly looser at once",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 402,
+      "CAPITAL_FIT_BUYING_POWER": 402,
+      "AEGIS_REACHED": 402,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 402
+      },
+      "categoryCounts": {
+        "AEGIS": 402,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 347,
+        "Q_STRICTNESS": 473
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 123,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 442,
+        "SPREAD": 123,
+        "OPEN_INTEREST": 493,
+        "VOLUME": 523,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "RESEARCH_ONLY:MIN_PREMIUM_0.02",
+      "group": "PREMIUM_RESEARCH_ONLY",
+      "parameters": "Production Q has NO minimum-premium gate; this is a research probe, not a policy proposal",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 362
+      },
+      "categoryCounts": {
+        "AEGIS": 362,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 57,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "RESEARCH_ONLY:MIN_PREMIUM_0.05",
+      "group": "PREMIUM_RESEARCH_ONLY",
+      "parameters": "Production Q has NO minimum-premium gate; this is a research probe, not a policy proposal",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 362
+      },
+      "categoryCounts": {
+        "AEGIS": 362,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 91,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "RESEARCH_ONLY:MIN_PREMIUM_0.10",
+      "group": "PREMIUM_RESEARCH_ONLY",
+      "parameters": "Production Q has NO minimum-premium gate; this is a research probe, not a policy proposal",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 356,
+      "CAPITAL_FIT_BUYING_POWER": 356,
+      "AEGIS_REACHED": 356,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 356
+      },
+      "categoryCounts": {
+        "AEGIS": 356,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 494
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 130,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "CAPITAL_SCENARIO:EQUITY_X1.25",
+      "group": "CAPITAL_RESEARCH_ONLY",
+      "parameters": "baseline strictness, equity and buying power scaled; diagnostic of the capital binding, not an account recommendation",
+      "equityMultiplier": 1.25,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 362
+      },
+      "categoryCounts": {
+        "AEGIS": 362,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 0
+      }
+    },
+    {
+      "scenario": "CAPITAL_SCENARIO:EQUITY_X1.5",
+      "group": "CAPITAL_RESEARCH_ONLY",
+      "parameters": "baseline strictness, equity and buying power scaled; diagnostic of the capital binding, not an account recommendation",
+      "equityMultiplier": 1.5,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 362
+      },
+      "categoryCounts": {
+        "AEGIS": 362,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 0
+      }
+    },
+    {
+      "scenario": "CAPITAL_SCENARIO:EQUITY_X2",
+      "group": "CAPITAL_RESEARCH_ONLY",
+      "parameters": "baseline strictness, equity and buying power scaled; diagnostic of the capital binding, not an account recommendation",
+      "equityMultiplier": 2,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 6,
+      "FINAL_QTY_POSITIVE": 6,
+      "extinctionStage": null,
+      "dominantBlocker": "NONE_QTY_POSITIVE",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 356
+      },
+      "categoryCounts": {
+        "AEGIS": 356,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 0
+      }
+    },
+    {
+      "scenario": "CAPITAL_SCENARIO:EQUITY_X3",
+      "group": "CAPITAL_RESEARCH_ONLY",
+      "parameters": "baseline strictness, equity and buying power scaled; diagnostic of the capital binding, not an account recommendation",
+      "equityMultiplier": 3,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 99,
+      "FINAL_QTY_POSITIVE": 99,
+      "extinctionStage": null,
+      "dominantBlocker": "NONE_QTY_POSITIVE",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 263
+      },
+      "categoryCounts": {
+        "AEGIS": 263,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 0
+      }
+    },
+    {
+      "scenario": "CAPITAL_SCENARIO:EQUITY_X4.7",
+      "group": "CAPITAL_RESEARCH_ONLY",
+      "parameters": "baseline strictness, equity and buying power scaled; diagnostic of the capital binding, not an account recommendation",
+      "equityMultiplier": 4.7,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 362,
+      "FINAL_QTY_POSITIVE": 362,
+      "extinctionStage": null,
+      "dominantBlocker": "NONE_QTY_POSITIVE",
+      "aegisFailReasons": {},
+      "categoryCounts": {
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 0
+      }
+    },
+    {
+      "scenario": "DECOMPOSITION:LOOSER_ALL_AT_BASELINE_EQUITY",
+      "group": "DECOMPOSITION",
+      "parameters": "is relaxing every Q gate enough? (no)",
+      "equityMultiplier": 1,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 402,
+      "CAPITAL_FIT_BUYING_POWER": 402,
+      "AEGIS_REACHED": 402,
+      "AEGIS_PASS": 0,
+      "FINAL_QTY_POSITIVE": 0,
+      "extinctionStage": "AEGIS",
+      "dominantBlocker": "AEGIS",
+      "aegisFailReasons": {
+        "AEGIS_HARD_VETO": 402
+      },
+      "categoryCounts": {
+        "AEGIS": 402,
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 347,
+        "Q_STRICTNESS": 473
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 123,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 442,
+        "SPREAD": 123,
+        "OPEN_INTEREST": 493,
+        "VOLUME": 523,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 1
+      }
+    },
+    {
+      "scenario": "DECOMPOSITION:BASELINE_GATES_AT_X4.7_EQUITY",
+      "group": "DECOMPOSITION",
+      "parameters": "is relaxing capital alone enough? (yes, if > 0)",
+      "equityMultiplier": 4.7,
+      "INPUT_CONTRACTS": 1263,
+      "Q_VALID": 362,
+      "CAPITAL_FIT_BUYING_POWER": 362,
+      "AEGIS_REACHED": 362,
+      "AEGIS_PASS": 362,
+      "FINAL_QTY_POSITIVE": 362,
+      "extinctionStage": null,
+      "dominantBlocker": "NONE_QTY_POSITIVE",
+      "aegisFailReasons": {},
+      "categoryCounts": {
+        "DATA_UNKNOWN": 41,
+        "LIQUIDITY": 372,
+        "Q_STRICTNESS": 488
+      },
+      "independentGateFailures": {
+        "EXECUTABLE_ALPACA_QUOTE": 139,
+        "DELTA_KNOWN": 41,
+        "QUOTE_FRESHNESS": 0,
+        "DTE_WINDOW": 302,
+        "DELTA_BAND": 467,
+        "SPREAD": 139,
+        "OPEN_INTEREST": 502,
+        "VOLUME": 553,
+        "PREMIUM_ECONOMICS": 0,
+        "QUOTE_AGE_BUDGET": 0,
+        "EVENT_WINDOW": 0,
+        "CAPITAL_FIT": 0
+      }
+    }
+  ],
+  "headline": {
+    "INPUT_CONTRACTS": 1263,
+    "Q_VALID": 362,
+    "AEGIS_REACHED": 362,
+    "CAPITAL_FIT": 362,
+    "FINAL_QTY_POSITIVE": 0,
+    "DOMINANT_CURRENT_BLOCKER": "AEGIS",
+    "DOMINANT_CURRENT_BLOCKER_EXPLANATION": "CAPITAL via AEGIS single-underlying concentration: every Q-valid put needs more collateral than 22.5% of account equity (hard-veto threshold); relaxing every Q strictness gate together leaves qty-positive at 0, while scaling equity alone produces qty-positive candidates."
+  }
+}

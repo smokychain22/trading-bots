@@ -1,3 +1,5 @@
+import { isModeledCostBasis, type CostBasisKind } from './cost-basis-typing.js';
+
 export const wholeChainEconomicsVersion = 'theta-whole-chain-economics-v2' as const;
 
 const finite = (value: number | null): value is number => typeof value === 'number' && Number.isFinite(value);
@@ -48,6 +50,14 @@ export interface WholeChainComponents {
    * verified at all.
    */
   readonly fees: number | null;
+  /**
+   * Origin of `fees`. Optional for backward compatibility: undefined keeps the
+   * historical behavior. When present together with ACTUAL_FILL_CASHFLOW, any
+   * basis other than BROKER_ACTUAL_FEE (a modeled cost, a slippage assumption
+   * or an unproven actual fee) makes the realized whole-chain P&L UNKNOWN
+   * rather than letting a modeled number masquerade as a broker-charged one.
+   */
+  readonly feeBasis?: CostBasisKind;
   /** Actual execution cost not already present in the supplied cash-flow legs. */
   readonly executionCostNotEmbeddedInCashflows: number | null;
   /** Benchmark shortfall diagnostic only. It never changes realized cash P&L. */
@@ -164,6 +174,10 @@ export function computeWholeChainPnl(components: WholeChainComponents): WholeCha
     const stockPnl = !finite(components.stockSaleOrCallAwayProceeds) || !finite(components.assignmentStrike)
       ? null : components.stockSaleOrCallAwayProceeds - components.assignmentStrike * exitedShares;
     legs.push({ label: 'STOCK_PNL_AT_SALE_OR_CALL_AWAY', amount: stockPnl });
+  }
+  if (components.cashflowBasis === 'ACTUAL_FILL_CASHFLOW' && components.feeBasis !== undefined
+    && (isModeledCostBasis(components.feeBasis) || components.feeBasis === 'UNKNOWN_ACTUAL_FEE')) {
+    legs.push({ label: `FEE_BASIS_NOT_BROKER_ACTUAL:${components.feeBasis}`, amount: null });
   }
   const normalizedLegs = legs.map(leg => ({ ...leg, amount: finite(leg.amount) ? leg.amount : null }));
   const sum = normalizedLegs.some(leg => leg.amount === null) ? null

@@ -334,10 +334,15 @@ class BaselinePolicy:
         NEVER the broker-facing final quantity. `sizing.py:compute_sizing()`
         is the branch-level nine-cap calculator consumed by
         `new-risk-orchestrator.ts`. The system-wide final quantity comes
-        from `canonical-strategy-frontier.ts:structuralSizing()` and can
-        only reduce the subordinate receipt quantity. No caller reads this
-        method's result or `CandidateEvaluation.quantity` as the final
-        broker-facing size. This was previously named `_quantity()`, which
+        from `canonical-strategy-frontier.ts:structuralSizing()` (AEGIS- and
+        risk-capacity-aware) and can only reduce the subordinate receipt
+        quantity. The Q-stage quantity IS persisted
+        (trade.candidate.metrics_json->thetaQ->quantity) and read by
+        research/shadow consumers (historical-replay-export and the shadow
+        virtual trader, which sizes from min(Q-stage, final canonical)).
+        No broker-facing caller reads `CandidateEvaluation.quantity` as the
+        order size: the final broker-facing quantity is still the minimum of
+        structuralSizing and sizing.py. This was previously named `_quantity()`, which
         read as if it might be that final authority -- it never was."""
         if ownership_score is None and not paper_bootstrap_eligible:
             return 0

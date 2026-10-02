@@ -6,9 +6,11 @@ import type { ScanCompleteness } from '../research/shadow-evidence-runtime.js';
 import type { StrategyQualityShadowDiagnostic } from '../research/strategy-quality-shadow-diagnostics.js';
 import type { UniverseBreadthShadowPlan } from '../research/strategy-quality-shadow-diagnostics.js';
 import type { UniverseDiscoveryFunnel } from './universe-discovery.js';
+import { accountCapacityBlockers, accountCapacityZeroCause, isAccountCapacityBinding } from './account-capacity-zero.js';
 import type { FirstPaperRuntimeTelemetry } from './first-paper-runtime-telemetry.js';
+import type { QEntryFunnelSummary } from './q-entry-funnel.js';
 
-export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v6' as const;
+export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v7' as const;
 
 export interface RuntimeReadOnlyPreSubmitProof {
   readonly symbol: string;
@@ -53,6 +55,8 @@ export interface RuntimeFirstPaperSymbolEvidence {
     readonly decisionAsOf: string;
   };
   readonly runtimeTelemetry: FirstPaperRuntimeTelemetry | null;
+  /** Q-FUNNEL-001: additive, bounded Q entry-funnel attribution. Absent on pre-v7 diagnostics and when attribution failed. */
+  readonly qEntryFunnel?: QEntryFunnelSummary | null;
   readonly cycleBlockers: readonly string[];
   readonly preSubmit: RuntimeReadOnlyPreSubmitProof | null;
 }
@@ -162,14 +166,16 @@ export interface RuntimeBehaviorDiagnostic extends RuntimeBehaviorDiagnosticInpu
 const quoteBlocker = (value: string): boolean => /QUOTE|BBO|OPRA|ORDER_PRICING|ENTITLEMENT/.test(value);
 const riskBlocker = (value: string): boolean => /AEGIS|QUANTITY|ACCOUNT|ASSIGNMENT|COLLATERAL|CONCENTRATION|CONFLICT|BUYING_POWER/.test(value);
 
+/** v7 (CAPZERO-LABEL): the one canonical capacity-zero cause is ACCOUNT_CAPACITY_ZERO (see account-capacity-zero.ts).
+ * 'AEGIS_CAPACITY_ZERO' is a LEGACY v6 key kept only so persisted v6 breakdowns still type-check; it is never emitted. */
 export type SizingZeroCause =
-  | 'Q_REJECTED_UPSTREAM' | 'AEGIS_NOT_REACHED' | 'AEGIS_HARD_VETO' | 'AEGIS_HOLD_ONLY' | 'AEGIS_CAPACITY_ZERO'
+  | 'Q_REJECTED_UPSTREAM' | 'AEGIS_NOT_REACHED' | 'AEGIS_HARD_VETO' | 'AEGIS_HOLD_ONLY' | 'ACCOUNT_CAPACITY_ZERO' | 'AEGIS_CAPACITY_ZERO'
   | 'AEGIS_REQUIRED_UNKNOWN' | 'AEGIS_RISK_FAMILY_BLOCK' | 'SIZING_EVIDENCE_UNKNOWN' | 'STRUCTURAL_SIZING_ZERO'
   | 'BRANCH_NOT_APPLICABLE' | 'NO_EXECUTABLE_CANDIDATE';
 
 /** Causes where the risk/sizing stage actually ran (or was required and could not) and the answer was zero. */
 export const riskEvaluatedZeroCauses: ReadonlySet<SizingZeroCause> = new Set<SizingZeroCause>([
-  'AEGIS_HARD_VETO', 'AEGIS_HOLD_ONLY', 'AEGIS_CAPACITY_ZERO', 'AEGIS_REQUIRED_UNKNOWN', 'AEGIS_RISK_FAMILY_BLOCK',
+  'AEGIS_HARD_VETO', 'AEGIS_HOLD_ONLY', 'ACCOUNT_CAPACITY_ZERO', 'AEGIS_CAPACITY_ZERO', 'AEGIS_REQUIRED_UNKNOWN', 'AEGIS_RISK_FAMILY_BLOCK',
   'SIZING_EVIDENCE_UNKNOWN', 'STRUCTURAL_SIZING_ZERO',
 ]);
 
@@ -193,7 +199,7 @@ export function classifySizingZero(candidate: {
   if (blockers.some((blocker) => qUpstreamRejection.test(blocker))) return 'Q_REJECTED_UPSTREAM';
   if (blockers.includes('AEGIS_HARD_VETO') || blockers.includes('AEGIS_EMERGENCY_EXIT_ONLY')) return 'AEGIS_HARD_VETO';
   if (blockers.includes('AEGIS_HOLD_ONLY')) return 'AEGIS_HOLD_ONLY';
-  if (blockers.includes('NO_ASSIGNMENT_CAPACITY')) return 'AEGIS_CAPACITY_ZERO';
+  if (blockers.some((blocker) => accountCapacityBlockers.has(blocker))) return accountCapacityZeroCause;
   if (binding === 'AEGIS_NOT_REACHED_UPSTREAM') return 'AEGIS_NOT_REACHED';
   if (binding === 'AEGIS_UNKNOWN' || binding === 'AEGIS_STATE_UNKNOWN') return 'AEGIS_REQUIRED_UNKNOWN';
   if (sizingEvidenceUnknownBindings.has(binding)) return 'SIZING_EVIDENCE_UNKNOWN';
@@ -202,7 +208,8 @@ export function classifySizingZero(candidate: {
     return 'AEGIS_RISK_FAMILY_BLOCK';
   }
   if (blockers.length > 0) return 'NO_EXECUTABLE_CANDIDATE';
-  return 'STRUCTURAL_SIZING_ZERO';
+  // A capacity-named cap (buying power, broker, assignment, AEGIS-assessed risk capacity, configured cap) with no other blocker.
+  return isAccountCapacityBinding(binding) ? accountCapacityZeroCause : 'STRUCTURAL_SIZING_ZERO';
 }
 
 export function summarizeSizingZero(candidates: readonly {
@@ -228,7 +235,9 @@ export function deriveAntiParalysisFindings(input: {
   }[];
 }): readonly string[] {
   const otherwiseValid=input.candidateHardBlockers.filter((blockers)=>blockers.length<=1);
-  const gates=[...new Set(otherwiseValid.flatMap((blockers)=>blockers))].filter((gate)=>!nonEvaluationMarker.test(gate));
+  // ACCOUNT_POLICY_INCOMPATIBILITY is a proven account-size fact (reported as ACCOUNT_CAPACITY_ZERO), not decision-logic paralysis.
+  const gates=[...new Set(otherwiseValid.flatMap((blockers)=>blockers))]
+    .filter((gate)=>!nonEvaluationMarker.test(gate)&&!accountCapacityBlockers.has(gate));
   return [
     ...gates.filter((gate)=>otherwiseValid.length>0
       &&otherwiseValid.filter((blockers)=>blockers.length===1&&blockers[0]===gate).length/otherwiseValid.length>0.9)

@@ -53,7 +53,7 @@ test('indicative option data, stale quotes and out-of-BBO limits fail before per
 test('covered-call opening requires actual reconciled share coverage',()=>{
   const cc={...base,action:'OPEN_CC' as const,symbol:'AAPL261016C00170000',candidateId:'AAPL261016C00170000'};
   assert.throws(()=>assembleMasterPaperExecutionCommand(cc),/confirmed share coverage/);
-  const command=assembleMasterPaperExecutionCommand({...cc,confirmedCoveredShares:100});
+  const command=assembleMasterPaperExecutionCommand({...cc,confirmedCoveredShares:100,committedShortCallContracts:0});
   assert.equal(command.request.position_intent,'sell_to_open');
 });
 

@@ -18,6 +18,12 @@ export interface ShadowObservationResolutionReport {
 
 const finite = (value:unknown):number|null => value===null||value===undefined||!Number.isFinite(Number(value))?null:Number(value);
 const integer = (value:unknown):number => Number.isInteger(Number(value))?Number(value):0;
+/** SIZE-VT-01: a virtual intent never exceeds the final canonical (structuralSizing/AEGIS-aware) quantity. A missing or invalid
+ * canonical quantity (legacy rows) is UNKNOWN and sizes to zero; the Q-stage quantity alone is research evidence, not a size. */
+export const shadowIntentQuantity = (qStageQuantity:unknown,canonicalQuantity:unknown):number => {
+  const q=integer(qStageQuantity),f=integer(canonicalQuantity);
+  return q>0&&f>0?Math.min(q,f):0;
+};
 
 export class PostgresShadowVirtualTrader {
   constructor(private readonly pool:Pool) {}
@@ -35,7 +41,7 @@ export class PostgresShadowVirtualTrader {
 
       const result=await client.query(`SELECT c.candidate_id,p.decision_id,p.fusion_snapshot_id,c.option_contract_id,
           oc.contract_symbol,u.symbol AS underlying,oc.option_type::text,oc.strike::text,oc.expiration_date::text,oc.multiplier::text,
-          c.rank,(c.metrics_json->'thetaQ'->>'quantity') AS quantity,c.ownership_score::text,
+          c.rank,(c.metrics_json->'thetaQ'->>'quantity') AS quantity,(c.metrics_json->'canonicalSizing'->>'quantity') AS canonical_quantity,c.ownership_score::text,
           q.quote_observation_id,q.bid::text,q.ask::text,q.bid_size::text,q.ask_size::text,q.provider_timestamp,q.data_quality,
           p.decision_time,p.strategy_version,p.risk_version,p.feature_version,p.cost_model_version,p.execution_model_version,
           fs.bot_instance_id,fs.account_snapshot_id,a.account_id,a.equity::text,a.cash::text,a.buying_power::text
@@ -52,7 +58,7 @@ export class PostgresShadowVirtualTrader {
         candidateId:String(row.candidate_id),decisionId:row.decision_id===null?null:String(row.decision_id),fusionSnapshotId:String(row.fusion_snapshot_id),
         optionContractId:String(row.option_contract_id),contractSymbol:String(row.contract_symbol),underlying:String(row.underlying),
         optionType:String(row.option_type) as 'PUT'|'CALL',strike:Number(row.strike),expiration:String(row.expiration_date),multiplier:Number(row.multiplier),
-        rank:row.rank===null?null:Number(row.rank),quantity:integer(row.quantity),ownershipScore:finite(row.ownership_score),bid:finite(row.bid),ask:finite(row.ask),
+        rank:row.rank===null?null:Number(row.rank),quantity:shadowIntentQuantity(row.quantity,row.canonical_quantity),ownershipScore:finite(row.ownership_score),bid:finite(row.bid),ask:finite(row.ask),
         bidSize:finite(row.bid_size),askSize:finite(row.ask_size),quoteTimestamp:row.provider_timestamp===null?null:String(row.provider_timestamp),
         quoteQuality:String(row.data_quality??'UNKNOWN'),decisionTime:String(row.decision_time),strategyVersion:String(row.strategy_version),
         riskVersion:String(row.risk_version),featureVersion:String(row.feature_version),costModelVersion:String(row.cost_model_version),

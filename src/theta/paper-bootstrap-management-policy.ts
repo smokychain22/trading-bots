@@ -26,6 +26,44 @@ const DEFAULT_CC_UTILITY_WEIGHTS: CoveredCallUtilityWeights = {
 export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-management-policy-v2' as const;
 
 /**
+ * MGMT-SELLSTOCK-EVIDENCE. Execution evidence for a stock exit, from a fresh, validated Alpaca stock quote carried in the
+ * management input (never from the broker position mark, which is a valuation and not an executable price).
+ *
+ * `stockEconomicBoundary` (USD PER SHARE) is a FLOOR: the minimum acceptable sale price. The adaptive limit policy rejects a
+ * sell limit below it and cancels when it exceeds the live ask. It is set to the CURRENT BID, so it is never above the bid
+ * (always reachable by conceding from the ask to the bid, never a price better than the market has shown) and the order can
+ * never be walked below the bid we saw. If the market falls below it before submit, the order is cancelled, never chased.
+ *
+ * `economicsRemainPositive` carries the same narrow meaning as for CLOSE_FULL / CLOSE_CC: "selling beats the passive
+ * RECOVERY_WAIT baseline (utility > 0) and is a risk-REDUCING action" -- it is NOT a claim of positive after-cost EV
+ * (`expectedAfterCostEv` null, `empiricalEconomicsReady` false). A tie yields false so the leg cannot compile.
+ *
+ * Fail closed: no quote, UNKNOWN quote, non-whole/non-positive broker-confirmed shares, or an open short call on the chain
+ * yields NO evidence plus a typed reason. Account-net short-call coverage on sibling chains is enforced at plan assembly.
+ */
+function sellStockExecutionEvidence(state: ManagementInputState, utility: number):
+  { readonly evidence: ManagementActionExecutionEvidence | null; readonly reason: string } {
+  const quote = state.stockExecutionQuote;
+  if (quote === undefined) return { evidence: null, reason: 'STOCK_EXECUTION_EVIDENCE_NOT_PROVIDED' };
+  if (quote.state !== 'KNOWN') return { evidence: null, reason: `STOCK_EXECUTION_EVIDENCE_UNKNOWN_${quote.reason ?? 'UNSPECIFIED'}` };
+  const { bid, ask } = quote;
+  if (bid === null || ask === null || !Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || bid > ask) {
+    return { evidence: null, reason: 'STOCK_EXECUTION_EVIDENCE_UNKNOWN_STOCK_QUOTE_INVALID' };
+  }
+  const shares = state.economics.openStockShares;
+  if (!Number.isSafeInteger(shares) || shares <= 0) return { evidence: null, reason: 'STOCK_EXECUTION_EVIDENCE_UNKNOWN_SHARES_NOT_WHOLE_POSITIVE' };
+  if (state.contract.optionType === 'CALL' && (state.contract.contracts ?? 0) > 0) {
+    return { evidence: null, reason: 'STOCK_EXECUTION_EVIDENCE_BLOCKED_SHORT_CALL_OPEN' };
+  }
+  return {
+    evidence: { closeEconomicBoundary: null, openEconomicBoundary: null, stockEconomicBoundary: bid,
+      economicsRemainPositive: utility > 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
+      deterministicEconomicsValidated: true, deterministicNetCredit: null, targetContract: null },
+    reason: `STOCK_BID_SIDE_FLOOR_${bid.toFixed(4)}`,
+  };
+}
+
+/**
  * PAPER_BOOTSTRAP_MANAGEMENT_POLICY.
  *
  * A deterministic, non-empirical management policy for the FIRST Paper
@@ -325,8 +363,10 @@ function capitalCommitted(state: ManagementInputState): number | null {
     if (!finite(strike) || !finite(multiplier) || !finite(contracts)) return null;
     return strike * multiplier * contracts;
   }
-  if (state.economics.stockBasisPerShare !== null && state.economics.openStockShares > 0) {
-    return state.economics.stockBasisPerShare * state.economics.openStockShares;
+  // P2-CHAIN-02: capital tied up in held stock is its CURRENT liquidation value (mark x shares), never the historical
+  // cost basis -- sizing by basis would make capital-day economics scale with a sunk loss.
+  if (finite(state.economics.stockMarkPerShare) && state.economics.stockMarkPerShare >= 0 && state.economics.openStockShares > 0) {
+    return state.economics.stockMarkPerShare * state.economics.openStockShares;
   }
   return null;
 }
@@ -403,7 +443,9 @@ function valueForSingleRollCandidate(
   const horizon = buildCommonHorizonComparison(state.observedAt, state.economics, state.contract.expiration, [candidate.expiration]);
   const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
   const executionEvidence: ManagementActionExecutionEvidence = {
-    closeEconomicBoundary: currentMark, openEconomicBoundary: openCreditDollars, stockEconomicBoundary: null,
+    // Boundaries are PER-SHARE option prices (USD/share), the unit decideAdaptiveLimit and the master handoff consume.
+    // The USD totals (currentMark / openCreditDollars) stay in utility, reasons and deterministicNetCredit only.
+    closeEconomicBoundary: state.market.optionAsk, openEconomicBoundary: candidate.bid, stockEconomicBoundary: null,
     economicsRemainPositive: netCredit >= 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
     deterministicEconomicsValidated: true, deterministicNetCredit: netCredit,
     targetContract: {
@@ -457,7 +499,8 @@ function valueForRollFromCandidates(
     openCreditDollars: candidate.bid * candidate.multiplier * candidate.quantity,
     capitalCommittedDollars: candidate.strike * candidate.multiplier * candidate.quantity,
   }));
-  const comparison = evaluateRollCandidates(oldLeg, sunk, candidateEconomics, state.rollIncrementalCapitalDayWeight ?? 0);
+  const comparison = evaluateRollCandidates(oldLeg, sunk, candidateEconomics, state.rollIncrementalCapitalDayWeight ?? 0,
+    state.observedAt);
   if (comparison.bestCandidate === null) {
     return { ...base, ...UNKNOWN_VALUE, reasons: ['ROLL_CANDIDATE_COMPARISON_INCOMPLETE'] };
   }
@@ -467,7 +510,7 @@ function valueForRollFromCandidates(
   const netCredit = best.netCreditDollars as number;
   const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
   const executionEvidence: ManagementActionExecutionEvidence = {
-    closeEconomicBoundary: currentMark, openEconomicBoundary: best.candidate.openCreditDollars, stockEconomicBoundary: null,
+    closeEconomicBoundary: state.market.optionAsk, openEconomicBoundary: matchedSource.bid, stockEconomicBoundary: null,
     economicsRemainPositive: comparison.bestBeatsHold, expectedAfterCostEv: null, empiricalEconomicsReady: false,
     deterministicEconomicsValidated: true, deterministicNetCredit: netCredit,
     targetContract: {
@@ -529,7 +572,7 @@ function valueForRollCcFromCandidates(
   const beatsHold = best.combinedScore > 0;
   const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
   const executionEvidence: ManagementActionExecutionEvidence = {
-    closeEconomicBoundary: currentMark, openEconomicBoundary: best.newCreditDollars, stockEconomicBoundary: null,
+    closeEconomicBoundary: state.market.optionAsk, openEconomicBoundary: best.candidate.bid, stockEconomicBoundary: null,
     economicsRemainPositive: beatsHold, expectedAfterCostEv: null, empiricalEconomicsReady: false,
     deterministicEconomicsValidated: true, deterministicNetCredit: best.netRollCredit,
     targetContract: {
@@ -618,7 +661,7 @@ function valueForSellCcFromCandidates(
   }
   const premiumDollars = best.premiumIncomeDollars as number;
   const executionEvidence: ManagementActionExecutionEvidence = {
-    closeEconomicBoundary: null, openEconomicBoundary: premiumDollars, stockEconomicBoundary: null,
+    closeEconomicBoundary: null, openEconomicBoundary: best.candidate.bid, stockEconomicBoundary: null,
     economicsRemainPositive: premiumDollars > 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
     deterministicEconomicsValidated: true, deterministicNetCredit: premiumDollars,
     targetContract: {
@@ -811,12 +854,25 @@ function valueFor(
             ];
           })()
         : [];
+      const closeUtility = (nearExhausted ? 1 : -1) + adjustment.closeBias;
+      // D1 (MGMT-CLOSE-EVIDENCE). A buy-to-close is risk REDUCING. When the frontier selects it, it does so because its
+      // forward utility beats the passive HOLD baseline (0), so the evidence carries the maximum price we will pay (the
+      // current ASK, USD per share) and `economicsRemainPositive` with the explicit, narrow meaning "closing beats HOLD
+      // and is the risk-reducing action" -- NOT a claim of positive after-cost EV (expectedAfterCostEv stays null,
+      // empiricalEconomicsReady stays false). A tie or a loss against HOLD yields false, so the leg can never compile.
+      // Ask is required valid (finite, > 0); a zero BID never blocks a worthless short from being closed.
+      const askPerShare = state.market.optionAsk;
+      const closeEvidence: ManagementActionExecutionEvidence | null = finite(askPerShare) && askPerShare > 0
+        ? { closeEconomicBoundary: askPerShare, openEconomicBoundary: null, stockEconomicBoundary: null,
+          economicsRemainPositive: closeUtility > 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
+          deterministicEconomicsValidated: true, deterministicNetCredit: -currentMark, targetContract: null }
+        : null;
       return {
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: 0,
         executionCostRisk: currentMark, opportunityCost: null,
         uncertainty: thesis.uninterpretedSignals.length > 0 ? thesis.uninterpretedSignals.length : null,
-        utility: (nearExhausted ? 1 : -1) + adjustment.closeBias,
-        executionEvidence: null,
+        utility: closeUtility,
+        executionEvidence: closeEvidence,
         reasons: [
           ...(nearExhausted
             ? [`EXECUTABLE_REMAINING_VALUE_FRACTION_${executableFraction?.toFixed(2)}`, `DTE_${dte}`, 'CLOSE_FREES_CAPITAL_FOR_NEAR_EXHAUSTED_POSITION']
@@ -927,12 +983,15 @@ function valueFor(
       const opportunityCostWeight = state.sellStockOpportunityCostUtilityWeight ?? 0;
       const opportunityCostContribution = recoveryState.forwardOpportunityCostDollars !== null
         ? opportunityCostWeight * recoveryState.forwardOpportunityCostDollars : 0;
+      const sellStockUtility = adjustment.closeBias + opportunityCostContribution;
+      const stockSale = sellStockExecutionEvidence(state, sellStockUtility);
       return {
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: 0,
         executionCostRisk: null, opportunityCost: recoveryState.forwardOpportunityCostDollars, uncertainty: null,
-        utility: adjustment.closeBias + opportunityCostContribution,
-        executionEvidence: null,
+        utility: sellStockUtility,
+        executionEvidence: stockSale.evidence,
         reasons: [
+          stockSale.reason,
           canonicalKnownStockPnl !== null ? `CANONICAL_KNOWN_STOCK_PNL_IF_SOLD_${canonicalKnownStockPnl.toFixed(2)}`
             : 'CANONICAL_STOCK_PNL_UNKNOWN_BASIS_INCOMPLETE',
           referenceStockPnl !== null ? `REFERENCE_STOCK_PNL_USING_RECORDED_LOT_BASIS_${referenceStockPnl.toFixed(2)}`
@@ -1003,7 +1062,7 @@ function valueFor(
       const premiumDollars = forward.netCashFlow as number;
       const horizon = buildCommonHorizonComparison(state.observedAt, state.economics, null, [candidate.expiration]);
       const executionEvidence: ManagementActionExecutionEvidence = {
-        closeEconomicBoundary: null, openEconomicBoundary: premiumDollars, stockEconomicBoundary: null,
+        closeEconomicBoundary: null, openEconomicBoundary: candidate.bid, stockEconomicBoundary: null,
         economicsRemainPositive: premiumDollars > 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
         deterministicEconomicsValidated: true, deterministicNetCredit: premiumDollars,
         targetContract: {

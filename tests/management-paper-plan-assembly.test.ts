@@ -56,7 +56,9 @@ const selectedFrontier=(action:ManagementFrontierAction,executionEvidence:Manage
 const input=(action:ManagementFrontierAction,overrides:Partial<ManagementPaperPlanAssemblyInput>={}):ManagementPaperPlanAssemblyInput=>({
   state:state(),frontier:selectedFrontier(action),managementActionFrontierId:ids.frontier,executionAccountId:ids.account,
   strategyVersion:'theta-conventional-v1',accountStatus:'ACTIVE',optionsCapabilityVerified:true,aegisState:'ALLOW_FULL',
-  killSwitchActive:false,paperEvidenceRiskCap:1,executionLegs:[],now,decisionExpiresAt:'2026-09-15T14:00:45.000Z',...overrides,
+  killSwitchActive:false,paperEvidenceRiskCap:1,executionLegs:[],now,decisionExpiresAt:'2026-09-15T14:00:45.000Z',
+  // MGMT-CROSS-CYCLE-DUP / HDAC-05 evidence has no default in production (absent === UNKNOWN === blocked); these tests state it.
+  chainInFlight:{state:'KNOWN',entries:[]},committedShortCallContracts:0,...overrides,
 });
 
 test('passive management remains a recorded no-order action',()=>{
@@ -201,10 +203,11 @@ test('bootstrap covered-call management reaches a capped PAPER_EVIDENCE plan wit
   const assembled=assembleManagementPaperPlans({state:recovery,frontier,managementActionFrontierId:ids.frontier,
     executionAccountId:ids.account,strategyVersion:'theta-recovery-v1',accountStatus:'ACTIVE',optionsCapabilityVerified:true,
     aegisState:'ALLOW_FULL',killSwitchActive:false,paperEvidenceRiskCap:1,executionLegs:compiled.legs,now,
-    decisionExpiresAt:'2026-09-15T14:00:45.000Z'});
+    decisionExpiresAt:'2026-09-15T14:00:45.000Z',chainInFlight:{state:'KNOWN',entries:[]},committedShortCallContracts:0});
   assert.equal(assembled.state,'READY');
   if(assembled.state!=='READY')return;
   assert.equal(assembled.plans[0]?.action,'OPEN_CC');
+  assert.equal(assembled.plans[0]?.committedShortCallContracts,0,'the account-net commitment travels with the plan to order construction');
   assert.equal(assembled.plans[0]?.executionTier,'PAPER_EVIDENCE');
   assert.equal(assembled.plans[0]?.empiricalEconomicsReady,false);
   assert.equal(assembled.plans[0]?.expectedAfterCostEv,null);

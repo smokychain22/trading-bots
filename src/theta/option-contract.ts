@@ -189,6 +189,25 @@ export interface RawOptionQuoteInput {
   readonly maxSpreadPctForExecutable: number;
 }
 
+/**
+ * Phase 2 Q boundary fix: a spread that is exactly (in decimal) at a policy
+ * limit, e.g. bid 4.07 / ask 4.73 against a 0.15 maximum, evaluated to
+ * 0.15000000000000002 in binary floating point and was rejected as "spread too
+ * wide". 15 of 54 penny-grid quotes sitting exactly at 15.000% were flipped by
+ * that rounding alone. Rounding the derived ratio to 12 decimal places (far
+ * below any quote tick granularity) restores the intended inclusive
+ * comparison without changing any threshold.
+ */
+export const canonicalizeRatio = (value: number): number => Math.round(value * 1e12) / 1e12;
+
+/**
+ * Q-DELTA-SIGN-001: a long/short put delta is in [-1, 0]. A positive put delta (or |delta| > 1) is a sign/unit error in the
+ * provider payload, not a magnitude to take the absolute value of: it is invalid evidence and becomes UNKNOWN (null).
+ * Calls keep their existing handling (out of scope for the Conventional put lattice).
+ */
+export const putDeltaSignInvalid = (optionType: 'PUT' | 'CALL', delta: number | null): boolean =>
+  optionType === 'PUT' && delta !== null && Number.isFinite(delta) && (delta > 0 || delta < -1);
+
 const daysBetween = (fromIso: string, toIso: string): number =>
   Math.round((new Date(toIso).getTime() - new Date(fromIso).getTime()) / 86_400_000);
 
@@ -207,7 +226,8 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
 
   const spread = raw.bid !== null && raw.ask !== null ? raw.ask - raw.bid : null;
   const midpointReference = raw.bid !== null && raw.ask !== null ? (raw.bid + raw.ask) / 2 : null;
-  const spreadPct = spread !== null && midpointReference !== null && midpointReference > 0 ? spread / midpointReference : null;
+  const spreadPct = spread !== null && midpointReference !== null && midpointReference > 0
+    ? canonicalizeRatio(spread / midpointReference) : null;
 
   const moneyness = underlyingReferencePrice !== null ? (underlyingReferencePrice - raw.strike) / raw.strike : null;
   const distanceToStrikePct = underlyingReferencePrice !== null ? Math.abs(underlyingReferencePrice - raw.strike) / raw.strike : null;
@@ -234,6 +254,9 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
   if (raw.dataQuality !== 'GOOD') reasons.push(`data quality is ${raw.dataQuality}`);
 
   const executable = reasons.length === 0;
+  const delta = putDeltaSignInvalid(raw.optionType, raw.delta) ? null : raw.delta;
+  const otherGreekKnown = [raw.iv, raw.gamma, raw.theta, raw.vega, raw.rho].some((g) => g !== null);
+  const greeksSource = delta === null && !otherGreekKnown ? null : raw.greeksSource;
 
   return normalizedOptionContractSchema.parse({
     contractVersion: optionContractVersion,
@@ -274,13 +297,13 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
     openInterest: raw.openInterest,
     openInterestSource: raw.openInterestSource,
     iv: raw.iv,
-    delta: raw.delta,
+    delta,
     gamma: raw.gamma,
     theta: raw.theta,
     vega: raw.vega,
     rho: raw.rho,
     greeksTimestamp: raw.greeksTimestamp,
-    greeksSource: raw.greeksSource,
+    greeksSource,
     source: raw.source,
     feed: raw.feed,
     dataQuality: raw.dataQuality,

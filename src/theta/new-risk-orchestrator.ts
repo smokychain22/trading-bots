@@ -10,7 +10,7 @@ import { parseAegisAssessmentResponse, type AegisAssessmentResponse } from './ae
 import { parseSizingResultResponse } from './sizing-contract.js';
 import { parseExecutionQualityResponse } from './execution-quality-contract.js';
 import { assembleNewRiskDecision, type CandidateFrontierResult, type NewRiskDecisionReceipt } from './decision-assembly.js';
-import type { NormalizedOptionContract } from './option-contract.js';
+import { putDeltaSignInvalid, type NormalizedOptionContract } from './option-contract.js';
 import { optionExecutabilityCauses } from './option-executability-diagnostics.js';
 import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
 import { classifyObservation, type DataQualityState, type FreshnessPolicy } from './data-freshness.js';
@@ -70,6 +70,8 @@ export interface RawCandidateInput {
   readonly severeDrawdownProbability: number | null;
   readonly ivRank: number | null;
   readonly brokerAllowedQty: number;
+  /** RISK-CAP-01: quantity at which candidate-inclusive AEGIS evidence was derived. `undefined`/`null` = UNKNOWN. */
+  readonly riskCapacityQtyCap?: number | null;
   readonly contractIsStandard: boolean;
   readonly hasAlternateContract: boolean;
   readonly hasAlternateExpiry: boolean;
@@ -122,6 +124,11 @@ export interface ThetaQCandidateEvaluationEntry {
    * null for EVALUATED_FEASIBLE and RESPONSE_GAP (a response gap has no
    * reason -- that is exactly what makes it a gap, not a rejection). */
   readonly reasonCode: string | null;
+  /**
+   * SIZE-ZERO-LABEL-01: set only on NOT_EVALUATED_SHORTLIST_BOUND when the cycle PROVED (assessStrategyAccountPolicyCompatibility,
+   * no AEGIS call) that the minimum executable unit exceeds the hard account/risk policy or broker capacity. Absent = not proven.
+   */
+  readonly accountPolicyIncompatibility?: { readonly state: string; readonly bindingPolicies: string[] };
 }
 
 // Structured provider capability/observation state (replaces the former
@@ -598,7 +605,9 @@ export async function runNewRiskOrchestration(
   // float. Exclude them here, recorded as PASS, never sent to Python.
   const [latticeEligible, deltaUnknown] = executableCandidates.reduce<[RawCandidateInput[], RawCandidateInput[]]>(
     (acc, c) => {
-      acc[c.contract.delta === null ? 1 : 0].push(c);
+      // Q-DELTA-SIGN-001: a sign-invalid put delta is UNKNOWN evidence (normalizeOptionContract nulls it; this guards
+      // contracts built elsewhere) and is never passed through Math.abs into the lattice.
+      acc[c.contract.delta === null || putDeltaSignInvalid(c.contract.optionType, c.contract.delta) ? 1 : 0].push(c);
       return acc;
     },
     [[], []],

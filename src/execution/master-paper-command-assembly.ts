@@ -23,6 +23,7 @@ export interface MasterPaperCommandAssemblyInput {
   readonly empiricalEconomicsReady: boolean;
   readonly expectedAfterCostEv: number | null;
   readonly confirmedCoveredShares?: number;
+  readonly committedShortCallContracts?: number;
   readonly limitPrice: number;
   readonly pricingPolicyVersion: string;
   readonly quote: {
@@ -48,6 +49,7 @@ const inputSchema = z.object({
   strategyVersion: z.string().min(1), chainId: z.string().uuid(), optionContractId: z.string().uuid().nullable(),
   underlyingId: z.string().uuid(), symbol: z.string().min(1).max(64), quantity: z.number().int().positive(),
   multiplier: z.number().int().positive(), confirmedCoveredShares: z.number().int().nonnegative().optional(),
+  committedShortCallContracts: z.number().int().nonnegative().optional(),
   executionTier:z.enum(executionAuthorizationTiers),canonicalQuantity:z.number().int().nonnegative(),
   paperEvidenceQuantity:z.number().int().nonnegative(),empiricalEconomicsReady:z.boolean(),
   expectedAfterCostEv:z.number().finite().nullable(),
@@ -120,7 +122,8 @@ export function assembleMasterPaperExecutionCommand(raw: MasterPaperCommandAssem
   const orderIntentId = deterministicUuid(`${input.executionAccountId}:${input.decisionId}:${identitySeed}:${input.attempt}`);
   const request = buildAlpacaLimitOrder({ action: input.action, symbol: input.symbol, quantity: input.quantity,
     limitPrice: input.limitPrice, clientOrderId, optionMultiplier: input.multiplier,
-    ...(input.confirmedCoveredShares === undefined ? {} : { confirmedCoveredShares: input.confirmedCoveredShares }) });
+    ...(input.confirmedCoveredShares === undefined ? {} : { confirmedCoveredShares: input.confirmedCoveredShares }),
+    ...(input.committedShortCallContracts === undefined ? {} : { committedShortCallContracts: input.committedShortCallContracts }) });
   return {
     orderIntentId, executionAccountId: input.executionAccountId, decisionId: input.decisionId,
     action: input.action, chainId: input.chainId, optionContractId: input.optionContractId,

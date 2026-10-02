@@ -1,0 +1,892 @@
+{
+  "computed": {
+    "PHASE2_TOTAL": 63,
+    "PASS": 44,
+    "OWNER_POLICY": 9,
+    "PROVIDER_LIMITED": 1,
+    "FUTURE_MARKET": 2,
+    "FUTURE_PAPER": 4,
+    "EMPIRICAL_ONLY": 3,
+    "NOT_APPLICABLE": 0,
+    "CODE_SOLVABLE_REMAINING": 0
+  },
+  "rows": [
+    {
+      "ID": "SIZE-2V5",
+      "DOMAIN": "SIZING",
+      "SOURCE": "src/theta/theta-shadow-once.ts",
+      "CANONICAL_AUTHORITY": "paper-bootstrap-runtime-policy.ts sizing",
+      "CURRENT_BEHAVIOR": "inline Q-stage cap 2 was an unexplained duplicate of bootstrap concentration cap 5",
+      "EXPECTED_BEHAVIOR": "one policy source; Q-stage quantity cannot change final quantity",
+      "TEST": [
+        "tests/phase2-sizing-policy-single-source.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SIZE-FINAL-AUTHORITY",
+      "DOMAIN": "SIZING",
+      "SOURCE": "canonical-strategy-frontier.ts structuralSizing",
+      "CANONICAL_AUTHORITY": "structuralSizing",
+      "CURRENT_BEHAVIOR": "final = min of all caps; zero valid; no forced one; monotone in every cap, collateral, reserve, pending, equity",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-sizing-structural-properties.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SIZE-RISK-CAPACITY",
+      "DOMAIN": "SIZING",
+      "SOURCE": "canonical-strategy-frontier.ts",
+      "CANONICAL_AUTHORITY": "AEGIS-approved quantity",
+      "CURRENT_BEHAVIOR": "final quantity could exceed the quantity AEGIS evaluated",
+      "EXPECTED_BEHAVIOR": "final <= AEGIS risk capacity, named AEGIS_RISK_CAPACITY, unknown sizes to zero",
+      "TEST": [
+        "tests/phase2-sizing-capital-conservation.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SIZE-CENTS",
+      "DOMAIN": "SIZING",
+      "SOURCE": "secured-contract-capacity.ts, sizing.py",
+      "CANONICAL_AUTHORITY": "exact arithmetic",
+      "CURRENT_BEHAVIOR": "float strike*100 under-sized exact fits",
+      "EXPECTED_BEHAVIOR": "integer cents everywhere",
+      "TEST": [
+        "tests/phase2-sizing-cents-boundary.test.ts",
+        "bots/theta/tests/quant/test_sizing_cents_boundary.py"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "CAPITAL-MODEL",
+      "DOMAIN": "CAPITAL",
+      "SOURCE": "account-exposure.ts, capital budget",
+      "CANONICAL_AUTHORITY": "single-count exposure",
+      "CURRENT_BEHAVIOR": "BP != usable capital; positions, pending orders and stock counted once; mismatched pending evidence UNKNOWN",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-sizing-capital-conservation.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "CAPITAL-MULTI-CANDIDATE",
+      "DOMAIN": "CAPITAL",
+      "SOURCE": "frontier selection",
+      "CANONICAL_AUTHORITY": "one execution per cycle",
+      "CURRENT_BEHAVIOR": "candidates sized independently, one selected, order independent; pending intents shrink capacity",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-sizing-capital-conservation.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SPY-ACCOUNT-FIT",
+      "DOMAIN": "ACCOUNT",
+      "SOURCE": "archive e9f4b10f",
+      "CANONICAL_AUTHORITY": "account policy",
+      "CURRENT_BEHAVIOR": "0 of 362/363 Q-valid SPY puts fit the hard threshold at $100k equity: ACCOUNT_POLICY_INCOMPATIBILITY",
+      "EXPECTED_BEHAVIOR": "honest zero, classified",
+      "TEST": [
+        "tests/phase2-sizing-spy-account-fit.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "ACCOUNT-INCOMPATIBILITY-LABEL",
+      "DOMAIN": "SIZING",
+      "SOURCE": "frontier, cycle, diagnostic",
+      "CANONICAL_AUTHORITY": "one capacity-zero vocabulary",
+      "CURRENT_BEHAVIOR": "ACCOUNT_CAPACITY_ZERO / PORTFOLIO_CAPACITY; proven-incompatible shortlist candidates labelled",
+      "EXPECTED_BEHAVIOR": "AEGIS result, capacity, sizing and WAIT reason agree",
+      "TEST": [
+        "tests/phase2-sizing-zero-label.test.ts",
+        "tests/phase2-aegis-capacity-zero.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "ACCOUNT-CONCENTRATION-POLICY",
+      "DOMAIN": "ACCOUNT",
+      "SOURCE": "AEGIS ticker concentration 15%",
+      "CANONICAL_AUTHORITY": "owner policy",
+      "CURRENT_BEHAVIOR": "every Q-valid SPY put exceeds the single-underlying veto at current equity",
+      "EXPECTED_BEHAVIOR": "owner chooses account scale or policy; not changed here",
+      "TEST": [
+        "tests/phase2-sizing-spy-account-fit.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "Q-FUNNEL",
+      "DOMAIN": "Q",
+      "SOURCE": "src/theta/q-entry-funnel.ts",
+      "CANONICAL_AUTHORITY": "frontier + Q evaluation",
+      "CURRENT_BEHAVIOR": "per-stage input/pass/fail/unknown/n-a with exact reasons, in the cycle result and diagnostic",
+      "EXPECTED_BEHAVIOR": "no generic NO_QUALIFYING_CANDIDATE",
+      "TEST": [
+        "tests/phase2-q-funnel.test.ts",
+        "tests/phase2-q-fixes.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "Q-BOUNDARIES",
+      "DOMAIN": "Q",
+      "SOURCE": "lattice gates + Python Q",
+      "CANONICAL_AUTHORITY": "bootstrap policy",
+      "CURRENT_BEHAVIOR": "epsilon below/exact/above for every numeric gate; spread rounding fixed so exactly 15% passes",
+      "EXPECTED_BEHAVIOR": "no boundary flip",
+      "TEST": [
+        "tests/phase2-q-boundaries.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "Q-METAMORPHIC",
+      "DOMAIN": "Q",
+      "SOURCE": "funnel, frontier",
+      "CANONICAL_AUTHORITY": "determinism",
+      "CURRENT_BEHAVIOR": "reorder, duplicate and research-only changes do not change eligibility; tightening never adds candidates",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-q-funnel.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "Q-ECONOMIC-SOURCE",
+      "DOMAIN": "Q",
+      "SOURCE": "contract schema, merge",
+      "CANONICAL_AUTHORITY": "Alpaca executable BBO",
+      "CURRENT_BEHAVIOR": "every record names contract, bid, ask, spread, timestamp; Optionomics cannot set executable prices",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-q-economics-source.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "Q-FEE-TYPING",
+      "DOMAIN": "Q",
+      "SOURCE": "cost-basis-typing.ts, whole-chain",
+      "CANONICAL_AUTHORITY": "actual vs modeled costs",
+      "CURRENT_BEHAVIOR": "modeled/slippage/unknown fee basis keeps realized chain UNKNOWN",
+      "EXPECTED_BEHAVIOR": "never record a modeled fee as broker actual",
+      "TEST": [
+        "tests/phase2-q-economics-source.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "Q-FINALIST-SHORTLIST",
+      "DOMAIN": "Q",
+      "SOURCE": "finalist-quote-refresh.ts",
+      "CANONICAL_AUTHORITY": "lattice gates",
+      "CURRENT_BEHAVIOR": "shortlist ranks gate-passing and capital-fitting contracts first; no gate changed",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-q-fixes.test.ts",
+        "tests/phase2-q-funnel.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "Q-DELTA-SIGN",
+      "DOMAIN": "Q",
+      "SOURCE": "option-contract.ts",
+      "CANONICAL_AUTHORITY": "unknown never coerced",
+      "CURRENT_BEHAVIOR": "positive put delta becomes UNKNOWN",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-q-fixes.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "Q-OWNERSHIP-FLOOR-REGISTERED",
+      "DOMAIN": "Q",
+      "SOURCE": "paper-bootstrap-runtime-policy.ts",
+      "CANONICAL_AUTHORITY": "registered versioned policy",
+      "CURRENT_BEHAVIOR": "floor 0.3 registered, identical value",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-q-fixes.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "Q-SENSITIVITY",
+      "DOMAIN": "Q",
+      "SOURCE": "tools/theta-phase2-q-funnel-sensitivity.ts",
+      "CANONICAL_AUTHORITY": "research only",
+      "CURRENT_BEHAVIOR": "inactivity is capital (AEGIS concentration veto); no Q strictness variant yields a positive quantity; equity x2/x3 does",
+      "EXPECTED_BEHAVIOR": "explain, not change",
+      "TEST": [
+        "docs/operations/THETA_PHASE2_Q_FUNNEL_SENSITIVITY_20261002.json"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "RESEARCH_DELIVERED",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "Q-MIN-PREMIUM-EDGE",
+      "DOMAIN": "Q",
+      "SOURCE": "theta_q_baseline.py minimumPositiveEdge (unused)",
+      "CANONICAL_AUTHORITY": "owner policy",
+      "CURRENT_BEHAVIOR": "no minimum premium or net-of-cost gate",
+      "EXPECTED_BEHAVIOR": "owner decides a floor or removes the dead config",
+      "TEST": [
+        "tests/phase2-q-boundaries.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "Q-EARNINGS-UNIT",
+      "DOMAIN": "Q",
+      "SOURCE": "earningsExclusionDays",
+      "CANONICAL_AUTHORITY": "TRD silent on unit",
+      "CURRENT_BEHAVIOR": "compared as trading sessions",
+      "EXPECTED_BEHAVIOR": "owner states sessions or calendar days",
+      "TEST": [
+        "tests/phase2-q-fixes.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "H-MECHANICS-ISOLATION",
+      "DOMAIN": "H",
+      "SOURCE": "frontier, theta_h_baseline.py",
+      "CANONICAL_AUTHORITY": "shadow only",
+      "CURRENT_BEHAVIOR": "unknown gamma/gap/earnings vetoes; H failure cannot block Q, create a WAIT, rank over Q, submit orders or use capital",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-hdac-mechanics.test.ts",
+        "bots/theta/tests/quant/test_phase2_hdac_router_h.py",
+        "tests/phase2-q-shadow-isolation.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "D-MECHANICS-ISOLATION",
+      "DOMAIN": "D",
+      "SOURCE": "frontier",
+      "CANONICAL_AUTHORITY": "shadow only",
+      "CURRENT_BEHAVIOR": "exact credit/width/max loss/breakeven; rejects bad structures; stale or crossed leg blocks; no one-leg fallback; cannot block Q",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-hdac-mechanics.test.ts",
+        "tests/phase2-q-shadow-isolation.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "A-APPLICABILITY",
+      "DOMAIN": "A",
+      "SOURCE": "frontier, strategy_router.py",
+      "CANONICAL_AUTHORITY": "broker-confirmed inventory",
+      "CURRENT_BEHAVIOR": "flat = NOT_APPLICABLE; no synthetic shares; unknown basis stays UNKNOWN",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-hdac-mechanics.test.ts",
+        "bots/theta/tests/quant/test_phase2_hdac_router_h.py"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "C-COVERAGE-NO-NAKED",
+      "DOMAIN": "C",
+      "SOURCE": "secured-contract-capacity.ts, order-construction.ts, coordinator, plan assembly",
+      "CANONICAL_AUTHORITY": "never naked",
+      "CURRENT_BEHAVIOR": "floor(shares/100) minus covered minus pending; unknown blocks; every path to a short call checks cover; account-net committed calls enforced",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-hdac-mechanics.test.ts",
+        "tests/phase2-hdac-naked-call-guard.test.ts",
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "A-MIXED-LOT-BASIS",
+      "DOMAIN": "A",
+      "SOURCE": "frontier",
+      "CANONICAL_AUTHORITY": "lot ledger",
+      "CURRENT_BEHAVIOR": "aggregate share count only; per-lot basis not modeled",
+      "EXPECTED_BEHAVIOR": "per-lot basis needs lots that do not exist yet",
+      "TEST": [],
+      "STATUS": "FUTURE_PAPER",
+      "SOLVABILITY": "NEEDS_REAL_LOTS",
+      "NEXT_ACTION": "revisit after first assignment"
+    },
+    {
+      "ID": "D-FILL-RISK",
+      "DOMAIN": "D",
+      "SOURCE": "frontier",
+      "CANONICAL_AUTHORITY": "paper evidence",
+      "CURRENT_BEHAVIOR": "simultaneous two-leg fill uncalibrated",
+      "EXPECTED_BEHAVIOR": "paper mechanics",
+      "TEST": [],
+      "STATUS": "FUTURE_PAPER",
+      "SOLVABILITY": "NEEDS_PAPER_FILLS",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "H-EMPIRICAL-THRESHOLDS",
+      "DOMAIN": "H",
+      "SOURCE": "theta_h_baseline.py",
+      "CANONICAL_AUTHORITY": "TRD section 30/40",
+      "CURRENT_BEHAVIOR": "win rate and gamma thresholds unvalidated",
+      "EXPECTED_BEHAVIOR": "OOS ablation",
+      "TEST": [],
+      "STATUS": "EMPIRICAL_ONLY",
+      "SOLVABILITY": "NEEDS_OUTCOMES",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "LIFECYCLE-MATRIX",
+      "DOMAIN": "LIFECYCLE",
+      "SOURCE": "runtime-state.ts",
+      "CANONICAL_AUTHORITY": "TRD section 4",
+      "CURRENT_BEHAVIOR": "256-pair legal transition matrix; management outranks new entry; STOCK_HELD offers only RECOVERY_WAIT",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-mgmt-lifecycle-matrix.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "LIFECYCLE-EXTRA-STATES",
+      "DOMAIN": "LIFECYCLE",
+      "SOURCE": "runtime-state.ts",
+      "CANONICAL_AUTHORITY": "TRD revision",
+      "CURRENT_BEHAVIOR": "ENTRY_WORKING, ASSIGNMENT_PENDING, CC_MANAGEMENT etc. are order-intent or decision concepts, not lifecycle states",
+      "EXPECTED_BEHAVIOR": "owner decides whether the TRD adds states or direct STOCK_HELD edges",
+      "TEST": [
+        "tests/phase2-mgmt-lifecycle-matrix.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "TRD_REVISION_NOT_DEFECT",
+      "NEXT_ACTION": "owner / versioned TRD revision"
+    },
+    {
+      "ID": "PROFIT-MANAGEMENT",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "paper-bootstrap-management-policy.ts",
+      "CANONICAL_AUTHORITY": "forward economics",
+      "CURRENT_BEHAVIOR": "no fixed profit percent; challengers never final unless promoted",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-mgmt-forward-economics.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "LOSS-MANAGEMENT-NO-SUNK-COST",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "policy, common-horizon-economics.ts",
+      "CANONICAL_AUTHORITY": "forward economics",
+      "CURRENT_BEHAVIOR": "realized-loss sweeps give identical decisions; recovery capital sized on mark not cost basis",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-mgmt-forward-economics.test.ts",
+        "tests/phase2-chain-recovery-cc.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "LOSS-ENTRY-CREDIT-ANCHOR",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "policy near-exhausted close trigger",
+      "CANONICAL_AUTHORITY": "owner policy",
+      "CURRENT_BEHAVIOR": "threshold is a fraction of the original entry credit",
+      "EXPECTED_BEHAVIOR": "owner picks the forward quantity and threshold",
+      "TEST": [
+        "tests/phase2-mgmt-forward-economics.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "ROLL-ECONOMICS-UNITS",
+      "DOMAIN": "ROLL",
+      "SOURCE": "roll-incremental-utility.ts, policy",
+      "CANONICAL_AUTHORITY": "TRD ROLL-001",
+      "CURRENT_BEHAVIOR": "complete forward economics; unknown credit blocks; per-share boundaries; same-collateral extension priced in capital-days",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-mgmt-forward-economics.test.ts",
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "ROLL-EXECUTION-STRUCTURE",
+      "DOMAIN": "ROLL",
+      "SOURCE": "broker-fill-lifecycle-router.ts",
+      "CANONICAL_AUTHORITY": "TRD ROLL-003",
+      "CURRENT_BEHAVIOR": "only both legs filled records a roll; partials stay PARTIAL/UNKNOWN; old-leg P&L immutable",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-mgmt-oscillation-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "CLOSE-REACHES-ORDER",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "policy, plan assembly, handoff, adaptive limit",
+      "CANONICAL_AUTHORITY": "TRD section 54",
+      "CURRENT_BEHAVIOR": "CLOSE_FULL/CLOSE_CC reach READY offline; zero-bid buy-to-close allowed; bad quotes block",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SELL-STOCK-REACHES-ORDER",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "policy, management input, plan assembly",
+      "CANONICAL_AUTHORITY": "TRD section 54",
+      "CURRENT_BEHAVIOR": "executable Alpaca stock bid is a floor boundary; stock quote read once per underlying; short-call guard at frontier, plan assembly and handoff",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "CHAIN-INFLIGHT-GUARD",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "management-chain-inflight.ts, plan assembly",
+      "CANONICAL_AUTHORITY": "idempotency",
+      "CURRENT_BEHAVIOR": "no second management plan while the chain has a non-terminal plan or order; unknown blocks",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-fixpass-management-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "MANAGEMENT-AUTHORITY",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "whole src",
+      "CANONICAL_AUTHORITY": "buildManagementActionFrontier",
+      "CURRENT_BEHAVIOR": "proposers never touch execution; one decision builder",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-mgmt-authority-guards.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "OSCILLATION-DETERMINISM",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "policy, frontier",
+      "CANONICAL_AUTHORITY": "determinism",
+      "CURRENT_BEHAVIOR": "pure function; decision bound to input hash and timestamp; idempotent plan ids",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-mgmt-oscillation-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "OSCILLATION-HYSTERESIS",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "policy",
+      "CANONICAL_AUTHORITY": "owner policy",
+      "CURRENT_BEHAVIOR": "a quote straddling a threshold may flip the action between cycles; no cooldown",
+      "EXPECTED_BEHAVIOR": "owner decides dwell or cooldown",
+      "TEST": [
+        "tests/phase2-mgmt-oscillation-execution.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "EVENT-LIQUIDITY-INTERACTION",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "frontier",
+      "CANONICAL_AUTHORITY": "exit supremacy, no fake price",
+      "CURRENT_BEHAVIOR": "events block only new risk; illiquid exits fall back to hold or expiry",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-mgmt-forward-economics.test.ts",
+        "tests/phase2-mgmt-oscillation-execution.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "PROFIT-LOSS-EMPIRICAL-EV",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "policy",
+      "CANONICAL_AUTHORITY": "TRD section 30",
+      "CURRENT_BEHAVIOR": "EV, tail and IV effects are not modeled in the bootstrap policy",
+      "EXPECTED_BEHAVIOR": "promoted empirical policy",
+      "TEST": [],
+      "STATUS": "EMPIRICAL_ONLY",
+      "SOLVABILITY": "NEEDS_OUTCOMES",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "MANAGEMENT-LIVE-POSITION",
+      "DOMAIN": "MANAGEMENT",
+      "SOURCE": "runtime",
+      "CANONICAL_AUTHORITY": "Paper",
+      "CURRENT_BEHAVIOR": "real management of a live Paper position not yet observed",
+      "EXPECTED_BEHAVIOR": "future Paper",
+      "TEST": [],
+      "STATUS": "FUTURE_PAPER",
+      "SOLVABILITY": "NEEDS_POSITION",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "ASSIGNMENT-ECONOMICS",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "whole-chain-economics.ts, assignment-utility.ts",
+      "CANONICAL_AUTHORITY": "TRD Appendix A",
+      "CURRENT_BEHAVIOR": "cash = strike*100*shares; basis net of option premium; unknown fees/dividends keep total UNKNOWN",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-chain-assignment-economics.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "RECOVERY-DECISION",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "recovery-state.ts",
+      "CANONICAL_AUTHORITY": "forward economics",
+      "CURRENT_BEHAVIOR": "WAIT/SELL_STOCK/SELL_CC on forward economics, identical across historical loss",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-chain-recovery-cc.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "COVERED-CALL-BELOW-BASIS",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "bootstrap SELL_CC gate belowBasisAllowed=false",
+      "CANONICAL_AUTHORITY": "owner policy",
+      "CURRENT_BEHAVIOR": "strikes below effective basis are rejected",
+      "EXPECTED_BEHAVIOR": "owner decides forward-economics rule or exception",
+      "TEST": [
+        "tests/phase2-chain-recovery-cc.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "WHOLE-CHAIN-IDENTITY",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "whole-chain-economics.ts, ledger-contract.ts",
+      "CANONICAL_AUTHORITY": "accounting identity",
+      "CURRENT_BEHAVIOR": "4800 seeded episodes agree across three computations; unknown P&L is null not zero",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-chain-random-episodes.test.ts",
+        "tests/phase2-chain-false-value-sweep.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "FALSE-ECONOMICS-SWEEP",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "src/theta, src/execution",
+      "CANONICAL_AUTHORITY": "unknown never zero/one",
+      "CURRENT_BEHAVIOR": "unsafe zero/one sites fixed; none left in decision paths",
+      "EXPECTED_BEHAVIOR": "zero unsafe",
+      "TEST": [
+        "tests/phase2-chain-false-value-sweep.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "CHAIN-FEES-DIVIDENDS",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "Alpaca",
+      "CANONICAL_AUTHORITY": "provider limits",
+      "CURRENT_BEHAVIOR": "per-fill fees not supplied; dividends need a stock lot",
+      "EXPECTED_BEHAVIOR": "owner-attested fee schedule / future data",
+      "TEST": [],
+      "STATUS": "PROVIDER_LIMITED",
+      "SOLVABILITY": "EXTERNAL",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "RECOVERY-MODEL",
+      "DOMAIN": "CHAIN",
+      "SOURCE": "recovery-state.ts",
+      "CANONICAL_AUTHORITY": "TRD",
+      "CURRENT_BEHAVIOR": "recovery probability and time model not modeled",
+      "EXPECTED_BEHAVIOR": "validated model",
+      "TEST": [],
+      "STATUS": "EMPIRICAL_ONLY",
+      "SOLVABILITY": "NEEDS_OUTCOMES",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "AEGIS-12-FAMILIES",
+      "DOMAIN": "AEGIS",
+      "SOURCE": "bots/theta/quant/models/aegis.py",
+      "CANONICAL_AUTHORITY": "AEGIS contract",
+      "CURRENT_BEHAVIOR": "all 12 families: normal, boundary, veto, zero capacity, unknown, invalid units; no strategy bypass or contamination",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "bots/theta/tests/quant/test_phase2_aegis_families.py"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "AEGIS-MONOTONICITY",
+      "DOMAIN": "AEGIS",
+      "SOURCE": "aegis.py",
+      "CANONICAL_AUTHORITY": "AEGIS contract",
+      "CURRENT_BEHAVIOR": "worsening a risk input never loosens, except the documented Paper cold-start marker",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "bots/theta/tests/quant/test_phase2_aegis_families.py",
+        "bots/theta/tests/quant/test_aegis_pairwise_monotonicity.py"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "HARD-VETO-VS-CAPACITY-ZERO",
+      "DOMAIN": "AEGIS",
+      "SOURCE": "frontier, diagnostic",
+      "CANONICAL_AUTHORITY": "AEGIS contract section 3",
+      "CURRENT_BEHAVIOR": "valid candidate that the account cannot size is quantity zero (capacity), not a hard veto",
+      "EXPECTED_BEHAVIOR": "four surfaces agree",
+      "TEST": [
+        "tests/phase2-aegis-capacity-zero.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "WATERFALL",
+      "DOMAIN": "AEGIS",
+      "SOURCE": "frontier",
+      "CANONICAL_AUTHORITY": "one receipt per candidate",
+      "CURRENT_BEHAVIOR": "every cap named, binding constraint identified, no unexplained zero",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-sizing-capital-conservation.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "DISCOVERY-APPROVAL-SEPARATION",
+      "DOMAIN": "UNIVERSE",
+      "SOURCE": "src/theta/instrument-eligibility-state.ts",
+      "CANONICAL_AUTHORITY": "TEAM_CHARTER",
+      "CURRENT_BEHAVIOR": "five eligibility states; discovery never implies approval",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-universe-eligibility-state.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "PROMOTION-CONTRACT",
+      "DOMAIN": "UNIVERSE",
+      "SOURCE": "instrument-eligibility-state.ts",
+      "CANONICAL_AUTHORITY": "owner approval",
+      "CURRENT_BEHAVIOR": "nineteen typed evidence slots; nothing approved",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-universe-eligibility-state.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "RELATIVE-STRENGTH-DEFINITION",
+      "DOMAIN": "UNIVERSE",
+      "SOURCE": "ownership model",
+      "CANONICAL_AUTHORITY": "owner policy",
+      "CURRENT_BEHAVIOR": "no canonical benchmark, window or scale",
+      "EXPECTED_BEHAVIOR": "owner defines",
+      "TEST": [
+        "tests/phase2-universe-eligibility-state.test.ts"
+      ],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "INSTRUMENT-APPROVAL-EXPANSION",
+      "DOMAIN": "UNIVERSE",
+      "SOURCE": "paper manifest",
+      "CANONICAL_AUTHORITY": "owner policy",
+      "CURRENT_BEHAVIOR": "SPY only",
+      "EXPECTED_BEHAVIOR": "owner approves instruments",
+      "TEST": [],
+      "STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "POLICY_NOT_DEFECT",
+      "NEXT_ACTION": "owner decision"
+    },
+    {
+      "ID": "INSTRUMENT-FIT-RESEARCH",
+      "DOMAIN": "UNIVERSE",
+      "SOURCE": "docs/operations/THETA_PHASE2_INSTRUMENT_FIT_RESEARCH_20261002.json",
+      "CANONICAL_AUTHORITY": "research only",
+      "CURRENT_BEHAVIOR": "arithmetic fit threshold stated; no offline non-SPY data",
+      "EXPECTED_BEHAVIOR": "capture in session if owner nominates symbols",
+      "TEST": [],
+      "STATUS": "FUTURE_MARKET",
+      "SOLVABILITY": "NEEDS_PROVIDER_DATA",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "SHADOW-PRODUCTION-ISOLATION",
+      "DOMAIN": "ISOLATION",
+      "SOURCE": "frontier, shadow trader",
+      "CANONICAL_AUTHORITY": "shadow only",
+      "CURRENT_BEHAVIOR": "H/D/research evidence cannot consume capital, block Q, raise Q quantity, submit orders or select; virtual trader sizes at min(Q-stage, final)",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-q-shadow-isolation.test.ts",
+        "tests/phase2-hdac-mechanics.test.ts",
+        "tests/phase2-sizing-policy-single-source.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "FRONTIER-SCALING",
+      "DOMAIN": "PERF",
+      "SOURCE": "frontier",
+      "CANONICAL_AUTHORITY": "complexity",
+      "CURRENT_BEHAVIOR": "near-linear time, flat payload per candidate, no per-candidate provider call",
+      "EXPECTED_BEHAVIOR": "same",
+      "TEST": [
+        "tests/phase2-perf-frontier-scaling.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "ALREADY_CORRECT",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "FIRST-PAPER-FILL-AND-PROFITABILITY",
+      "DOMAIN": "RUNTIME",
+      "SOURCE": "runtime",
+      "CANONICAL_AUTHORITY": "Paper",
+      "CURRENT_BEHAVIOR": "no Paper fill, assignment or call-away observed",
+      "EXPECTED_BEHAVIOR": "future runtime",
+      "TEST": [],
+      "STATUS": "FUTURE_PAPER",
+      "SOLVABILITY": "NEEDS_POSITION",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "CANDIDATE-DISTRIBUTION-REAL-SESSION",
+      "DOMAIN": "RUNTIME",
+      "SOURCE": "runtime",
+      "CANONICAL_AUTHORITY": "market session",
+      "CURRENT_BEHAVIOR": "real candidate distribution on this release unobserved",
+      "EXPECTED_BEHAVIOR": "future market",
+      "TEST": [],
+      "STATUS": "FUTURE_MARKET",
+      "SOLVABILITY": "NEEDS_SESSION",
+      "NEXT_ACTION": "none"
+    }
+  ]
+}

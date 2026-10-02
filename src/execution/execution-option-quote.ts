@@ -89,6 +89,11 @@ export function qualifyExecutionOptionQuote(input: {
     'underlying' | 'optionSymbol' | 'expiration' | 'strike' | 'optionType' | 'multiplier'>> | null;
   /** Indicative quotes are authorized only for the isolated Alpaca Paper runtime. */
   readonly usage?: 'MASTER_PAPER' | 'LIVE';
+  /**
+   * A risk-reducing buy-to-close needs only a valid ASK: a worthless short legitimately quotes a zero bid. Defaults to
+   * false (every other use still requires a strictly positive two-sided quote). A negative bid is never valid.
+   */
+  readonly allowZeroBid?: boolean;
 }): ExecutionQuoteQualification {
   const blockers: string[] = [];
   const now = validTime(input.nowUtc);
@@ -120,7 +125,8 @@ export function qualifyExecutionOptionQuote(input: {
     }
   }
   if (!Number.isFinite(input.quote.bid) || !Number.isFinite(input.quote.ask)
-    || input.quote.bid <= 0 || input.quote.ask <= 0) blockers.push('TWO_SIDED_QUOTE_INVALID');
+    || input.quote.bid < 0 || (input.quote.bid === 0 && input.allowZeroBid !== true)
+    || input.quote.ask <= 0) blockers.push('TWO_SIDED_QUOTE_INVALID');
   else if (input.quote.bid > input.quote.ask) blockers.push('QUOTE_CROSSED');
   if (!Number.isFinite(input.quote.receivedAtMonotonic) || input.quote.receivedAtMonotonic < 0) blockers.push('MONOTONIC_RECEIPT_INVALID');
   if (!input.quote.provider.trim()) blockers.push('PROVIDER_MISSING');
