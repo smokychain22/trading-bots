@@ -107,6 +107,7 @@ const rawRows = [
   r('STRESS_HISTORY_TRUNCATION_FLAG', 'PHASE1', 'limit+1 completeness record in both stress assessments; truncated read withholds the cold-start exception', { obsNow: 0 }),
   r('REGISTRY_REACHABILITY_GUARD', 'PHASE1', 'registry runtime claims must sit inside the deployed import closure; research->production edges pinned', { wired: 0, obsNow: 0 }),
   r('WHOLE_CHAIN_FEES_DIVIDENDS_INPUT', 'PHASE1', 'fees (provider supplies none) and dividends (no stock lot) stay UNKNOWN by design; needs a fee-schedule attestation', { obsNow: 0, policyBlocked: 1 }),
+  r('FRONTIER_PROJECTION_BOUND', 'PHASE3', 'queryable frontier projection is bounded independent of chain size; the 2026-10-02 full-chain overflow (HTTP 503 on every evidence cycle) is fixed in source', { }),
   r('REGISTRY_SOURCE_LISTS', 'OPEN', 'verified: the registry second list names SOURCES; shadow-strategy-orchestrator is a real research producer of H/D evaluation, so no entry is wrong', { obsNow: 0 }),
   r('DEAD_MODULE_INVENTORY', 'OPEN', 'inventoried: tested library modules with no production importer are classified LIBRARY / FUTURE; the duplicate legacy trade-update store is quarantined by a guard test; no required module is dead', { obsNow: 0, wired: 0 }),
   r('SHADOW_ONCE_SIZING_POLICY_DIVERGENCE', 'OPEN', 'thetaQ sizing uses an inline concentration cap of 2 while structural sizing uses 5; which is intended is a sizing-policy decision', { engDone: 0, obsNow: 0, policyBlocked: 1 }),
@@ -121,7 +122,7 @@ const rawRows = [
 const observedAtDeployed = new Set(['ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
   'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE']);
 // Rows whose runtime source changed after the deployed release: committed, not released.
-const unreleasedIds = new Set([]);
+const unreleasedIds = new Set(['FRONTIER_PROJECTION_BOUND', 'T0_CYCLE_ARCHIVE']);
 
 export const rows = rawRows.map((row) => {
   const everObserved = Boolean(row.runtime);

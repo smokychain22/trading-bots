@@ -381,6 +381,50 @@ export function decodeCycleEvidenceArchive(archive: Buffer): Record<string, Json
   return record;
 }
 
+/**
+ * The per-candidate lists of the adaptive shadow comparison grow with the option chain (about 300 bytes per contract) and, on a
+ * full SPY chain, alone exceed the 768 KiB inline policy bound (observed 2026-10-02: 29 evidence cycles failed with
+ * CANONICAL_FRONTIER_POLICY_PAYLOAD_TOO_LARGE at 809 KB - 1.02 MB, nothing persisted). The queryable projection therefore keeps a
+ * bounded, EXPLICITLY marked summary: exact counts, exact per-reason counts, a hash of the complete list and the first
+ * `boundedProjectionSampleSize` entries. The complete lists stay in the compressed cycle archive, whose hash already covers the
+ * whole adaptive decision (fullStateHash). Nothing is dropped silently: `truncated` states it, and `fullListHash` proves it.
+ */
+export const boundedProjectionSampleSize = 50;
+const BOUNDED_STATE = 'BOUNDED_PROJECTION_FULL_LIST_IN_COMPRESSED_CYCLE_ARCHIVE' as const;
+const countBy = (values: readonly string[]): Record<string, number> => {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return Object.fromEntries([...counts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 200));
+};
+
+function boundedExcludedProjection(excluded: readonly { readonly candidateId: string; readonly reasons: readonly string[] }[]): JsonValue {
+  const entries = excluded.slice(0, boundedProjectionSampleSize).map((entry) => ({ candidateId: entry.candidateId, reasons: [...entry.reasons] }));
+  return {
+    storageState: BOUNDED_STATE, count: excluded.length, truncated: excluded.length > entries.length,
+    fullListHash: hash(canonicalJson(excluded as unknown as JsonValue)),
+    reasonCounts: countBy(excluded.flatMap((entry) => entry.reasons)), entries,
+  } as unknown as JsonValue;
+}
+
+function boundedEligibilityProjection(eligibility: readonly {
+  readonly candidateId: string; readonly riskFeasible: boolean; readonly actualSizedQuantity: number | null;
+  readonly hardBlockers: readonly string[]; readonly unknownEvidence: readonly string[];
+}[]): JsonValue {
+  const entries = eligibility.slice(0, boundedProjectionSampleSize).map((entry) => ({
+    candidateId: entry.candidateId, riskFeasible: entry.riskFeasible, actualSizedQuantity: entry.actualSizedQuantity,
+    hardBlockers: [...entry.hardBlockers], unknownEvidence: [...entry.unknownEvidence],
+  }));
+  return {
+    storageState: BOUNDED_STATE, count: eligibility.length, truncated: eligibility.length > entries.length,
+    fullListHash: hash(canonicalJson(eligibility as unknown as JsonValue)),
+    riskFeasibleCount: eligibility.filter((entry) => entry.riskFeasible).length,
+    positiveSizedCount: eligibility.filter((entry) => (entry.actualSizedQuantity ?? 0) > 0).length,
+    unknownSizedCount: eligibility.filter((entry) => entry.actualSizedQuantity === null).length,
+    hardBlockerCounts: countBy(eligibility.flatMap((entry) => entry.hardBlockers)),
+    unknownEvidenceCounts: countBy(eligibility.flatMap((entry) => entry.unknownEvidence)), entries,
+  } as unknown as JsonValue;
+}
+
 export function projectCanonicalFrontierForPostgres(frontier: CanonicalStrategyFrontier): {
   readonly projection: Readonly<Record<string, JsonValue>>; readonly projectionHash: string;
 } {
@@ -416,9 +460,8 @@ export function projectCanonicalFrontierForPostgres(frontier: CanonicalStrategyF
           unresolvedDimensions: cohort.unresolvedDimensions,
           candidateCount: cohort.candidates.length,
         })),
-        excluded: adaptive.shadowComparison.excluded.map((entry) => ({
-          candidateId: entry.candidateId, reasons: entry.reasons,
-        })),
+        excluded: boundedExcludedProjection(adaptive.shadowComparison.excluded),
+        candidateEligibility: boundedEligibilityProjection(adaptive.shadowComparison.candidateEligibility),
       },
     },
   } as unknown as Readonly<Record<string, JsonValue>>;

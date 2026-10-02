@@ -12,31 +12,31 @@
     ]
   },
   "computed": {
-    "totalRows": 74,
+    "totalRows": 75,
     "preMarketEngineering": {
-      "numerator": 72,
-      "denominator": 74,
-      "percent": 97.3
+      "numerator": 73,
+      "denominator": 75,
+      "percent": 97.33
     },
     "implementation": {
-      "numerator": 74,
-      "denominator": 74,
+      "numerator": 75,
+      "denominator": 75,
       "percent": 100
     },
     "wiring": {
-      "numerator": 68,
-      "denominator": 74,
-      "percent": 91.89
+      "numerator": 69,
+      "denominator": 75,
+      "percent": 92
     },
     "tested": {
-      "numerator": 74,
-      "denominator": 74,
+      "numerator": 75,
+      "denominator": 75,
       "percent": 100
     },
     "currentReleaseRuntime": {
       "numerator": 8,
-      "denominator": 46,
-      "percent": 17.39
+      "denominator": 47,
+      "percent": 17.02
     },
     "paperOperation": {
       "numerator": 0,
@@ -56,12 +56,12 @@
       "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 6,
+      "SOURCE_ONLY": 8,
       "NOT_OBSERVABLE_YET": 22,
-      "DEPLOYED_NOT_YET_OBSERVED": 38,
+      "DEPLOYED_NOT_YET_OBSERVED": 37,
       "CURRENT_RELEASE_REAL_OBSERVED": 8
     },
-    "unreleasedRowCount": 0,
+    "unreleasedRowCount": 2,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -978,9 +978,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": "c3d8868265426d870e50352b06d8d252c68a16c9",
-      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "PROVIDER_FREE_REPLAY",
@@ -1342,6 +1342,25 @@
       "unreleased": 0,
       "observedAtRelease": null,
       "releaseStatus": "NOT_OBSERVABLE_YET"
+    },
+    {
+      "id": "FRONTIER_PROJECTION_BOUND",
+      "domain": "PHASE3",
+      "note": "queryable frontier projection is bounded independent of chain size; the 2026-10-02 full-chain overflow (HTTP 503 on every evidence cycle) is fixed in source",
+      "impl": 1,
+      "wired": 1,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 1,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "REGISTRY_SOURCE_LISTS",
