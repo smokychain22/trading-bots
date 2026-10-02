@@ -37,9 +37,17 @@ test('exact schema 067 and exact source-worker identity are compatible', () => {
   assert.equal(receipt.observedHead, '067_postgres_cycle_evidence_compaction');
 });
 
+test('schema 068 (additive plan-integrity hardening) is compatible, so deploy-then-migrate and migrate-then-deploy are both safe', () => {
+  const receipt = assessRuntimeSchemaCompatibility({
+    appliedVersions: [...runtimeRequiredMigrations, '068_action_plan_integrity'], sourceSha, workerSha: sourceSha,
+  });
+  assert.equal(receipt.state, 'COMPATIBLE');
+  assert.equal(receipt.observedHead, '068_action_plan_integrity');
+});
+
 test('schema ahead, source mismatch, and unreadable migration metadata fail closed', async () => {
   assert.equal(assessRuntimeSchemaCompatibility({
-    appliedVersions: [...runtimeRequiredMigrations, '068_future_schema'], sourceSha, workerSha: sourceSha,
+    appliedVersions: [...runtimeRequiredMigrations, '069_future_schema'], sourceSha, workerSha: sourceSha,
   }).state, 'SCHEMA_AHEAD_UNSUPPORTED');
   assert.equal(assessRuntimeSchemaCompatibility({
     appliedVersions: [...runtimeRequiredMigrations], sourceSha,

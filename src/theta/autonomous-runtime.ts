@@ -609,6 +609,14 @@ export async function runAutonomousRuntimeCycle(
         const plan=await planStore.claimNext(master.executionAccountId,workerInstance,new Date().toISOString(),
           {allowNewRisk:newRiskRuntimeEnabled});
         if(plan===null)return skipped(pauseNewOrders?'NO_APPROVED_MANAGEMENT_ACTION_PLAN':'NO_APPROVED_MASTER_ACTION_PLAN');
+        {
+          // Re-verify the sealed economic payload immediately before the handoff can reach the coordinator.
+          const integrity=await planStore.verifyBeforeSubmit(plan.actionPlanId,plan);
+          if(!integrity.ok){
+            await planStore.quarantine(plan.actionPlanId,['PLAN_INTEGRITY_MISMATCH'],new Date().toISOString());
+            return degraded('PLAN_INTEGRITY_MISMATCH',retryAt);
+          }
+        }
         const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(pool,master.executionAccountId),{
           masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders});
         const handoff=new MasterPaperActionHandoff(new AlpacaExecutionQuoteSource(master.alpaca),

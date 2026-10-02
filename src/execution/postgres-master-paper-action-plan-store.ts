@@ -5,6 +5,24 @@ import { managementOrderActions, type ManagementDecisionDraft } from './manageme
 import { masterPaperActionPlanSchema, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
 import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import { verifyAegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
+import { actionPlanContentHash, planIntegrityMismatch, verifyActionPlanRow, type ActionPlanRowForIntegrity } from './action-plan-integrity.js';
+
+const integrityColumns=`p.action_plan_id AS ip_action_plan_id,p.decision_id AS ip_decision_id,p.execution_account_id AS ip_execution_account_id,
+  p.plan_version AS ip_plan_version,p.plan_json AS ip_plan_json,p.content_hash AS ip_content_hash,p.execution_tier AS ip_execution_tier,
+  p.canonical_quantity AS ip_canonical_quantity,p.paper_evidence_quantity AS ip_paper_evidence_quantity,
+  p.empirical_economics_ready AS ip_empirical_economics_ready,p.expected_after_cost_ev AS ip_expected_after_cost_ev,
+  p.authority_kind AS ip_authority_kind,p.management_input_snapshot_id AS ip_management_input_snapshot_id,
+  p.management_action_frontier_id AS ip_management_action_frontier_id,p.action_group_id AS ip_action_group_id,
+  p.leg_sequence AS ip_leg_sequence,p.depends_on_action_plan_id AS ip_depends_on_action_plan_id`;
+
+const integrityRow=(row:Record<string,unknown>):ActionPlanRowForIntegrity=>({
+  action_plan_id:row.ip_action_plan_id,decision_id:row.ip_decision_id,execution_account_id:row.ip_execution_account_id,
+  plan_version:row.ip_plan_version,plan_json:row.ip_plan_json,content_hash:row.ip_content_hash,execution_tier:row.ip_execution_tier,
+  canonical_quantity:row.ip_canonical_quantity,paper_evidence_quantity:row.ip_paper_evidence_quantity,
+  empirical_economics_ready:row.ip_empirical_economics_ready,expected_after_cost_ev:row.ip_expected_after_cost_ev,
+  authority_kind:row.ip_authority_kind,management_input_snapshot_id:row.ip_management_input_snapshot_id,
+  management_action_frontier_id:row.ip_management_action_frontier_id,action_group_id:row.ip_action_group_id,
+  leg_sequence:row.ip_leg_sequence,depends_on_action_plan_id:row.ip_depends_on_action_plan_id});
 
 export type MasterPaperActionPlanState='READY'|'CLAIMED'|'WAITING_GATE'|'SUBMITTED'|'TERMINAL'|'QUARANTINED';
 
@@ -217,7 +235,12 @@ export class PostgresMasterPaperActionPlanStore {
         action_plan_event_id,action_plan_id,state,event_time,detail_json)
         SELECT gen_random_uuid(),action_plan_id,'QUARANTINED',$2,'{"blockers":["DECISION_EXPIRED"]}'::jsonb
         FROM unnest($1::uuid[]) AS expired_id(action_plan_id)`,[expired.rows.map((row)=>String(row.action_plan_id)),now]);
-      const result=await client.query(`SELECT p.action_plan_id,p.plan_json,
+      let corrupt:string[]=[];
+      let row:Record<string,unknown>|undefined;
+      // A plan whose stored payload no longer matches its sealed hash is quarantined and the scan moves on: one corrupt row
+      // can neither execute nor stall every other plan.
+      for(let attempt=0;attempt<5;attempt+=1){
+      const result=await client.query(`SELECT p.action_plan_id,p.plan_json,${integrityColumns},
         d.decision_id::text,d.decision_kind,d.selected_candidate_id::text AS candidate_id,d.aegis_action::text AS aegis_action,
         d.runtime_selected_candidate_ref,d.decided_at::text AS decision_decided_at,
         d.receipt_json->'aegisAssessmentIdentity' AS aegis_assessment_identity,
@@ -238,7 +261,18 @@ export class PostgresMasterPaperActionPlanStore {
             WHERE parent.action_plan_id=p.depends_on_action_plan_id AND oi.status='FILLED'))
         ORDER BY p.created_at,p.action_group_id,p.leg_sequence,p.action_plan_id
         FOR UPDATE OF p SKIP LOCKED LIMIT 1`,[executionAccountId,now,masterPaperActionPlanVersion,options.allowNewRisk]);
-      const row=result.rows[0] as Record<string,unknown>|undefined;
+      row=result.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)break;
+      const integrity=verifyActionPlanRow(integrityRow(row));
+      if(integrity.ok)break;
+      corrupt=[...integrity.mismatches];
+      await client.query(`UPDATE trade.master_paper_action_plan SET status='QUARANTINED',last_blockers_json=$3::jsonb,claimed_by=NULL,
+        claimed_at=NULL,claim_expires_at=NULL,updated_at=$2 WHERE action_plan_id=$1 AND status IN ('READY','WAITING_GATE','CLAIMED')`,
+      [row.action_plan_id,now,JSON.stringify([planIntegrityMismatch])]);
+      await client.query(`INSERT INTO trade.master_paper_action_plan_event(action_plan_event_id,action_plan_id,state,event_time,detail_json)
+        VALUES($1,$2,'QUARANTINED',$3,$4::jsonb)`,[randomUUID(),row.action_plan_id,now,JSON.stringify({blockers:[planIntegrityMismatch],mismatches:corrupt})]);
+      row=undefined;
+      }
       if(row===undefined)return {plan:null,actionPlanId:null,claimExpiresAt:null};
       const plan=masterPaperActionPlanSchema.parse(row.plan_json) as ApprovedMasterPaperActionPlan;
       if(plan.decisionAuthority==='NEW_RISK')assertNewRiskAegisLineage(row,plan);
@@ -265,6 +299,19 @@ export class PostgresMasterPaperActionPlanStore {
       throw new Error('ACTION_PLAN_CLAIM_COMMIT_RECONCILIATION_CONFLICT');
     }});
     return claimed.plan;
+  }
+
+  /** Re-reads the stored row immediately before submit and proves it is still exactly the claimed, approved plan. */
+  async verifyBeforeSubmit(actionPlanId:string,claimed:ApprovedMasterPaperActionPlan):Promise<{readonly ok:boolean;readonly mismatches:readonly string[]}>{
+    const read=await withRuntimePostgresReadRetry(this.pool,(client)=>client.query(`SELECT ${integrityColumns},p.status
+      FROM trade.master_paper_action_plan p WHERE p.action_plan_id=$1`,[actionPlanId]));
+    const row=read.value.rows[0] as Record<string,unknown>|undefined;
+    if(row===undefined)return {ok:false,mismatches:['PLAN_ROW_MISSING']};
+    const integrity=verifyActionPlanRow(integrityRow(row));
+    if(!integrity.ok)return {ok:false,mismatches:integrity.mismatches};
+    if(actionPlanContentHash(integrity.plan)!==actionPlanContentHash(claimed))return {ok:false,mismatches:['CLAIMED_PLAN_DIFFERS_FROM_STORED']};
+    if(row.status!=='CLAIMED')return {ok:false,mismatches:['PLAN_NOT_CLAIMED']};
+    return {ok:true,mismatches:[]};
   }
 
   async wait(actionPlanId:string,blockers:readonly string[],retryAt:string,at:string):Promise<void>{

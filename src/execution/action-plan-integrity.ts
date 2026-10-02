@@ -1,0 +1,74 @@
+import { createHash } from 'node:crypto';
+import { canonicalJson } from '../research/point-in-time-evidence.js';
+import { masterPaperActionPlanSchema, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
+
+/**
+ * ACTION_PLAN_INTEGRITY. A published plan is an IMMUTABLE ECONOMIC PAYLOAD (plan_json + content_hash and the denormalized
+ * economic columns) plus MUTABLE OPERATIONAL METADATA (status, claim fields, blockers, not_before, updated_at, the linked order
+ * intent). Only the payload is hashed; operational columns never enter the hash, so a status transition cannot invalidate it.
+ * Any divergence between the stored payload, its hash, or its denormalized columns means the plan is not the one that was
+ * approved: PLAN_INTEGRITY_MISMATCH, no order.
+ */
+
+export const planIntegrityMismatch = 'PLAN_INTEGRITY_MISMATCH' as const;
+
+export const actionPlanContentHash = (plan: unknown): string => createHash('sha256').update(canonicalJson(plan)).digest('hex');
+
+export interface ActionPlanRowForIntegrity {
+  readonly action_plan_id: unknown;
+  readonly decision_id: unknown;
+  readonly execution_account_id: unknown;
+  readonly plan_version: unknown;
+  readonly plan_json: unknown;
+  readonly content_hash: unknown;
+  readonly execution_tier: unknown;
+  readonly canonical_quantity: unknown;
+  readonly paper_evidence_quantity: unknown;
+  readonly empirical_economics_ready: unknown;
+  readonly expected_after_cost_ev: unknown;
+  readonly authority_kind: unknown;
+  readonly management_input_snapshot_id: unknown;
+  readonly management_action_frontier_id: unknown;
+  readonly action_group_id: unknown;
+  readonly leg_sequence: unknown;
+  readonly depends_on_action_plan_id: unknown;
+}
+
+export type ActionPlanIntegrityResult =
+  | { readonly ok: true; readonly plan: ApprovedMasterPaperActionPlan; readonly mismatches: readonly [] }
+  | { readonly ok: false; readonly plan: null; readonly mismatches: readonly string[] };
+
+const sameText = (stored: unknown, expected: string | null): boolean =>
+  (stored === null || stored === undefined ? null : String(stored)) === expected;
+const sameNumber = (stored: unknown, expected: number | null): boolean => {
+  if (stored === null || stored === undefined) return expected === null;
+  return expected !== null && Number(stored) === expected;
+};
+
+/** Recomputes the hash and cross-checks every denormalized economic column against the stored payload. Never throws. */
+export function verifyActionPlanRow(row: ActionPlanRowForIntegrity): ActionPlanIntegrityResult {
+  const mismatches: string[] = [];
+  const fail = (...items: string[]): ActionPlanIntegrityResult => ({ ok: false, plan: null, mismatches: [...mismatches, ...items] });
+  const parsed = masterPaperActionPlanSchema.safeParse(row.plan_json);
+  if (!parsed.success) return fail('PLAN_JSON_SCHEMA_INVALID');
+  const plan = parsed.data as ApprovedMasterPaperActionPlan;
+  if (actionPlanContentHash(plan) !== String(row.content_hash)) mismatches.push('CONTENT_HASH');
+  // the stored JSON must itself be canonical-equal to what was hashed (no extra/stripped keys survive the strict parse)
+  if (canonicalJson(plan) !== canonicalJson(row.plan_json)) mismatches.push('PLAN_JSON_NOT_CANONICAL_PAYLOAD');
+  if (!sameText(row.action_plan_id, plan.actionPlanId)) mismatches.push('ACTION_PLAN_ID');
+  if (!sameText(row.decision_id, plan.decisionId)) mismatches.push('DECISION_ID');
+  if (!sameText(row.execution_account_id, plan.executionAccountId)) mismatches.push('EXECUTION_ACCOUNT_ID');
+  if (!sameText(row.plan_version, plan.contractVersion)) mismatches.push('PLAN_VERSION');
+  if (!sameText(row.execution_tier, plan.executionTier)) mismatches.push('EXECUTION_TIER');
+  if (!sameNumber(row.canonical_quantity, plan.canonicalQuantity)) mismatches.push('CANONICAL_QUANTITY');
+  if (!sameNumber(row.paper_evidence_quantity, plan.paperEvidenceQuantity)) mismatches.push('PAPER_EVIDENCE_QUANTITY');
+  if (row.empirical_economics_ready !== plan.empiricalEconomicsReady) mismatches.push('EMPIRICAL_ECONOMICS_READY');
+  if (!sameNumber(row.expected_after_cost_ev, plan.expectedAfterCostEv)) mismatches.push('EXPECTED_AFTER_COST_EV');
+  if (!sameText(row.authority_kind, plan.decisionAuthority)) mismatches.push('AUTHORITY_KIND');
+  if (!sameText(row.management_input_snapshot_id, plan.managementInputSnapshotId)) mismatches.push('MANAGEMENT_INPUT_SNAPSHOT_ID');
+  if (!sameText(row.management_action_frontier_id, plan.managementActionFrontierId)) mismatches.push('MANAGEMENT_ACTION_FRONTIER_ID');
+  if (!sameText(row.action_group_id, plan.actionGroupId)) mismatches.push('ACTION_GROUP_ID');
+  if (!sameNumber(row.leg_sequence, plan.legSequence)) mismatches.push('LEG_SEQUENCE');
+  if (!sameText(row.depends_on_action_plan_id, plan.dependsOnActionPlanId)) mismatches.push('DEPENDS_ON_ACTION_PLAN_ID');
+  return mismatches.length === 0 ? { ok: true, plan, mismatches: [] } : { ok: false, plan: null, mismatches };
+}

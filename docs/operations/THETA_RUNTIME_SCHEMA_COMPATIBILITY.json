@@ -2,9 +2,10 @@
   "contractVersion": "theta-runtime-schema-compatibility-v1",
   "authority": "PRODUCTION_RUNTIME_FAIL_CLOSED",
   "expectedMinimum": "067_postgres_cycle_evidence_compaction",
-  "expectedMaximum": "067_postgres_cycle_evidence_compaction",
+  "expectedMaximum": "068_action_plan_integrity",
   "compatibleExactHeads": [
-    "067_postgres_cycle_evidence_compaction"
+    "067_postgres_cycle_evidence_compaction",
+    "068_action_plan_integrity"
   ],
   "requiredMigrations": [
     "020_local_worker_runtime",

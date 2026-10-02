@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import type { Pool,PoolClient } from 'pg';
+import { actionPlanContentHash } from '../src/execution/action-plan-integrity.js';
 import { PostgresMasterPaperActionPlanStore } from '../src/execution/postgres-master-paper-action-plan-store.js';
 import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from '../src/execution/master-paper-action-handoff.js';
 import { PostgresCommitOutcomeUnknownError } from '../src/theta/postgres-runtime-error.js';
@@ -21,6 +22,14 @@ const poolOf=(...clients:ScriptedClient[]):Pool=>{
   let cursor=0;
   return {connect:async()=>clients[cursor++] as unknown as PoolClient} as Pool;
 };
+
+const sealedPlanColumns=(value:ApprovedMasterPaperActionPlan)=>({ip_action_plan_id:value.actionPlanId,ip_decision_id:value.decisionId,
+  ip_execution_account_id:value.executionAccountId,ip_plan_version:value.contractVersion,ip_plan_json:value,
+  ip_content_hash:actionPlanContentHash(value),ip_execution_tier:value.executionTier,ip_canonical_quantity:value.canonicalQuantity,
+  ip_paper_evidence_quantity:value.paperEvidenceQuantity,ip_empirical_economics_ready:value.empiricalEconomicsReady,
+  ip_expected_after_cost_ev:value.expectedAfterCostEv,ip_authority_kind:value.decisionAuthority,
+  ip_management_input_snapshot_id:value.managementInputSnapshotId,ip_management_action_frontier_id:value.managementActionFrontierId,
+  ip_action_group_id:value.actionGroupId,ip_leg_sequence:value.legSequence,ip_depends_on_action_plan_id:value.dependsOnActionPlanId});
 
 const persistedCandidateId='10000000-0000-4000-8000-000000000008';
 const aegisAssessmentIdentity=testAegisAssessmentIdentity({persistedCandidateId});
@@ -142,7 +151,7 @@ test('claimNext reconciles the exact worker and claim window after a lost COMMIT
   const now='2026-09-23T15:01:00.000Z';
   const expires='2026-09-23T15:03:00.000Z';
   const transaction=new ScriptedClient(async(sql)=>{
-    if(sql.includes('SELECT p.action_plan_id,p.plan_json'))return {rows:[{action_plan_id:plan.actionPlanId,plan_json:plan,...decisionRow}],rowCount:1};
+    if(sql.includes('SELECT p.action_plan_id,p.plan_json'))return {rows:[{action_plan_id:plan.actionPlanId,plan_json:plan,...sealedPlanColumns(plan),...decisionRow}],rowCount:1};
     if(sql.includes("SET status='CLAIMED'"))return {rows:[{action_plan_id:plan.actionPlanId}],rowCount:1};
     if(sql==='COMMIT')throw {code:'08006'};
     return {rows:[],rowCount:0};
