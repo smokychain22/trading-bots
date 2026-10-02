@@ -160,12 +160,17 @@ export function candidateStressAegisOverrides(input: {
   readonly alpacaIv: AlpacaContractIvAssessment | undefined;
   readonly alpacaIvProducerConfigured: boolean;
 }): Readonly<Record<string, unknown>> {
+  // A truncated history read makes "baseline accumulating" artificial (rows exist but were not read), so the cold-start
+  // exception is withheld and the detector stays REQUIRED (UNKNOWN -> fail closed).
+  const spreadTruncated = input.spread?.historyCompleteness?.state === 'TRUNCATED_BOUNDED_HISTORY';
+  const ivTruncated = input.alpacaIv?.historyCompleteness?.state === 'TRUNCATED_BOUNDED_HISTORY';
   return {
     stressSpreadWideningDetected: input.spread?.stressSpreadWideningDetected ?? null,
-    stressSpreadWideningApplicability: paperBootstrapStressApplicability(input.spread?.maturity.state ?? null),
+    stressSpreadWideningApplicability: spreadTruncated ? 'REQUIRED' as const
+      : paperBootstrapStressApplicability(input.spread?.maturity.state ?? null),
     ...(input.alpacaIvProducerConfigured ? {
       stressIvShockDetected: input.alpacaIv?.stressIvShockDetected ?? null,
-      stressIvShockApplicability: input.alpacaIv?.currentState === 'QUALIFIED'
+      stressIvShockApplicability: input.alpacaIv?.currentState === 'QUALIFIED' && !ivTruncated
         ? paperBootstrapStressApplicability(input.alpacaIv.maturity.state) : 'REQUIRED',
     } : {}),
   };

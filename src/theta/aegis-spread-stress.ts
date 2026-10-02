@@ -39,6 +39,8 @@ export interface SpreadHistoryObservation {
   readonly dataQuality: 'GOOD';
 }
 
+import { boundStressHistory, stressHistoryNotSupplied, stressHistoryRowLimit, type StressHistoryCompleteness } from './stress-history-completeness.js';
+
 export interface AegisSpreadStressAssessment {
   readonly contractVersion: typeof aegisSpreadStressDetectorVersion;
   readonly underlying: string;
@@ -62,6 +64,8 @@ export interface AegisSpreadStressAssessment {
   readonly robustZApplicability: 'APPLICABLE' | 'ZERO_MAD_RELATIVE_FALLBACK' | 'UNAVAILABLE';
   readonly baselineEvidenceIds: readonly string[];
   readonly maturity: BaselineMaturityAssessment;
+  /** How the baseline history was read; a bounded read is never presented as complete history. */
+  readonly historyCompleteness: StressHistoryCompleteness;
   readonly stressSpreadWideningDetected: boolean | null;
   readonly policyVersion: string;
   readonly policyAuthority: AegisSpreadStressPolicy['authority'];
@@ -122,6 +126,7 @@ export function assessAegisSpreadStress(input: {
   readonly history: readonly SpreadHistoryObservation[];
   readonly decisionAsOf: string;
   readonly policy: AegisSpreadStressPolicy;
+  readonly historyCompleteness?: StressHistoryCompleteness;
 }): AegisSpreadStressAssessment {
   if (!validIso(input.decisionAsOf) || input.policy.authority !== 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL'
     || input.policy.policyVersion.trim() === '' || !Number.isSafeInteger(input.policy.maximumBaselineObservations)
@@ -206,6 +211,7 @@ export function assessAegisSpreadStress(input: {
     baselineMedianRelativeSpread, baselineMadRelativeSpread,
     relativeIncrease, robustZ, dispersionState, robustZApplicability,
     baselineEvidenceIds: eligible.map((row) => row.evidenceId), maturity,
+    historyCompleteness: input.historyCompleteness ?? stressHistoryNotSupplied,
     stressSpreadWideningDetected, policyVersion: input.policy.policyVersion,
     policyAuthority: input.policy.authority, evidenceAuthority: 'ALPACA_EXECUTABLE_MARKET',
   } as const;
@@ -219,6 +225,16 @@ export async function loadAegisSpreadHistory(input: {
   readonly decisionAsOf: string;
   readonly lookbackDays: number;
 }): Promise<readonly SpreadHistoryObservation[]> {
+  return (await loadAegisSpreadHistoryWithCompleteness(input)).rows;
+}
+
+export async function loadAegisSpreadHistoryWithCompleteness(input: {
+  readonly pool: Pool;
+  readonly underlying: string;
+  readonly optionType: 'CALL' | 'PUT';
+  readonly decisionAsOf: string;
+  readonly lookbackDays: number;
+}): Promise<{ readonly rows: readonly SpreadHistoryObservation[]; readonly completeness: StressHistoryCompleteness }> {
   const result = await input.pool.query(`SELECT candidate_id::text,contract_symbol,dte,moneyness::float8,
     relative_spread::float8,provider_timestamp,ingestion_timestamp,decision_time,source,feed,data_quality,
     quote_content_hash
@@ -230,17 +246,18 @@ export async function loadAegisSpreadHistory(input: {
       AND relative_spread >= 0 AND source='ALPACA' AND feed IN ('OPRA','INDICATIVE')
       AND data_quality='GOOD' AND provider_timestamp IS NOT NULL AND ingestion_timestamp IS NOT NULL
       AND provider_timestamp <= $3 AND ingestion_timestamp <= $3
-    ORDER BY provider_timestamp DESC,candidate_id DESC LIMIT 5000`, [
+    ORDER BY provider_timestamp DESC,candidate_id DESC LIMIT ${stressHistoryRowLimit + 1}`, [
     input.underlying.toUpperCase(), input.optionType, input.decisionAsOf, input.lookbackDays,
   ]);
-  return result.rows.map((row) => ({
+  const bounded = boundStressHistory(result.rows, (row) => new Date(row.provider_timestamp).toISOString());
+  return { completeness: bounded.completeness, rows: bounded.rows.map((row) => ({
     evidenceId: `${String(row.candidate_id)}:${String(row.quote_content_hash ?? 'NO_QUOTE_HASH')}`,
     underlying: input.underlying.toUpperCase(), optionType: input.optionType,
     contractSymbol: String(row.contract_symbol), dte: Number(row.dte), moneyness: Number(row.moneyness),
     relativeSpread: Number(row.relative_spread), providerTimestamp: new Date(row.provider_timestamp).toISOString(),
     ingestionTimestamp: new Date(row.ingestion_timestamp).toISOString(), decisionTime: new Date(row.decision_time).toISOString(),
-    source: 'ALPACA', feed: String(row.feed) as 'OPRA' | 'INDICATIVE', dataQuality: 'GOOD',
-  }));
+    source: 'ALPACA' as const, feed: String(row.feed) as 'OPRA' | 'INDICATIVE', dataQuality: 'GOOD' as const,
+  })) };
 }
 
 export async function assessAegisSpreadStressForContracts(input: {
@@ -250,17 +267,18 @@ export async function assessAegisSpreadStressForContracts(input: {
   readonly policy?: AegisSpreadStressPolicy;
 }): Promise<AegisSpreadStressAssessmentMap> {
   const policy = input.policy ?? paperBootstrapAegisSpreadStressPolicy;
-  const historyByKey = new Map<string, readonly SpreadHistoryObservation[]>();
+  const historyByKey = new Map<string, Awaited<ReturnType<typeof loadAegisSpreadHistoryWithCompleteness>>>();
   const output: Record<string, AegisSpreadStressAssessment> = {};
   for (const contract of input.contracts) {
     const key = `${contract.underlying}:${contract.optionType}`;
     let history = historyByKey.get(key);
     if (history === undefined) {
-      history = await loadAegisSpreadHistory({ pool: input.pool, underlying: contract.underlying,
+      history = await loadAegisSpreadHistoryWithCompleteness({ pool: input.pool, underlying: contract.underlying,
         optionType: contract.optionType, decisionAsOf: input.decisionAsOf, lookbackDays: policy.lookbackDays });
       historyByKey.set(key, history);
     }
-    output[contract.optionSymbol] = assessAegisSpreadStress({ current: contract, history, decisionAsOf: input.decisionAsOf, policy });
+    output[contract.optionSymbol] = assessAegisSpreadStress({ current: contract, history: history.rows,
+      decisionAsOf: input.decisionAsOf, policy, historyCompleteness: history.completeness });
   }
   return output;
 }

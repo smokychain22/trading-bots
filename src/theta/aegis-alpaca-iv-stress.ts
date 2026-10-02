@@ -8,6 +8,8 @@ import { spreadDteBucket, spreadMoneynessBucket,
 import type { NormalizedOptionContract } from './option-contract.js';
 
 export const alpacaContractIvDetectorVersion = 'theta-alpaca-contract-iv-cohort-shock-v1' as const;
+import { boundStressHistory, stressHistoryNotSupplied, stressHistoryRowLimit, type StressHistoryCompleteness } from './stress-history-completeness.js';
+
 export interface AlpacaContractIvHistoryRow {
   readonly evidenceId: string;
   readonly sourceHash: string;
@@ -78,6 +80,8 @@ export interface AlpacaContractIvAssessment {
   readonly robustZ: number | null;
   readonly dispersionState: 'MAD_POSITIVE' | 'MAD_ZERO' | 'MAD_UNAVAILABLE';
   readonly maturity: BaselineMaturityAssessment;
+  /** How the baseline history was read; a bounded read is never presented as complete history. */
+  readonly historyCompleteness: StressHistoryCompleteness;
   readonly stressIvShockDetected: boolean | null;
   readonly policyVersion: string;
   readonly policyAuthority: AlpacaContractIvPolicy['authority'];
@@ -170,6 +174,7 @@ export function assessAlpacaContractIvStress(input: {
   readonly history: readonly AlpacaContractIvHistoryRow[];
   readonly decisionAsOf: string;
   readonly policy: AlpacaContractIvPolicy;
+  readonly historyCompleteness?: StressHistoryCompleteness;
 }): AlpacaContractIvAssessment {
   const { current, policy, decisionAsOf } = input;
   if (!validIso(decisionAsOf) || policy.authority !== 'PAPER_BOOTSTRAP_NOT_EMPIRICALLY_OPTIMAL'
@@ -266,6 +271,7 @@ export function assessAlpacaContractIvStress(input: {
     currentTimingAuthority: 'ALPACA_SNAPSHOT_IV_AVAILABLE_AT_RECEIPT', currentFeed: current.feed,
     currentState, currentReason: reason, dteBucket, moneynessBucket, sessionReferences,
     baselineMedianIv, baselineMadIv, absoluteIncrease, relativeIncrease, robustZ, dispersionState, maturity,
+    historyCompleteness: input.historyCompleteness ?? stressHistoryNotSupplied,
     stressIvShockDetected, policyVersion: policy.policyVersion, policyAuthority: policy.authority,
     evidenceAuthority: 'ALPACA_OPTION_SNAPSHOT_CONTRACT_IV',
   } as const;
@@ -372,7 +378,7 @@ export function alpacaContractIvHistoryRejectionReason(raw: Record<string, unkno
 export async function loadAlpacaContractIvHistory(input: {
   readonly pool: Pool; readonly underlying: string; readonly decisionAsOf: string; readonly lookbackDays: number;
 }): Promise<{ readonly observations: readonly AlpacaContractIvHistoryRow[]; readonly sourceUnprovenN: number;
-  readonly scannedN: number; readonly rejectedLineageN: number;
+  readonly scannedN: number; readonly rejectedLineageN: number; readonly historyCompleteness: StressHistoryCompleteness;
   readonly rejectionReasons: Readonly<Record<string, number>> }> {
   // Bounded recent-row read on the existing schema-064 immutable PIT table.
   // Legacy IV without explicit Alpaca lineage is counted, never upgraded by inference.
@@ -395,12 +401,13 @@ export async function loadAlpacaContractIvHistory(input: {
     WHERE branch='THETA_CONVENTIONAL' AND decision_time < $1
       AND decision_time >= ($1::timestamptz - ($2::int * interval '1 day'))
       AND contract_json->>'underlying'=$3
-    ORDER BY decision_time DESC,candidate_id DESC LIMIT 5000`,
+    ORDER BY decision_time DESC,candidate_id DESC LIMIT ${stressHistoryRowLimit + 1}`,
   [input.decisionAsOf, input.lookbackDays, input.underlying.toUpperCase()]);
+  const bounded = boundStressHistory(result.rows as Record<string, unknown>[], (raw) => new Date(raw.decision_time as string).toISOString());
   const observations: AlpacaContractIvHistoryRow[] = [];
   let sourceUnprovenN = 0;
   const rejectionReasons: Record<string, number> = {};
-  for (const raw of result.rows as Record<string, unknown>[]) {
+  for (const raw of bounded.rows as Record<string, unknown>[]) {
     const row = { ...raw, decision_time: new Date(raw.decision_time as string).toISOString() };
     const parsed = parseAlpacaContractIvHistoryRow(row);
     if (parsed !== null) observations.push(parsed);
@@ -411,8 +418,8 @@ export async function loadAlpacaContractIvHistory(input: {
         && record(raw.volatility_json)?.ivSource !== 'ALPACA') sourceUnprovenN++;
     }
   }
-  return { observations, sourceUnprovenN, scannedN: result.rows.length,
-    rejectedLineageN: result.rows.length - observations.length, rejectionReasons };
+  return { observations, sourceUnprovenN, scannedN: bounded.rows.length,
+    rejectedLineageN: bounded.rows.length - observations.length, rejectionReasons, historyCompleteness: bounded.completeness };
 }
 
 export async function assessAlpacaContractIvStressForContracts(input: {
@@ -430,7 +437,7 @@ export async function assessAlpacaContractIvStressForContracts(input: {
       byUnderlying.set(contract.underlying, history);
     }
     output[contract.optionSymbol] = assessAlpacaContractIvStress({ current: contract,
-      history: history.observations, decisionAsOf: input.decisionAsOf, policy });
+      history: history.observations, decisionAsOf: input.decisionAsOf, policy, historyCompleteness: history.historyCompleteness });
   }
   return output;
 }
