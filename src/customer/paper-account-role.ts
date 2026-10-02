@@ -1,3 +1,4 @@
+import { rollbackSucceeded } from '../database/safe-rollback.js';
 import { Pool } from 'pg';
 import { createRuntimePostgresPool } from '../theta/runtime-postgres-pool.js';
 import type { Environment } from '../config/environment.js';
@@ -45,6 +46,7 @@ export class PostgresMasterRoleStore implements MasterRoleStore {
 
   async promote(customerId: string, verifiedAccountId: string): Promise<void> {
     const client = await this.pool.connect();
+    let discard = false;
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(863801010)');
@@ -79,9 +81,9 @@ export class PostgresMasterRoleStore implements MasterRoleStore {
       }
       await client.query('COMMIT');
     } catch (error) {
-      await client.query('ROLLBACK');
+      discard = !(await rollbackSucceeded(client));
       throw error;
-    } finally { client.release(); }
+    } finally { client.release(discard ? true : undefined); }
   }
 }
 

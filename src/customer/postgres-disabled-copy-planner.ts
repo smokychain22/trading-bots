@@ -1,3 +1,4 @@
+import { rollbackSucceeded } from '../database/safe-rollback.js';
 import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
@@ -100,6 +101,7 @@ export class PostgresDisabledCopyPlanner {
     if (uniqueFollowers.size !== followers.length) throw new Error('DUPLICATE_FOLLOWER_EVALUATION');
 
     const client = await this.pool.connect();
+    let discard = false;
     try {
       await client.query('BEGIN');
       await this.requireBrokerConfirmation(client, input, event);
@@ -144,10 +146,10 @@ export class PostgresDisabledCopyPlanner {
       return { masterCopyEventId: input.masterCopyEventId, persistedPlans, duplicatePlans,
         orderIntentsPlanned, executionAuthorized: false };
     } catch (error) {
-      await client.query('ROLLBACK');
+      discard = !(await rollbackSucceeded(client));
       throw error;
     } finally {
-      client.release();
+      client.release(discard ? true : undefined);
     }
   }
 
@@ -156,6 +158,7 @@ export class PostgresDisabledCopyPlanner {
     const value=z.object({tenantId:uuid,followerAccountId:uuid,masterChainId:uuid,followerChainId:uuid,
       followerOrderIntentId:z.string().min(8),confirmedAt:z.string().datetime({offset:true})}).parse(input);
     const client=await this.pool.connect();
+    let discard=false;
     try{
       await client.query('BEGIN');
       const proof=await client.query(`SELECT fce.workspace_id,sum(ff.quantity)::numeric AS filled_quantity,
@@ -188,7 +191,7 @@ export class PostgresDisabledCopyPlanner {
       [value.tenantId,value.followerAccountId,value.masterChainId,String(row.master_copy_event_id),
         JSON.stringify({followerChainId:value.followerChainId,followerOrderIntentId:value.followerOrderIntentId}),value.confirmedAt]);
       await client.query('COMMIT'); return 'CONFIRMED';
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    }catch(error){discard=!(await rollbackSucceeded(client));throw error;}finally{client.release(discard?true:undefined);}
   }
 
   private async requireBrokerConfirmation(

@@ -1,3 +1,4 @@
+import { rollbackSucceeded } from '../database/safe-rollback.js';
 import type { Pool } from 'pg';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
 import { applyShadowCspOpening, classifyConservativeShadowFill, selectShadowOpeningCandidate,
@@ -30,6 +31,7 @@ export class PostgresShadowVirtualTrader {
 
   async createOpeningIntent(scanId:string,createdAt:string):Promise<ShadowIntentCreationReport>{
     const client=await this.pool.connect();
+    let discard=false;
     try{
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['theta-shadow-opening-intent']);
@@ -135,11 +137,12 @@ export class PostgresShadowVirtualTrader {
           'AWAITING_LATER_PRICE_THROUGH',shadowFillPolicyVersion,JSON.stringify({decisionQuoteObservationId:row.quote_observation_id}),shadowContentHash(eventPayload)]);
       await client.query('COMMIT');
       return {state:'CREATED',intentId,candidateId:selected.candidateId,reasonCodes:selection.reasonCodes};
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    }catch(error){discard=!(await rollbackSucceeded(client));throw error;}finally{client.release(discard?true:undefined);}
   }
 
   async resolveObservation(candidateId:string,quoteObservationId:string,horizonCode:string,observedAt:string):Promise<ShadowObservationResolutionReport>{
     const client=await this.pool.connect();
+    let discard=false;
     try{
       await client.query('BEGIN');
       const found=await client.query(`SELECT i.*,oc.strike::text,oc.multiplier::text,u.underlying_id,
@@ -218,6 +221,6 @@ export class PostgresShadowVirtualTrader {
       }
       await client.query('COMMIT');
       return {state:assessment.state,filledQuantity:assessment.filledQuantity??0};
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    }catch(error){discard=!(await rollbackSucceeded(client));throw error;}finally{client.release(discard?true:undefined);}
   }
 }
