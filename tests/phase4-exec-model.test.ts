@@ -41,7 +41,7 @@ type Step = 'submit' | 'submit_again' | 'fill_partial' | 'fill_all' | 'broker_ca
 const STEPS: readonly Step[] = ['submit', 'submit', 'submit_again', 'fill_partial', 'fill_partial', 'fill_all', 'broker_cancel', 'broker_expire',
   'reconcile', 'reconcile', 'cancel', 'replace', 'replace', 'restart'];
 
-async function runScenario(seed: number): Promise<void> {
+async function runScenario(seed: number, chaos = false): Promise<void> {
   const next = prng(seed);
   const pick = <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)] as T;
   const rig = makeRig();
@@ -51,6 +51,7 @@ async function runScenario(seed: number): Promise<void> {
   const gate = isStock ? stockGate : optionGate;
   const original = isStock ? stockIntent() : optionIntent();
   const intentIds = [original.orderIntentId];
+  const trace: string[] = [];
   const lastStatus = new Map<string, string>();
   const maxFilledByOrder = new Map<string, number>();
   let replacementAttempt = 2;
@@ -94,6 +95,18 @@ async function runScenario(seed: number): Promise<void> {
   const length = 3 + Math.floor(next() * 8);
   for (let index = 0; index < length; index += 1) {
     const step = pick(STEPS);
+    if (chaos && next() < 0.4) {
+      const op = pick(['GET /v2/orders:by_client_order_id', 'DELETE /v2/orders/{id}', 'PATCH /v2/orders/{id}', 'GET /v2/orders'] as const);
+      const respond = pick([{ kind: 'status', status: 429, headers: { 'retry-after': '1' } }, { kind: 'status', status: 500 }, { kind: 'status', status: 503 },
+        { kind: 'status', status: 401 }, { kind: 'network', code: 'ECONNRESET' }, { kind: 'network', code: 'EAI_AGAIN' },
+        { kind: 'body', body: '{not json' }, { kind: 'truncated' }] as const) as FaultSpec['respond'];
+      // Only an AMBIGUOUS outcome (5xx, 408, network loss, timeout, malformed/truncated body) can follow an applied mutation. 401/403/422/429 are
+      // rejected before processing, so modelling them as "applied" would contradict the HTTP semantics the coordinator correctly relies on.
+      const mayHaveApplied = respond.kind !== 'status' || respond.status >= 500 || respond.status === 408;
+      const applied = mayHaveApplied && next() < 0.5 && op !== 'GET /v2/orders:by_client_order_id' && op !== 'GET /v2/orders';
+      trace.push(`fault ${op} ${JSON.stringify(respond)} applied=${applied}`);
+      rig.server.inject({ op, applied, times: 1 + Math.floor(next() * 2), respond });
+    }
     const primary = intentIds[0] as string;
     const live = liveBrokerOrders()[0];
     if (step === 'submit' || step === 'submit_again') {
@@ -102,6 +115,7 @@ async function runScenario(seed: number): Promise<void> {
         const { applied, ...respond } = fault;
         rig.server.inject({ op: POST, applied, respond: respond as FaultSpec['respond'] });
       }
+      trace.push(`${step}${fault === null ? '' : ' fault=' + JSON.stringify(fault)}`);
       observe(await guarded(() => coordinator.submit(primary, gate)));
     } else if (step === 'fill_partial' && live !== undefined) {
       const qty = Number(live.qty), filled = Number(live.filled_qty);
@@ -129,10 +143,13 @@ async function runScenario(seed: number): Promise<void> {
       coordinator = new PaperOrderCoordinator(rig.adapter, rig.store, control());
       await guarded(() => coordinator.recoverAfterRestart());
     }
-    invariants(`after ${step}`);
+    if (!['submit', 'submit_again'].includes(step)) trace.push(step);
+    try { invariants(`after ${step}`); } catch (error) { console.error(`SCENARIO TRACE seed ${seed}: ${trace.join(' > ')}`); throw error; }
   }
 
-  // final clean pass (no faults): everything that can be resolved is resolved consistently with the broker
+  // final clean pass (no faults): everything that can be resolved is resolved consistently with the broker.
+  // Faults queued for operations that never ran are discarded first, otherwise the "clean" pass would still be faulty.
+  (rig.server as unknown as { faults: unknown[] }).faults.length = 0;
   const probe = new PaperOrderCoordinator(rig.adapter, rig.store, control());
   await guarded(() => probe.recoverAfterRestart());
   for (const id of [...store.intents.keys()]) observe(await guarded(() => probe.reconcileIntent(id)));
@@ -147,8 +164,14 @@ async function runScenario(seed: number): Promise<void> {
   }
 }
 
+const SCENARIOS = Math.max(1, Number(process.env.THETA_P4_MODEL_SCENARIOS ?? 300));
+
 test('model-based execution safety: 300 seeded random scenarios keep every invariant after every step', async () => {
-  for (let seed = 1; seed <= 300; seed += 1) await runScenario(seed);
+  for (let seed = 1; seed <= SCENARIOS; seed += 1) await runScenario(seed);
+});
+
+test('broker chaos: 300 seeded scenarios with random faults on EVERY operation (reads, cancel, replace) keep every invariant', async () => {
+  for (let seed = 1001; seed < 1001 + SCENARIOS; seed += 1) await runScenario(seed, true);
 });
 
 test('the scenario generator is deterministic (the same seed replays the same broker end state)', async () => {
