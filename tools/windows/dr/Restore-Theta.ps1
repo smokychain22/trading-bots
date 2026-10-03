@@ -51,7 +51,7 @@ if ($manifest.formatVersion -eq 2) {
   }
   $sourceSequenceRaw = (Get-Content -Raw -LiteralPath (Join-Path $backup 'sequence-state.json')).Trim()
   $restoredSequenceRaw = Get-ThetaSequenceState $target
-  if ((Get-ThetaStringSha256 $sourceSequenceRaw) -ne (Get-ThetaStringSha256 $restoredSequenceRaw)) {
+  if (-not (Test-ThetaSequenceStateParity -SourceRaw $sourceSequenceRaw -RestoredRaw $restoredSequenceRaw)) {
     $rowcountParity = 'FAIL'
   }
   $sourceDigests = Get-Content -Raw -LiteralPath (Join-Path $backup 'critical-data-digests.json') | ConvertFrom-Json

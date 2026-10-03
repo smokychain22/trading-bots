@@ -607,6 +607,29 @@ FROM pg_sequences WHERE schemaname NOT LIKE 'pg_%' AND schemaname<>'information_
   return Invoke-ThetaSql -Connection $Connection -Sql $sql
 }
 
+function Test-ThetaSequenceStateParity {
+  param([Parameter(Mandatory)][string]$SourceRaw, [Parameter(Mandatory)][string]$RestoredRaw)
+  # Sequences are not transactional: they are not part of the exported snapshot, so a live system keeps advancing them while a multi-hour
+  # dump runs. The source state is captured AFTER the dump, the restored state is whatever pg_dump read DURING it. The sound invariant is
+  # therefore monotonic: same sequence names, and every restored value is at or below the later-captured source value (an unused
+  # sequence, null, is below any used one). A restored value ABOVE the source, a missing or extra sequence, or a changed shape fails.
+  $source = @($SourceRaw | ConvertFrom-Json)
+  $restored = @($RestoredRaw | ConvertFrom-Json)
+  if ($source.Count -ne $restored.Count) { return $false }
+  $restoredByName = @{}
+  foreach ($item in $restored) { $restoredByName[[string]$item.name] = $item }
+  foreach ($item in $source) {
+    $other = $restoredByName[[string]$item.name]
+    if ($null -eq $other) { return $false }
+    $sourceNull = $null -eq $item.lastValue
+    $restoredNull = $null -eq $other.lastValue
+    if ($restoredNull) { continue }
+    if ($sourceNull) { return $false }
+    if ([decimal]$other.lastValue -gt [decimal]$item.lastValue) { return $false }
+  }
+  return $true
+}
+
 function Get-ThetaCriticalDigest {
   param(
     [Parameter(Mandatory)][object]$Connection,
