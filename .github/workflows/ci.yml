@@ -69,7 +69,7 @@ jobs:
       - run: npm run test:browser
       - name: Browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-evidence
           path: |
@@ -137,7 +137,7 @@ jobs:
         run: node tools/security-scan.mjs --extra=.ci-test-evidence --extra=test-results --extra=playwright-report
       - name: Preserve sanitized disposable-database executed test identities
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: disposable-database-test-evidence
           path: .ci-test-evidence/
