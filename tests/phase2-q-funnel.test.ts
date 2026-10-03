@@ -36,8 +36,10 @@ function contract(overrides: Partial<Parameters<typeof normalizeOptionContract>[
 const facts = (c: NormalizedOptionContract): QFunnelCandidateFacts =>
   qFunnelFactsFromContract(c, { eventState: 'CLEAR', earningsDistanceSessions: null });
 const sym = (strike: number, expiry = '261106') => `SPY${expiry}P${String(strike * 1000).padStart(8, '0')}`;
-const at = (strike: number, over: Partial<Parameters<typeof normalizeOptionContract>[0]> = {}) =>
-  contract({ optionSymbol: sym(strike), occSymbol: sym(strike), strike, ...over });
+const at = (strike: number, over: Partial<Parameters<typeof normalizeOptionContract>[0]> = {}) => {
+  const expiry = typeof over.expiration === 'string' ? over.expiration.slice(2, 4) + over.expiration.slice(5, 7) + over.expiration.slice(8, 10) : '261106';
+  return contract({ optionSymbol: sym(strike, expiry), occSymbol: sym(strike, expiry), strike, ...over });
+};
 
 test('every stage obeys INPUT = PASS + FAIL + UNKNOWN + NOT_APPLICABLE and carries exact reasons, never a generic one', () => {
   const contracts = [
@@ -54,7 +56,7 @@ test('every stage obeys INPUT = PASS + FAIL + UNKNOWN + NOT_APPLICABLE and carri
   assert.equal(receipt.totals.INPUT_CONTRACTS, 9);
   assert.equal(receipt.totals.Q_VALID, 1);
   const byStrike = new Map(receipt.candidates.map((record) => [record.optionSymbol, record]));
-  const reason = (strike: number) => byStrike.get(sym(strike))?.terminalReasons.join('|');
+  const reason = (strike: number) => [...byStrike.entries()].find(([symbol]) => symbol.endsWith(`P${String(strike * 1000).padStart(8, '0')}`))?.[1].terminalReasons.join('|');
   assert.equal(byStrike.get(sym(500))?.terminalStage, 'COMPLETED');
   assert.match(reason(495) ?? '', /DELTA_OUTSIDE_ALL_BANDS/);
   assert.match(reason(490) ?? '', /OPEN_INTEREST_BELOW_FLOOR/);

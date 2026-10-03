@@ -127,6 +127,13 @@ const finiteNumber = (value: string | number): number => {
 const nullableNumber = (value: string | number | null | undefined): number | null =>
   value === null || value === undefined ? null : finiteNumber(value);
 
+/**
+ * A genuine HTTP 404 ("this order does not exist") is the ONLY response that may be read as "absent". A 200 with a literal `null` body (a proxy or
+ * gateway glitch) is NOT absence: reconciliation treats absence as "the order never reached the broker", so a false absence could lead to a
+ * duplicate economic order. The sentinel keeps the two apart.
+ */
+const ORDER_NOT_FOUND = Symbol('ALPACA_ORDER_NOT_FOUND');
+
 export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
   const order = rawOrderSchema.parse(raw);
   const qty = finiteNumber(order.qty);
@@ -358,7 +365,7 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
       } catch (error) {
         throw new AlpacaPaperBrokerError('AMBIGUOUS_NETWORK', null, `Alpaca PAPER request failed before a response was available: ${controller.signal.aborted ? 'TimeoutError' : error instanceof Error ? error.name : 'NetworkError'}.`);
       }
-      if (allowNotFound && response.status === 404) return null;
+      if (allowNotFound && response.status === 404) return ORDER_NOT_FOUND;
       if (!response.ok) {
         // Reads: 5xx/408 are transient provider unavailability (retryable, no state implication). Mutations: 5xx may have
         // been applied -> ambiguous. 429 is always "not processed".
@@ -405,11 +412,11 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   }
   async getOrderByClientOrderId(clientOrderId: string): Promise<BrokerOrderSnapshot | null> {
     const body = await this.request(`/v2/orders:by_client_order_id?client_order_id=${encodeURIComponent(clientOrderId)}`, {}, true);
-    return body === null ? null : this.parseProviderPayload('/v2/orders:by_client_order_id', () => parseBrokerOrder(body));
+    return body === ORDER_NOT_FOUND ? null : this.parseProviderPayload('/v2/orders:by_client_order_id', () => parseBrokerOrder(body));
   }
   async getOrder(providerOrderId: string): Promise<BrokerOrderSnapshot | null> {
     const body = await this.request(`/v2/orders/${encodeURIComponent(providerOrderId)}`, {}, true);
-    return body === null ? null : this.parseProviderPayload('/v2/orders/{id}', () => parseBrokerOrder(body));
+    return body === ORDER_NOT_FOUND ? null : this.parseProviderPayload('/v2/orders/{id}', () => parseBrokerOrder(body));
   }
   async getActivities(activityTypes?: readonly string[]): Promise<readonly BrokerActivity[]> {
     const activities: BrokerActivity[] = [];

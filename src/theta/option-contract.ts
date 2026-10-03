@@ -211,6 +211,26 @@ export const putDeltaSignInvalid = (optionType: 'PUT' | 'CALL', delta: number | 
 const daysBetween = (fromIso: string, toIso: string): number =>
   Math.round((new Date(toIso).getTime() - new Date(fromIso).getTime()) / 86_400_000);
 
+
+// ---- contract identity consistency ----------------------------------------------------------------------------------
+// Identity that disagrees with the contract's own OCC symbol (underlying, expiration, type or strike) is INVALID and non-executable:
+// orders are placed by symbol but collateral is computed from the strike field, so a disagreement could mis-size capital.
+// (A malformed provider VALUE - NaN, a string where a number belongs, an unparseable timestamp - still fails loudly through the schema:
+// that indicates a mapping defect, which must not be silently degraded into thousands of INVALID contracts.)
+const occIdentityPattern = /^([A-Z]{1,6})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/;
+function occIdentityMismatches(raw: RawOptionQuoteInput): readonly string[] {
+  const match = typeof raw.occSymbol === 'string' ? occIdentityPattern.exec(raw.occSymbol) : null;
+  if (match === null) return []; // a non-standard symbol cannot be cross-checked here (adjusted contracts are classified by deliverables)
+  const [, root, yy, mm, dd, cp, strikeDigits] = match as unknown as [string, string, string, string, string, string, string];
+  const problems: string[] = [];
+  if (root !== raw.underlying) problems.push('underlying');
+  if (typeof raw.expiration !== 'string' || `20${yy}-${mm}-${dd}` !== raw.expiration.slice(0, 10)) problems.push('expiration');
+  if ((cp === 'C' ? 'CALL' : 'PUT') !== raw.optionType) problems.push('option type');
+  if (!Number.isFinite(raw.strike) || Math.abs(Number(strikeDigits) / 1000 - raw.strike) > 1e-6) problems.push('strike');
+  if (raw.optionSymbol !== raw.occSymbol) problems.push('option symbol vs OCC symbol');
+  return problems;
+}
+
 /**
  * Normalizes a raw provider quote into the canonical contract shape.
  * Computes ONLY the derived fields this module owns (spread, moneyness,
@@ -221,6 +241,8 @@ const daysBetween = (fromIso: string, toIso: string): number =>
  * for this normalization layer, which only shapes what it's given).
  */
 export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: string): NormalizedOptionContract {
+  const identityProblems = occIdentityMismatches(raw);
+  const effectiveQuality: DataQuality = identityProblems.length > 0 ? 'INVALID' : raw.dataQuality;
   const underlyingReferencePrice =
     raw.underlyingLast ?? (raw.underlyingBid !== null && raw.underlyingAsk !== null ? (raw.underlyingBid + raw.underlyingAsk) / 2 : null);
 
@@ -251,7 +273,8 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
   if (raw.bid !== null && raw.ask !== null && (raw.bid < 0 || raw.ask <= 0 || raw.bid > raw.ask)) reasons.push('invalid or crossed BBO');
   if (spreadPct === null) reasons.push('spread unknown');
   else if (spreadPct > raw.maxSpreadPctForExecutable) reasons.push('spread too wide');
-  if (raw.dataQuality !== 'GOOD') reasons.push(`data quality is ${raw.dataQuality}`);
+  if (identityProblems.length > 0) reasons.push(`contract identity disagrees with its OCC symbol: ${identityProblems.join(',')}`);
+  if (effectiveQuality !== 'GOOD') reasons.push(`data quality is ${effectiveQuality}`);
 
   const executable = reasons.length === 0;
   const delta = putDeltaSignInvalid(raw.optionType, raw.delta) ? null : raw.delta;
@@ -306,7 +329,7 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
     greeksSource,
     source: raw.source,
     feed: raw.feed,
-    dataQuality: raw.dataQuality,
+    dataQuality: effectiveQuality,
     receivedAt,
     dataAgeSeconds: quoteAgeSeconds,
     executable,

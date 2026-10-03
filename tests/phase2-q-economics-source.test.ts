@@ -51,7 +51,7 @@ const qCandidates = (frontier: ReturnType<typeof frontierFor>) =>
   frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates ?? [];
 
 test('every Q candidate economics record carries the exact contract, bid, ask, spread and quote timestamp, and premium IS the Alpaca bid', () => {
-  const contract = normalizeOptionContract(raw({ bid: 3.64, ask: 3.76, strike: 706, optionSymbol: 'SPY261120P00706000', occSymbol: 'SPY261120P00706000' }), NOW);
+  const contract = normalizeOptionContract(raw({ bid: 3.64, ask: 3.76, strike: 706, expiration: '2026-11-20', optionSymbol: 'SPY261120P00706000', occSymbol: 'SPY261120P00706000' }), NOW);
   const [candidate] = qCandidates(frontierFor([contract]));
   assert.ok(candidate);
   const leg = candidate.legs[0];

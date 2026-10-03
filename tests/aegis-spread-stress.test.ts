@@ -24,7 +24,7 @@ const policy: AegisSpreadStressPolicy = {
 
 function current(bid = 0.85, ask = 1.15, overrides: Partial<NormalizedOptionContract> = {}): NormalizedOptionContract {
   const value = normalizeOptionContract({
-    source: 'ALPACA', underlying: 'SPY', optionSymbol: 'SPY261016P00500000', occSymbol: 'SPY261016P00500000',
+    source: 'ALPACA', underlying: 'SPY', optionSymbol: 'SPY261016P00520000', occSymbol: 'SPY261016P00520000',
     optionType: 'PUT', strike: 520, expiration: '2026-10-16', asOfDate: '2026-09-22', multiplier: 100,
     underlyingBid: 550, underlyingAsk: 550.02, underlyingLast: 550.01, underlyingTimestamp: '2026-09-22T13:59:49.000Z',
     bid, ask, bidSize: 10, askSize: 12, lastTradePrice: 1, lastTradeSize: 1,

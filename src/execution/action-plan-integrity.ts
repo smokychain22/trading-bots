@@ -80,6 +80,8 @@ const sameNumber = (stored: unknown, expected: number | null): boolean => {
 export function verifyActionPlanRow(row: ActionPlanRowForIntegrity): ActionPlanIntegrityResult {
   const mismatches: string[] = [];
   const fail = (...items: string[]): ActionPlanIntegrityResult => ({ ok: false, plan: null, mismatches: [...mismatches, ...items] });
+  // a missing or non-object row is a typed integrity failure (no order), never a TypeError
+  if (row === null || row === undefined || typeof row !== 'object') return fail('PLAN_ROW_INVALID');
   const parsed = masterPaperActionPlanSchema.safeParse(row.plan_json);
   if (!parsed.success) return fail('PLAN_JSON_SCHEMA_INVALID');
   const plan = parsed.data as ApprovedMasterPaperActionPlan;
