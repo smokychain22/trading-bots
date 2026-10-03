@@ -207,12 +207,14 @@ test('T0 replay rejects duplicated, missing and tampered candidate inputs', () =
     /T0_REPLAY_CONTRACT_INPUT_HASH_MISMATCH/);
   assert.throws(() => replayFromT0Bundle({ ...bundle, contracts: bundle.contracts.slice(1) }),
     /T0_REPLAY_CONTRACT_INPUT_HASH_MISMATCH/);
-  assert.throws(() => replayFromT0Bundle({ ...bundle, strategyVersion: 'tampered-policy-version' }),
-    /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
-  assert.throws(() => replayFromT0Bundle({ ...bundle, openingCostPolicy: {
-    commissionPerContract: 0.65, feesPerContract: 0.05,
-    estimatedSlippagePerContract: 2, costModelVersion: 'tampered-cost-v2',
-  } }), /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
+  const costTamper = { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 2, costModelVersion: 'tampered-cost-v2' };
+  // current bundles carry a whole-bundle integrity hash: any tampered field is rejected by it first
+  assert.throws(() => replayFromT0Bundle({ ...bundle, strategyVersion: 'tampered-policy-version' }), /T0_REPLAY_BUNDLE_CONTENT_HASH_MISMATCH/);
+  assert.throws(() => replayFromT0Bundle({ ...bundle, openingCostPolicy: costTamper }), /T0_REPLAY_BUNDLE_CONTENT_HASH_MISMATCH/);
+  // a bundle persisted before the integrity hash existed is still protected by the frontier hash
+  const legacy = { ...bundle, bundleContentHash: undefined };
+  assert.throws(() => replayFromT0Bundle({ ...legacy, strategyVersion: 'tampered-policy-version' }), /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
+  assert.throws(() => replayFromT0Bundle({ ...legacy, openingCostPolicy: costTamper }), /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
 });
 
 test('new T0 bundles require an input hash while historical v2 bundles remain replayable', () => {
@@ -221,8 +223,9 @@ test('new T0 bundles require an input hash while historical v2 bundles remain re
   assert.match(bundle.inputContractsHash ?? '', /^[0-9a-f]{64}$/);
   assert.throws(() => replayFromT0Bundle({ ...bundle, inputContractsHash: undefined }),
     /T0_REPLAY_CONTRACT_INPUT_HASH_REQUIRED/);
+  assert.match(bundle.bundleContentHash ?? '', /^[0-9a-f]{64}$/, 'new bundles always carry the whole-bundle integrity hash');
   const oldBundle = { ...bundle, contractVersion: 'theta-t0-replay-bundle-v2' as const,
-    inputContractsHash: undefined };
+    inputContractsHash: undefined, bundleContentHash: undefined };
   assert.equal(replayFromT0Bundle(oldBundle).contentHash, bundle.expectedFrontierContentHash);
 });
 

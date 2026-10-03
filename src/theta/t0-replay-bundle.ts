@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier, type CanonicalStrategyFrontierInput } from './canonical-strategy-frontier.js';
 import { jsonValueSchema } from '../market/fusion-snapshot.js';
+import { canonicalJson } from '../research/point-in-time-evidence.js';
 import { normalizedOptionContractSchema } from './option-contract.js';
 import { strategyRoutingResponseSchema } from './strategy-router-contract.js';
 
@@ -111,6 +112,8 @@ export const t0ReplayBundleSchema = z.object({
   strategyVersion: z.string().min(1),
   expectedFrontierContentHash: z.string().regex(/^[0-9a-f]{64}$/),
   inputContractsHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  /** Integrity hash over EVERY other field (canonical JSON). New bundles always carry it; bundles persisted before it existed stay replayable. */
+  bundleContentHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   contracts: normalizedOptionContractSchema.array(),
   routing: strategyRoutingResponseSchema.nullable(),
   stock: stockSchema,
@@ -154,6 +157,15 @@ export const t0ReplayBundleSchema = z.object({
 });
 
 export type T0ReplayBundle = z.infer<typeof t0ReplayBundleSchema>;
+
+/** Canonical-JSON hash of the whole bundle except its own hash field (key order and persisted-undefined fields cannot change it). */
+export function t0ReplayBundleContentHash(bundle: T0ReplayBundle): string {
+  const { bundleContentHash: ignored, contracts, ...rest } = bundle;
+  void ignored;
+  // Contracts are a multiset (provider order is irrelevant to replay): they enter the hash in canonical sorted order, like inputContractsHash.
+  const sortedContracts = contracts.map((contract) => canonicalJson(JSON.parse(JSON.stringify(contract)))).sort();
+  return createHash('sha256').update(canonicalJson(JSON.parse(JSON.stringify(rest))) + '|' + JSON.stringify(sortedContracts), 'utf8').digest('hex');
+}
 
 // A single underlying's contract universe is inherently bounded (this
 // repo's own MAX_PROJECTION_BYTES pattern, reused here at a size the
@@ -207,7 +219,8 @@ export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0Re
     thetaQDecision: input.thetaQDecision,
     optionsApprovedLevel: input.optionsApprovedLevel ?? null, optionsTradingLevel: input.optionsTradingLevel ?? null,
   };
-  const parsed = t0ReplayBundleSchema.parse(bundle);
+  const unsealed = t0ReplayBundleSchema.parse(bundle);
+  const parsed = t0ReplayBundleSchema.parse({ ...unsealed, bundleContentHash: t0ReplayBundleContentHash(unsealed) });
   const bytes = Buffer.byteLength(JSON.stringify(parsed));
   if (bytes > maxBundleBytes) throw new Error(`T0_REPLAY_BUNDLE_TOO_LARGE:${bytes}`);
   return parsed;
@@ -222,8 +235,11 @@ export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0Re
  */
 export function replayFromT0Bundle(bundle: T0ReplayBundle): CanonicalStrategyFrontier {
   const parsed = t0ReplayBundleSchema.parse(bundle);
+  // the specific contract-multiset check first (its error names the defect), then the whole-bundle integrity hash
   if (parsed.inputContractsHash !== undefined && contractInputHash(parsed.contracts) !== parsed.inputContractsHash)
     throw new Error('T0_REPLAY_CONTRACT_INPUT_HASH_MISMATCH');
+  if (parsed.bundleContentHash !== undefined && t0ReplayBundleContentHash(parsed) !== parsed.bundleContentHash)
+    throw new Error('T0_REPLAY_BUNDLE_CONTENT_HASH_MISMATCH');
   const replayInput: CanonicalStrategyFrontierInput = {
     snapshotId: parsed.snapshotId, timestamp: parsed.timestamp, strategyVersion: parsed.strategyVersion,
     contracts: parsed.contracts, routing: parsed.routing, stock: parsed.stock,
