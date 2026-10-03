@@ -1,7 +1,7 @@
 {
   "computed": {
-    "PHASE3_TOTAL": 58,
-    "PASS": 42,
+    "PHASE3_TOTAL": 59,
+    "PASS": 43,
     "PROVIDER_LIMITED": 2,
     "OWNER_POLICY": 3,
     "FUTURE_MARKET": 0,
@@ -9,7 +9,7 @@
     "EMPIRICAL_ONLY": 2,
     "NOT_APPLICABLE": 4,
     "CODE_SOLVABLE_REMAINING": 0,
-    "OBSERVED_TODAY": 19
+    "OBSERVED_TODAY": 20
   },
   "rows": [
     {
@@ -1121,6 +1121,25 @@
       "BLOCKER": "fix is on the branch; the deployed release still has the defect until the governed release",
       "SOLVABILITY": "DEFECT_FOUND_IN_LIVE_SESSION_AND_FIXED_ON_BRANCH",
       "NEXT_ACTION": "deploy with the governed release before the next market session"
+    },
+    {
+      "ID": "P3-059",
+      "CAPABILITY": "DR restore verification tolerates sequences that advanced during a live dump (restored may lag the later-captured source, never lead it); a backup taken while the worker runs verifies",
+      "SOURCE": [
+        "tools/windows/dr/ThetaBackup.Common.ps1",
+        "tools/windows/dr/Restore-Theta.ps1"
+      ],
+      "TEST": [
+        "tests/windows/theta-sequence-parity.test.ps1"
+      ],
+      "RUNTIME_DEPENDENCY": "Windows DR tooling",
+      "DB_DEPENDENCY": "none",
+      "CURRENT_STATUS": "PASS",
+      "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
+      "PAPER_STATUS": "NOT_EXERCISED",
+      "BLOCKER": "fix is on the branch and ships with the next release; the post-migration backup 2026-10-02_234643 failed this check while migration 068 and every data comparison passed",
+      "SOLVABILITY": "DEFECT_FOUND_IN_LIVE_RUN_AND_FIXED_ON_BRANCH",
+      "NEXT_ACTION": "release with the next deployment, then take a verified backup with the worker running"
     }
   ]
 }

@@ -69,6 +69,21 @@
       "REGRESSION_TEST": "tests/runtime-postgres-client.test.ts",
       "CURRENT_STATUS": "WORKER_RESTARTED_FIX_ON_BRANCH_NOT_DEPLOYED: the supervisor restart restored cycles; until the fix is deployed any further database error would wedge the worker again, so deployment is required before the next market session.",
       "PRODUCTION_MUTATION": "NONE (supervisor stop/start only; execution gate LOCKED throughout, zero broker mutations)"
+    },
+    {
+      "INCIDENT_ID": "INC-20261003-DR-SEQUENCE-PARITY",
+      "DATE": "2026-10-03",
+      "AFFECTED_RELEASE": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "FAILED_CYCLE_COUNT": 0,
+      "PAYLOAD_MIN_BYTES": 0,
+      "PAYLOAD_MAX_BYTES": 0,
+      "SUMMARY": "The post-migration verified backup (2026-10-02_234643-15402cd3) completed its dump and digests, and its real restore matched on structure fingerprint (156 tables, 407 indexes, 116 triggers) and on every table row count and critical-data digest, but the restore test reported dataRowcountParity FAIL, so the governed checkpoint recorded MIGRATION_CHECKPOINT_FAILED. Migration 068 itself was already applied and verified; the pre-migration verified backup is preserved as the known-good restore point.",
+      "ROOT_CAUSE": "Restore-Theta.ps1 required the sequence state captured after the dump to equal the restored sequence state exactly. Sequences are not transactional and not part of the exported snapshot, so a live system advances them while a two-hour dump runs (ops.runtime_worker_event_worker_event_id_seq, market.option_quote_snapshot_snapshot_id_seq and others, written by the running worker). The first governed backup passed only because the worker was wedged during it (see INC-20261003-DB-RECOVERY-PROBE). Any backup taken while the worker runs would fail the same way.",
+      "FIX_SHA": "96fcdfbd9843b4bda670209d16a3526d1fb3f2aa",
+      "FIX_LIMITS": "The fix is on the continuation branch and ships with the next release. Until then a backup taken with the worker running can still fail this check; the last verified good backup is 2026-10-02_205959-a5c31af2 (taken 2026-10-03 04:30 local, after the dump had verified structure and data).",
+      "REGRESSION_TEST": "tests/windows/theta-sequence-parity.test.ps1",
+      "CURRENT_STATUS": "FIXED_ON_BRANCH_NOT_RELEASED: restored sequence values must be at or below the later-captured source values; a value above the source, a missing or extra sequence, or a changed shape still fails.",
+      "PRODUCTION_MUTATION": "NONE (read-only dump and an isolated local restore)"
     }
   ]
 }
