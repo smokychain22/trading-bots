@@ -1,9 +1,9 @@
 {
   "version": "theta-phase2-disposable-ci-evidence-v1",
-  "sourceSha": "ba913528fa7037b3594accf04b363c16c2fbf684",
-  "ciRun": "37013825906",
-  "ciUrl": "https://github.com/smokychain22/trading-bots/actions/runs/37013825906",
-  "observedAt": "2026-10-02T13:39:13.213Z",
+  "sourceSha": "40943debe8597443ec58ded80b67017c17113ed6",
+  "ciRun": "37080397919",
+  "ciUrl": "https://github.com/smokychain22/trading-bots/actions/runs/37080397919",
+  "observedAt": "2026-10-03T00:10:07.304Z",
   "scope": "DISPOSABLE_DATABASE_NOT_PRODUCTION",
   "currentWorkerProven": false,
   "brokerMutations": 0,
@@ -32,7 +32,7 @@
         ]
       },
       "artifact": "disposable-faults.jsonl",
-      "rawArtifactSha256": "d4e53b5bfe10f3402bb86962f49eafd1f36a5de7b2d4f1e044d66623db58b0d0",
+      "rawArtifactSha256": "331f33181422cd1254a9659215046b809bd97f00c5e78ddff3c1295edc3ea099",
       "result": {
         "requirementId": "2.2.FAULT_MATRIX",
         "reviewedBehavior": "Actual disposable PostgreSQL exercises statement timeout, checked-out and idle backend termination, transaction rollback and expired queue handoff. Every stage checks complete drain and no idle transaction. No Production fault is injected.",
@@ -45,7 +45,7 @@
         "blockers": [],
         "sourceHashes": {
           "src/theta/postgres-runtime-error.ts": "52715b3bd343376fb39e24caffdd84f98cf275c671690b0457f68a708d15e17f",
-          "src/theta/runtime-postgres-client.ts": "4a3c57e8f11c23cca0669f228c9dc3eef344e2474e951f44d4053f4d9e51b5ce",
+          "src/theta/runtime-postgres-client.ts": "61d20c76cfe10fac649fcb6c4a719ea50a69d6bc8fc0fcd615993037112e0748",
           "src/theta/runtime-postgres-pool.ts": "b6afcdb1cf5697e84f69c33ff2772d060d34908add866355a04819219fae7334",
           "tests/db/runtime-postgres-faults.test.ts": "f86331d99c946f16c066b56766ca33f5ceff63aafbc97ad59502d136ed0956db"
         },
@@ -54,42 +54,42 @@
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "server statement timeout retains SQLSTATE 57014, never acquisition timeout",
             "state": "PASS",
-            "durationMs": 94.590841,
+            "durationMs": 97.864445,
             "line": 44
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "backend termination during a checked-out query is contained and the next client is fresh",
             "state": "PASS",
-            "durationMs": 15.340476,
+            "durationMs": 18.615101,
             "line": 59
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "transaction error rolls back with no leaked transaction or client",
             "state": "PASS",
-            "durationMs": 9.859938,
+            "durationMs": 10.487834,
             "line": 79
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "expired queued acquisition never invokes work and late client handoff is released",
             "state": "PASS",
-            "durationMs": 53.543632,
+            "durationMs": 52.871556,
             "line": 87
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "idle backend termination is reported without an unhandled emitter error",
             "state": "PASS",
-            "durationMs": 13.104024,
+            "durationMs": 10.782236,
             "line": 102
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "real local PostgreSQL fault containment releases clients and distinguishes query failure from acquisition",
             "state": "PASS",
-            "durationMs": 189.761306,
+            "durationMs": 194.382268,
             "line": 24
           }
         ]
@@ -115,7 +115,7 @@
         ]
       },
       "artifact": "disposable-persistence.jsonl",
-      "rawArtifactSha256": "65f22e057372fca306cc2b37418ab6febe9c11399cf9455ad8ca0ea054f30cd0",
+      "rawArtifactSha256": "a433387eeec5d51b262a208fefa7ffddf02ec4515d8cb678d4fa210135a30db1",
       "result": {
         "requirementId": "2.4.FRESH_CYCLE",
         "reviewedBehavior": "Actual runAutonomousRuntimeCycle BROKER scope persists good reconciliation, injects a GET-only broker account 503 and recovers with new reads, correlation and persisted snapshot in real disposable PostgreSQL. Checks zero orders and drained pool. Does not prove deployed recovery or market evidence.",
@@ -128,9 +128,9 @@
         "blockers": [],
         "sourceHashes": {
           "src/customer/customer-store.ts": "1848de3b49c204272cee480812b263448cd8734affe9fdc7d73be8f8c2a5834f",
-          "src/customer/paper-account-role.ts": "00db579bef7241341fb9f8f95cd7d99d5da69e54046b704644eb642dc10bc9c1",
-          "src/theta/autonomous-runtime.ts": "55f63be493bc23a85013f3870344e2d045c0919efa7cca50ab4f5ca7a1aa4a69",
-          "src/theta/runtime-postgres-client.ts": "4a3c57e8f11c23cca0669f228c9dc3eef344e2474e951f44d4053f4d9e51b5ce",
+          "src/customer/paper-account-role.ts": "987b765ed13c0c9029c56b33dac216c404e470678092ffdef6018fccaf7aba66",
+          "src/theta/autonomous-runtime.ts": "15c21b775905e046e840bf77050d3e4c56a91bb386846f68cbd7b35f3a35dccb",
+          "src/theta/runtime-postgres-client.ts": "61d20c76cfe10fac649fcb6c4a719ea50a69d6bc8fc0fcd615993037112e0748",
           "tests/db/customer-persistence.test.ts": "8c7d3e2a98349912ae8f1d1f5380fe844b652ff2eb0d1e7478877f03e0a8276d"
         },
         "executedTests": [
@@ -138,12 +138,12 @@
             "file": "tests/db/customer-persistence.test.ts",
             "name": "real disposable PostgreSQL preserves user limits, master role and tenant isolation",
             "state": "PASS",
-            "durationMs": 334.709406,
+            "durationMs": 1010.171531,
             "line": 12
           }
         ]
       }
     }
   ],
-  "artifactHash": "b3631e5a4a375cc0ca48460830e6315dd80f499a8f45799d3a5d8b2e66624633"
+  "artifactHash": "004b78c444b09964ac3e1cf2b6d437230ea7911d0545968cc4c85d1ee147653b"
 }
