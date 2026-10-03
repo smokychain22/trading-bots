@@ -34,9 +34,9 @@
       "percent": 100
     },
     "currentReleaseRuntime": {
-      "numerator": 8,
+      "numerator": 7,
       "denominator": 47,
-      "percent": 17.02
+      "percent": 14.89
     },
     "paperOperation": {
       "numerator": 0,
@@ -57,12 +57,12 @@
       "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 6,
-      "NOT_OBSERVABLE_YET": 36,
-      "DEPLOYED_NOT_YET_OBSERVED": 39,
-      "CURRENT_RELEASE_REAL_OBSERVED": 8
+      "SOURCE_ONLY": 12,
+      "NOT_OBSERVABLE_YET": 33,
+      "DEPLOYED_NOT_YET_OBSERVED": 37,
+      "CURRENT_RELEASE_REAL_OBSERVED": 7
     },
-    "unreleasedRowCount": 0,
+    "unreleasedRowCount": 6,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -80,15 +80,15 @@
       "tested": 1,
       "engDone": 1,
       "obsNow": 1,
-      "runtime": 1,
+      "runtime": 0,
       "paperApplicable": 0,
       "paper": 0,
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
-      "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "ALPACA_MARKET_CLOCK_CALENDAR",
@@ -124,9 +124,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
-      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "ALPACA_OPTION_QUOTES_BBO",
@@ -789,9 +789,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "PAPER_ORDER_COORDINATOR",
@@ -808,9 +808,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "IDEMPOTENT_CLIENT_ORDER_ID",
@@ -827,9 +827,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "UNKNOWN_SUBMIT_RECONCILIATION",
@@ -998,9 +998,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
-      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "COMMAND5A_LOCAL_SCHEDULER",

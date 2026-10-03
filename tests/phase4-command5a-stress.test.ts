@@ -36,8 +36,10 @@ test('a 600-job stale backlog never starves the fresh checkpoints: priority-wind
     const stale = Array.from({ length: 600 }, (_, index) => scheduler.schedule({ job: job15m(index, at(index % 60)), sourceSha: SHA, workerSha: SHA }));
     const fresh = Array.from({ length: 12 }, (_, index) => scheduler.schedule({ job: job15m(1000 + index, at(180 + index)), sourceSha: SHA, workerSha: SHA }));
     const freshIds = new Set(fresh.map((receipt) => receipt.observationJobId));
-    const now = fresh[0]!.targetAt; // every fresh job is due within the next minutes; the stale ones were due hours earlier
-    const asOf = new Date(Date.parse(fresh[11]!.targetAt) + 30_000).toISOString();
+    const lastFresh = fresh[11];
+    assert.ok(lastFresh);
+    const now = lastFresh.targetAt; // every fresh job is due within the next minutes; the stale ones were due hours earlier
+    const asOf = new Date(Date.parse(lastFresh.targetAt) + 30_000).toISOString();
     assert.ok(Date.parse(asOf) > Date.parse(now));
     const claimed = scheduler.claimDue({ asOf, claimedBy: 'worker-1', claimTtlSeconds: 120, limit: 12, priorityTargetWindowSeconds: 3600 });
     assert.equal(claimed.length, 12);
@@ -62,7 +64,7 @@ test('duplicate scheduling is idempotent: re-scheduling the same 300 jobs (and r
     for (let pass = 0; pass < 3; pass += 1) {
       for (let index = 0; index < 300; index += 1) {
         const replay = scheduler.schedule({ job: job15m(index, at(index % 30)), sourceSha: SHA, workerSha: SHA });
-        assert.equal(replay.observationJobId, first[index]!.observationJobId);
+        assert.equal(replay.observationJobId, first[index]?.observationJobId);
       }
       scheduler.close();
       scheduler = new LocalObservationJobScheduler(path);
@@ -100,7 +102,7 @@ test('two workers draining one 400-job backlog in alternation resolve every job 
     }
     assert.equal(resolvedBy.size, 400, 'every job was resolved');
     for (const [id, workers] of resolvedBy) assert.equal(workers.length, 1, `job ${id} was resolved ${workers.length} times`);
-    assert.throws(() => scheduler.resolve({ observationJobId: crashed[0]!.observationJobId, claimedBy: 'worker-crash', state: 'OBSERVED', resolvedAt: new Date(clock).toISOString(), reasonCode: null }),
+    assert.throws(() => scheduler.resolve({ observationJobId: crashed[0]?.observationJobId ?? '', claimedBy: 'worker-crash', state: 'OBSERVED', resolvedAt: new Date(clock).toISOString(), reasonCode: null }),
       /CLAIM_OWNER_MISMATCH|STATE|TRANSITION|NOT_/, 'a crashed worker cannot resolve a job another worker already resolved');
     assert.equal(scheduler.counts().OBSERVED, 400);
     scheduler.close();

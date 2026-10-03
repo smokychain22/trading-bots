@@ -138,7 +138,9 @@ const rawRows = [
 const observedAtDeployed = new Set(['ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
   'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE', 'MIGRATION_068_STATUS']);
 // Rows whose runtime source changed after the deployed release: committed, not released.
-const unreleasedIds = new Set([]);
+// Phase 4 changed identity (client order id / order-intent id), the T0 replay bundle hash, the option-contract identity check and the broker 404/200-null handling.
+const unreleasedIds = new Set(['ORDER_INTENT_STATE_MACHINE', 'PAPER_ORDER_COORDINATOR', 'IDEMPOTENT_CLIENT_ORDER_ID', 'PROVIDER_FREE_REPLAY',
+  'ALPACA_OPTION_CHAIN_ENUMERATION', 'ALPACA_ACCOUNT_POSITIONS_ORDERS_READ']);
 
 export const rows = rawRows.map((row) => {
   const everObserved = Boolean(row.runtime);

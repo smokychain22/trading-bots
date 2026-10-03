@@ -1,0 +1,587 @@
+{
+  "computed": {
+    "PHASE4_TOTAL": 35,
+    "PASS": 29,
+    "CODE_SOLVABLE": 0,
+    "PROVIDER_LIMITED": 1,
+    "OWNER_POLICY": 1,
+    "FUTURE_MARKET": 1,
+    "FUTURE_PAPER": 1,
+    "EMPIRICAL_ONLY": 1,
+    "NOT_APPLICABLE": 1,
+    "CODE_SOLVABLE_REMAINING": 0
+  },
+  "rows": [
+    {
+      "ID": "P4-001",
+      "CAPABILITY": "Large option-chain stress, 100 to 10,000 contracts: time, memory, scaling exponent and retained heap within evidence-based budgets",
+      "SOURCE": [
+        "src/theta/canonical-strategy-frontier.ts",
+        "src/theta/option-chain-ingestion.ts"
+      ],
+      "TEST": [
+        "tests/phase4-large-chain-stress.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "docs/operations/THETA_PHASE4_PERFORMANCE_BASELINE_20261003.json",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-002",
+      "CAPABILITY": "Long soak, 500+ decision cycles: bounded heap, no leaked handles/timers, no state drift",
+      "SOURCE": [
+        "src/theta/canonical-strategy-frontier.ts",
+        "src/execution/paper-order-coordinator.ts"
+      ],
+      "TEST": [
+        "tests/phase4-long-soak.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "process.getActiveResourcesInfo and forced-GC retained-heap bound",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-003",
+      "CAPABILITY": "Concurrency and overlap chaos: deterministic scheduler, simulated clock, fenced versus unfenced control",
+      "SOURCE": [
+        "src/execution/paper-order-coordinator.ts",
+        "src/execution/mutation-fence.ts"
+      ],
+      "TEST": [
+        "tests/phase4-concurrency-chaos.test.ts",
+        "tests/phase3-mutation-fence.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "fenced run yields at most one broker mutation; the unfenced control reproduces the overlap",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-004",
+      "CAPABILITY": "Execution model-based test: at most one POST, one non-replacement order, one live order; terminal stickiness; per-order fills monotone",
+      "SOURCE": [
+        "src/execution/paper-order-coordinator.ts",
+        "src/theta/order-intent-state.ts"
+      ],
+      "TEST": [
+        "tests/phase4-exec-model.test.ts",
+        "tests/phase3-exec-state-machine.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "seeded random operation/fault sequences, invariants checked every step",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-005",
+      "CAPABILITY": "Broker/provider chaos: transient and permanent faults, malformed bodies, only a real 404 means an order is absent (200/null is malformed)",
+      "SOURCE": [
+        "src/execution/broker.ts",
+        "src/theta/alpaca-provider.ts"
+      ],
+      "TEST": [
+        "tests/phase4-provider-chaos.test.ts",
+        "tests/phase3-exec-fault-injection.test.ts",
+        "tests/alpaca-failure-matrix.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "commit 415d5eb",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-006",
+      "CAPABILITY": "Database chaos: classifier matrix, reads retried for transient errors only, writes never replayed, commit-unknown surfaced, client destroy policy",
+      "SOURCE": [
+        "src/theta/runtime-postgres-client.ts",
+        "src/theta/database-health-circuit.ts"
+      ],
+      "TEST": [
+        "tests/phase4-db-chaos.test.ts",
+        "tests/runtime-postgres-client.test.ts",
+        "tests/database-health-circuit.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "tests/phase4-db-chaos.test.ts",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-007",
+      "CAPABILITY": "Disaster recovery: snapshot keeper heartbeat, sequence parity, verified-backup digest, read-only guard (Windows)",
+      "SOURCE": [
+        "tools/windows"
+      ],
+      "TEST": [
+        "tests/windows/theta-snapshot-heartbeat.test.ps1",
+        "tests/windows/theta-sequence-parity.test.ps1",
+        "tests/windows/theta-backup-digest-v2.test.ps1",
+        "tests/windows/theta-backup-readonly-guard.test.ps1"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "VERIFIED",
+      "RISK": "HIGH",
+      "EVIDENCE": "Windows PowerShell suites run in CI",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-008",
+      "CAPABILITY": "Replay determinism and tamper detection: whole-bundle integrity hash and an exhaustive single-leaf tamper sweep (25 silent leaves found and closed)",
+      "SOURCE": [
+        "src/theta/t0-replay-bundle.ts"
+      ],
+      "TEST": [
+        "tests/phase4-replay-tamper.test.ts",
+        "tests/t0-replay-bundle.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "commit 54e542e",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-009",
+      "CAPABILITY": "Deterministic identity: unambiguous client order id and order-intent id (no colon aliasing), identical under every restart",
+      "SOURCE": [
+        "src/theta/order-intent-state.ts",
+        "src/execution/master-paper-command-assembly.ts"
+      ],
+      "TEST": [
+        "tests/phase4-identity.test.ts",
+        "tests/order-intent-state.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "identity commits",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-010",
+      "CAPABILITY": "Capital, share and whole-chain conservation properties (order independence, cancel, fill, cash-flow identity)",
+      "SOURCE": [
+        "src/theta/capital-budget-evidence.ts",
+        "src/theta/whole-chain-economics.ts"
+      ],
+      "TEST": [
+        "tests/phase4-conservation.test.ts",
+        "tests/whole-chain-properties.test.ts",
+        "tests/phase2-sizing-capital-conservation.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "seeded property tests",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-011",
+      "CAPABILITY": "AEGIS properties: monotone, boundary, capacity-zero versus veto, cross-candidate isolation",
+      "SOURCE": [
+        "src/theta/aegis-contract.ts",
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "TEST": [
+        "tests/phase4-aegis-sizing-capacity.test.ts",
+        "tests/phase4-historical-regressions.test.ts",
+        "bots/theta/tests/quant/test_aegis_monotonicity_property.py",
+        "bots/theta/tests/quant/test_aegis_pairwise_monotonicity.py",
+        "tests/phase2-aegis-capacity-zero.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "VERIFIED_AND_EXTENDED",
+      "RISK": "HIGH",
+      "EVIDENCE": "veto on one candidate leaves every other candidate unchanged",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-012",
+      "CAPABILITY": "Strategy properties: Q worsening, sizing never forced to one, H/D no Paper authority, A/C flat NOT_APPLICABLE, covered calls never exceed whole shares",
+      "SOURCE": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "TEST": [
+        "tests/frontier-properties.test.ts",
+        "tests/phase2-hdac-mechanics.test.ts",
+        "tests/phase2-sizing-structural-properties.test.ts",
+        "tests/phase2-q-boundaries.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "VERIFIED",
+      "RISK": "HIGH",
+      "EVIDENCE": "existing Phase 2 property suites re-run in Phase 4",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-013",
+      "CAPABILITY": "Management oscillation: one state yields one stable action; no hysteresis is characterised and pinned (no policy invented)",
+      "SOURCE": [
+        "src/theta/management-assembly.ts"
+      ],
+      "TEST": [
+        "tests/phase2-mgmt-oscillation-execution.test.ts",
+        "tests/management-invariants.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "VERIFIED",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "hysteresis is a policy choice, left to a future evidence-backed revision",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-014",
+      "CAPABILITY": "Command-5A scheduler stress: stale backlog never starves fresh checkpoints, duplicate scheduling idempotent, exclusive claims, crash and restart drain",
+      "SOURCE": [
+        "src/storage/local-observation-job-scheduler.ts"
+      ],
+      "TEST": [
+        "tests/phase4-command5a-stress.test.ts",
+        "tests/local-observation-job-scheduler.test.ts",
+        "tests/due-observation-priority.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "600-job backlog, 400-job two-worker drain",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-015",
+      "CAPABILITY": "Training-data firewall: every ordered truth-class pair, only the four forbidden promotions blocked, complete evidence required",
+      "SOURCE": [
+        "bots/theta/quant/research/truth_firewall.py"
+      ],
+      "TEST": [
+        "bots/theta/tests/quant/test_phase4_research_integrity.py",
+        "bots/theta/tests/quant/test_truth_firewall.py"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "exhaustive 81-pair sweep",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-016",
+      "CAPABILITY": "Effective sample size: conservative dependence-component proxy never inflated by repeated scans, relabelling or order",
+      "SOURCE": [
+        "bots/theta/quant/research/dataset_readiness.py"
+      ],
+      "TEST": [
+        "bots/theta/tests/quant/test_phase4_research_integrity.py",
+        "bots/theta/tests/quant/test_dataset_readiness.py"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "a proxy, not an empirical effective N; labelled as such in code",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-017",
+      "CAPABILITY": "Research leakage: randomized point-in-time invariance across trend, momentum, realized-volatility, EWMA and Parkinson features",
+      "SOURCE": [
+        "bots/theta/quant/research/pit_leakage_harness.py",
+        "bots/theta/quant/features"
+      ],
+      "TEST": [
+        "bots/theta/tests/quant/test_phase4_research_integrity.py",
+        "bots/theta/tests/quant/test_pit_leakage_harness.py"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "40 random series per family",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-018",
+      "CAPABILITY": "Time and clock chaos: minute sweep over five sessions (DST, early close), timezone independence, midnight UTC, local-clock API ban",
+      "SOURCE": [
+        "src/theta/time-aware-state.ts"
+      ],
+      "TEST": [
+        "tests/phase4-time-chaos.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "process.env.TZ matrix",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-019",
+      "CAPABILITY": "Input fuzz at every provider and plan boundary: typed failure or valid parse, never a crash or silent coercion",
+      "SOURCE": [
+        "src/execution/broker.ts",
+        "src/execution/action-plan-integrity.ts",
+        "src/theta/option-contract.ts"
+      ],
+      "TEST": [
+        "tests/phase4-input-fuzz.test.ts",
+        "tests/provider-boundary-fuzz.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "null plan row and 200/null order body fixed",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-020",
+      "CAPABILITY": "Provider data consistency: a contract whose identity disagrees with its OCC symbol is INVALID, never merged",
+      "SOURCE": [
+        "src/theta/option-contract.ts",
+        "src/theta/option-chain-ingestion.ts"
+      ],
+      "TEST": [
+        "tests/phase4-provider-chaos.test.ts",
+        "tests/option-contract.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "commit 415d5eb",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-021",
+      "CAPABILITY": "Performance and memory budgets are evidence-based (baseline x8 time, x2 + 256 MB RSS, retained heap bound), not invented",
+      "SOURCE": [
+        "docs/operations/THETA_PHASE4_PERFORMANCE_BASELINE_20261003.json"
+      ],
+      "TEST": [
+        "tests/phase4-large-chain-stress.test.ts",
+        "tests/phase2-perf-frontier-scaling.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "baseline recorded from a measured run",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-022",
+      "CAPABILITY": "Historical incident regression matrix: 41 incidents, each mapped to a real test that exists",
+      "SOURCE": [
+        "docs/operations/THETA_HISTORICAL_REGRESSION_MATRIX.json"
+      ],
+      "TEST": [
+        "tests/phase4-historical-matrix.test.ts",
+        "tests/phase4-historical-regressions.test.ts",
+        "tests/windows/theta-process-quoting.test.ps1"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "matrix test verifies referenced files and titles exist",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-023",
+      "CAPABILITY": "Public-repository secret scanner: Alpaca key shape, passworded DB URLs, bearer tokens, secret literals, personal email, user-home paths; artifacts scanned in CI",
+      "SOURCE": [
+        "tools/security-scan.mjs",
+        ".github/workflows/ci.yml"
+      ],
+      "TEST": [
+        "tests/phase4-security-scan.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "HIGH",
+      "EVIDENCE": "tracked tree 0 findings; history 0 findings (1,345 commits); docs/operations/THETA_PHASE4_SECURITY_REVIEW_20261003.md",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-024",
+      "CAPABILITY": "Dependency and supply chain: npm audit 0 advisories, install scripts reviewed, Dependabot weekly for npm and Actions (majors deferred deliberately)",
+      "SOURCE": [
+        "package.json",
+        ".github/dependabot.yml"
+      ],
+      "TEST": [
+        "tests/phase4-security-scan.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "BUILT_THIS_PHASE",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "security review; major upgrades are separate focused changes",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-025",
+      "CAPABILITY": "Storage growth projection from real Production table sizes (daily, weekly, monthly; bounded, retained, compacted, archived)",
+      "SOURCE": [
+        "docs/operations/THETA_PHASE4_STORAGE_GROWTH_PROJECTION_20261003.md"
+      ],
+      "TEST": [],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "MEASURED",
+      "RISK": "HIGH",
+      "EVIDENCE": "read-only storage audit 2026-10-03T09:27Z; the projection itself reports the budget as BREACHED (see P4-026)",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-026",
+      "CAPABILITY": "Production database is over its own 4 GiB budget (4.66 GiB) and projected to pass the 8 GiB plan in about 13 sessions without archive-then-purge or a plan change",
+      "SOURCE": [
+        "src/storage/storage-budget.ts",
+        "tools/theta-storage-audit.ts"
+      ],
+      "TEST": [
+        "tests/storage-budget.test.ts",
+        "tests/postgres-storage-audit.test.ts"
+      ],
+      "CURRENT_STATUS": "OWNER_POLICY",
+      "SOLVABILITY": "NEEDS_OWNER_APPROVAL_FOR_IRREVERSIBLE_PRODUCTION_DELETE",
+      "RISK": "HIGH",
+      "EVIDENCE": "docs/operations/THETA_PHASE4_STORAGE_GROWTH_PROJECTION_20261003.md",
+      "NEXT_ACTION": "owner approves archive-then-purge of short-retention and research history (export tooling exists) or raises the plan; carried to Phase 5"
+    },
+    {
+      "ID": "P4-027",
+      "CAPABILITY": "Observability and false-WAIT: AEGIS, capital, quote and sizing NOT_REACHED are never labelled as a veto or capacity zero; unknown required input is never an earned WAIT",
+      "SOURCE": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "TEST": [
+        "tests/frontier-properties.test.ts",
+        "tests/phase2-aegis-capacity-zero.test.ts",
+        "tests/false-inactivity-taxonomy.test.ts",
+        "tests/wait-economic-contract.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "VERIFIED",
+      "RISK": "HIGH",
+      "EVIDENCE": "existing suites re-run in Phase 4",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-028",
+      "CAPABILITY": "Transient-failure recovery: database circuit and probe regression, worker lease loss reported, version-hash mismatch fails typed",
+      "SOURCE": [
+        "src/theta/database-health-circuit.ts",
+        "src/worker/postgres-worker-runtime-store.ts"
+      ],
+      "TEST": [
+        "tests/database-health-circuit.test.ts",
+        "tests/phase4-historical-regressions.test.ts",
+        "tests/database-recovery-gate.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "VERIFIED_AND_EXTENDED",
+      "RISK": "HIGH",
+      "EVIDENCE": "phase4-historical-regressions",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-029",
+      "CAPABILITY": "Unreachable-code pins: capabilities not reachable today carry an explicit registry state instead of a silent default",
+      "SOURCE": [
+        "src/providers/capability-registry.ts"
+      ],
+      "TEST": [
+        "tests/capability-registry.test.ts",
+        "tests/registry-reachability.test.ts",
+        "tests/production-reachability.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "VERIFIED",
+      "RISK": "LOW",
+      "EVIDENCE": "existing reachability suites",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-030",
+      "CAPABILITY": "Board truth is not inflated: 89 rows, 8 runtime-observed, 39 deployed-not-observed, 36 need a position or order, 5 owner-policy",
+      "SOURCE": [
+        "tools/theta-board.mjs"
+      ],
+      "TEST": [
+        "tests/theta-board.test.ts"
+      ],
+      "CURRENT_STATUS": "PASS",
+      "SOLVABILITY": "VERIFIED",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "board test derives counts from rows",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-031",
+      "CAPABILITY": "Paper order exercised under real broker latency, rate limits and partial fills",
+      "SOURCE": [
+        "src/execution/paper-order-coordinator.ts"
+      ],
+      "TEST": [],
+      "CURRENT_STATUS": "FUTURE_PAPER",
+      "SOLVABILITY": "NEEDS_A_REAL_PAPER_ORDER",
+      "RISK": "HIGH",
+      "EVIDENCE": "no Paper order has ever been submitted; Paper gate stays LOCKED in Phase 4",
+      "NEXT_ACTION": "Phase 5 owner-authorized activation in an open market"
+    },
+    {
+      "ID": "P4-032",
+      "CAPABILITY": "Real exchange-latency and live provider outage behaviour under load",
+      "SOURCE": [
+        "src/theta/alpaca-provider.ts"
+      ],
+      "TEST": [],
+      "CURRENT_STATUS": "FUTURE_MARKET",
+      "SOLVABILITY": "NEEDS_OPEN_MARKET",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "chaos suites use deterministic fakes; real outages are only observable live",
+      "NEXT_ACTION": "observe during the first full open-market sessions"
+    },
+    {
+      "ID": "P4-033",
+      "CAPABILITY": "Empirical effective sample size and calibrated model confidence",
+      "SOURCE": [
+        "bots/theta/quant"
+      ],
+      "TEST": [],
+      "CURRENT_STATUS": "EMPIRICAL_ONLY",
+      "SOLVABILITY": "NEEDS_SESSIONS_OF_DATA",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "the proxy is conservative by design; no WR claim is made",
+      "NEXT_ACTION": "accumulate resolved episodes; never tune to reach 70 to 80 percent"
+    },
+    {
+      "ID": "P4-034",
+      "CAPABILITY": "Vendor-side limits (Aiven connection and storage plan, Alpaca quotas) not controllable from code",
+      "SOURCE": [
+        "src/theta/runtime-postgres-client.ts"
+      ],
+      "TEST": [
+        "tests/postgres-pool-acquisition.test.ts"
+      ],
+      "CURRENT_STATUS": "PROVIDER_LIMITED",
+      "SOLVABILITY": "PROVIDER_PLAN_LIMIT",
+      "RISK": "MEDIUM",
+      "EVIDENCE": "max 20 connections reported by the provider; pool, circuit and quota guards already bound usage",
+      "NEXT_ACTION": "none"
+    },
+    {
+      "ID": "P4-035",
+      "CAPABILITY": "Browser-side Windows UI rendering of Phase 4 evidence",
+      "SOURCE": [
+        "public"
+      ],
+      "TEST": [],
+      "CURRENT_STATUS": "NOT_APPLICABLE",
+      "SOLVABILITY": "NO_UI_SURFACE_CHANGED",
+      "RISK": "LOW",
+      "EVIDENCE": "Phase 4 changed no user-visible surface",
+      "NEXT_ACTION": "none"
+    }
+  ]
+}

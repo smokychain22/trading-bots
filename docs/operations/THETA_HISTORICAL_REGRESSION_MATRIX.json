@@ -1,0 +1,733 @@
+{
+  "schema": "theta-historical-regression-matrix-v1",
+  "generatedFor": "Phase 4 2026-10-03",
+  "incidents": [
+    {
+      "INCIDENT_ID": "H-01",
+      "TITLE": "Aiven transfer/storage quota exhaustion",
+      "ORIGINAL_FAILURE": "Optional bulk archive writes kept retrying after the Aiven transfer/storage quota (SQLSTATE 53000) was exhausted, starving required evidence writes.",
+      "ROOT_CAUSE": "Quota exhaustion was not classified distinctly from transient failures, so it was retried instead of cooled down.",
+      "FIX": "src/storage/local-research-archive-health.ts persists a quota cooldown and src/theta/runtime-postgres-client.ts refuses to loop on transfer-quota failures.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/local-research-archive-health.test.ts",
+          "titleFragment": "quota exhaustion persists a cooldown"
+        },
+        {
+          "file": "tests/runtime-postgres-client.test.ts",
+          "titleFragment": "transfer quota and read-only failures do not loop"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-02",
+      "TITLE": "DNS failure to database host",
+      "ORIGINAL_FAILURE": "A transient DNS failure to the database host was treated as strategy evidence or an unclassified error.",
+      "ROOT_CAUSE": "DNS/connection phases were not kept distinct and infrastructure failure leaked into strategy results.",
+      "FIX": "tools/theta-database-recovery-gate.mjs and src/theta/postgres-connection-characterization.ts classify DNS failure as infrastructure only.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/database-recovery-gate.test.ts",
+          "titleFragment": "rejects transient DNS failure"
+        },
+        {
+          "file": "tests/postgres-connection-characterization.test.ts",
+          "titleFragment": "unavailable DNS and TLS boundaries remain null"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-03",
+      "TITLE": "Database connection acquisition timeout / pool exhaustion",
+      "ORIGINAL_FAILURE": "Soak and runtime work queued behind a saturated pool and failed with connection-acquisition timeouts that looked like strategy failures.",
+      "ROOT_CAUSE": "Concurrency exceeded pool capacity (six-on-two pattern) and pool-wait versus physical-connect timeouts were not distinguished.",
+      "FIX": "src/theta/runtime-postgres-client.ts, src/theta/runtime-postgres-pool.ts and src/theta/bounded-concurrency.ts bound concurrency to pool capacity and type acquisition failures.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/postgres-pool-acquisition.test.ts",
+          "titleFragment": "old six-on-two soak pattern deterministically creates its own queue timeout"
+        },
+        {
+          "file": "tests/runtime-postgres-client.test.ts",
+          "titleFragment": "pool queue timeout and new-connection timeout have distinct acquisition paths"
+        }
+      ],
+      "TEST_LEVEL": "integration",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-04",
+      "TITLE": "Schema/runtime build mismatch (RUNTIME_SCHEMA_INCOMPATIBLE)",
+      "ORIGINAL_FAILURE": "A schema-064 worker reached migration-067 persistence SQL and failed with 42703 undefined column.",
+      "ROOT_CAUSE": "The runtime did not verify schema/source/worker identity compatibility before registering, leasing or starting a cycle.",
+      "FIX": "src/theta/runtime-schema-compatibility.ts gates registration, lease and cycle start with a typed fail-closed RUNTIME_SCHEMA_INCOMPATIBLE state.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/runtime-schema-compatibility.test.ts",
+          "titleFragment": "schema 064 is a typed fail-closed state before lease or cycle work"
+        },
+        {
+          "file": "tests/db/schema-064-locked-worker.integration.test.ts",
+          "titleFragment": "locked worker survives a real schema-064 IV persistence failure"
+        }
+      ],
+      "TEST_LEVEL": "integration",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-05",
+      "TITLE": "Duplicate worker / lease overlap",
+      "ORIGINAL_FAILURE": "Two workers or overlapping invocations could run primary work concurrently.",
+      "ROOT_CAUSE": "Worker lease ownership and request windows were not enforced at startup and at the point of mutation.",
+      "FIX": "src/worker/resident-worker.ts, src/theta/runtime-request-lease.ts and src/execution/mutation-fence.ts enforce a single primary lease and fence stale invocations.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/resident-worker.test.ts",
+          "titleFragment": "worker refuses startup when another primary master Paper lease is active"
+        },
+        {
+          "file": "tests/phase4-concurrency-chaos.test.ts",
+          "titleFragment": "OVERLAP: 400 seeded interleavings never create a duplicate economic order"
+        }
+      ],
+      "TEST_LEVEL": "chaos",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-06",
+      "TITLE": "Worker heartbeat failure",
+      "ORIGINAL_FAILURE": "A worker that lost its lease kept running as if it still held it.",
+      "ROOT_CAUSE": "Lease renewal did not report loss to the holder.",
+      "FIX": "src/worker/postgres-worker-runtime-store.ts reports false on renewal when the lease is not held and refuses takeover of an unexpired foreign lease.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase4-historical-regressions.test.ts",
+          "titleFragment": "HEARTBEAT: a worker that no longer holds an unexpired lease is told so"
+        },
+        {
+          "file": "tests/phase4-historical-regressions.test.ts",
+          "titleFragment": "HEARTBEAT: acquiring a lease held by another unexpired owner is HELD_BY_OTHER"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-07",
+      "TITLE": "Environment mismatch (environment variables)",
+      "ORIGINAL_FAILURE": "The worker could silently inherit legacy or generic database authority or accept malformed environment values.",
+      "ROOT_CAUSE": "Database/provider authority was not derived from explicit named environment configuration.",
+      "FIX": "src/config/environment.ts selects the Aiven runtime authority explicitly and fails closed with typed configuration errors.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/environment.test.ts",
+          "titleFragment": "Production worker cannot silently inherit legacy or generic database authority"
+        },
+        {
+          "file": "tests/phase4-input-fuzz.test.ts",
+          "titleFragment": "FUZZ environment"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-08",
+      "TITLE": "HTTP 503 from the evidence server",
+      "ORIGINAL_FAILURE": "Evidence cycles returned HTTP 503 and the Windows worker mishandled non-HTTP failures.",
+      "ROOT_CAUSE": "Server errors and non-HTTP errors were dereferenced as if every failure carried an HTTP response.",
+      "FIX": "tools/windows/theta-local-worker.ps1 and src/worker/resident-worker.ts retain only safe HTTP metadata and classify non-HTTP errors.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/windows-worker-safe-http-failure.test.ts",
+          "titleFragment": "worker error handling never dereferences an assumed HTTP response"
+        },
+        {
+          "file": "tests/phase3-frontier-projection-bound.test.ts",
+          "titleFragment": "the Postgres frontier projection stays bounded"
+        }
+      ],
+      "TEST_LEVEL": "integration",
+      "CURRENT_STATUS": "PARTIAL (the 503 mechanism (payload bound) and safe HTTP-error handling are each tested; no end-to-end test drives a real 503 through the Windows worker)"
+    },
+    {
+      "INCIDENT_ID": "H-09",
+      "TITLE": "PowerShell quoting and path defects",
+      "ORIGINAL_FAILURE": "Arguments containing spaces, quotes, dollar signs, backticks and paths with spaces were mangled when a command line was built as one string.",
+      "ROOT_CAUSE": "Child processes were launched with a composed command string rather than discrete arguments.",
+      "FIX": "tools/windows/ThetaProcess.Common.ps1 (Invoke-ThetaBoundedProcess) passes each argument as a discrete value.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/windows/theta-process-quoting.test.ps1",
+          "titleFragment": "THETA_PROCESS_QUOTING_TEST=PASS"
+        }
+      ],
+      "TEST_LEVEL": "windows",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-10",
+      "TITLE": "Pagination defects",
+      "ORIGINAL_FAILURE": "Option contract, snapshot and order enumeration returned incomplete or duplicated sets when results spanned multiple pages.",
+      "ROOT_CAUSE": "Single-page assumptions, repeated tokens and missing page caps made incomplete sets look complete.",
+      "FIX": "src/theta/alpaca-provider.ts follows page tokens to completion, deduplicates, marks incompleteness and fails closed on repeated tokens.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/alpaca-provider.test.ts",
+          "titleFragment": "fetchOptionContracts follows next_page_token to completion"
+        },
+        {
+          "file": "tests/alpaca-provider.test.ts",
+          "titleFragment": "repeated or empty page tokens fail closed"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-11",
+      "TITLE": "False contract UNKNOWN",
+      "ORIGINAL_FAILURE": "Complete contract snapshots were labelled UNKNOWN and non-executable.",
+      "ROOT_CAUSE": "Merge logic lost snapshot data for contracts that did in fact have complete quotes.",
+      "FIX": "src/theta/option-chain-ingestion.ts and src/theta/canonical-strategy-frontier.ts merge snapshots so complete contracts are known and a missing snapshot alone is UNKNOWN.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase4-historical-regressions.test.ts",
+          "titleFragment": "FALSE UNKNOWN: 200 contracts with complete snapshots"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-12",
+      "TITLE": "Strategy version hash mismatch",
+      "ORIGINAL_FAILURE": "A strategy version row whose persisted config hash differed from the source payload could be used silently.",
+      "ROOT_CAUSE": "Version upsert did not verify the persisted hash against the source payload.",
+      "FIX": "src/research/master-shadow-context.ts throws SHADOW_CONTEXT_VERSION_HASH_MISMATCH or UNRESOLVED instead of returning a mismatching id.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase4-historical-regressions.test.ts",
+          "titleFragment": "STRATEGY VERSION: a persisted config hash"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-13",
+      "TITLE": "Archive overflow",
+      "ORIGINAL_FAILURE": "Complete cycle archives larger than the optional spool cap were lost or silently truncated.",
+      "ROOT_CAUSE": "The 4 MiB optional local spool cap was applied to evidence that must remain complete.",
+      "FIX": "src/theta/cycle-archive-replay.ts and src/storage/local-research-history-spool.ts keep compressed complete archives replayable and reject silent truncation.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/cycle-archive-replay.test.ts",
+          "titleFragment": "a compressed cycle archive replays a T0 larger than the optional 4 MiB spool cap"
+        },
+        {
+          "file": "tests/local-research-history-spool.test.ts",
+          "titleFragment": "cycle reads scope subjects before the bound and reject silent truncation"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-14",
+      "TITLE": "Frontier memory blowup",
+      "ORIGINAL_FAILURE": "Large option chains made frontier construction and retained payloads grow without bound in memory.",
+      "ROOT_CAUSE": "Per-candidate detail was retained and dominance computation was not bounded for large chains.",
+      "FIX": "src/theta/canonical-strategy-frontier.ts bounds candidates, dominance witnesses and the queryable projection independent of chain size.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase4-large-chain-stress.test.ts",
+          "titleFragment": "memory: serialized sizes are linear"
+        },
+        {
+          "file": "tests/phase2-perf-frontier-scaling.test.ts",
+          "titleFragment": "frontier is correct and bounded at 500 / 2000 / 5000 contracts"
+        }
+      ],
+      "TEST_LEVEL": "integration",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-15",
+      "TITLE": "Optionomics duplication",
+      "ORIGINAL_FAILURE": "Derived Optionomics context was duplicated per candidate and duplicate contracts amplified context.",
+      "ROOT_CAUSE": "Shared context was embedded in every candidate and duplicate provider rows were not collapsed.",
+      "FIX": "src/theta/canonical-strategy-frontier.ts carries shared context once per frontier and src/theta/optionomics-provider.ts deduplicates contracts without choosing conflicting revisions.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase2-perf-frontier-scaling.test.ts",
+          "titleFragment": "the shared optionomics context and routing payload are carried once per frontier"
+        },
+        {
+          "file": "tests/optionomics-provider.test.ts",
+          "titleFragment": "duplicate Optionomics contracts cannot amplify context"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-16",
+      "TITLE": "False runtime-observed labels",
+      "ORIGINAL_FAILURE": "Shadow or never-selected evidence could be labelled as observed/runtime-observed.",
+      "ROOT_CAUSE": "Observation-kind labels were not validated against the evidence actually available.",
+      "FIX": "src/research/empirical-identifiability-taxonomy.ts and src/research/universe-opportunity-regret.ts reject observed labels without real observation.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/empirical-identifiability-taxonomy.test.ts",
+          "titleFragment": "a shadow-only prediction can never be labeled OBSERVED_PARALLEL"
+        },
+        {
+          "file": "tests/universe-opportunity-regret.test.ts",
+          "titleFragment": "a never-traded candidate is REJECTED if labeled OBSERVED_REAL_CHAIN"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "PARTIAL (taxonomy and regret labels are validated; a whole-board label audit is covered by the board test only)"
+    },
+    {
+      "INCIDENT_ID": "H-17",
+      "TITLE": "A/C false credit",
+      "ORIGINAL_FAILURE": "Held-stock covered-call/sell-stock candidates (A/C) could be credited as new-risk winners or with fabricated credit.",
+      "ROOT_CAUSE": "A/C candidates were not routed to management authority and unknown credit was coerced to zero.",
+      "FIX": "src/theta/canonical-strategy-frontier.ts routes A/C to management authority and src/theta/assignment-utility.ts keeps unknown opening credit UNKNOWN.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase2-hdac-mechanics.test.ts",
+          "titleFragment": "A/C applicable stock routes new-risk selection to management authority"
+        },
+        {
+          "file": "tests/phase2-mgmt-authority-guards.test.ts",
+          "titleFragment": "AUTHORITY: A and C candidates"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-18",
+      "TITLE": "Q misattribution",
+      "ORIGINAL_FAILURE": "Q candidate economics could be attributed to the wrong contract or quote.",
+      "ROOT_CAUSE": "Economics did not carry the exact contract, bid, ask and quote timestamp.",
+      "FIX": "src/theta/canonical-strategy-frontier.ts records exact contract, bid, ask, spread and quote timestamp on every Q candidate.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase2-q-economics-source.test.ts",
+          "titleFragment": "every Q candidate economics record carries the exact contract"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "PARTIAL (exact-contract carriage is pinned; no randomized cross-candidate attribution sweep exists)"
+    },
+    {
+      "INCIDENT_ID": "H-19",
+      "TITLE": "AEGIS cross-candidate contamination",
+      "ORIGINAL_FAILURE": "A hard veto on one candidate altered state or quantity of other candidates.",
+      "ROOT_CAUSE": "Risk state was shared across candidates and order-dependent.",
+      "FIX": "src/theta/canonical-strategy-frontier.ts evaluates AEGIS per candidate in isolation.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase4-historical-regressions.test.ts",
+          "titleFragment": "AEGIS ISOLATION: a HARD_VETO on one candidate"
+        }
+      ],
+      "TEST_LEVEL": "property",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-20",
+      "TITLE": "Command-5A lineage loss",
+      "ORIGINAL_FAILURE": "Command-5A jobs lost the first-episode source and worker identity across release cutovers.",
+      "ROOT_CAUSE": "Later decisions overwrote the first episode lineage on scheduled jobs.",
+      "FIX": "src/research/command5a-local-scheduling.ts preserves first-episode sourceSha and workerSha on every job.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/command5a-local-scheduling.test.ts",
+          "titleFragment": "repeated decisions in one governed bucket retain the first immutable T0 subject"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-21",
+      "TITLE": "V8 heap limit exceeded",
+      "ORIGINAL_FAILURE": "The worker approached the V8 heap limit during large-chain or long-running work.",
+      "ROOT_CAUSE": "Unbounded retained evidence and per-cycle accumulation.",
+      "FIX": "src/theta/canonical-strategy-frontier.ts bounded projections reduce retained size; no explicit heap-limit configuration exists in the repository.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase4-long-soak.test.ts",
+          "titleFragment": "no heap trend"
+        },
+        {
+          "file": "tests/phase4-large-chain-stress.test.ts",
+          "titleFragment": "peak RSS stays inside budget"
+        }
+      ],
+      "TEST_LEVEL": "integration",
+      "CURRENT_STATUS": "PARTIAL (bounded memory is proven by soak and stress budgets; the V8 heap flag itself is not configured or tested)"
+    },
+    {
+      "INCIDENT_ID": "H-22",
+      "TITLE": "Parquet verification cache",
+      "ORIGINAL_FAILURE": "Parquet archive verification trusted a cache or manifest shortcut and could miss tampering.",
+      "ROOT_CAUSE": "The cache short-circuited content verification of legacy archives.",
+      "FIX": "tools/verify-local-research-parquet.py always re-verifies legacy archive content despite a cache file.",
+      "REGRESSION_TEST": [
+        {
+          "file": "bots/theta/tests/quant/test_local_research_parquet_verifier.py",
+          "titleFragment": "test_verifies_legacy_archive_without_a_manifest_only_cache_shortcut"
+        }
+      ],
+      "TEST_LEVEL": "python",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-23",
+      "TITLE": "Generic WAIT without a specific reason",
+      "ORIGINAL_FAILURE": "WAIT decisions were recorded without a specific reason, hiding why no trade was taken.",
+      "ROOT_CAUSE": "WAIT reasons were optional free text.",
+      "FIX": "src/theta/opportunity-frontier-contract.ts and src/theta/shadow-opportunity-book.ts require a specific waitReason.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/opportunity-frontier-contract.test.ts",
+          "titleFragment": "WAIT must carry a specific waitReason"
+        },
+        {
+          "file": "tests/shadow-opportunity-book.test.ts",
+          "titleFragment": "a WAIT outcome must carry a specific waitReason, never a generic WAIT"
+        }
+      ],
+      "TEST_LEVEL": "contract",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-24",
+      "TITLE": "Duplicate candidate inflation",
+      "ORIGINAL_FAILURE": "Duplicate copies of one contract or candidate id manufactured extra alternatives or double counts.",
+      "ROOT_CAUSE": "Candidates were not deduplicated by exact contract identity.",
+      "FIX": "src/theta/canonical-strategy-frontier.ts deduplicates exact broker contracts before enumeration.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/canonical-strategy-frontier.test.ts",
+          "titleFragment": "duplicate copies of one exact broker contract cannot manufacture a second Q alternative"
+        },
+        {
+          "file": "tests/canonical-strategy-frontier.test.ts",
+          "titleFragment": "duplicate D contracts cannot inflate bounded spread pair enumeration"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-25",
+      "TITLE": "Raw replay loss",
+      "ORIGINAL_FAILURE": "Persisted cycle evidence could not be replayed faithfully from raw inputs.",
+      "ROOT_CAUSE": "Replay bundles lacked a whole-bundle integrity hash and complete archives.",
+      "FIX": "src/theta/cycle-archive-replay.ts verifies archive hashes and the T0 bundle carries a whole-bundle integrity hash.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/cycle-archive-replay.test.ts",
+          "titleFragment": "persisted complete cycle archive replays through canonical frontier without a provider call"
+        },
+        {
+          "file": "tests/phase4-replay-tamper.test.ts",
+          "titleFragment": "TAMPER: every single persisted leaf"
+        }
+      ],
+      "TEST_LEVEL": "integration",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-26",
+      "TITLE": "Universe/management UNKNOWN coerced to zero",
+      "ORIGINAL_FAILURE": "Missing account, exposure or EV evidence was coerced to numeric zero.",
+      "ROOT_CAUSE": "Absent values were defaulted instead of kept UNKNOWN.",
+      "FIX": "src/theta/account-exposure.ts and src/theta/canonical-strategy-frontier.ts keep unknown values as null.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/account-exposure.test.ts",
+          "titleFragment": "null equity makes every derived ratio UNKNOWN"
+        },
+        {
+          "file": "tests/unknown-ev-never-zero.test.ts",
+          "titleFragment": "JSON round-trip preserves null EV exactly"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-27",
+      "TITLE": "Pareto memory growth",
+      "ORIGINAL_FAILURE": "Exact Pareto dominance over large frontiers grew memory and time quadratically.",
+      "ROOT_CAUSE": "Full pairwise dominance sets were retained.",
+      "FIX": "src/theta/canonical-strategy-frontier.ts keeps exact rank with bounded deterministic dominance witnesses.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/canonical-strategy-frontier.test.ts",
+          "titleFragment": "large frontiers retain exact Pareto rank with bounded, deterministic dominance witnesses"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-28",
+      "TITLE": "Python omission",
+      "ORIGINAL_FAILURE": "Python authority or research layers could be silently omitted or unavailable without a typed failure.",
+      "ROOT_CAUSE": "Bridge and research boundaries did not always fail closed or run.",
+      "FIX": "src/theta/python-bridge.ts fails closed with typed errors; phase 5 and 6 tests execute the Python authority boundaries.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase5-python-boundaries.test.ts",
+          "titleFragment": "Phase-5 executed Python authority rejects malformed inputs"
+        },
+        {
+          "file": "tests/python-bridge.test.ts",
+          "titleFragment": "process unavailable (bad executable path) fails closed as PROCESS_ERROR"
+        }
+      ],
+      "TEST_LEVEL": "python",
+      "CURRENT_STATUS": "PARTIAL (Python boundaries fail closed and execute in phase 5/6 tests; no test deletes the interpreter inside the full cycle)"
+    },
+    {
+      "INCIDENT_ID": "H-29",
+      "TITLE": "Fake idle/NORMAL status",
+      "ORIGINAL_FAILURE": "Unknown or invalid state was reported as idle, NORMAL or a single combined inactivity number.",
+      "ROOT_CAUSE": "Defaults to NORMAL hid unknown drawdown and conflated inactivity classes.",
+      "FIX": "src/research/account-drawdown-regime-research.ts never defaults unknown to NORMAL.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/account-drawdown-regime-research.test.ts",
+          "titleFragment": "CORE CLAIM: unknown drawdown is never defaulted to NORMAL"
+        },
+        {
+          "file": "tests/false-inactivity-taxonomy.test.ts",
+          "titleFragment": "CORE CLAIM: rates are reported separately, never combined into one inactivity number"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "PARTIAL (unknown-never-NORMAL and separate inactivity classes are tested; the status endpoint idle label has no dedicated test)"
+    },
+    {
+      "INCIDENT_ID": "H-30",
+      "TITLE": "Subject limit",
+      "ORIGINAL_FAILURE": "Long-lived research subjects grew without a bound or collided across underlyings.",
+      "ROOT_CAUSE": "Subject identity was not bounded by decision cadence or namespaced by underlying.",
+      "FIX": "src/research/serious-subject-policy.ts bounds subjects by cadence and namespaces them by underlying.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/serious-subject-policy.test.ts",
+          "titleFragment": "long-lived identities are cadence-bounded"
+        },
+        {
+          "file": "tests/serious-subject-policy.test.ts",
+          "titleFragment": "subject identities are isolated by underlying namespace"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-31",
+      "TITLE": "Provenance and timestamp defects",
+      "ORIGINAL_FAILURE": "Raw evidence timestamps were backdated or rewritten to decision time.",
+      "ROOT_CAUSE": "As-of time was taken from request start or decision time rather than actual retrieval time.",
+      "FIX": "src/theta/alpaca-corporate-action-evidence.ts and src/theta/optionomics-provider.ts record true retrieval time and quarantine future or malformed times.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/alpaca-corporate-action-evidence.test.ts",
+          "titleFragment": "event receipt time is after response acquisition"
+        },
+        {
+          "file": "tests/optionomics-raw-observation-time.test.ts",
+          "titleFragment": "raw Optionomics as-of is retrieval time"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-32",
+      "TITLE": "Fresh-checkpoint starvation",
+      "ORIGINAL_FAILURE": "Fresh exact checkpoints were starved behind an irrecoverable historical backlog.",
+      "ROOT_CAUSE": "The scheduler drained oldest work first without priority for fresh checkpoints.",
+      "FIX": "src/storage/local-observation-job-scheduler.ts prioritises fresh exact checkpoints over an irrecoverable backlog.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/local-observation-job-scheduler.test.ts",
+          "titleFragment": "fresh exact checkpoints are not starved"
+        },
+        {
+          "file": "tests/execution-quote-authority-store.test.ts",
+          "titleFragment": "an exhausted read-only checkpoint cannot permanently suppress fresh evidence"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-33",
+      "TITLE": "First-order canary lock",
+      "ORIGINAL_FAILURE": "A prior broker order did not keep the single-canary lane locked until acceptance, or never released it afterwards.",
+      "ROOT_CAUSE": "The lane lock was not derived from durable order and acceptance evidence.",
+      "FIX": "src/theta/autonomous-runtime.ts and src/execution/postgres-first-canary-acceptance.ts derive the lane lock from the audit record.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/autonomous-paper-transition.test.ts",
+          "titleFragment": "a prior broker order keeps the single-canary lane locked until acceptance"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-34",
+      "TITLE": "Post-canary relock",
+      "ORIGINAL_FAILURE": "The first-canary relock could re-pause new risk after autonomy had been accepted.",
+      "ROOT_CAUSE": "The relock call site did not distinguish an already-accepted canary.",
+      "FIX": "src/theta/autonomous-runtime.ts skips relock for a completed canary; src/execution/postgres-first-canary-acceptance.ts records acceptance.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/autonomous-paper-transition.test.ts",
+          "titleFragment": "the first-canary relock can never re-pause new risk after autonomy was accepted"
+        },
+        {
+          "file": "tests/db/autonomous-paper-transition.test.ts",
+          "titleFragment": "real disposable PostgreSQL: accepted first canary promotes to autonomous Master Paper"
+        }
+      ],
+      "TEST_LEVEL": "integration",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-35",
+      "TITLE": "Mutable changed_by audit marker",
+      "ORIGINAL_FAILURE": "The accepted-canary marker was read from a mutable changed_by column that could be rewritten.",
+      "ROOT_CAUSE": "Acceptance state was derived from a mutable control row instead of the immutable audit record.",
+      "FIX": "src/theta/autonomous-runtime.ts reads the accepted-canary marker from the immutable audit record only.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/autonomous-paper-transition.test.ts",
+          "titleFragment": "the durable accepted-canary marker is read from the immutable audit record only"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-36",
+      "TITLE": "Multi-order deadlock / chain starvation",
+      "ORIGINAL_FAILURE": "Fill-lifecycle application for several chains could stall on one failing chain.",
+      "ROOT_CAUSE": "Chains were applied serially and a coded rejection on one aborted the rest.",
+      "FIX": "src/execution/postgres-broker-fill-lifecycle-orchestrator.ts reports a coded rejection as unresolved and continues with other chains.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase2-chain-stock-disposal.test.ts",
+          "titleFragment": "a coded domain rejection for one chain is reported as unresolved and does not stop the other chains"
+        }
+      ],
+      "TEST_LEVEL": "integration",
+      "CURRENT_STATUS": "PARTIAL (a coded rejection no longer stops other chains; a many-chain concurrent lifecycle stress is not built)"
+    },
+    {
+      "INCIDENT_ID": "H-37",
+      "TITLE": "Frontier payload HTTP 503",
+      "ORIGINAL_FAILURE": "The queryable frontier projection exceeded the 768 KiB inline policy on full SPY chains, returning HTTP 503 and dropping evidence cycles.",
+      "ROOT_CAUSE": "Per-candidate exclusion and eligibility lists were embedded in the projection (about 300 bytes per contract).",
+      "FIX": "src/theta/canonical-strategy-frontier.ts and src/theta/postgres-cycle-evidence-storage.ts bound the projection to a constant size with full detail in the compressed cycle archive.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase3-frontier-projection-bound.test.ts",
+          "titleFragment": "the Postgres frontier projection stays bounded at 300 / 2619 / 5000 contracts"
+        }
+      ],
+      "TEST_LEVEL": "integration",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-38",
+      "TITLE": "Snapshot keeper loss during DR dump",
+      "ORIGINAL_FAILURE": "The exported-snapshot keeper session disappeared during a multi-hour dump and the backup failed with snapshot does not exist.",
+      "ROOT_CAUSE": "The idle keeper connection was reaped or lost and its death was not detected.",
+      "FIX": "tools/windows/dr/ThetaBackup.Common.ps1 keeps the keeper active with a heartbeat, records its death and asserts it alive after the dump.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/windows/theta-snapshot-heartbeat.test.ps1",
+          "titleFragment": "THETA_SNAPSHOT_HEARTBEAT_TEST=PASS"
+        },
+        {
+          "file": "tests/windows/theta-snapshot-heartbeat.test.ps1",
+          "titleFragment": "THETA_SNAPSHOT_KEEPER_ASSERT_TEST=PASS"
+        }
+      ],
+      "TEST_LEVEL": "windows",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-39",
+      "TITLE": "Backup sequence parity",
+      "ORIGINAL_FAILURE": "Restore verification failed on exact sequence equality after a live dump advanced sequences.",
+      "ROOT_CAUSE": "Sequences are non-transactional and advance while the dump runs.",
+      "FIX": "tools/windows/dr/Restore-Theta.ps1 and tools/windows/dr/ThetaBackup.Common.ps1 accept restored sequences that lag but never lead the source.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/windows/theta-sequence-parity.test.ps1",
+          "titleFragment": "restored AHEAD of source"
+        }
+      ],
+      "TEST_LEVEL": "windows",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-40",
+      "TITLE": "Database recovery wedge",
+      "ORIGINAL_FAILURE": "After one transient 57P03 the worker never left recovery mode because discard() after a successful probe raised a lost-client error.",
+      "ROOT_CAUSE": "discard() reused the flag that detects a lost connection.",
+      "FIX": "src/theta/runtime-postgres-client.ts treats discard() after a successful operation as destroy-on-release, not a lost client; the recovery gate remains in tools/theta-database-recovery-gate.mjs.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/runtime-postgres-client.test.ts",
+          "titleFragment": "discard() after a SUCCESSFUL operation returns the result"
+        },
+        {
+          "file": "tests/database-recovery-gate.test.ts",
+          "titleFragment": "database recovery gate requires four healthy fresh probes"
+        }
+      ],
+      "TEST_LEVEL": "unit",
+      "CURRENT_STATUS": "COVERED"
+    },
+    {
+      "INCIDENT_ID": "H-41",
+      "TITLE": "Identity and replay integrity",
+      "ORIGINAL_FAILURE": "Replay bundles or action plans could be altered without detection, and identity fields could be corrupted.",
+      "ROOT_CAUSE": "Integrity hashes did not cover the whole bundle or every plan row.",
+      "FIX": "src/theta/cycle-archive-replay.ts and src/execution/action-plan-integrity.ts verify whole-bundle and plan-row integrity and fail closed.",
+      "REGRESSION_TEST": [
+        {
+          "file": "tests/phase4-replay-tamper.test.ts",
+          "titleFragment": "TAMPER: every single persisted leaf"
+        },
+        {
+          "file": "tests/phase4-input-fuzz.test.ts",
+          "titleFragment": "FUZZ plan rows"
+        }
+      ],
+      "TEST_LEVEL": "property",
+      "CURRENT_STATUS": "COVERED"
+    }
+  ]
+}
