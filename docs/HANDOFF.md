@@ -799,7 +799,7 @@ active encrypted credential, and zero broker orders.
 
 KNOWN LIMITATIONS: The Vercel cron and worker environment cannot be enabled or observed
 from the current browser session because Chrome is still signed in as
-`puppyhugs.help@gmail.com`, which receives 404 for `skillswap7/trading-bots`. The local
+`<maintainer-email>`, which receives 404 for `skillswap7/trading-bots`. The local
 Vercel token is invalid and the local encryption values are intentionally redacted.
 Production quant opportunity input assembly is also unavailable inside the current
 Node serverless worker, so new-risk scanning reports DEGRADED and cannot create an

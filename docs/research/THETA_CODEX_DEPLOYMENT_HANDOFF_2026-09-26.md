@@ -19,7 +19,7 @@ owner) can execute the cutover with zero new instrumentation required.
 - **CURRENT_CHECKOUT_HEAD_SHA** (worker's raw git checkout, separate from
   what it executes): `47bbf9905a27a7231a5f47cab7c777c48d29b632`, branch
   `main`, clean tree, at
-  `C:\Users\hp\Documents\Codex\2026-09-09\read-all-my-files-in-depth\work\trading-bots`.
+  `C:\Users\<user>\Documents\Codex\2026-09-09\read-all-my-files-in-depth\work\trading-bots`.
 - **CURRENT_RUNNING_BUILD_SHA** (what the worker actually executes from,
   per its own `runtime.json`/`status.json`): `af3d43d14d703c47ff52e833588130af60d61e48`.
 - **WHY THEY DIFFER**: intentional release-pinning. See

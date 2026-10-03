@@ -154,7 +154,7 @@ reported to any future copy-following user.
 
 ### 3.4 Security finding: exposed-looking credentials file
 
-`C:\Users\hp\Downloads\env` exists (confirmed by file listing only — **not read**,
+`C:\Users\<user>\Downloads\env` exists (confirmed by file listing only — **not read**,
 per this repo's non-negotiable rule against exposing credentials). A prior audit
 session (Codex, before this repo existed) already flagged a similarly-named env file
 in the user's Downloads as containing "active-looking provider and webhook

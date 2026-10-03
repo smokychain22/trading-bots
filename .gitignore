@@ -105,3 +105,14 @@ paper_preflight/
 
 .vercel
 .env*
+
+# Phase 4 hygiene: worker/API tokens, backup artifacts, generated CI evidence and more model-weight formats
+*.token
+worker.token
+*.bak
+*.bacpac
+backups/
+.ci-test-evidence/
+*.safetensors
+*.ckpt
+*.gguf

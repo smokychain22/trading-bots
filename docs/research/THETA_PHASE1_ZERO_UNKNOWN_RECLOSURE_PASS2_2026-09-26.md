@@ -12,8 +12,8 @@ read-only, on-machine evidence — not inference.
 Read-only Windows inspection (`Get-ScheduledTask`), no mutation:
 
 - `SCHEDULED_TASK_NAME = "THETA Master Paper Worker"`, `STATE = Running`.
-- `WORKER_SCRIPT_PATH = C:\Users\hp\Documents\Codex\2026-09-09\read-all-my-files-in-depth\work\trading-bots\tools\windows\theta-local-worker.ps1`
-- `WORKER_CHECKOUT_PATH = C:\Users\hp\Documents\Codex\2026-09-09\read-all-my-files-in-depth\work\trading-bots`
+- `WORKER_SCRIPT_PATH = C:\Users\<user>\Documents\Codex\2026-09-09\read-all-my-files-in-depth\work\trading-bots\tools\windows\theta-local-worker.ps1`
+- `WORKER_CHECKOUT_PATH = C:\Users\<user>\Documents\Codex\2026-09-09\read-all-my-files-in-depth\work\trading-bots`
 
 Read-only `git` inspection of that exact checkout:
 

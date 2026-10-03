@@ -155,14 +155,14 @@ test('rejects an invalid Optionomics email only when checking Optionomics', () =
 
 test('parses dotenv quotes and lets the explicit file override stale process values', () => {
   const filePath = 'tests/.environment-precedence.env';
-  writeFileSync(filePath, 'ALPACA_BASE_URL="https://paper-api.alpaca.markets"\nOPTIONOMICS_EMAIL="info@techisthenewblack.com"\n');
+  writeFileSync(filePath, 'ALPACA_BASE_URL="https://paper-api.alpaca.markets"\nOPTIONOMICS_EMAIL="info@example.com"\n');
   try {
     const environment = loadEnvironmentFile(filePath, {
       ALPACA_BASE_URL: 'stale-placeholder',
       OPTIONOMICS_EMAIL: 'stale-placeholder'
     });
     assert.equal(environment.ALPACA_BASE_URL, 'https://paper-api.alpaca.markets');
-    assert.equal(environment.OPTIONOMICS_EMAIL, 'info@techisthenewblack.com');
+    assert.equal(environment.OPTIONOMICS_EMAIL, 'info@example.com');
   } finally {
     unlinkSync(filePath);
   }
@@ -170,10 +170,10 @@ test('parses dotenv quotes and lets the explicit file override stale process val
 
 test('normalizes only accidental boundary whitespace on documented single-line Optionomics headers', () => {
   const environment = loadEnvironment({
-    OPTIONOMICS_EMAIL: '  info@techisthenewblack.com  ',
+    OPTIONOMICS_EMAIL: '  info@example.com  ',
     OPTIONOMICS_API_KEY: '\tprovider-token\n',
   });
-  assert.equal(environment.OPTIONOMICS_EMAIL, 'info@techisthenewblack.com');
+  assert.equal(environment.OPTIONOMICS_EMAIL, 'info@example.com');
   assert.equal(environment.OPTIONOMICS_API_KEY, 'provider-token');
 });
 
