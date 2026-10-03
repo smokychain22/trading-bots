@@ -95,12 +95,19 @@ export function applyOrderIntentTransition(
  * never reached the broker) rather than this function silently allowing
  * unlimited identical retries.
  */
+/** The ONE derivation of the economic-intent seed (canonical JSON tuple). Every site that mints or re-verifies a client order id uses it. */
+export function economicIdentitySeed(parts: { readonly candidateId: string; readonly strategyVersion: string; readonly action: string; readonly chainId: string }): string {
+  return JSON.stringify([parts.candidateId, parts.strategyVersion, parts.action, parts.chainId]);
+}
+
 export function generateClientOrderId(decisionId: string, candidateId: string, attempt: number): string {
   if (attempt < 1 || !Number.isInteger(attempt)) {
     throw new Error('attempt must be a positive integer');
   }
+  // The identity is a canonical JSON tuple, never a colon-joined string: candidate ids already contain ':' (for example
+  // THETA_CONVENTIONAL:SPY261016P00680000), so ('a:b','c') and ('a','b:c') must not be able to alias one broker identity.
   const hash = createHash('sha256')
-    .update(`${decisionId}:${candidateId}:${attempt}`, 'utf8')
+    .update(JSON.stringify(['theta-client-order-id-v2', decisionId, candidateId, attempt]), 'utf8')
     .digest('hex')
     .slice(0, 32);
   return `theta-${hash}`;

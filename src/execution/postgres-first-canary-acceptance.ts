@@ -3,7 +3,7 @@ import type { PaperBrokerAdapter,BrokerOrderSnapshot } from './broker.js';
 import { buildFirstCanaryAcceptanceReceipt,type CanaryBrokerState,
   type FirstCanaryAcceptanceReceipt } from './first-canary-acceptance.js';
 import { isAutonomousMasterPaperAccepted,PostgresPaperExecutionAuthorizationStore,type PersistedPaperExecutionControl } from './paper-execution-authorization.js';
-import { generateClientOrderId } from '../theta/order-intent-state.js';
+import { economicIdentitySeed, generateClientOrderId } from '../theta/order-intent-state.js';
 import type { Evidence } from '../theta/first-paper-order-readiness.js';
 import { masterPaperActionPlanSchema,type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
 
@@ -86,7 +86,7 @@ export async function reconcileFirstCanaryAcceptance(input:{readonly pool:Pool;r
   const duplicates=allOrders.filter((order)=>sameEconomicExposure(order,brokerOrder)
     &&!['rejected','canceled','expired'].includes(order.status.toLowerCase())).length;
   const state=classifyAlpacaCanaryOrderState(brokerOrder.status);
-  const identitySeed=`${plan.candidateId}:${plan.strategyVersion}:${plan.action}:${plan.chainId}`;
+  const identitySeed=economicIdentitySeed({candidateId:plan.candidateId,strategyVersion:plan.strategyVersion,action:plan.action,chainId:plan.chainId});
   const deterministic=generateClientOrderId(plan.decisionId,identitySeed,plan.pricingAttempt+1)===row.client_order_id;
   const source=(name:string)=>`${name}:${row.order_intent_id}`;
   const receipt=buildFirstCanaryAcceptanceReceipt({asOf:input.asOf,expected:{

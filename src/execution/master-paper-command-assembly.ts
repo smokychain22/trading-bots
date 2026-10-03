@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { generateClientOrderId } from '../theta/order-intent-state.js';
+import { economicIdentitySeed, generateClientOrderId } from '../theta/order-intent-state.js';
 import type { MasterPaperExecutionCommand } from './master-paper-execution-orchestrator.js';
 import { executionAuthorizationTiers, type ExecutionAuthorizationTier } from './execution-authorization-tier.js';
 import { buildAlpacaLimitOrder, thetaActionOpensNewRisk, type ThetaOrderAction } from './order-construction.js';
@@ -117,9 +117,10 @@ export function assembleMasterPaperExecutionCommand(raw: MasterPaperCommandAssem
   }
   if (Date.parse(input.decisionExpiresAt) <= Date.parse(input.now)) throw new Error('EXECUTION_DECISION_EXPIRED');
 
-  const identitySeed = `${input.candidateId}:${input.strategyVersion}:${input.action}:${input.chainId}`;
+  // Unambiguous (canonical JSON) identity: no field boundary can be shifted to make two different economic intents share an id.
+  const identitySeed = economicIdentitySeed({ candidateId: input.candidateId, strategyVersion: input.strategyVersion, action: input.action, chainId: input.chainId });
   const clientOrderId = generateClientOrderId(input.decisionId, identitySeed, input.attempt);
-  const orderIntentId = deterministicUuid(`${input.executionAccountId}:${input.decisionId}:${identitySeed}:${input.attempt}`);
+  const orderIntentId = deterministicUuid(JSON.stringify(['theta-order-intent-id-v2', input.executionAccountId, input.decisionId, identitySeed, input.attempt]));
   const request = buildAlpacaLimitOrder({ action: input.action, symbol: input.symbol, quantity: input.quantity,
     limitPrice: input.limitPrice, clientOrderId, optionMultiplier: input.multiplier,
     ...(input.confirmedCoveredShares === undefined ? {} : { confirmedCoveredShares: input.confirmedCoveredShares }),
