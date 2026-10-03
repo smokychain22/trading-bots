@@ -22,8 +22,8 @@ import { writeFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const boardAsOf = {
-  deployedRelease: '5006cdab0f318a78079d1ca6a3f9d43411b2ad56',
-  priorObservedRelease: 'a5d8711078740ee65be30e3586ba49a04c89e23c',
+  deployedRelease: '35654f214c6d0a3ec38cda4555bab40058aea635',
+  priorObservedRelease: '5006cdab0f318a78079d1ca6a3f9d43411b2ad56',
   note: 'rows describe the continuation branch head; runtime flags describe observation at the deployed release only',
   runtimeSourcePaths: ['src/', 'api/', 'bots/theta/quant/', 'tools/windows/', 'package.json'],
 };
@@ -108,17 +108,17 @@ const rawRows = [
   r('REGISTRY_REACHABILITY_GUARD', 'PHASE1', 'registry runtime claims must sit inside the deployed import closure; research->production edges pinned', { wired: 0, obsNow: 0 }),
   r('WHOLE_CHAIN_FEES_DIVIDENDS_INPUT', 'PHASE1', 'fees (provider supplies none) and dividends (no stock lot) stay UNKNOWN by design; needs a fee-schedule attestation', { obsNow: 0, policyBlocked: 1 }),
   r('FRONTIER_PROJECTION_BOUND', 'PHASE3', 'queryable frontier projection is bounded independent of chain size; the 2026-10-02 full-chain overflow (HTTP 503 on evidence cycles) is fixed and deployed in a5d8711; three full-chain SPY scans persisted afterwards', { runtime: 1 }),
-  r('PHASE3_EXEC_STATE_MACHINE', 'PHASE3', 'exhaustive transition-pair test, restart recovery per state; released in 5006cda, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
-  r('FAULT_INJECTION', 'PHASE3', 'operation x fault matrix against a stateful fake Alpaca; no duplicate economic order; released in 5006cda, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
-  r('RATE_LIMIT_POLICY', 'PHASE3', 'bounded read retry, Retry-After, shared budget, mutations never retried; released in 5006cda, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
-  r('PARTIAL_FILL_POLICY', 'PHASE3', 'owner Paper policy P-A freeze and P-B whole-position covered calls; released in 5006cda, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
-  r('ENTRY_DUPLICATE_GUARD', 'PHASE3', 'resting new-risk entry cannot be re-enqueued; releases at terminal; DB-tested; released in 5006cda, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
-  r('CROSS_SESSION_SWEEP', 'PHASE3', 'terminal submitted plans swept with typed reasons; released in 5006cda, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
+  r('PHASE3_EXEC_STATE_MACHINE', 'PHASE3', 'exhaustive transition-pair test, restart recovery per state; released, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
+  r('FAULT_INJECTION', 'PHASE3', 'operation x fault matrix against a stateful fake Alpaca; no duplicate economic order; released, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
+  r('RATE_LIMIT_POLICY', 'PHASE3', 'bounded read retry, Retry-After, shared budget, mutations never retried; released, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
+  r('PARTIAL_FILL_POLICY', 'PHASE3', 'owner Paper policy P-A freeze and P-B whole-position covered calls; released, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
+  r('ENTRY_DUPLICATE_GUARD', 'PHASE3', 'resting new-risk entry cannot be re-enqueued; releases at terminal; DB-tested; released, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
+  r('CROSS_SESSION_SWEEP', 'PHASE3', 'terminal submitted plans swept with typed reasons; released, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
   r('FIRST_PAPER_PATH', 'PHASE3', 'natural candidate -> capped canary composition proven offline; quantity zero places nothing; no candidate exists at this account scale', { obsNow: 0, paperApplicable: 1 }),
   r('PHASE3_REGISTER', 'PHASE3', '45-row finite register with a derived-count test', { obsNow: 0 }),
-  r('DB_RECOVERY_PROBE', 'OPERATIONS', 'recovery probe could never succeed (discard treated as a lost client); worker stayed deferred from 20:41Z until restarted; fixed and released in 5006cda; recovery not yet exercised by a real outage', { obsNow: 0 }),
-  r('WORKER_MUTATION_FENCE', 'PHASE3', 'last-moment fence before a broker mutation starts: request window (150 s, below the 180 s supervisor timeout) plus plan-claim re-verification; released in 5006cda, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
-  r('DR_SNAPSHOT_KEEPER', 'OPERATIONS', 'DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated; the second governed attempt (heartbeat active) completed its dump and digests; its restore verification then failed on sequence parity (INC-20261003-DR-SEQUENCE-PARITY), fixed on the branch and unreleased', { obsNow: 0 }),
+  r('DB_RECOVERY_PROBE', 'OPERATIONS', 'recovery probe could never succeed (discard treated as a lost client); worker stayed deferred from 20:41Z until restarted; fixed and released; recovery not yet exercised by a real outage', { obsNow: 0 }),
+  r('WORKER_MUTATION_FENCE', 'PHASE3', 'last-moment fence before a broker mutation starts: request window (150 s, below the 180 s supervisor timeout) plus plan-claim re-verification; released, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
+  r('DR_SNAPSHOT_KEEPER', 'OPERATIONS', 'DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated; the second governed attempt (heartbeat active) completed its dump and digests; its restore verification then failed on sequence parity (INC-20261003-DR-SEQUENCE-PARITY), fixed and released in 35654f2; the verified backup 2026-10-03_023612 then passed with the worker running', { obsNow: 0 }),
   r('PRODUCTION_REACHABILITY_PIN', 'PHASE3', 'audited live/paper modules are reachable from a production entry or declared (superseded/future) with a reason; broker mutations only via the coordinator', { obsNow: 0 }),
   r('MIGRATION_068_STATUS', 'PHASE3', 'applied to Production 2026-10-02T23:31:08Z through the governed verified-backup path; head, trigger, partial unique index and ledger verified read-only; 15-minute soak PASS', { obsNow: 0 }),
   r('LOT_SPLIT_ACCOUNTING', 'PHASE3', 'whole-position accounting only; partial disposal stays UNKNOWN_PENDING_RECONCILIATION; schema enhancement is FUTURE_PAPER / owner lot policy', { obsNow: 0, policyBlocked: 1 }),
@@ -132,13 +132,13 @@ const rawRows = [
   r('ERROR_SANITIZATION', 'SECURITY', 'credentials never in provider errors (tested)', { runtime: 1 }),
 ];
 
-// Fresh observations made against the deployed release 5006cda (worker cutover 2026-10-03T00:49Z; cycles at 5006cda SUCCEEDED with
+// Fresh observations made against the deployed release 35654f2 (worker cutover 2026-10-03T02:33Z; cycles at 35654f2 SUCCEEDED with
 // reconciliation GOOD, gate LOCKED, database circuit healthy, schema head 068). Anything that needs a market session (chain, quotes, funnel,
 // AEGIS, sizing, marks) stays DEPLOYED_NOT_YET_OBSERVED until a real session runs at this release.
 const observedAtDeployed = new Set(['ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
   'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE', 'MIGRATION_068_STATUS']);
 // Rows whose runtime source changed after the deployed release: committed, not released.
-const unreleasedIds = new Set(['DR_SNAPSHOT_KEEPER']);
+const unreleasedIds = new Set([]);
 
 export const rows = rawRows.map((row) => {
   const everObserved = Boolean(row.runtime);

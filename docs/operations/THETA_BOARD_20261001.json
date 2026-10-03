@@ -1,7 +1,7 @@
 {
   "asOf": {
-    "deployedRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
-    "priorObservedRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+    "deployedRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+    "priorObservedRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
     "note": "rows describe the continuation branch head; runtime flags describe observation at the deployed release only",
     "runtimeSourcePaths": [
       "src/",
@@ -57,12 +57,12 @@
       "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 7,
-      "NOT_OBSERVABLE_YET": 35,
+      "SOURCE_ONLY": 6,
+      "NOT_OBSERVABLE_YET": 36,
       "DEPLOYED_NOT_YET_OBSERVED": 39,
       "CURRENT_RELEASE_REAL_OBSERVED": 8
     },
-    "unreleasedRowCount": 1,
+    "unreleasedRowCount": 0,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -87,7 +87,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -106,7 +106,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -125,7 +125,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -144,7 +144,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -163,7 +163,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -182,7 +182,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -201,7 +201,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -220,7 +220,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -258,7 +258,7 @@
       "emp": 0,
       "policyBlocked": 1,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -277,7 +277,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -315,7 +315,7 @@
       "emp": 0,
       "policyBlocked": 1,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -334,7 +334,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -353,7 +353,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -372,7 +372,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -391,7 +391,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -410,7 +410,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -429,7 +429,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -486,7 +486,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -505,7 +505,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -543,7 +543,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -562,7 +562,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -581,7 +581,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -600,7 +600,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -619,7 +619,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -885,7 +885,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -942,7 +942,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -980,7 +980,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -999,7 +999,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1018,7 +1018,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1037,7 +1037,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1056,7 +1056,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1075,7 +1075,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1094,7 +1094,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1151,7 +1151,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1170,7 +1170,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1189,7 +1189,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1208,7 +1208,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1227,7 +1227,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1246,7 +1246,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1265,7 +1265,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1360,13 +1360,13 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "PHASE3_EXEC_STATE_MACHINE",
       "domain": "PHASE3",
-      "note": "exhaustive transition-pair test, restart recovery per state; released in 5006cda, not yet exercised by a Paper order",
+      "note": "exhaustive transition-pair test, restart recovery per state; released, not yet exercised by a Paper order",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1385,7 +1385,7 @@
     {
       "id": "FAULT_INJECTION",
       "domain": "PHASE3",
-      "note": "operation x fault matrix against a stateful fake Alpaca; no duplicate economic order; released in 5006cda, not yet exercised by a Paper order",
+      "note": "operation x fault matrix against a stateful fake Alpaca; no duplicate economic order; released, not yet exercised by a Paper order",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1404,7 +1404,7 @@
     {
       "id": "RATE_LIMIT_POLICY",
       "domain": "PHASE3",
-      "note": "bounded read retry, Retry-After, shared budget, mutations never retried; released in 5006cda, not yet exercised by a Paper order",
+      "note": "bounded read retry, Retry-After, shared budget, mutations never retried; released, not yet exercised by a Paper order",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1423,7 +1423,7 @@
     {
       "id": "PARTIAL_FILL_POLICY",
       "domain": "PHASE3",
-      "note": "owner Paper policy P-A freeze and P-B whole-position covered calls; released in 5006cda, not yet exercised by a Paper order",
+      "note": "owner Paper policy P-A freeze and P-B whole-position covered calls; released, not yet exercised by a Paper order",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1442,7 +1442,7 @@
     {
       "id": "ENTRY_DUPLICATE_GUARD",
       "domain": "PHASE3",
-      "note": "resting new-risk entry cannot be re-enqueued; releases at terminal; DB-tested; released in 5006cda, not yet exercised by a Paper order",
+      "note": "resting new-risk entry cannot be re-enqueued; releases at terminal; DB-tested; released, not yet exercised by a Paper order",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1461,7 +1461,7 @@
     {
       "id": "CROSS_SESSION_SWEEP",
       "domain": "PHASE3",
-      "note": "terminal submitted plans swept with typed reasons; released in 5006cda, not yet exercised by a Paper order",
+      "note": "terminal submitted plans swept with typed reasons; released, not yet exercised by a Paper order",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1518,7 +1518,7 @@
     {
       "id": "DB_RECOVERY_PROBE",
       "domain": "OPERATIONS",
-      "note": "recovery probe could never succeed (discard treated as a lost client); worker stayed deferred from 20:41Z until restarted; fixed and released in 5006cda; recovery not yet exercised by a real outage",
+      "note": "recovery probe could never succeed (discard treated as a lost client); worker stayed deferred from 20:41Z until restarted; fixed and released; recovery not yet exercised by a real outage",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1537,7 +1537,7 @@
     {
       "id": "WORKER_MUTATION_FENCE",
       "domain": "PHASE3",
-      "note": "last-moment fence before a broker mutation starts: request window (150 s, below the 180 s supervisor timeout) plus plan-claim re-verification; released in 5006cda, not yet exercised by a Paper order",
+      "note": "last-moment fence before a broker mutation starts: request window (150 s, below the 180 s supervisor timeout) plus plan-claim re-verification; released, not yet exercised by a Paper order",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1556,7 +1556,7 @@
     {
       "id": "DR_SNAPSHOT_KEEPER",
       "domain": "OPERATIONS",
-      "note": "DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated; the second governed attempt (heartbeat active) completed its dump and digests; its restore verification then failed on sequence parity (INC-20261003-DR-SEQUENCE-PARITY), fixed on the branch and unreleased",
+      "note": "DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated; the second governed attempt (heartbeat active) completed its dump and digests; its restore verification then failed on sequence parity (INC-20261003-DR-SEQUENCE-PARITY), fixed and released in 35654f2; the verified backup 2026-10-03_023612 then passed with the worker running",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1568,9 +1568,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "PRODUCTION_REACHABILITY_PIN",
@@ -1702,7 +1702,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1721,7 +1721,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1740,7 +1740,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1759,7 +1759,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "a5d8711078740ee65be30e3586ba49a04c89e23c",
+      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     }
   ]

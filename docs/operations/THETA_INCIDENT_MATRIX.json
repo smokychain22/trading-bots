@@ -52,7 +52,7 @@
       "FIX_SHA": "3158c6193762a6750a5b259826a1e87237c35abb",
       "FIX_LIMITS": "The heartbeat addresses cause (1) only. It cannot keep a snapshot alive across a server-side connection loss (cause 2). A keeper that dies during a multi-hour dump still forces a rerun; the new assertion makes that failure immediate and explicit. Possible further hardening (not yet implemented): run the digest queries and the schema dump before the long custom dump so the snapshot only needs to survive minutes.",
       "REGRESSION_TEST": "tests/windows/theta-snapshot-heartbeat.test.ps1",
-      "CURRENT_STATUS": "MITIGATED_NOT_ELIMINATED: heartbeat and early detection shipped on the branch; confirmation requires a governed backup that completes.",
+      "CURRENT_STATUS": "MITIGATED_AND_CONFIRMED_ON_THE_HAPPY_PATH: with the heartbeat and early detection, two governed backups (2026-10-02_205959 and 2026-10-03_023612) completed their dumps and digests; a server-side connection loss during a dump would still force a rerun, now detected immediately with an explicit cause.",
       "PRODUCTION_MUTATION": "NONE",
       "FIX_NOTE": "3158c61: heartbeat keeps the keeper active and records its death; a later commit adds Assert-ThetaSnapshotKeeperAlive, which fails the backup immediately after the dump with the real cause"
     },
@@ -67,7 +67,7 @@
       "ROOT_CAUSE": "withRuntimePostgresClient passed operations a discard() callback that set the same flag used to detect a lost connection, so discard() after a SUCCESSFUL SELECT 1 made the function throw POSTGRES_CHECKED_OUT_CLIENT_LOST. The runtime-db-probe handler calls discard() on purpose (each recovery proof must use a brand-new connection), so the probe could never succeed, the four-success recovery requirement could never be met, and the circuit stayed open. The path had never been exercised against a real outage.",
       "FIX_SHA": "c6ff078901b886a45d31ba54c0bee46335aa8671",
       "REGRESSION_TEST": "tests/runtime-postgres-client.test.ts",
-      "CURRENT_STATUS": "WORKER_RESTARTED_FIX_ON_BRANCH_NOT_DEPLOYED: the supervisor restart restored cycles; until the fix is deployed any further database error would wedge the worker again, so deployment is required before the next market session.",
+      "CURRENT_STATUS": "FIXED_AND_RELEASED: shipped in 5006cda; recovery has not yet been exercised by a real outage after the fix. Until then the only proof of the fix is the unit/regression test and the earlier supervisor restart that restored cycles.",
       "PRODUCTION_MUTATION": "NONE (supervisor stop/start only; execution gate LOCKED throughout, zero broker mutations)"
     },
     {
@@ -80,9 +80,9 @@
       "SUMMARY": "The post-migration verified backup (2026-10-02_234643-15402cd3) completed its dump and digests, and its real restore matched on structure fingerprint (156 tables, 407 indexes, 116 triggers) and on every table row count and critical-data digest, but the restore test reported dataRowcountParity FAIL, so the governed checkpoint recorded MIGRATION_CHECKPOINT_FAILED. Migration 068 itself was already applied and verified; the pre-migration verified backup is preserved as the known-good restore point.",
       "ROOT_CAUSE": "Restore-Theta.ps1 required the sequence state captured after the dump to equal the restored sequence state exactly. Sequences are not transactional and not part of the exported snapshot, so a live system advances them while a two-hour dump runs (ops.runtime_worker_event_worker_event_id_seq, market.option_quote_snapshot_snapshot_id_seq and others, written by the running worker). The first governed backup passed only because the worker was wedged during it (see INC-20261003-DB-RECOVERY-PROBE). Any backup taken while the worker runs would fail the same way.",
       "FIX_SHA": "96fcdfbd9843b4bda670209d16a3526d1fb3f2aa",
-      "FIX_LIMITS": "The fix is on the continuation branch and ships with the next release. Until then a backup taken with the worker running can still fail this check; the last verified good backup is 2026-10-02_205959-a5c31af2 (taken 2026-10-03 04:30 local, after the dump had verified structure and data).",
+      "FIX_LIMITS": "none known; the check is monotonic (restored sequence values must not exceed the later-captured source values).",
       "REGRESSION_TEST": "tests/windows/theta-sequence-parity.test.ps1",
-      "CURRENT_STATUS": "FIXED_ON_BRANCH_NOT_RELEASED: restored sequence values must be at or below the later-captured source values; a value above the source, a missing or extra sequence, or a changed shape still fails.",
+      "CURRENT_STATUS": "FIXED_RELEASED_AND_CONFIRMED: shipped in 35654f2; the governed verified backup 2026-10-03_023612-c03d5f99 ran with the worker active and passed real-restore verification (structure, data row counts, sequences and critical digests); it is the latest verified backup and carries schema head 068_action_plan_integrity.",
       "PRODUCTION_MUTATION": "NONE (read-only dump and an isolated local restore)"
     }
   ]

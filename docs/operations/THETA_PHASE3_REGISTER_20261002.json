@@ -896,9 +896,9 @@
       "CURRENT_STATUS": "PASS",
       "LIVE_SESSION_STATUS": "NOT_APPLICABLE",
       "PAPER_STATUS": "NOT_EXERCISED",
-      "BLOCKER": "a server-side connection loss during a multi-hour dump still forces a rerun (the heartbeat cannot prevent it); confirmation needs a governed backup that completes",
-      "SOLVABILITY": "MITIGATED_NOT_ELIMINATED",
-      "NEXT_ACTION": "confirm on the governed run; optional hardening: run digests and the schema dump before the long dump"
+      "BLOCKER": "a server-side connection loss during a multi-hour dump still forces a rerun (the heartbeat cannot prevent it); two governed backups have completed with the heartbeat active",
+      "SOLVABILITY": "MITIGATED_AND_CONFIRMED",
+      "NEXT_ACTION": "optional hardening: run digests and the schema dump before the long dump"
     },
     {
       "ID": "P3-048",
@@ -1118,9 +1118,9 @@
       "CURRENT_STATUS": "PASS",
       "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
       "PAPER_STATUS": "NOT_EXERCISED",
-      "BLOCKER": "fix is on the branch; the deployed release still has the defect until the governed release",
-      "SOLVABILITY": "DEFECT_FOUND_IN_LIVE_SESSION_AND_FIXED_ON_BRANCH",
-      "NEXT_ACTION": "deploy with the governed release before the next market session"
+      "BLOCKER": "none: released in 5006cda (deployed and the worker cut over); recovery after a real outage not yet observed",
+      "SOLVABILITY": "DEFECT_FOUND_IN_LIVE_SESSION_FIXED_AND_RELEASED",
+      "NEXT_ACTION": "observe the next transient database error recover without a restart"
     },
     {
       "ID": "P3-059",
@@ -1137,9 +1137,9 @@
       "CURRENT_STATUS": "PASS",
       "LIVE_SESSION_STATUS": "OBSERVED_TODAY",
       "PAPER_STATUS": "NOT_EXERCISED",
-      "BLOCKER": "fix is on the branch and ships with the next release; the post-migration backup 2026-10-02_234643 failed this check while migration 068 and every data comparison passed",
-      "SOLVABILITY": "DEFECT_FOUND_IN_LIVE_RUN_AND_FIXED_ON_BRANCH",
-      "NEXT_ACTION": "release with the next deployment, then take a verified backup with the worker running"
+      "BLOCKER": "none: released in 35654f2; backup 2026-10-03_023612-c03d5f99 taken with the worker running passed real-restore verification",
+      "SOLVABILITY": "DEFECT_FOUND_IN_LIVE_RUN_FIXED_RELEASED_AND_CONFIRMED",
+      "NEXT_ACTION": "none"
     }
   ]
 }
