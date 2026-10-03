@@ -1,0 +1,130 @@
+{
+  "recordedAt": "2026-10-03T08:54:44.400Z",
+  "node": "v24.18.0",
+  "platform": "win32-x64",
+  "rows": [
+    {
+      "contracts": 100,
+      "candidates": 1050,
+      "frontierBytes": 7392031,
+      "projectionBytes": 54802,
+      "archiveRows": 1053,
+      "archiveBytes": 8017899,
+      "stages": {
+        "buildMs": 183.38630000000012,
+        "hashMs": 139.71719999999982,
+        "projectMs": 5.891200000000026,
+        "stringifyMs": 17.979100000000017,
+        "archiveMs": 209.1237000000001,
+        "totalMs": 556.0975000000001
+      },
+      "heapUsedMb": 289.9,
+      "rssMb": 474.2,
+      "heapRetainedAfterGcMb": 15.3
+    },
+    {
+      "contracts": 300,
+      "candidates": 1300,
+      "frontierBytes": 9081855,
+      "projectionBytes": 55007,
+      "archiveRows": 1303,
+      "archiveBytes": 9909485,
+      "stages": {
+        "buildMs": 238.06029999999964,
+        "hashMs": 176.7523000000001,
+        "projectMs": 10.273099999999886,
+        "stringifyMs": 31.966300000000047,
+        "archiveMs": 361.4068000000002,
+        "totalMs": 818.4587999999999
+      },
+      "heapUsedMb": 116.4,
+      "rssMb": 371.6,
+      "heapRetainedAfterGcMb": 14.1
+    },
+    {
+      "contracts": 1000,
+      "candidates": 2000,
+      "frontierBytes": 13934123,
+      "projectionBytes": 55011,
+      "archiveRows": 2003,
+      "archiveBytes": 15171485,
+      "stages": {
+        "buildMs": 1130.0987000000005,
+        "hashMs": 816.8594000000012,
+        "projectMs": 27.72189999999864,
+        "stringifyMs": 96.95830000000024,
+        "archiveMs": 1114.206900000001,
+        "totalMs": 3185.8452000000016
+      },
+      "heapUsedMb": 222.9,
+      "rssMb": 461.4,
+      "heapRetainedAfterGcMb": 14.5
+    },
+    {
+      "contracts": 2619,
+      "candidates": 3619,
+      "frontierBytes": 25269659,
+      "projectionBytes": 55014,
+      "archiveRows": 3622,
+      "archiveBytes": 27455491,
+      "stages": {
+        "buildMs": 2600.180700000001,
+        "hashMs": 1417.2632999999987,
+        "projectMs": 135.39080000000104,
+        "stringifyMs": 190.35339999999997,
+        "archiveMs": 2050.091199999999,
+        "totalMs": 6393.279399999999
+      },
+      "heapUsedMb": 316.9,
+      "rssMb": 605.1,
+      "heapRetainedAfterGcMb": 14.3
+    },
+    {
+      "contracts": 5000,
+      "candidates": 6000,
+      "frontierBytes": 42002280,
+      "projectionBytes": 55014,
+      "archiveRows": 6003,
+      "archiveBytes": 45580576,
+      "stages": {
+        "buildMs": 5277.563199999997,
+        "hashMs": 2578.464000000007,
+        "projectMs": 95.62510000000475,
+        "stringifyMs": 318.5054999999993,
+        "archiveMs": 3576.8373999999894,
+        "totalMs": 11846.995199999998
+      },
+      "heapUsedMb": 435.7,
+      "rssMb": 864.1,
+      "heapRetainedAfterGcMb": 14.5
+    },
+    {
+      "contracts": 10000,
+      "candidates": 11000,
+      "frontierBytes": 77255804,
+      "projectionBytes": 60633,
+      "archiveRows": 11003,
+      "archiveBytes": 83780277,
+      "stages": {
+        "buildMs": 15028.0533,
+        "hashMs": 3797.715799999991,
+        "projectMs": 122.29320000000007,
+        "stringifyMs": 531.6457999999984,
+        "archiveMs": 6857.166900000011,
+        "totalMs": 26336.875
+      },
+      "heapUsedMb": 790.8,
+      "rssMb": 1248.5,
+      "heapRetainedAfterGcMb": 14.3
+    }
+  ],
+  "method": "tools/theta-stress-harness.ts --baseline (best of 3 per size, ascending sizes in one process; synthetic SYN chain with the production-like eligible set Q,H,D,A,C; stages: frontier build, content hash, bounded Postgres projection, JSON serialization, local archive batch). RSS is cumulative within the run because sizes ascend in one process.",
+  "machine": "Windows 11, laptop, shared with other workloads during measurement",
+  "notes": [
+    "The defined-risk branch has a fixed 1,000-structure bound, so even a 100-contract chain carries about 1,050 candidates and a 7.4 MB frontier.",
+    "The Postgres projection stays 55-61 KB from 100 to 10,000 contracts (bounded, truncation explicit).",
+    "Heap retained after a forced GC is about 14 MB at every size: no retention.",
+    "Time scaling: build 1,000 -> 10,000 contracts is 13x (about n^1.12); 5,000 -> 10,000 is 2.9x.",
+    "Peak RSS: 605 MB at 2,619 contracts (a full SPY chain), 864 MB at 5,000, 1,249 MB at 10,000. Budget against the Vercel function memory limit, not the average."
+  ]
+}
