@@ -26,7 +26,7 @@ export interface MasterShadowContext {
 
 const hash = (value: unknown): string => createHash('sha256').update(canonicalJson(value)).digest('hex');
 
-async function upsertVersion(client: PoolClient, input: {
+export async function upsertVersion(client: PoolClient, input: {
   table: 'strategy_version'|'feature_version'|'risk_limit_version'|'execution_version'|'cost_model_version';
   idColumn: string; semanticVersion: string; jsonColumn: string; payload: unknown; status?: string;
 }): Promise<string> {
