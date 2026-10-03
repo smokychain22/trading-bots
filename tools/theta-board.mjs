@@ -118,7 +118,7 @@ const rawRows = [
   r('PHASE3_REGISTER', 'PHASE3', '45-row finite register with a derived-count test', { obsNow: 0 }),
   r('DB_RECOVERY_PROBE', 'OPERATIONS', 'recovery probe could never succeed (discard treated as a lost client); worker stayed deferred from 20:41Z until restarted; fixed and released in 5006cda; recovery not yet exercised by a real outage', { obsNow: 0 }),
   r('WORKER_MUTATION_FENCE', 'PHASE3', 'last-moment fence before a broker mutation starts: request window (150 s, below the 180 s supervisor timeout) plus plan-claim re-verification; released in 5006cda, not yet exercised by a Paper order', { obsNow: 0, paperApplicable: 1 }),
-  r('DR_SNAPSHOT_KEEPER', 'OPERATIONS', 'DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated; the second governed attempt (heartbeat active) completed its dump and digests and passed restore verification', { obsNow: 0 }),
+  r('DR_SNAPSHOT_KEEPER', 'OPERATIONS', 'DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated; the second governed attempt (heartbeat active) completed its dump and digests; its restore verification then failed on sequence parity (INC-20261003-DR-SEQUENCE-PARITY), fixed on the branch and unreleased', { obsNow: 0 }),
   r('PRODUCTION_REACHABILITY_PIN', 'PHASE3', 'audited live/paper modules are reachable from a production entry or declared (superseded/future) with a reason; broker mutations only via the coordinator', { obsNow: 0 }),
   r('MIGRATION_068_STATUS', 'PHASE3', 'applied to Production 2026-10-02T23:31:08Z through the governed verified-backup path; head, trigger, partial unique index and ledger verified read-only; 15-minute soak PASS', { obsNow: 0 }),
   r('LOT_SPLIT_ACCOUNTING', 'PHASE3', 'whole-position accounting only; partial disposal stays UNKNOWN_PENDING_RECONCILIATION; schema enhancement is FUTURE_PAPER / owner lot policy', { obsNow: 0, policyBlocked: 1 }),
@@ -138,7 +138,7 @@ const rawRows = [
 const observedAtDeployed = new Set(['ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
   'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE', 'MIGRATION_068_STATUS']);
 // Rows whose runtime source changed after the deployed release: committed, not released.
-const unreleasedIds = new Set([]);
+const unreleasedIds = new Set(['DR_SNAPSHOT_KEEPER']);
 
 export const rows = rawRows.map((row) => {
   const everObserved = Boolean(row.runtime);

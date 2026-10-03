@@ -57,12 +57,12 @@
       "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 6,
-      "NOT_OBSERVABLE_YET": 36,
+      "SOURCE_ONLY": 7,
+      "NOT_OBSERVABLE_YET": 35,
       "DEPLOYED_NOT_YET_OBSERVED": 39,
       "CURRENT_RELEASE_REAL_OBSERVED": 8
     },
-    "unreleasedRowCount": 0,
+    "unreleasedRowCount": 1,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -1556,7 +1556,7 @@
     {
       "id": "DR_SNAPSHOT_KEEPER",
       "domain": "OPERATIONS",
-      "note": "DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated; the second governed attempt (heartbeat active) completed its dump and digests and passed restore verification",
+      "note": "DR snapshot keeper heartbeat plus early dead-keeper detection; first governed backup failed with a lost snapshot (INC-20261003-DR-SNAPSHOT-KEEPER); mitigated; the second governed attempt (heartbeat active) completed its dump and digests; its restore verification then failed on sequence parity (INC-20261003-DR-SEQUENCE-PARITY), fixed on the branch and unreleased",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -1568,9 +1568,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
+      "unreleased": 1,
       "observedAtRelease": null,
-      "releaseStatus": "NOT_OBSERVABLE_YET"
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "PRODUCTION_REACHABILITY_PIN",
