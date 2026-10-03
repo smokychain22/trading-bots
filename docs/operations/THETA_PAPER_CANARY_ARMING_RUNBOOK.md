@@ -9,7 +9,7 @@ natural canonical candidate reaches positive structural sizing, and the first ca
 | Item | State |
 |---|---|
 | Schema | `068_action_plan_integrity` (trigger, partial unique index, ledger row verified) |
-| main = deployed = worker | `5006cdab0f318a78079d1ca6a3f9d43411b2ad56` |
+| main = deployed = worker | `35654f214c6d0a3ec38cda4555bab40058aea635` |
 | Worker | ONLINE, one supervisor, database circuit healthy, reconciliation GOOD |
 | Execution gate | LOCKED; `master_execution_enabled=true`, `follower_execution_enabled=false` in `ops.paper_execution_control` |
 | Orders / plans / positions | 0 / 0 / 0 |
@@ -34,9 +34,9 @@ unless ALL of these hold at the moment of activation. Two cannot be true outside
 1. Confirm identity: main, deployed and worker SHAs equal; schema head 068; one supervisor; heartbeat fresh; reconciliation GOOD; zero positions and orders.
 2. Confirm the previous night's evidence: the post-migration backup completed, and no `CANONICAL_FRONTIER_POLICY_PAYLOAD_TOO_LARGE` or `POSTGRES_CHECKED_OUT_CLIENT_LOST` failures
    (see `THETA_NEXT_SESSION_ACCEPTANCE_CHECKLIST.md`).
-3. Vercel Production flags: master execution enabled, new-entry pause off, follower execution off, live off. A change to a Production flag needs a redeploy, which changes
-   the deployed identity: redeploy once, then cut the worker over to the same SHA (a deployment without a worker cutover makes the server reject the worker with
-   `RUNTIME_SCHEMA_INCOMPATIBLE` until the worker SHA matches).
+3. Vercel Production flags: master execution enabled, new-entry pause off, follower execution off, live off. A flag change needs a redeploy of the SAME commit, which keeps the
+   deployed SHA equal to main and to the worker, so no worker cutover is needed. Do not push a new commit to main to change a flag: every new main commit deploys a new SHA and the
+   server rejects the worker with `RUNTIME_SCHEMA_INCOMPATIBLE` until the worker is cut over to that SHA (as happened after the 2026-10-03 releases until the cutover completed).
 4. After a complete scan, call the activation operation with the worker identity and the activation confirmation header. If it returns blockers, record them and stop; do not alter policy.
 5. After activation the runtime is `FIRST_CANARY_ARMED` with a 1-contract cap. Stop there. Do not place or size anything manually.
 6. If a natural canonical candidate reaches positive sizing, the coordinator submits one capped order. If canonical quantity is 0, no order is placed.
