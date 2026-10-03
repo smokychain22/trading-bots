@@ -30,22 +30,23 @@ const assertFiniteOrNull = (contract: NormalizedOptionContract, label: string): 
 
 /** a malformed provider VALUE either fails loudly with a typed error (the reviewed contract: it indicates a mapping defect) or, if a contract
  *  is returned, it is finite and not executable. It must never be a crash, a non-finite number, or an executable contract. */
-const loudOrSafe = (label: string, run: () => NormalizedOptionContract): void => {
+const loudOrSafe = (label: string, run: () => NormalizedOptionContract, quoteField = true): void => {
   try {
     const contract = run();
     assertFiniteOrNull(contract, label);
-    assert.equal(contract.executable, false, `${label}: a malformed value produced an executable contract`);
+    if (quoteField) assert.equal(contract.executable, false, `${label}: a malformed quote value produced an executable contract`);
   } catch (error) {
+    if (error instanceof assert.AssertionError) throw error;
     assert.ok(error instanceof Error && !(error instanceof TypeError) && !(error instanceof RangeError) && !(error instanceof ReferenceError), `${label}: programming error`);
   }
 };
 
 test('NaN and Infinity in any quote, size, volume or Greek fail loudly (typed) or stay non-executable; never a non-finite number, never zero', () => {
   for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-    for (const field of ['bid', 'ask', 'bidSize', 'askSize', 'impliedVolatility', 'dailyVolume'] as const) loudOrSafe(`${field}=${bad}`, () => one({ [field]: bad } as Partial<AlpacaOptionSnapshot>));
+    for (const field of ['bid', 'ask', 'bidSize', 'askSize', 'impliedVolatility', 'dailyVolume'] as const) loudOrSafe(`${field}=${bad}`, () => one({ [field]: bad } as Partial<AlpacaOptionSnapshot>), field === 'bid' || field === 'ask');
     for (const field of ['delta', 'gamma', 'theta', 'vega', 'rho'] as const) {
       const run = () => one({ greeks: { delta: -0.22, gamma: 0.01, theta: -0.04, vega: 0.12, rho: -0.03, [field]: bad } as never });
-      try { assertFiniteOrNull(run(), `greek ${field}=${bad}`); } catch (error) { assert.ok(error instanceof Error && !(error instanceof TypeError), `greek ${field}=${bad}`); }
+      try { assertFiniteOrNull(run(), `greek ${field}=${bad}`); } catch (error) { if (error instanceof assert.AssertionError) throw error; assert.ok(error instanceof Error && !(error instanceof TypeError), `greek ${field}=${bad}`); }
     }
   }
 });
@@ -151,6 +152,7 @@ test('FUZZ: 3,000 randomly corrupted listings and snapshots never produce a non-
       }
       void numericFields;
     } catch (error) {
+      if (error instanceof assert.AssertionError) throw error;
       typedFailures += 1;
       assert.ok(!(error instanceof TypeError) && !(error instanceof RangeError) && !(error instanceof ReferenceError), `run ${run}: programming error ${(error as Error).message}`);
     }

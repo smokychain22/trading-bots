@@ -29,7 +29,7 @@ test('every row has every required field, a unique id and one valid status; clas
 test('every source and test a row names exists; PASS rows name a test unless they are a document; unproven classes never claim a PASS test', () => {
   for (const row of rows) {
     for (const file of [...row.SOURCE, ...row.TEST]) assert.ok(existsSync(path(file)), `${row.ID}: ${file} missing`);
-    if (row.CURRENT_STATUS === 'PASS' && row.ID !== 'P4-025') assert.ok(row.TEST.length > 0, `${row.ID} needs a test`);
+    if (row.CURRENT_STATUS === 'PASS') assert.ok(row.TEST.length > 0, `${row.ID} needs a test`);
     if (['FUTURE_PAPER', 'FUTURE_MARKET', 'EMPIRICAL_ONLY'].includes(row.CURRENT_STATUS)) assert.equal(row.TEST.length, 0, row.ID);
   }
 });

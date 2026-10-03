@@ -1,14 +1,14 @@
 {
   "computed": {
     "PHASE4_TOTAL": 35,
-    "PASS": 29,
+    "PASS": 28,
     "CODE_SOLVABLE": 0,
     "PROVIDER_LIMITED": 1,
     "OWNER_POLICY": 1,
     "FUTURE_MARKET": 1,
     "FUTURE_PAPER": 1,
     "EMPIRICAL_ONLY": 1,
-    "NOT_APPLICABLE": 1,
+    "NOT_APPLICABLE": 2,
     "CODE_SOLVABLE_REMAINING": 0
   },
   "rows": [
@@ -129,7 +129,7 @@
       "CURRENT_STATUS": "PASS",
       "SOLVABILITY": "VERIFIED",
       "RISK": "HIGH",
-      "EVIDENCE": "Windows PowerShell suites run in CI",
+      "EVIDENCE": "Windows PowerShell suites run in CI (heartbeat, parity and quoting added to the CI list in Phase 4)",
       "NEXT_ACTION": "none"
     },
     {
@@ -162,7 +162,7 @@
       "CURRENT_STATUS": "PASS",
       "SOLVABILITY": "FIXED_THIS_PHASE",
       "RISK": "HIGH",
-      "EVIDENCE": "identity commits",
+      "EVIDENCE": "identity commits; read-only audit 2026-10-03: trade.order_intent, master_paper_action_plan, broker_order, execution_attempt and fill have 0 rows in Production, so no persisted id is orphaned by the v2 scheme",
       "NEXT_ACTION": "none"
     },
     {
@@ -232,7 +232,7 @@
         "tests/management-invariants.test.ts"
       ],
       "CURRENT_STATUS": "PASS",
-      "SOLVABILITY": "VERIFIED",
+      "SOLVABILITY": "VERIFIED_CHARACTERISED_NOT_PROVEN_STABLE",
       "RISK": "MEDIUM",
       "EVIDENCE": "hysteresis is a policy choice, left to a future evidence-backed revision",
       "NEXT_ACTION": "none"
@@ -425,8 +425,8 @@
         "docs/operations/THETA_PHASE4_STORAGE_GROWTH_PROJECTION_20261003.md"
       ],
       "TEST": [],
-      "CURRENT_STATUS": "PASS",
-      "SOLVABILITY": "MEASURED",
+      "CURRENT_STATUS": "NOT_APPLICABLE",
+      "SOLVABILITY": "MEASURED_DOCUMENT_NOT_A_TEST",
       "RISK": "HIGH",
       "EVIDENCE": "read-only storage audit 2026-10-03T09:27Z; the projection itself reports the budget as BREACHED (see P4-026)",
       "NEXT_ACTION": "none"

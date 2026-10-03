@@ -273,6 +273,7 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
   if (raw.bid !== null && raw.ask !== null && (raw.bid < 0 || raw.ask <= 0 || raw.bid > raw.ask)) reasons.push('invalid or crossed BBO');
   if (spreadPct === null) reasons.push('spread unknown');
   else if (spreadPct > raw.maxSpreadPctForExecutable) reasons.push('spread too wide');
+  if (raw.multiplier !== 100) reasons.push('non-standard multiplier (adjusted contract): sizing and collateral assume 100');
   if (identityProblems.length > 0) reasons.push(`contract identity disagrees with its OCC symbol: ${identityProblems.join(',')}`);
   if (effectiveQuality !== 'GOOD') reasons.push(`data quality is ${effectiveQuality}`);
 
