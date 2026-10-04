@@ -113,6 +113,7 @@ test('REAL_CANONICAL_BRAIN_REPLAY: a bundle built, persisted, and reloaded throu
     const replayed = replayFromT0Bundle(reloadedBundle);
     const original = buildCanonicalStrategyFrontier(realCycleInput);
     assert.equal(replayed.selectedCandidateId, original.selectedCandidateId);
+    assert.equal(replayed.entrySelectionBasis, original.entrySelectionBasis);
     assert.equal(replayed.primaryAction, original.primaryAction);
     assert.equal(replayed.selectedQuantity, original.selectedQuantity);
     assert.equal(replayed.contentHash, original.contentHash);

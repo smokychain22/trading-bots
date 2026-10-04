@@ -127,6 +127,17 @@ const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewR
 
 const itMockedProviderRealCodePath = pythonExecutablePath === undefined ? test.skip : test;
 
+test('unknown broker capacity fails closed before Q and never becomes broker quantity zero', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', { brokerAllowedQty: null })],
+  }));
+  assert.equal(result.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.equal(result.receipt.quantity, 0);
+  assert.equal(result.receipt.reasonCodes.includes('PIPELINE_STAGE_FAILED:BROKER_CAPACITY'), true);
+  assert.match(result.receipt.failClosedReason ?? '', /Required broker quantity evidence is UNKNOWN for C1/);
+  assert.equal(result.thetaQ, null);
+});
+
 itMockedProviderRealCodePath('a real THETA-Q lattice candidate flows end to end to a decision receipt with sizing and execution quality', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest());
   assert.equal(result.receipt.failClosedReason, null);

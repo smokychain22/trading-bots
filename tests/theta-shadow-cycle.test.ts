@@ -969,6 +969,18 @@ itMockedProviderRealCodePath('an account fetch failure is recorded as a blocker,
   assert.ok(result.blockers.some((b) => b.startsWith('ACCOUNT_FETCH_FAILED')));
 });
 
+test('unknown broker capacity is omitted rather than persisted as known zero', () => {
+  const lookup = conventionalFrontierRiskLookups([
+    { optionSymbol: 'SPY261009P00500000', brokerAllowedQty: null },
+    { optionSymbol: 'SPY261009P00490000', brokerAllowedQty: 0 },
+  ]);
+  assert.deepEqual(lookup.brokerAllowedQtyByCandidateId, {
+    'THETA_CONVENTIONAL:SPY261009P00490000': 0,
+  });
+  assert.equal(Object.hasOwn(lookup.brokerAllowedQtyByCandidateId,
+    'THETA_CONVENTIONAL:SPY261009P00500000'), false);
+});
+
 itMockedProviderRealCodePath('generic broker margin buying power never substitutes for missing options buying power', async () => {
   const regular = mockAlpacaFetch({ hasContracts: true, hasBars: true });
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {

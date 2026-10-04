@@ -67,6 +67,9 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
     if (entrySafetyPolicy.corporateAction.action !== 'CLEAR') blockers.push(`CORPORATE_ACTION_POLICY_${entrySafetyPolicy.corporateAction.state}`);
   }
   if (selected === undefined) blockers.push('CANONICAL_SELECTED_CANDIDATE_NOT_FOUND');
+  if (frontier.entrySelectionBasis !== 'THETA_Q_DECISION_BOUND') {
+    blockers.push('CANONICAL_SELECTION_NOT_Q_DECISION_BOUND');
+  }
   if (frontier.primaryAction !== 'OPEN_CSP') blockers.push(`ACTION_NOT_YET_CONNECTED:${frontier.primaryAction}`);
   if (selected?.action !== 'OPEN_CSP') blockers.push('SELECTED_ACTION_NOT_OPEN_CSP');
   if (selected?.branch !== 'THETA_CONVENTIONAL') blockers.push('BRANCH_NOT_AUTHORIZED_FOR_MASTER_PAPER_ENTRY');

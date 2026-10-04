@@ -42,7 +42,8 @@ const frontier=():CanonicalStrategyFrontier=>({
       entryEligibility:{basis:'EMPIRICAL_OWNERSHIP',paperBootstrapPolicyVersion:null,
         paperBootstrapAllowedUnknownComponents:[],paperBootstrapReasonCodes:[]}}]}],
   branchesConsidered:['THETA_CONVENTIONAL'],branchesEvaluated:['THETA_CONVENTIONAL'],selectedBranch:'THETA_CONVENTIONAL',
-  selectedCandidateId:'THETA_CONVENTIONAL:AAPL261016P00150000',primaryAction:'OPEN_CSP',selectedQuantity:3,
+  selectedCandidateId:'THETA_CONVENTIONAL:AAPL261016P00150000',entrySelectionBasis:'THETA_Q_DECISION_BOUND',
+  primaryAction:'OPEN_CSP',selectedQuantity:3,
   empiricalUtilityState:'UNKNOWN_NOT_YET_CALIBRATED',secondBestCandidateId:null,nearMissCandidateId:null,bestRejectedCandidateId:null,
   globalWaitEarned:false,globalWaitReasons:[],empiricalEconomicsReady:false,executionAuthorized:false,optionomicsContext:{},contentHash:'a'.repeat(64),
 });
@@ -101,6 +102,14 @@ test('global WAIT creates no action plan',()=>{
     globalWaitEarned:true};
   const result=assembleMasterPaperEvidencePlan(input({frontier:wait}));
   assert.equal(result.state,'NO_ACTION');
+});
+
+test('structural or missing selection lineage cannot assemble a Paper plan',()=>{
+  for(const entrySelectionBasis of ['STRUCTURAL_RESEARCH_ONLY',undefined] as const){
+    const result=assembleMasterPaperEvidencePlan(input({frontier:{...frontier(),entrySelectionBasis}}));
+    assert.equal(result.state,'BLOCKED');
+    assert.ok(result.blockers.includes('CANONICAL_SELECTION_NOT_Q_DECISION_BOUND'));
+  }
 });
 
 test('missing risk, costs, persistence, or conflict blocks plan assembly',()=>{

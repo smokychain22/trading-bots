@@ -93,7 +93,7 @@ export function completeConventionalFrontierEvaluationCoverage(
 
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
-  candidates: readonly { readonly optionSymbol: string; readonly brokerAllowedQty: number;
+  candidates: readonly { readonly optionSymbol: string; readonly brokerAllowedQty: number | null;
     readonly riskCapacityQtyCap?: number | null }[],
   aegisByOptionSymbol?: Readonly<Record<string, {
     readonly newRiskState: NonNullable<NewRiskOrchestrationResult['aegis']>['newRiskState'];
@@ -108,9 +108,10 @@ export function conventionalFrontierRiskLookups(
   readonly aegisBindingReasonsByCandidateId: Readonly<Record<string, readonly string[]>> | undefined;
 } {
   return {
-    brokerAllowedQtyByCandidateId: Object.fromEntries(candidates.map((candidate) => [
-      `THETA_CONVENTIONAL:${candidate.optionSymbol}`, candidate.brokerAllowedQty,
-    ])),
+    brokerAllowedQtyByCandidateId: Object.fromEntries(candidates.flatMap((candidate) =>
+      candidate.brokerAllowedQty === null ? [] : [[
+        `THETA_CONVENTIONAL:${candidate.optionSymbol}`, candidate.brokerAllowedQty,
+      ]])),
     riskCapacityQtyByCandidateId: Object.fromEntries(candidates.map((candidate) => [
       `THETA_CONVENTIONAL:${candidate.optionSymbol}`, candidate.riskCapacityQtyCap ?? null,
     ])),
@@ -1545,7 +1546,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       }
       const availableOptionBuyingPower = account?.optionsBuyingPower ?? null;
       const collateralPerContract = contract.strike * contract.multiplier;
-      const brokerAllowedQty = wholeContractsAffordable(availableOptionBuyingPower, collateralPerContract) ?? 0;
+      const brokerAllowedQty = wholeContractsAffordable(availableOptionBuyingPower, collateralPerContract);
+      if (brokerAllowedQty === null) blockers.push(`BROKER_ALLOWED_QTY_UNKNOWN:${contract.optionSymbol}`);
       candidates.push({
         candidateId: contract.optionSymbol, contract, entryPremiumPerShare: contract.bid,
         severeDrawdownProbability: null, ivRank: null, brokerAllowedQty,
@@ -2057,7 +2059,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       },
       paperEventNear,
     };
-    if (!exposureDerivationTrustworthy || candidateCapacityPolicy === null) return {
+    if (candidate.brokerAllowedQty === null || !exposureDerivationTrustworthy || candidateCapacityPolicy === null) return {
       ...candidate,
       ...entryEvidence,
       aegisInputOverrides: candidateOverrides,

@@ -197,6 +197,13 @@ export interface CanonicalStrategyFrontier {
   readonly branchesEvaluated: readonly ThetaStrategyBranch[];
   readonly selectedBranch: ThetaStrategyBranch | null;
   readonly selectedCandidateId: string | null;
+  /**
+   * Records why the selected entry candidate occupies the frontier. Structural
+   * ordering is useful research evidence, but only a snapshot-bound THETA Q
+   * decision may cross the Master Paper plan boundary. Optional solely for
+   * historical archive compatibility. New frontier receipts always set it.
+   */
+  readonly entrySelectionBasis?: 'THETA_Q_DECISION_BOUND' | 'STRUCTURAL_RESEARCH_ONLY' | 'NO_SELECTION';
   readonly primaryAction: CanonicalFrontierAction | 'GLOBAL_WAIT' | 'MANAGEMENT_AUTHORITY' | 'SYSTEM_HOLD';
   readonly selectedQuantity: number;
   readonly empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED';
@@ -1195,6 +1202,8 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     decision.winningAction === 'SYSTEM_HOLD' || decision.winningAction === 'HARD_VETO');
   const structuralSelection = managementAuthorityRequired ? null
     : decision === undefined ? sizedNewRisk[0] ?? null : decisionInvalid ? null : decisionCandidate;
+  const entrySelectionBasis = structuralSelection === null ? 'NO_SELECTION' as const
+    : decision === undefined ? 'STRUCTURAL_RESEARCH_ONLY' as const : 'THETA_Q_DECISION_BOUND' as const;
   const selectedQuantity = structuralSelection === null ? 0 : decision === undefined
     ? structuralSelection.sizing.quantity : Math.min(structuralSelection.sizing.quantity, decision.quantity);
   const secondBest = managementAuthorityRequired || decision !== undefined ? null : sizedNewRisk[1] ?? null;
@@ -1248,6 +1257,7 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     branches, branchesConsidered: applicable.map((branch) => branch.branch),
     branchesEvaluated: evaluated.map((branch) => branch.branch), selectedBranch: structuralSelection?.branch ?? null,
     selectedCandidateId: structuralSelection?.candidateId ?? null,
+    entrySelectionBasis,
     primaryAction: managementAuthorityRequired ? 'MANAGEMENT_AUTHORITY' as const
       : structuralSelection?.action ?? (globalWaitEarned ? 'GLOBAL_WAIT' as const : 'SYSTEM_HOLD' as const),
     selectedQuantity,

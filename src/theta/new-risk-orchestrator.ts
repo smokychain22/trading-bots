@@ -69,7 +69,9 @@ export interface RawCandidateInput {
   readonly entryPremiumPerShare: number;
   readonly severeDrawdownProbability: number | null;
   readonly ivRank: number | null;
-  readonly brokerAllowedQty: number;
+  /** Real broker/account whole-contract capacity. null means required account
+   * evidence was unavailable and must fail closed before the Q lattice. */
+  readonly brokerAllowedQty: number | null;
   /** RISK-CAP-01: quantity at which candidate-inclusive AEGIS evidence was derived. `undefined`/`null` = UNKNOWN. */
   readonly riskCapacityQtyCap?: number | null;
   readonly contractIsStandard: boolean;
@@ -483,6 +485,14 @@ export async function runNewRiskOrchestration(
     return providerTransientHoldResult(request, 'PROVIDER_STATE', `Required provider capability state is temporarily degraded or unavailable: ${detail}`);
   }
 
+  const unknownBrokerCapacity = request.candidates.filter((candidate) => candidate.brokerAllowedQty === null);
+  if (unknownBrokerCapacity.length > 0) {
+    return systemHoldResult(request, 'BROKER_CAPACITY',
+      `Required broker quantity evidence is UNKNOWN for ${unknownBrokerCapacity.map((candidate) => candidate.candidateId).join(',')}.`);
+  }
+  type BrokerCapacityKnownCandidate = RawCandidateInput & { readonly brokerAllowedQty: number };
+  const capacityKnownCandidates = request.candidates as readonly BrokerCapacityKnownCandidate[];
+
   const ownershipResult = await invokeAndValidate(
     bridge, 'ownership',
     { contractVersion: 'theta-ownership-runtime-v1', snapshotId: request.snapshotId, underlyingSymbol: request.underlying, timestamp: request.timestamp, policy: request.ownershipPolicy, inputs: request.ownershipInputs },
@@ -554,8 +564,8 @@ export async function runNewRiskOrchestration(
     });
   };
 
-  if (!thetaQEligible || request.candidates.length === 0) {
-    if (request.candidates.length > 0) {
+  if (!thetaQEligible || capacityKnownCandidates.length === 0) {
+    if (capacityKnownCandidates.length > 0) {
       recordShadow(null, {
         outcome: 'PASS', rejectionCategory: 'THETA_Q_INELIGIBLE',
         reasons: [{ code: 'STRATEGY_INELIGIBLE_THIS_CYCLE', polarity: -1, detail: 'THETA_Q was not an eligible strategy family for the current lifecycle/market state.' }],
@@ -578,7 +588,7 @@ export async function runNewRiskOrchestration(
   // against an unverified number. Excluded here, recorded as PASS, never
   // sent to Python -- mirroring the UNKNOWN-delta exclusion immediately
   // below, which this pass runs before.
-  const [executableCandidates, nonExecutable] = request.candidates.reduce<[RawCandidateInput[], RawCandidateInput[]]>(
+  const [executableCandidates, nonExecutable] = capacityKnownCandidates.reduce<[BrokerCapacityKnownCandidate[], BrokerCapacityKnownCandidate[]]>(
     (acc, c) => {
       acc[c.contract.executable ? 0 : 1].push(c);
       return acc;
@@ -603,7 +613,7 @@ export async function runNewRiskOrchestration(
   // Contracts with an UNKNOWN delta cannot enter the lattice call --
   // theta_q_lattice.py's ChainContract.put_delta_magnitude is a required
   // float. Exclude them here, recorded as PASS, never sent to Python.
-  const [latticeEligible, deltaUnknown] = executableCandidates.reduce<[RawCandidateInput[], RawCandidateInput[]]>(
+  const [latticeEligible, deltaUnknown] = executableCandidates.reduce<[BrokerCapacityKnownCandidate[], BrokerCapacityKnownCandidate[]]>(
     (acc, c) => {
       // Q-DELTA-SIGN-001: a sign-invalid put delta is UNKNOWN evidence (normalizeOptionContract nulls it; this guards
       // contracts built elsewhere) and is never passed through Math.abs into the lattice.
@@ -632,7 +642,7 @@ export async function runNewRiskOrchestration(
   // candidate from the lattice entirely, recorded distinctly from a delta
   // exclusion so the shadow book can tell freshness failures apart from
   // missing Greeks.
-  const [freshnessEligible, freshnessRejected] = latticeEligible.reduce<[RawCandidateInput[], RawCandidateInput[]]>(
+  const [freshnessEligible, freshnessRejected] = latticeEligible.reduce<[BrokerCapacityKnownCandidate[], BrokerCapacityKnownCandidate[]]>(
     (acc, c) => {
       const quality = classifyObservation(
         {

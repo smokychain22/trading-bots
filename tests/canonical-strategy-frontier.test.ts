@@ -478,6 +478,7 @@ test('a safe evaluated Q OPEN survives unrelated shortlist gaps without claiming
       selectedCandidateId: contract().optionSymbol, quantity: 1 } };
   const result = buildCanonicalStrategyFrontier(input);
   assert.equal(result.primaryAction, 'OPEN_CSP');
+  assert.equal(result.entrySelectionBasis, 'THETA_Q_DECISION_BOUND');
   assert.equal(result.selectedQuantity, 1);
   assert.equal(result.paperEvaluationCoverage?.state, 'INCOMPLETE');
   assert.equal(result.globalWaitEarned, false);
@@ -500,6 +501,7 @@ test('actual canonical H and D enumeration reaches method provenance without gra
     assert.ok(!filterToRealInputEvidence(executed, provenance).includes(method));
   }
   assert.equal(frontier.selectedBranch, 'THETA_CONVENTIONAL');
+  assert.equal(frontier.entrySelectionBasis, 'STRUCTURAL_RESEARCH_ONLY');
   assert.equal(frontier.executionAuthorized, false);
 });
 
@@ -526,6 +528,7 @@ test('candidate-specific AEGIS veto cannot be bypassed by a globally permissive 
   const conventional = result.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
   assert.equal(conventional?.candidates.find((candidate) => candidate.candidateId.endsWith('190000'))?.riskFeasible, false);
   assert.equal(result.selectedCandidateId, 'THETA_CONVENTIONAL:AAPL261016P00185000');
+  assert.equal(result.entrySelectionBasis, 'STRUCTURAL_RESEARCH_ONLY');
 });
 
 test('a Q lattice rejection cannot win Paper selection ahead of a feasible contract', () => {
@@ -540,6 +543,7 @@ test('a Q lattice rejection cannot win Paper selection ahead of a feasible contr
   assert.ok(conventional?.candidates.find((candidate) => candidate.legs[0]?.optionSymbol === rejected.optionSymbol)
     ?.hardBlockers.includes('THETA_Q_ACTION_INFEASIBLE'));
   assert.equal(result.selectedCandidateId, `THETA_CONVENTIONAL:${feasible.optionSymbol}`);
+  assert.equal(result.entrySelectionBasis, 'STRUCTURAL_RESEARCH_ONLY');
 });
 
 test('a Q WAIT with missing candidate evaluation cannot certify complete GLOBAL_WAIT', () => {
@@ -572,6 +576,7 @@ test('Paper-facing selection follows the economic Q winner rather than structura
       selectedCandidateId: winner.optionSymbol, quantity: 1 } });
   assert.equal(result.primaryAction, 'OPEN_CSP');
   assert.equal(result.selectedCandidateId, `THETA_CONVENTIONAL:${winner.optionSymbol}`);
+  assert.equal(result.entrySelectionBasis, 'THETA_Q_DECISION_BOUND');
   assert.equal(result.selectedQuantity, 1);
   assert.equal(result.secondBestCandidateId, null);
 });
@@ -583,6 +588,7 @@ test('an economic Q WAIT cannot be promoted to an OPEN by the structural frontie
       selectedCandidateId: null, quantity: 0 } });
   assert.equal(result.primaryAction, 'GLOBAL_WAIT');
   assert.equal(result.selectedCandidateId, null);
+  assert.equal(result.entrySelectionBasis, 'NO_SELECTION');
   assert.equal(result.selectedQuantity, 0);
   assert.ok(result.globalWaitReasons.includes('THETA_Q_ECONOMIC_WAIT'));
 });

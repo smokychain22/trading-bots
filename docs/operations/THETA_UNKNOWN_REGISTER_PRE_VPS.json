@@ -105,14 +105,14 @@
       "stage": "PAPER_ENTRY_SAFETY_POLICY",
       "source": "src/theta/paper-entry-safety-policy.ts",
       "category": "POLICY_MISSING",
-      "reason": "The owner explicitly approved exactly SPY as NON_COMPANY_FUND for bounded Alpaca Paper bootstrap under theta-paper-instrument-classification-v1 using the immutable official-issuer evidence hash 53cdbf688962ece5d59a3e56166dc51a2efc4f7b7ec2e44a457fa862c2b20f39. No other symbol, follower execution, live money, or order submission was authorized.",
+      "reason": "The governed theta-paper-instrument-manifest-v2 approves the bounded NON_COMPANY_FUND Paper cohort SPY, TLT and XLE. Each entry carries its own immutable official-issuer evidence hash and effective date. No symbol outside that manifest, follower execution, live money, or order submission is authorized by this classification.",
       "safetyCritical": true,
       "paperEntryRequired": true,
       "provider": null,
-      "producer": "paperInstrumentClassificationManifest exact SPY owner-approved entry",
+      "producer": "paperInstrumentClassificationManifest exact SPY/TLT/XLE governed entries",
       "persistence": "Source-controlled manifest version and Paper entry safety receipt",
       "consumer": "CompanyEventPaperPolicy and CorporateActionPaperPolicy",
-      "remediation": "Closed for the single approved SPY bootstrap scope. Any additional symbol requires a separate authoritative record and explicit owner approval.",
+      "remediation": "Closed for the governed SPY/TLT/XLE bounded Paper cohort. Any additional symbol requires a separate authoritative manifest record and approval.",
       "currentStatus": "RESOLVED"
     },
     {
