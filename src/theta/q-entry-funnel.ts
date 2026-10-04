@@ -3,6 +3,7 @@ import { canonicalizeRatio, type NormalizedOptionContract } from './option-contr
 import { optionExecutabilityCauses } from './option-executability-diagnostics.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 import { wholeContractsAffordable } from './secured-contract-capacity.js';
+import { buildQFilterAnalysis, type QFilterAnalysis } from './q-filter-analysis.js';
 
 /**
  * THETA-Q (cash-secured put) per-stage entry FUNNEL receipt (Phase 2).
@@ -537,6 +538,10 @@ export interface QEntryFunnelSummary {
   readonly dominantBlockerShare: number | null;
   readonly categoryCounts: Readonly<Record<string, number>>;
   readonly terminalReasonCounts: Readonly<Record<string, number>>;
+  /** Bounded, masking-free gate taxonomy and marginal-removal diagnostics.
+   * Future outcome labels are joined by the offline research consumer, never
+   * by the live decision path. */
+  readonly filterAnalysis: QFilterAnalysis;
   readonly executionAuthorized: false;
 }
 
@@ -554,7 +559,8 @@ export function summarizeQEntryFunnel(receipt: QEntryFunnelReceipt): QEntryFunne
     contractVersion: qEntryFunnelSummaryVersion, funnelContractVersion: receipt.contractVersion, fullReceiptHash: receipt.contentHash,
     stages: receipt.stages, independentGates: receipt.independentGates, totals: receipt.totals,
     extinctionStage: receipt.extinctionStage, dominantBlocker: receipt.dominantBlocker, dominantBlockerShare: receipt.dominantBlockerShare,
-    categoryCounts: receipt.categoryCounts, terminalReasonCounts, executionAuthorized: false,
+    categoryCounts: receipt.categoryCounts, terminalReasonCounts,
+    filterAnalysis: buildQFilterAnalysis(receipt), executionAuthorized: false,
   };
 }
 

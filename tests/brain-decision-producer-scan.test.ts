@@ -26,6 +26,7 @@ const thetaClass: Readonly<Record<string, ProducerClass>> = {
   'database-independent-shadow-observation.ts': 'SHADOW',
   'decision-assembly.ts': 'SUBORDINATE_CALCULATOR',
   'decision-evidence.ts': 'SUBORDINATE_CALCULATOR',
+  'decision-explainability.ts': 'DISPLAY',
   'deep-system-inventory.ts': 'DISPLAY',
   'execution-quality-contract.ts': 'SUBORDINATE_CALCULATOR',
   'management-action-frontier.ts': 'PRODUCTION_AUTHORITY',

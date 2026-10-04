@@ -13,6 +13,7 @@ import { strategyFamilyForCanonicalBranch, type CanonicalStrategyFrontier } from
 import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
 import { resolveCanonicalDecisionAuthority } from './canonical-decision-authority.js';
 import { buildGlobalWaitEvidenceFromFrontier, validateGlobalWaitEvidence } from './decision-evidence.js';
+import { buildCanonicalDecisionExplanation } from './decision-explainability.js';
 import {
   deriveOptionomicsTemporalFeatures,
   type OptionomicsFeatureSnapshotReference,
@@ -788,16 +789,20 @@ export class PostgresThetaCycleStore {
     // coerced. This is the one release-identity field this decision row
     // carries; do not add a second, competing mechanism elsewhere.
     const releaseIdentityPayload = { sourceSha: releaseIdentity?.sourceSha ?? null, workerSha: releaseIdentity?.workerSha ?? null };
+    const decisionExplanation = buildCanonicalDecisionExplanation({
+      frontier: authority,
+      qEntryFunnel: cycle.qEntryFunnel ?? null,
+    });
     const receiptPayload = authority === null
       ? { contractVersion: decisionAuthorityVersion, authority: null,
           aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
-          releaseIdentity: releaseIdentityPayload,
+          releaseIdentity: releaseIdentityPayload, decisionExplanation,
           subordinateNewRiskEvidence:
           buildStrategyDecisionEnvelope({ strategyVersionId, strategyBranch: 'THETA_CONVENTIONAL', receipt }),
           executionAuthorized: false }
       : { contractVersion: decisionAuthorityVersion, authority, legacyThetaQReceipt: receipt,
           aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
-          aegisAssessmentIdentity, releaseIdentity: releaseIdentityPayload,
+          aegisAssessmentIdentity, releaseIdentity: releaseIdentityPayload, decisionExplanation,
           empiricalUtilityState: authority.empiricalUtilityState, executionAuthorized: false };
     const receiptStorage = projectDecisionReceiptForPostgres({ ...receiptPayload,
       // Compact typed model output for subsequent management review. Raw

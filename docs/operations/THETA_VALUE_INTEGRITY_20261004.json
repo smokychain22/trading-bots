@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-04T18:46:56.645Z",
-  "sourceSha": "a0ff7fef8b3ec298b3f3e1ea6dd05479aa07b87f",
+  "generatedAt": "2026-10-04T21:00:21.350Z",
+  "sourceSha": "679bcdb83a5d2fae117cf3c1918e1382bacef76d",
   "evidenceScope": "SOURCE_AND_EXECUTED_TEST_EVIDENCE_NOT_CURRENT_WORKER_L7",
   "sourceHashes": {
     "bots/theta/quant/models/theta_q_lattice.py": "06f846d9ca08cde9d269466be1341ba7c5d89558d8d81925f47ed9b742d485d3",
@@ -39,7 +39,7 @@
     "src/theta/optionomics-provider.ts": "2d1e0d6bd9cfa12c2a4af28bc306cb0e40c99252a112fba10f4015d8606e059e",
     "src/theta/postgres-cycle-evidence-storage.ts": "13c636ca8015091dc0999f5c3b7596e60c7f0092a91612f05c59b8e321727664",
     "src/theta/postgres-lifecycle-application-store.ts": "445feebed5a1b19a986ee0de46b8d5f8fc9934fcdf3e9c115c35e4e68550d142",
-    "src/theta/postgres-theta-cycle-store.ts": "cc19ce0defa58b359fa789dc5f2c20164591713b5275a0a74e48e628de35cf32",
+    "src/theta/postgres-theta-cycle-store.ts": "659545a2d46be692d1296772f5948ad3bd100c8ab9014040d0ff8f7c49b465ad",
     "src/theta/postgres-whole-chain-components-repository.ts": "823a4e4e2c172766bcae3ca0a3b4c8688959223f0dee35c01442289739b9184b",
     "src/theta/production-paper-management-candidate-source.ts": "4861f2e1f695ad94517158a30b39b42b942fc827b3737687d66258b10e12bab7",
     "src/theta/profitability-brain-reality.ts": "455088ae9b6730cdb80edf67cf9a3f04e151db3fe91b4c92d9b7855c5f5811d3",
