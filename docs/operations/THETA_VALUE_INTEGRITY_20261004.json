@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-04T09:19:25.366Z",
-  "sourceSha": "72fac52be25cadaedad04810177deb1ebec75dd4",
+  "generatedAt": "2026-10-04T09:21:34.698Z",
+  "sourceSha": "35d4cca004202c6470f39c8a9d40895894fa7685",
   "evidenceScope": "SOURCE_AND_EXECUTED_TEST_EVIDENCE_NOT_CURRENT_WORKER_L7",
   "sourceHashes": {
     "bots/theta/quant/models/theta_q_lattice.py": "06f846d9ca08cde9d269466be1341ba7c5d89558d8d81925f47ed9b742d485d3",
