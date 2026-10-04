@@ -1,0 +1,152 @@
+{
+  "plannedAt": "2026-10-03T17:01:02.825Z",
+  "executed": false,
+  "productionWrites": 0,
+  "plans": [
+    {
+      "populationId": "legacy-candidate-point-in-time-evidence",
+      "table": "trade.candidate_point_in_time_evidence",
+      "totalRows": 39962,
+      "retainedRows": 1736,
+      "currentBytes": 1474084864,
+      "refused": [],
+      "method": "REBUILD_RETAINED_ROWS_THEN_DROP_OLD",
+      "steps": [
+        "BEGIN",
+        "SET LOCAL lock_timeout = '10s'",
+        "LOCK TABLE trade.candidate_point_in_time_evidence IN ACCESS EXCLUSIVE MODE",
+        "CREATE TABLE trade.candidate_point_in_time_evidence_rebuild_new (LIKE trade.candidate_point_in_time_evidence INCLUDING ALL)",
+        "INSERT INTO trade.candidate_point_in_time_evidence_rebuild_new SELECT * FROM trade.candidate_point_in_time_evidence WHERE NOT (decision_time < '2026-09-26T04:00:00Z')",
+        "-- abort and roll back unless count(trade.candidate_point_in_time_evidence_rebuild_new) = 0 AND equals the live retained count",
+        "ALTER TABLE trade.candidate_point_in_time_evidence RENAME TO candidate_point_in_time_evidence_retired_old",
+        "ALTER TABLE trade.candidate_point_in_time_evidence_rebuild_new RENAME TO candidate_point_in_time_evidence",
+        "ALTER TABLE trade.candidate_point_in_time_evidence ADD CONSTRAINT candidate_point_in_time_evidence_candidate_id_fkey FOREIGN KEY (candidate_id) REFERENCES trade.candidate(candidate_id)",
+        "ALTER TABLE trade.candidate_point_in_time_evidence ADD CONSTRAINT candidate_point_in_time_evidence_decision_id_fkey FOREIGN KEY (decision_id) REFERENCES trade.decision(decision_id)",
+        "ALTER TABLE trade.candidate_point_in_time_evidence ADD CONSTRAINT candidate_point_in_time_evidence_fusion_snapshot_id_fkey FOREIGN KEY (fusion_snapshot_id) REFERENCES trade.fusion_snapshot(fusion_snapshot_id)",
+        "CREATE OR REPLACE VIEW research.option_contract_risk_history AS SELECT candidate.candidate_id, candidate.decision_id, candidate.decision_time, candidate.branch, candidate.selected, candidate.hard_status, candidate.soft_status, candidate.contract_json ->> 'underlying'::text AS underlying, candidate.contract_json ->> 'contractSymbol'::text AS contract_symbol, candidate.contract_json ->> 'optionType'::text AS option_type, CASE WHEN jsonb_typeof(candidate.contract_json -> 'strike'::text) = 'number'::text THEN (candidate.contract_json ->> 'strike'::text)::numeric ELSE NULL::numeric END AS strike, CASE WHEN jsonb_typeof(candidate.contract_json -> 'dte'::text) = 'number'::text THEN (candidate.contract_json ->> 'dte'::text)::integer ELSE NULL::integer END AS dte, CASE WHEN jsonb_typeof(candidate.contract_json -> 'moneyness'::text) = 'number'::text THEN (candidate.contract_json ->> 'moneyness'::text)::numeric ELSE NULL::numeric END AS moneyness, CASE WHEN jsonb_typeof(candidate.volatility_json -> 'iv'::text) = 'number'::text THEN (candidate.volatility_json ->> 'iv'::text)::numeric ELSE NULL::numeric END AS implied_volatility, quote.bid, quote.ask, CASE WHEN quote.bid IS NOT NULL AND quote.ask IS NOT NULL AND quote.ask >= quote.bid THEN (quote.bid + quote.ask) / 2::numeric ELSE NULL::numeric END AS mid, CASE WHEN quote.bid IS NOT NULL AND quote.ask IS NOT NULL AND quote.ask >= quote.bid AND (quote.bid + quote.ask) > 0::numeric THEN (quote.ask - quote.bid) / ((quote.bid + quote.ask) / 2::numeric) ELSE NULL::numeric END AS relative_spread, quote.bid_size, quote.ask_size, quote.provider_timestamp, quote.ingestion_timestamp, quote.source, quote.operation_alias, quote.feed, quote.contract_version AS quote_contract_version, quote.data_quality, candidate.feature_version, candidate.strategy_version, candidate.provider_provenance_json, candidate.content_hash AS candidate_content_hash, quote.content_hash AS quote_content_hash FROM trade.candidate_point_in_time_evidence candidate LEFT JOIN LATERAL ( SELECT observation.quote_observation_id, observation.candidate_id, observation.management_input_snapshot_id, observation.observation_role, observation.observed_at, observation.provider_timestamp, observation.ingestion_timestamp, observation.source, observation.operation_alias, observation.feed, observation.contract_version, observation.bid, observation.ask, observation.bid_size, observation.ask_size, observation.proposed_limit, observation.data_quality, observation.content_hash, observation.created_at FROM market.execution_quote_observation observation WHERE observation.candidate_id = candidate.candidate_id AND observation.observation_role = 'DECISION'::text ORDER BY observation.observed_at DESC, observation.quote_observation_id DESC LIMIT 1) quote ON true;",
+        "CREATE TRIGGER reject_immutable_mutation BEFORE DELETE OR UPDATE ON trade.candidate_point_in_time_evidence FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation()",
+        "COMMIT",
+        "-- LATER, separately approved: DROP TABLE trade.candidate_point_in_time_evidence_retired_old   (returns 1474084864 bytes before the retained rows are subtracted)"
+      ],
+      "foreignKeys": [
+        "ALTER TABLE trade.candidate_point_in_time_evidence ADD CONSTRAINT candidate_point_in_time_evidence_candidate_id_fkey FOREIGN KEY (candidate_id) REFERENCES trade.candidate(candidate_id)",
+        "ALTER TABLE trade.candidate_point_in_time_evidence ADD CONSTRAINT candidate_point_in_time_evidence_decision_id_fkey FOREIGN KEY (decision_id) REFERENCES trade.decision(decision_id)",
+        "ALTER TABLE trade.candidate_point_in_time_evidence ADD CONSTRAINT candidate_point_in_time_evidence_fusion_snapshot_id_fkey FOREIGN KEY (fusion_snapshot_id) REFERENCES trade.fusion_snapshot(fusion_snapshot_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER reject_immutable_mutation BEFORE DELETE OR UPDATE ON trade.candidate_point_in_time_evidence FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation()"
+      ]
+    },
+    {
+      "populationId": "legacy-canonical-strategy-candidate-evidence",
+      "table": "trade.canonical_strategy_candidate_evidence",
+      "totalRows": 304719,
+      "retainedRows": 0,
+      "currentBytes": 810901504,
+      "refused": [],
+      "method": "REBUILD_RETAINED_ROWS_THEN_DROP_OLD",
+      "steps": [
+        "BEGIN",
+        "SET LOCAL lock_timeout = '10s'",
+        "LOCK TABLE trade.canonical_strategy_candidate_evidence IN ACCESS EXCLUSIVE MODE",
+        "CREATE TABLE trade.canonical_strategy_candidate_evidence_rebuild_new (LIKE trade.canonical_strategy_candidate_evidence INCLUDING ALL)",
+        "INSERT INTO trade.canonical_strategy_candidate_evidence_rebuild_new SELECT * FROM trade.canonical_strategy_candidate_evidence WHERE NOT (created_at < '2026-09-26T04:00:00Z')",
+        "-- abort and roll back unless count(trade.canonical_strategy_candidate_evidence_rebuild_new) = 0 AND equals the live retained count",
+        "ALTER TABLE trade.canonical_strategy_candidate_evidence RENAME TO canonical_strategy_candidate_evidence_retired_old",
+        "ALTER TABLE trade.canonical_strategy_candidate_evidence_rebuild_new RENAME TO canonical_strategy_candidate_evidence",
+        "ALTER TABLE trade.canonical_strategy_candidate_evidence ADD CONSTRAINT canonical_strategy_candidate_evidence_branch_evidence_id_fkey FOREIGN KEY (branch_evidence_id) REFERENCES trade.canonical_strategy_branch_evidence(branch_evidence_id)",
+        "ALTER TABLE trade.canonical_strategy_candidate_evidence ADD CONSTRAINT canonical_strategy_candidate_evidence_frontier_id_fkey FOREIGN KEY (frontier_id) REFERENCES trade.canonical_strategy_frontier(frontier_id)",
+        "CREATE TRIGGER reject_immutable_mutation BEFORE DELETE OR UPDATE ON trade.canonical_strategy_candidate_evidence FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation()",
+        "COMMIT",
+        "-- LATER, separately approved: DROP TABLE trade.canonical_strategy_candidate_evidence_retired_old   (returns 810901504 bytes before the retained rows are subtracted)"
+      ],
+      "foreignKeys": [
+        "ALTER TABLE trade.canonical_strategy_candidate_evidence ADD CONSTRAINT canonical_strategy_candidate_evidence_branch_evidence_id_fkey FOREIGN KEY (branch_evidence_id) REFERENCES trade.canonical_strategy_branch_evidence(branch_evidence_id)",
+        "ALTER TABLE trade.canonical_strategy_candidate_evidence ADD CONSTRAINT canonical_strategy_candidate_evidence_frontier_id_fkey FOREIGN KEY (frontier_id) REFERENCES trade.canonical_strategy_frontier(frontier_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER reject_immutable_mutation BEFORE DELETE OR UPDATE ON trade.canonical_strategy_candidate_evidence FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation()"
+      ]
+    },
+    {
+      "populationId": "legacy-fusion-snapshot-payload",
+      "table": "trade.fusion_snapshot",
+      "totalRows": 1087,
+      "retainedRows": 616,
+      "currentBytes": 1286356992,
+      "refused": [
+        "INBOUND_FOREIGN_KEYS:16"
+      ],
+      "method": "NOT_REBUILDABLE_IN_PLACE",
+      "steps": [],
+      "foreignKeys": [
+        "ALTER TABLE trade.fusion_snapshot ADD CONSTRAINT fusion_snapshot_account_snapshot_id_fkey FOREIGN KEY (account_snapshot_id) REFERENCES trade.account_snapshot(account_snapshot_id)",
+        "ALTER TABLE trade.fusion_snapshot ADD CONSTRAINT fusion_snapshot_bot_instance_id_fkey FOREIGN KEY (bot_instance_id) REFERENCES core.bot_instance(bot_instance_id)",
+        "ALTER TABLE trade.fusion_snapshot ADD CONSTRAINT fusion_snapshot_cost_model_version_id_fkey FOREIGN KEY (cost_model_version_id) REFERENCES core.cost_model_version(cost_model_version_id)",
+        "ALTER TABLE trade.fusion_snapshot ADD CONSTRAINT fusion_snapshot_execution_version_id_fkey FOREIGN KEY (execution_version_id) REFERENCES core.execution_version(execution_version_id)",
+        "ALTER TABLE trade.fusion_snapshot ADD CONSTRAINT fusion_snapshot_feature_version_id_fkey FOREIGN KEY (feature_version_id) REFERENCES core.feature_version(feature_version_id)",
+        "ALTER TABLE trade.fusion_snapshot ADD CONSTRAINT fusion_snapshot_risk_limit_version_id_fkey FOREIGN KEY (risk_limit_version_id) REFERENCES core.risk_limit_version(risk_limit_version_id)",
+        "ALTER TABLE trade.fusion_snapshot ADD CONSTRAINT fusion_snapshot_strategy_version_id_fkey FOREIGN KEY (strategy_version_id) REFERENCES core.strategy_version(strategy_version_id)",
+        "ALTER TABLE trade.fusion_snapshot ADD CONSTRAINT fusion_snapshot_universe_version_id_fkey FOREIGN KEY (universe_version_id) REFERENCES core.universe_version(universe_version_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER reject_immutable_mutation BEFORE DELETE OR UPDATE ON trade.fusion_snapshot FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation()"
+      ]
+    },
+    {
+      "populationId": "legacy-optionomics-feature-snapshot",
+      "table": "market.optionomics_feature_snapshot",
+      "totalRows": 466,
+      "retainedRows": 0,
+      "currentBytes": 162570240,
+      "refused": [
+        "INBOUND_FOREIGN_KEYS:3"
+      ],
+      "method": "NOT_REBUILDABLE_IN_PLACE",
+      "steps": [],
+      "foreignKeys": [
+        "ALTER TABLE market.optionomics_feature_snapshot ADD CONSTRAINT optionomics_feature_snapshot_fusion_snapshot_id_fkey FOREIGN KEY (fusion_snapshot_id) REFERENCES trade.fusion_snapshot(fusion_snapshot_id)",
+        "ALTER TABLE market.optionomics_feature_snapshot ADD CONSTRAINT optionomics_feature_snapshot_observation_id_fkey FOREIGN KEY (observation_id) REFERENCES market.optionomics_raw_observation(observation_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER reject_immutable_mutation BEFORE DELETE OR UPDATE ON market.optionomics_feature_snapshot FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation()"
+      ]
+    },
+    {
+      "populationId": "legacy-option-chain-decision-evidence",
+      "table": "research.theta_option_chain_decision_evidence",
+      "totalRows": 471,
+      "retainedRows": 0,
+      "currentBytes": 125222912,
+      "refused": [
+        "INBOUND_FOREIGN_KEYS:1"
+      ],
+      "method": "NOT_REBUILDABLE_IN_PLACE",
+      "steps": [],
+      "foreignKeys": [
+        "ALTER TABLE research.theta_option_chain_decision_evidence ADD CONSTRAINT theta_option_chain_decision_evidence_fusion_snapshot_id_fkey FOREIGN KEY (fusion_snapshot_id) REFERENCES trade.fusion_snapshot(fusion_snapshot_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER reject_immutable_mutation BEFORE DELETE OR UPDATE ON research.theta_option_chain_decision_evidence FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation()"
+      ]
+    },
+    {
+      "populationId": "legacy-optionomics-raw-observation",
+      "table": "market.optionomics_raw_observation",
+      "totalRows": 5522,
+      "retainedRows": 3193,
+      "currentBytes": 142565376,
+      "refused": [
+        "INBOUND_FOREIGN_KEYS:3"
+      ],
+      "method": "NOT_REBUILDABLE_IN_PLACE",
+      "steps": [],
+      "foreignKeys": [
+        "ALTER TABLE market.optionomics_raw_observation ADD CONSTRAINT optionomics_raw_observation_fusion_snapshot_id_fkey FOREIGN KEY (fusion_snapshot_id) REFERENCES trade.fusion_snapshot(fusion_snapshot_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER reject_immutable_mutation BEFORE DELETE OR UPDATE ON market.optionomics_raw_observation FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation()"
+      ]
+    }
+  ]
+}

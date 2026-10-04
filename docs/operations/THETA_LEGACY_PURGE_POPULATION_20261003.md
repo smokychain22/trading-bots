@@ -1,0 +1,36 @@
+# THETA legacy purge population (exact), re-verified after a process restart
+
+Status: **no Production row has been deleted.** Prepared 2026-10-03 for the owner decision. Production was only READ (counts, sampled rows, catalogs) in read-only transactions.
+
+Re-verified now, not trusted from earlier: files exist, manifest self-consistency, every chunk file and content hash recomputed, row counts, key order, schema identity against the live tables, Parquet hash + DuckDB open + row count,
+a 40-row restore sample per population compared byte for byte with Production, row-count parity with Production, and the 20-blob cycle replay sample.
+
+| TABLE | DATE_RANGE | ROWS | LOGICAL_GIB | IMMEDIATE_PHYSICAL_RECLAIM_GIB | ARCHIVE_ID | PARQUET_BYTES | ROW_PARITY | RESTORE_VERIFY | SCHEMA | OPERATIONAL_DEPENDENCY | PURGE / REBUILD METHOD |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| trade.candidate_point_in_time_evidence | 2026-09-16 15:32:50.392+00 to 2026-09-25 14:19:36.574+00 | 38,226 | 2.912 | 1.313 | `6eb830e8380ee9232f9fdf868dbb4ded4a50d43c` | 95,575,036 | 38226/38226 EQUAL | 40/40 MATCH | IDENTICAL | NONE (no foreign key, no operational table reads this population for a decision) | REBUILD_RETAINED_ROWS_THEN_DROP_OLD (rebuild/swap; plan SQL in the plan file) |
+| trade.canonical_strategy_candidate_evidence | 2026-09-16 15:32:56.291797+00 to 2026-09-24 19:59:58.864347+00 | 304,719 | 0.581 | 0.755 | `36c86565130942ba96580f968a860a723fa7940c` | 36,543,817 | 304719/304719 EQUAL | 40/40 MATCH | IDENTICAL | NONE (no foreign key, no operational table reads this population for a decision) | REBUILD_RETAINED_ROWS_THEN_DROP_OLD (rebuild/swap; plan SQL in the plan file) |
+| trade.fusion_snapshot | 2026-09-16 15:32:50.392+00 to 2026-09-25 14:19:36.574+00 | 471 | 1.87 | 0 | `8e165ffb3ca23308cdaf0b49c25a2c5451702073` | 117,271,178 | 471/471 EQUAL | 40/40 MATCH | IDENTICAL | [{"dependent":"market.optionomics_feature_snapshot","on_delete":"a"},{"dependent":"market.optionomics_raw_observation","on_delete":"a"},{"dependent":"research.theta_option_chain_decision_evidence","on_delete":"a"},{"dependent":"research.theta_replay_observation","on_delete":"a"},{"dependent":"research.theta_shadow_order_intent","on_delete":"a"},{"dependent":"research.theta_shadow_scan_member","on_delete":"a"},{"dependent":"trade.candidate_point_in_time_evidence","on_delete":"a"},{"dependent":"trade.candidate_set","on_delete":"a"},{"dependent":"trade.canonical_strategy_branch_evidence","on_delete":"a"},{"dependent":"trade.canonical_strategy_frontier","on_delete":"a"},{"dependent":"trade.decision","on_delete":"a"},{"dependent":"trade.management_decision","on_delete":"a"},{"dependent":"trade.management_input_snapshot","on_delete":"a"},{"dependent":"trade.management_opportunity","on_delete":"a"},{"dependent":"trade.shadow_opportunity","on_delete":"a"},{"dependent":"trade.strategy_route","on_delete":"a"}] | REUSE_ONLY (payload replaced by archive pointer; foreign keys forbid a table rewrite: INBOUND_FOREIGN_KEYS:16) |
+| market.optionomics_feature_snapshot | 2026-09-16 15:32:50.169+00 to 2026-09-25 14:19:36.09+00 | 466 | 0.989 | 0 | `0898552ca2348724d7a7b778056cb7e70102479f` | 50,776,171 | 466/466 EQUAL | 40/40 MATCH | IDENTICAL | [{"dependent":"market.optionomics_feature_observation_link","on_delete":"a"},{"dependent":"research.optionomics_temporal_feature_observation","on_delete":"a"},{"dependent":"research.optionomics_temporal_feature_observation","on_delete":"a"}] | REUSE_ONLY (payload replaced by archive pointer; foreign keys forbid a table rewrite: INBOUND_FOREIGN_KEYS:3) |
+| research.theta_option_chain_decision_evidence | 2026-09-16 15:32:50.392+00 to 2026-09-25 14:19:36.574+00 | 471 | 0.758 | 0 | `ff7de7136844aff3b3aa0239d19af8f93d7ac8d0` | 38,440,870 | 471/471 EQUAL | 40/40 MATCH | IDENTICAL | [{"dependent":"research.theta_outcome_subject","on_delete":"a"}] | REUSE_ONLY (payload replaced by archive pointer; foreign keys forbid a table rewrite: INBOUND_FOREIGN_KEYS:1) |
+| market.optionomics_raw_observation | 2026-09-16 15:32:56.291797+00 to 2026-09-25 14:20:03.887438+00 | 2,329 | 0.24 | 0 | `2a258b1ca7387b4ee3c43694d9a8fadd3262c0a1` | 42,398,486 | 2329/2329 EQUAL | 40/40 MATCH | IDENTICAL | [{"dependent":"market.optionomics_event_first_observation","on_delete":"a"},{"dependent":"market.optionomics_feature_observation_link","on_delete":"a"},{"dependent":"market.optionomics_feature_snapshot","on_delete":"a"}] | REUSE_ONLY (payload replaced by archive pointer; foreign keys forbid a table rewrite: INBOUND_FOREIGN_KEYS:3) |
+
+Full population hashes are in `THETA_LEGACY_PURGE_POPULATION_20261003.json` (`HASH`). The Parquet column states: all six readable (hash, DuckDB open, row count equals the archive).
+
+**Totals:** 346,682 rows, 7.35 GiB logical, **2.068 GiB immediate physical reclaim** (the two rebuildable tables: 1.313 GiB and 0.755 GiB), the other four are reuse-only because foreign keys forbid a table rewrite (0.599 GiB of payload is replaced by archive pointers and its space is reused by new rows).
+
+ORDERS_INCLUDED=0 | FILLS_INCLUDED=0 | PLANS_INCLUDED=0 | BROKER_EVENTS_INCLUDED=0 | INVENTORY_INCLUDED=0 (no operational relation is in any population; the library refuses operational relations by name).
+
+Cycle replay sample (20 retained current-contract blobs): 20 executed, 0 failures; states {"SAME_SOURCE_MISMATCH": 14, "SAME_SOURCE_REPRODUCED": 6}.
+
+## Why nothing may be purged yet
+
+1. **No second durability authority.** The laptop disk holds the only cold copy. The purge rule is enforced in code (`src/storage/data-platform/durability-policy.ts`): a verified primary AND a verified second authority (second archive copy or a verified DR backup newer than the archive) AND an off-machine copy. A remote archive target must be configured first (provider decision pending; vendor-neutral contract and conformance suite are ready).
+2. **Owner approval of this exact population.** The irreversible drop (`dropRetiredTable`) needs the approval token and the verification proof.
+
+## Method per table (designed and tested on a disposable PostgreSQL; the exact Production SQL is in `THETA_LEGACY_REBUILD_PLAN_20261003.json`)
+
+- **trade.candidate_point_in_time_evidence**: rebuild/swap in one short transaction (`LOCK`, `CREATE TABLE ... LIKE ... INCLUDING ALL`, copy the 1,736 retained rows, verify the count, rename, restore the three outward foreign keys, re-point `research.option_contract_risk_history`, restore the immutability trigger and canonical index names). The old table stays (renamed) until the separately approved drop returns about 1.31 GiB at once. The immutability trigger forbids DELETE, so a DELETE-based purge would be refused by the database itself.
+- **trade.canonical_strategy_candidate_evidence**: the same rebuild with zero retained rows (keeps the table for the opt-in research writer; about 0.755 GiB).
+- **the four foreign-key-referenced tables**: reuse-only (the payload column is replaced by an archive pointer through a governed, owner-approved UPDATE path; the freed pages are reused by new rows, the files do not shrink). Not part of the immediate reclaim.
+
+After the purge and the staged cutover the database starts from about 2.6 GiB (4.666 - 2.068); see `THETA_DATA_PLATFORM_PERMANENT_GROWTH_DECISION_20261003.md` for how long that lasts.

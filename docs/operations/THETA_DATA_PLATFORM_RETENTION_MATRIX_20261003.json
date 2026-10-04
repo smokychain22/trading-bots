@@ -1,0 +1,593 @@
+{
+  "matrixVersion": "theta-data-platform-retention-matrix-v1",
+  "registryProblems": [],
+  "memoryTypes": {
+    "WORKING": "PostgreSQL (operational truth plus bounded hot evidence)",
+    "LONG_TERM": "immutable compressed columnar archive (Parquet ZSTD, date partitioned)",
+    "REPRODUCIBILITY": "GitHub (code, schema, migrations, policy, manifests, receipts, fixtures)",
+    "DISASTER_RECOVERY": "verified backup storage"
+  },
+  "datasets": [
+    {
+      "id": "cycle-evidence-blob",
+      "class": "RUNTIME_EVIDENCE",
+      "writePriority": "P1_SELECTED_AND_FINALIST_EVIDENCE",
+      "tables": [
+        "dp.cycle_evidence_blob"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "SESSION_DATE"
+      },
+      "HOT_WINDOW": "5 sessions (5 closed SESSION_DATE partitions)",
+      "WARM_WINDOW": "20 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "trade.fusion_snapshot keeps id, time, content hash, archive_id and archive content hash (about 1 KiB)",
+      "WHY_HOT": "recent replay, incident debugging and outcome-label resolution need the exact T0 within days of a decision",
+      "WHY_WARM": "research replays of recent sessions are frequent; a local cache avoids repeated archive reads",
+      "ARCHIVED_WHEN": "after the session closes and the partition is CLOSED_HOT",
+      "REMOVED_FROM_POSTGRES_WHEN": "five sessions after close, only after the archive is hash-, row- and replay-verified (partition detach, then drop)",
+      "RESTORED_HOW": "EvidenceReader resolves the archive manifest by archive content hash and returns the original compressed blob byte-for-byte; replayCycleArchive accepts it unchanged",
+      "value": {
+        "operational": 0,
+        "audit": 3,
+        "research": 3,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "WEEKLY"
+      },
+      "measuredMedianBytesPerDecision": 637952,
+      "VALUE_BYTES_RATIO": 14.79
+    },
+    {
+      "id": "decision-context",
+      "class": "RUNTIME_EVIDENCE",
+      "writePriority": "P1_SELECTED_AND_FINALIST_EVIDENCE",
+      "tables": [
+        "dp.decision_context"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "SESSION_DATE"
+      },
+      "HOT_WINDOW": "10 sessions (10 closed SESSION_DATE partitions)",
+      "WARM_WINDOW": "20 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "decision audit row keeps the context content hash",
+      "WHY_HOT": "every hot candidate reference resolves through it",
+      "WHY_WARM": "research joins candidates to context",
+      "ARCHIVED_WHEN": "with the matching candidate partitions",
+      "REMOVED_FROM_POSTGRES_WHEN": "after candidates of the same sessions are archived and verified",
+      "RESTORED_HOW": "content hash lookup in the archive manifest",
+      "value": {
+        "operational": 1,
+        "audit": 3,
+        "research": 3,
+        "reconstructionCost": "HIGH",
+        "accessFrequency": "DAILY"
+      },
+      "measuredMedianBytesPerDecision": 6144,
+      "VALUE_BYTES_RATIO": 2048
+    },
+    {
+      "id": "candidate-hot-detail",
+      "class": "RUNTIME_EVIDENCE",
+      "writePriority": "P1_SELECTED_AND_FINALIST_EVIDENCE",
+      "tables": [
+        "dp.pit_candidate"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "SESSION_DATE"
+      },
+      "HOT_WINDOW": "10 sessions (10 closed SESSION_DATE partitions)",
+      "WARM_WINDOW": "20 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "candidate id, tier, hashes and rejection reason code stay in the compact decision audit",
+      "WHY_HOT": "outcome labels resolve over horizons up to the end of day and next sessions; management compares against the entry thesis",
+      "WHY_WARM": "research on boundary behaviour",
+      "ARCHIVED_WHEN": "session close plus verification",
+      "REMOVED_FROM_POSTGRES_WHEN": "ten sessions after close when verified",
+      "RESTORED_HOW": "Parquet partition by session_date and candidate id",
+      "value": {
+        "operational": 1,
+        "audit": 2,
+        "research": 3,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "DAILY"
+      },
+      "measuredMedianBytesPerDecision": 94208,
+      "VALUE_BYTES_RATIO": 111.3
+    },
+    {
+      "id": "candidate-ordinary-rejected",
+      "class": "RESEARCH_HISTORY",
+      "writePriority": "P2_FULL_RESEARCH",
+      "tables": [
+        "dp.rejection_histogram"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "WEEK"
+      },
+      "HOT_WINDOW": "20 sessions (4 closed WEEK partitions)",
+      "WARM_WINDOW": "60 sessions (local verified-archive cache)",
+      "COLD_POLICY": "COMPACT_THEN_ARCHIVE_DETAIL",
+      "compactHotForm": "per-decision rejection histogram (reason code to exact count) and the hash of the complete candidate list; the complete rows live in the cycle evidence blob and the Parquet candidate archive",
+      "WHY_HOT": "dashboards and funnel reports need counts, not rows",
+      "WHY_WARM": "research reads the full rows from Parquet, never from PostgreSQL",
+      "ARCHIVED_WHEN": "the full rows are archived from the first session close; only the histogram is hot",
+      "REMOVED_FROM_POSTGRES_WHEN": "never stored hot as rows",
+      "RESTORED_HOW": "Parquet candidate archive, verified against the hash in the histogram row",
+      "value": {
+        "operational": 0,
+        "audit": 1,
+        "research": 3,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "WEEKLY"
+      },
+      "measuredMedianBytesPerDecision": 2048,
+      "VALUE_BYTES_RATIO": 2560
+    },
+    {
+      "id": "decision-audit",
+      "class": "AUDIT_LINEAGE",
+      "writePriority": "P0_OPERATIONAL",
+      "tables": [
+        "dp.recent_decision_audit"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "SESSION_DATE"
+      },
+      "HOT_WINDOW": "60 sessions (60 closed SESSION_DATE partitions)",
+      "WARM_WINDOW": "250 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "bounded recent identity plus archive locator; older truth resolves through the chained session manifest and cold archive",
+      "WHY_HOT": "recent audit and incident lookup",
+      "WHY_WARM": "frequent replay without remote retrieval",
+      "ARCHIVED_WHEN": "full decision truth archives at session finalization",
+      "REMOVED_FROM_POSTGRES_WHEN": "60 sessions after final-chain, two-authority, hash and replay verification",
+      "RESTORED_HOW": "EvidenceReader resolves the session manifest and archive locator by decision id",
+      "value": {
+        "operational": 2,
+        "audit": 3,
+        "research": 2,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "DAILY"
+      },
+      "measuredMedianBytesPerDecision": null,
+      "VALUE_BYTES_RATIO": null
+    },
+    {
+      "id": "frontier-summary",
+      "class": "AUDIT_LINEAGE",
+      "writePriority": "P1_SELECTED_AND_FINALIST_EVIDENCE",
+      "tables": [
+        "trade.canonical_strategy_frontier"
+      ],
+      "partition": {
+        "column": "observed_at",
+        "granularity": "WEEK"
+      },
+      "HOT_WINDOW": "60 sessions (12 closed WEEK partitions)",
+      "WARM_WINDOW": "120 sessions (local verified-archive cache)",
+      "COLD_POLICY": "COMPACT_THEN_ARCHIVE_DETAIL",
+      "compactHotForm": "bounded projection (already bounded to a constant size by the Phase 3 projection contract)",
+      "WHY_HOT": "frontier explanations for recent decisions",
+      "WHY_WARM": "research",
+      "ARCHIVED_WHEN": "detail is in the cycle blob from the start",
+      "REMOVED_FROM_POSTGRES_WHEN": "summary retires after 60 sessions once archived",
+      "RESTORED_HOW": "cycle blob by archive hash",
+      "value": {
+        "operational": 1,
+        "audit": 3,
+        "research": 2,
+        "reconstructionCost": "MEDIUM",
+        "accessFrequency": "WEEKLY"
+      },
+      "measuredMedianBytesPerDecision": 32768,
+      "VALUE_BYTES_RATIO": 352
+    },
+    {
+      "id": "shadow-opportunity",
+      "class": "RESEARCH_HISTORY",
+      "writePriority": "P2_FULL_RESEARCH",
+      "tables": [
+        "trade.shadow_opportunity"
+      ],
+      "partition": {
+        "column": "decision_time",
+        "granularity": "WEEK"
+      },
+      "HOT_WINDOW": "20 sessions (4 closed WEEK partitions)",
+      "WARM_WINDOW": "60 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "daily aggregates",
+      "WHY_HOT": "resolution needs open shadow positions until their horizon closes",
+      "WHY_WARM": "training datasets read the archive",
+      "ARCHIVED_WHEN": "after resolution",
+      "REMOVED_FROM_POSTGRES_WHEN": "twenty sessions after close",
+      "RESTORED_HOW": "Parquet by month",
+      "value": {
+        "operational": 0,
+        "audit": 1,
+        "research": 3,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "WEEKLY"
+      },
+      "measuredMedianBytesPerDecision": 2048,
+      "VALUE_BYTES_RATIO": 2560
+    },
+    {
+      "id": "optionomics-raw-observation",
+      "class": "RAW_PROVIDER_PAYLOAD",
+      "writePriority": "P3_RAW_PROVIDER_PAYLOAD",
+      "tables": [
+        "dp.payload_blob",
+        "market.optionomics_raw_observation"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "SESSION_DATE"
+      },
+      "HOT_WINDOW": "3 sessions (3 closed SESSION_DATE partitions)",
+      "WARM_WINDOW": "20 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "observation row keeps request identity, provider, time, status, latency, payload hash and archive reference",
+      "WHY_HOT": "a payload is only re-read while its derived features are being checked",
+      "WHY_WARM": "research on provider behaviour",
+      "ARCHIVED_WHEN": "after session close",
+      "REMOVED_FROM_POSTGRES_WHEN": "three sessions after close when verified",
+      "RESTORED_HOW": "content hash lookup",
+      "value": {
+        "operational": 0,
+        "audit": 2,
+        "research": 2,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "RARE"
+      },
+      "measuredMedianBytesPerDecision": 2355,
+      "VALUE_BYTES_RATIO": 2671.3
+    },
+    {
+      "id": "optionomics-payload-blob",
+      "class": "RAW_PROVIDER_PAYLOAD",
+      "writePriority": "P3_RAW_PROVIDER_PAYLOAD",
+      "tables": [
+        "dp.payload_blob"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "SESSION_DATE"
+      },
+      "HOT_WINDOW": "3 sessions (3 closed SESSION_DATE partitions)",
+      "WARM_WINDOW": "20 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "the observation row keeps the payload hash, size and archive reference",
+      "WHY_HOT": "a payload is only re-read while its derived features are being checked",
+      "WHY_WARM": "research on provider behaviour",
+      "ARCHIVED_WHEN": "after session close",
+      "REMOVED_FROM_POSTGRES_WHEN": "three sessions after close when verified",
+      "RESTORED_HOW": "content hash lookup through the archive manifest",
+      "value": {
+        "operational": 0,
+        "audit": 2,
+        "research": 2,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "RARE"
+      },
+      "measuredMedianBytesPerDecision": null,
+      "VALUE_BYTES_RATIO": null
+    },
+    {
+      "id": "optionomics-feature",
+      "class": "RUNTIME_EVIDENCE",
+      "writePriority": "P2_FULL_RESEARCH",
+      "tables": [
+        "market.optionomics_feature_snapshot"
+      ],
+      "partition": {
+        "column": "observed_at",
+        "granularity": "WEEK"
+      },
+      "HOT_WINDOW": "5 sessions (1 closed WEEK partitions)",
+      "WARM_WINDOW": "20 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "feature version and content hash",
+      "WHY_HOT": "recent features explain recent decisions",
+      "WHY_WARM": "research",
+      "ARCHIVED_WHEN": "after session close",
+      "REMOVED_FROM_POSTGRES_WHEN": "five sessions",
+      "RESTORED_HOW": "Parquet by month",
+      "value": {
+        "operational": 0,
+        "audit": 1,
+        "research": 3,
+        "reconstructionCost": "HIGH",
+        "accessFrequency": "WEEKLY"
+      },
+      "measuredMedianBytesPerDecision": 20480,
+      "VALUE_BYTES_RATIO": 256
+    },
+    {
+      "id": "execution-observation",
+      "class": "RUNTIME_EVIDENCE",
+      "writePriority": "P2_FULL_RESEARCH",
+      "tables": [
+        "research.theta_execution_observation_job",
+        "market.execution_quote_observation"
+      ],
+      "partition": {
+        "column": "created_at",
+        "granularity": "SESSION_DATE"
+      },
+      "HOT_WINDOW": "5 sessions (5 closed SESSION_DATE partitions)",
+      "WARM_WINDOW": "20 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "unresolved jobs only (scheduling and label resolution need them); resolved marks go to Parquet",
+      "WHY_HOT": "pending jobs and recent marks drive scheduling and troubleshooting",
+      "WHY_WARM": "label audits",
+      "ARCHIVED_WHEN": "a mark is resolved and its session is closed",
+      "REMOVED_FROM_POSTGRES_WHEN": "five sessions after resolution",
+      "RESTORED_HOW": "Parquet by month",
+      "value": {
+        "operational": 1,
+        "audit": 1,
+        "research": 3,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "DAILY"
+      },
+      "measuredMedianBytesPerDecision": 5120,
+      "VALUE_BYTES_RATIO": 1638.4
+    },
+    {
+      "id": "outcome-observation",
+      "class": "RESEARCH_HISTORY",
+      "writePriority": "P1_SELECTED_AND_FINALIST_EVIDENCE",
+      "tables": [
+        "research.theta_outcome_subject",
+        "research.theta_outcome_resolution_receipt"
+      ],
+      "partition": {
+        "column": "created_at",
+        "granularity": "MONTH"
+      },
+      "HOT_WINDOW": "60 sessions (3 closed MONTH partitions)",
+      "WARM_WINDOW": "250 sessions (local verified-archive cache)",
+      "COLD_POLICY": "COMPACT_THEN_ARCHIVE_DETAIL",
+      "compactHotForm": "label value, horizon and receipt hash",
+      "WHY_HOT": "small and queried often",
+      "WHY_WARM": "training",
+      "ARCHIVED_WHEN": "with the decision it labels",
+      "REMOVED_FROM_POSTGRES_WHEN": "detail after 60 sessions",
+      "RESTORED_HOW": "Parquet",
+      "value": {
+        "operational": 0,
+        "audit": 2,
+        "research": 3,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "WEEKLY"
+      },
+      "measuredMedianBytesPerDecision": 1024,
+      "VALUE_BYTES_RATIO": 7168
+    },
+    {
+      "id": "provider-request-history",
+      "class": "AUDIT_LINEAGE",
+      "writePriority": "P3_RAW_PROVIDER_PAYLOAD",
+      "tables": [
+        "ops.provider_request"
+      ],
+      "partition": {
+        "column": "requested_at",
+        "granularity": "MONTH"
+      },
+      "HOT_WINDOW": "30 sessions (2 closed MONTH partitions)",
+      "WARM_WINDOW": "120 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "daily aggregates by provider, status and latency band",
+      "WHY_HOT": "rate-limit and incident forensics",
+      "WHY_WARM": "provider reliability research",
+      "ARCHIVED_WHEN": "month closes",
+      "REMOVED_FROM_POSTGRES_WHEN": "30 sessions",
+      "RESTORED_HOW": "Parquet by month",
+      "value": {
+        "operational": 1,
+        "audit": 2,
+        "research": 1,
+        "reconstructionCost": "MEDIUM",
+        "accessFrequency": "RARE"
+      },
+      "measuredMedianBytesPerDecision": 512,
+      "VALUE_BYTES_RATIO": 16384
+    },
+    {
+      "id": "runtime-diagnostics",
+      "class": "AUDIT_LINEAGE",
+      "writePriority": "P2_FULL_RESEARCH",
+      "tables": [
+        "ops.runtime_worker_cycle",
+        "ops.scheduler_checkpoint",
+        "trade.broker_reconciliation_snapshot"
+      ],
+      "partition": {
+        "column": "created_at",
+        "granularity": "WEEK"
+      },
+      "HOT_WINDOW": "30 sessions (6 closed WEEK partitions)",
+      "WARM_WINDOW": "120 sessions (local verified-archive cache)",
+      "COLD_POLICY": "COMPACT_THEN_ARCHIVE_DETAIL",
+      "compactHotForm": "daily aggregates (cycle counts, failure counts, latency bands) plus EVERY non-GOOD reconciliation snapshot and the latest GOOD one stay hot permanently",
+      "WHY_HOT": "incident forensics over the recent past",
+      "WHY_WARM": "reliability research",
+      "ARCHIVED_WHEN": "a week closes",
+      "REMOVED_FROM_POSTGRES_WHEN": "about 30 sessions after close",
+      "RESTORED_HOW": "Parquet by week",
+      "value": {
+        "operational": 1,
+        "audit": 2,
+        "research": 1,
+        "reconstructionCost": "MEDIUM",
+        "accessFrequency": "RARE"
+      },
+      "measuredMedianBytesPerDecision": null,
+      "VALUE_BYTES_RATIO": null
+    },
+    {
+      "id": "broker-history",
+      "class": "OPERATIONAL_TRUTH",
+      "writePriority": "P0_OPERATIONAL",
+      "tables": [
+        "trade.order_intent",
+        "trade.broker_order",
+        "trade.fill",
+        "trade.execution_attempt",
+        "trade.master_paper_action_plan",
+        "trade.broker_reconciliation_snapshot",
+        "trade.stock_lot"
+      ],
+      "partition": {
+        "column": null,
+        "granularity": "NONE"
+      },
+      "HOT_WINDOW": "PERMANENT",
+      "WARM_WINDOW": "0 sessions (local verified-archive cache)",
+      "COLD_POLICY": "NEVER_LEAVES_POSTGRES",
+      "compactHotForm": "only active or unresolved chains, orders, fills, inventory and latest reconciliation truth",
+      "WHY_HOT": "active execution, inventory and accounting truth must remain immediately available",
+      "WHY_WARM": "n/a",
+      "ARCHIVED_WHEN": "terminal chains are copied to finalized-execution-history only after FINAL_CHAIN_RECEIPT",
+      "REMOVED_FROM_POSTGRES_WHEN": "active or unresolved rows never leave",
+      "RESTORED_HOW": "n/a",
+      "value": {
+        "operational": 3,
+        "audit": 3,
+        "research": 2,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "EVERY_CYCLE"
+      },
+      "measuredMedianBytesPerDecision": null,
+      "VALUE_BYTES_RATIO": null
+    },
+    {
+      "id": "finalized-execution-history",
+      "class": "AUDIT_LINEAGE",
+      "writePriority": "P0_OPERATIONAL",
+      "tables": [
+        "dp.finalized_execution_history"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "MONTH"
+      },
+      "HOT_WINDOW": "60 sessions (3 closed MONTH partitions)",
+      "WARM_WINDOW": "250 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "bounded recent compressed whole-chain records; final receipts and session roots retain identity",
+      "WHY_HOT": "recent disputes and accounting checks",
+      "WHY_WARM": "whole-chain research and audit replay",
+      "ARCHIVED_WHEN": "only after orders, fills, inventory, assignment, management, economics and required future labels are terminal or explicitly provider-limited",
+      "REMOVED_FROM_POSTGRES_WHEN": "60 sessions after two-authority archive, hash and replay verification",
+      "RESTORED_HOW": "EvidenceReader by chain id and final-chain receipt hash",
+      "value": {
+        "operational": 2,
+        "audit": 3,
+        "research": 3,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "DAILY"
+      },
+      "measuredMedianBytesPerDecision": null,
+      "VALUE_BYTES_RATIO": null
+    },
+    {
+      "id": "final-chain-receipt",
+      "class": "AUDIT_LINEAGE",
+      "writePriority": "P0_OPERATIONAL",
+      "tables": [
+        "dp.final_chain_receipt"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "MONTH"
+      },
+      "HOT_WINDOW": "60 sessions (3 closed MONTH partitions)",
+      "WARM_WINDOW": "250 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "receipt hash is linked from the session manifest and finalized execution archive",
+      "WHY_HOT": "archive eligibility and recent accounting disputes",
+      "WHY_WARM": "integrity and whole-chain replay checks",
+      "ARCHIVED_WHEN": "with finalized execution history",
+      "REMOVED_FROM_POSTGRES_WHEN": "60 sessions after two-authority archive and replay verification",
+      "RESTORED_HOW": "EvidenceReader by chain id and receipt hash",
+      "value": {
+        "operational": 2,
+        "audit": 3,
+        "research": 2,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "DAILY"
+      },
+      "measuredMedianBytesPerDecision": null,
+      "VALUE_BYTES_RATIO": null
+    },
+    {
+      "id": "session-integrity-manifest",
+      "class": "AUDIT_LINEAGE",
+      "writePriority": "P0_OPERATIONAL",
+      "tables": [
+        "dp.session_integrity_manifest"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "MONTH"
+      },
+      "HOT_WINDOW": "2520 sessions (120 closed MONTH partitions)",
+      "WARM_WINDOW": "2520 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "bounded ten-year manifest window plus dp.session_integrity_head singleton",
+      "WHY_HOT": "fast integrity proof and archive lookup",
+      "WHY_WARM": "audit verification",
+      "ARCHIVED_WHEN": "at session finalization",
+      "REMOVED_FROM_POSTGRES_WHEN": "after 2,520 sessions; latest chained root remains in the singleton head",
+      "RESTORED_HOW": "manifest archive by session id and chained root",
+      "value": {
+        "operational": 1,
+        "audit": 3,
+        "research": 1,
+        "reconstructionCost": "IRREPLACEABLE",
+        "accessFrequency": "DAILY"
+      },
+      "measuredMedianBytesPerDecision": null,
+      "VALUE_BYTES_RATIO": null
+    },
+    {
+      "id": "runtime-session-aggregate",
+      "class": "AUDIT_LINEAGE",
+      "writePriority": "P0_OPERATIONAL",
+      "tables": [
+        "dp.runtime_session_aggregate"
+      ],
+      "partition": {
+        "column": "session_date",
+        "granularity": "MONTH"
+      },
+      "HOT_WINDOW": "2520 sessions (120 closed MONTH partitions)",
+      "WARM_WINDOW": "2520 sessions (local verified-archive cache)",
+      "COLD_POLICY": "ARCHIVE_THEN_RETIRE_PARTITION",
+      "compactHotForm": "latest aggregate remains visible through the storage receipt and session manifest",
+      "WHY_HOT": "operations and trend diagnostics",
+      "WHY_WARM": "reliability research",
+      "ARCHIVED_WHEN": "after session finalization",
+      "REMOVED_FROM_POSTGRES_WHEN": "after 2,520 sessions and two-authority verification",
+      "RESTORED_HOW": "EvidenceReader by session date and content hash",
+      "value": {
+        "operational": 1,
+        "audit": 2,
+        "research": 1,
+        "reconstructionCost": "LOW",
+        "accessFrequency": "DAILY"
+      },
+      "measuredMedianBytesPerDecision": null,
+      "VALUE_BYTES_RATIO": null
+    }
+  ]
+}

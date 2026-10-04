@@ -9,6 +9,7 @@ import {
   scheduleCommand5aFromCanonicalFrontier,
 } from '../src/research/command5a-local-scheduling.js';
 import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
+import { cycleBlobJoinClause, cycleBlobSelectExpression, dataPlatformBlobStoreEnabled } from '../src/storage/data-platform/cycle-blob-store.js';
 import {
   measureLocalResearchStorageBytes,
 } from '../src/storage/local-research-archive-health.js';
@@ -115,11 +116,12 @@ async function schedule(): Promise<void> {
     const query = await pool.query<FrontierRow>(`SELECT f.frontier_id::text,
       GREATEST(f.created_at,d.decided_at) AS ready_at,
       f.fusion_snapshot_id::text,
-      s.snapshot_json,f.frontier_json,s.evidence_archive_gzip,s.content_hash AS snapshot_content_hash,
+      s.snapshot_json,f.frontier_json,${cycleBlobSelectExpression(dataPlatformBlobStoreEnabled())} AS evidence_archive_gzip,s.content_hash AS snapshot_content_hash,
       d.decision_id::text,d.receipt_json,s.risk_limit_version_id::text,s.cost_model_version_id::text,
       s.execution_version_id::text
       FROM trade.canonical_strategy_frontier f
       JOIN trade.fusion_snapshot s USING(fusion_snapshot_id)
+      ${cycleBlobJoinClause(dataPlatformBlobStoreEnabled())}
       JOIN LATERAL (SELECT decision_id,receipt_json,decided_at FROM trade.decision
         WHERE fusion_snapshot_id=f.fusion_snapshot_id
         ORDER BY decided_at DESC,decision_id DESC LIMIT 1) d ON true

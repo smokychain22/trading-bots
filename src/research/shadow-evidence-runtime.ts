@@ -4,6 +4,7 @@ import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client
 import type { ThetaShadowCycleResult } from '../theta/theta-shadow-cycle.js';
 import type { UnderlyingCandidateInput } from '../theta/universe-policy.js';
 import { canonicalJson } from './point-in-time-evidence.js';
+import { gateAllows, type StorageWriteGate } from '../storage/data-platform/write-gate.js';
 
 export const shadowRuntimeMode = 'THETA_SHADOW_ONLY' as const;
 export const shadowScanContractVersion = 'theta-cross-symbol-shadow-scan-v2' as const;
@@ -170,7 +171,7 @@ export function classifyObservedLimitTouch(input: { side: 'BUY' | 'SELL'; limit:
 }
 
 export class PostgresShadowEvidenceRuntimeStore {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool, private readonly writeGate?: StorageWriteGate) {}
 
   async saveScan(scan: CrossSymbolShadowScanResult, persisted: ReadonlyMap<string, { fusionSnapshotId: string | null; candidateSetId: string | null }>): Promise<void> {
     const payload = { ...scan, results: scan.results.map((item) => ({ symbol: item.symbol, ordinal: item.ordinal, status: item.status, errorCode: item.errorCode })) };
@@ -202,6 +203,8 @@ export class PostgresShadowEvidenceRuntimeStore {
 
   async scheduleObservations(rows: readonly ScheduledObservation[]): Promise<number> {
     if(rows.length===0)return 0;
+    // historical mark scheduling is bulk research history: it yields to storage pressure (recorded, never silent) and is never operational truth
+    if(!await gateAllows(this.writeGate,'command-5a-historical-marks'))return 0;
     const result=await this.pool.query(`INSERT INTO research.theta_execution_observation_job(
       observation_job_id,candidate_id,contract_symbol,horizon_code,horizon_version,target_at,status)
       SELECT x.observation_job_id::uuid,x.candidate_id::uuid,x.contract_symbol,x.horizon_code,

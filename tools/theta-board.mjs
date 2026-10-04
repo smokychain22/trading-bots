@@ -22,8 +22,8 @@ import { writeFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const boardAsOf = {
-  deployedRelease: '35654f214c6d0a3ec38cda4555bab40058aea635',
-  priorObservedRelease: '5006cdab0f318a78079d1ca6a3f9d43411b2ad56',
+  deployedRelease: 'a5ff0a606f83e723cf5646ca8e695a9649e36afc',
+  priorObservedRelease: '35654f214c6d0a3ec38cda4555bab40058aea635',
   note: 'rows describe the continuation branch head; runtime flags describe observation at the deployed release only',
   runtimeSourcePaths: ['src/', 'api/', 'bots/theta/quant/', 'tools/windows/', 'package.json'],
 };
@@ -125,6 +125,18 @@ const rawRows = [
   r('REGISTRY_SOURCE_LISTS', 'OPEN', 'verified: the registry second list names SOURCES; shadow-strategy-orchestrator is a real research producer of H/D evaluation, so no entry is wrong', { obsNow: 0 }),
   r('DEAD_MODULE_INVENTORY', 'OPEN', 'inventoried: tested library modules with no production importer are classified LIBRARY / FUTURE; the duplicate legacy trade-update store is quarantined by a guard test; no required module is dead', { obsNow: 0, wired: 0 }),
   r('SHADOW_ONCE_SIZING_POLICY_DIVERGENCE', 'OPEN', 'thetaQ sizing uses an inline concentration cap of 2 while structural sizing uses 5; which is intended is a sizing-policy decision', { engDone: 0, obsNow: 0, policyBlocked: 1 }),
+  // --- data platform (Phase 4 storage architecture): built and proven offline; NOT wired into the runtime, nothing observed in Production
+  r('DATA_PLATFORM_CONTROL_PLANE', 'DATA_PLATFORM', 'one storage authority: dataset registry, governor, exactly-once archival, retention, compaction, SLO, board; crash-at-every-step tests; 250-session simulation bounded', { wired: 0, obsNow: 0 }),
+  r('DATA_PLATFORM_POSTGRES_PARTITION_RETIREMENT', 'DATA_PLATFORM', 'real PostgreSQL: archive, verify, detach, drop; partition drop returns the space at once, row DELETE plus VACUUM does not; automation entry point end to end', { wired: 0, obsNow: 0 }),
+  r('DATA_PLATFORM_PARQUET_LONG_TERM_ARCHIVE', 'DATA_PLATFORM', 'date-partitioned ZSTD Parquet with exact row parity, text fallback for non-round-tripping decimals, compaction with lineage; all six legacy populations converted and verified', { wired: 0, obsNow: 0 }),
+  r('DATA_PLATFORM_EVIDENCE_READER', 'DATA_PLATFORM', 'hot-first, verified cold fallback; cold cycle blob byte-identical on real PostgreSQL; DuckDB logical views over both tiers', { wired: 0, obsNow: 0 }),
+  r('DATA_PLATFORM_NORMALIZATION', 'DATA_PLATFORM', 'real normalized point-in-time writer (OFF, SHADOW, DUAL_WRITE_VALIDATE bounded, AUTHORITATIVE) with exact SQL reconstruction view, tiers and content-addressed payloads, proven on 14,437 real archived rows and a 2,619-candidate decision; inert until migration 069 and the staged cutover', { wired: 0, obsNow: 0 }),
+  r('DATA_PLATFORM_CYCLE_BLOB_STORE', 'DATA_PLATFORM', 'time-partitioned hot blob sink behind THETA_DATA_PLATFORM_BLOB_STORE (default off); consumers read through COALESCE when enabled; requires migration 069', { wired: 0, obsNow: 0 }),
+  r('DATA_PLATFORM_AUTOMATION', 'DATA_PLATFORM', 'pre-session (READY or NEW_RISK_STORAGE_LOCK, provider-calendar partitions, default-partition repair), post-session (archive, verify, replay, Parquet, two-authority retirement, one receipt), weekly integrity, SLO task; real-PG tested; Windows tasks dry-run tested; not installed', { wired: 0, obsNow: 0 }),
+  r('DATA_PLATFORM_STORAGE_PRESSURE_GATE', 'DATA_PLATFORM', 'pressure state read by bulk research writers (cycle blob, point-in-time, canonical candidate research, shadow, raw payload, Command-5A marks, local archiver) and the new-risk entry gate; absent/stale/malformed is STORAGE_PRESSURE_UNKNOWN (research throttled, new risk restricted, locked after 72 h); operational truth structurally exempt; inert unless THETA_STORAGE_GOVERNOR=1 and migration 069', { wired: 0, obsNow: 0 }),
+  r('DATA_PLATFORM_ARCHIVE_BACKEND_CONTRACT', 'DATA_PLATFORM', 'vendor-neutral production backend contract (create-only put, get, head, list, verify, retry, timeout, corruption detection) with a conformance suite; the purge rule requires a verified primary, a second authority and an off-machine copy; no provider chosen', { wired: 0, obsNow: 0, policyBlocked: 1 }),
+  r('DATA_PLATFORM_PERMANENT_GROWTH', 'DATA_PLATFORM', 'MEASURED: decision truth (fusion projection, receipt, frontier) and legacy research/diagnostic tables stay in PostgreSQL at about 102 KiB per decision (15 MiB per session); as wired the post-archive size reaches the 8 GiB plan in about 226 sessions; bounding it needs an owner decision on immutable decision-truth tiering, diagnostics retention or cadence', { wired: 0, obsNow: 0, policyBlocked: 1 }),
+  r('PRODUCTION_STORAGE_BUDGET', 'DATA_PLATFORM', 'Production is 4.66 GiB against the old 4 GiB guard; the destructive purge of the archived legacy populations awaits the exact-population owner approval', { engDone: 1, obsNow: 0, policyBlocked: 1 }),
   // --- security
   r('SECRET_HYGIENE', 'SECURITY', '1,890 paths scanned, 0 findings', { runtime: 1 }),
   r('PUBLIC_REPO_POLICY', 'SECURITY', 'env ignored, storage policy PASS', { runtime: 1 }),
@@ -132,15 +144,15 @@ const rawRows = [
   r('ERROR_SANITIZATION', 'SECURITY', 'credentials never in provider errors (tested)', { runtime: 1 }),
 ];
 
-// Fresh observations made against the deployed release 35654f2 (worker cutover 2026-10-03T02:33Z; cycles at 35654f2 SUCCEEDED with
+// Fresh observations made against the deployed release a5ff0a6 (Phase 4; worker cutover 2026-10-03T10:00Z: lease ACTIVE, MASTER_PAPER_RECONCILING, gate LOCKED, schema 068, broker reads 200; earlier release 35654f2 cutover 2026-10-03T02:33Z; cycles at 35654f2 SUCCEEDED with
 // reconciliation GOOD, gate LOCKED, database circuit healthy, schema head 068). Anything that needs a market session (chain, quotes, funnel,
 // AEGIS, sizing, marks) stays DEPLOYED_NOT_YET_OBSERVED until a real session runs at this release.
 const observedAtDeployed = new Set(['ALPACA_ACCOUNT_POSITIONS_ORDERS_READ', 'BROKER_RECONCILIATION', 'EXECUTION_GATE_LOCK', 'POSTGRES_RUNTIME',
   'SCHEMA_MIGRATIONS', 'WINDOWS_SUPERVISOR_LEASE', 'WORKER_HEALTH_HEARTBEAT', 'RELEASE_CUTOVER_GOVERNANCE', 'MIGRATION_068_STATUS']);
 // Rows whose runtime source changed after the deployed release: committed, not released.
-// Phase 4 changed identity (client order id / order-intent id), the T0 replay bundle hash, the option-contract identity check and the broker 404/200-null handling.
-const unreleasedIds = new Set(['ORDER_INTENT_STATE_MACHINE', 'PAPER_ORDER_COORDINATOR', 'IDEMPOTENT_CLIENT_ORDER_ID', 'PROVIDER_FREE_REPLAY',
-  'ALPACA_OPTION_CHAIN_ENUMERATION', 'ALPACA_ACCOUNT_POSITIONS_ORDERS_READ']);
+// Data platform source (inert, default off) and the optional blob sink in the cycle store / Command-5A consumers changed after the deployed release. Earlier note: Phase 4 changed identity (client order id / order-intent id), the T0 replay bundle hash, the option-contract identity check and the broker 404/200-null handling.
+const unreleasedIds = new Set(['DATA_PLATFORM_CONTROL_PLANE', 'DATA_PLATFORM_POSTGRES_PARTITION_RETIREMENT', 'DATA_PLATFORM_PARQUET_LONG_TERM_ARCHIVE', 'DATA_PLATFORM_EVIDENCE_READER',
+  'DATA_PLATFORM_NORMALIZATION', 'DATA_PLATFORM_CYCLE_BLOB_STORE', 'DATA_PLATFORM_AUTOMATION', 'DATA_PLATFORM_STORAGE_PRESSURE_GATE', 'DATA_PLATFORM_ARCHIVE_BACKEND_CONTRACT', 'DATA_PLATFORM_PERMANENT_GROWTH', 'T0_CYCLE_ARCHIVE', 'COMMAND5A_LOCAL_SCHEDULER']);
 
 export const rows = rawRows.map((row) => {
   const everObserved = Boolean(row.runtime);

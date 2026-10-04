@@ -53,6 +53,8 @@ function classify(relative: string): ProducerClass | null {
   if (relative.startsWith('src/theta/')) return thetaClass[path.basename(relative)] ?? null;
   if (relative.startsWith('src/research/') || relative.startsWith('bots/theta/quant/research/')) return 'RESEARCH';
   if (relative.startsWith('src/operations/')) return 'DISPLAY';
+  // the storage layer (retention, archive, tiering of ALREADY-MADE decisions' evidence) holds no decision authority: it classifies storage tiers, it never selects, sizes or submits anything
+  if (relative.startsWith('src/storage/')) return 'DISPLAY';
   if (relative.startsWith('src/customer/')) return 'DISPLAY';
   if (relative.startsWith('src/execution/')) return 'SUBORDINATE_CALCULATOR';
   if (relative.startsWith('bots/theta/quant/models/') || relative.startsWith('bots/theta/quant/runtime/')

@@ -5,6 +5,7 @@ import {
 } from '../theta/canonical-strategy-frontier.js';
 import { projectCanonicalStrategyEvidence } from '../theta/postgres-theta-cycle-store.js';
 import { decodeCycleEvidenceArchive } from '../theta/postgres-cycle-evidence-storage.js';
+import { cycleBlobJoinClause, cycleBlobSelectExpression, dataPlatformBlobStoreEnabled } from './data-platform/cycle-blob-store.js';
 import { LocalResearchHistorySpool, type LocalResearchBatchReceipt } from './local-research-history-spool.js';
 
 export const canonicalFrontierLocalArchiveVersion = 'theta-canonical-frontier-local-archive-v3' as const;
@@ -150,9 +151,10 @@ export async function archiveCanonicalStrategyFrontiers(input: {
     const result = idsToArchive.length === 0 ? { rows: [] as FrontierRow[] }
       : await input.pool.query<FrontierRow>(
         `SELECT f.frontier_id::text,f.fusion_snapshot_id::text,f.observed_at,f.content_hash,f.frontier_json,
-                s.evidence_archive_gzip
+                ${cycleBlobSelectExpression(dataPlatformBlobStoreEnabled())} AS evidence_archive_gzip
            FROM trade.canonical_strategy_frontier f
            JOIN trade.fusion_snapshot s USING(fusion_snapshot_id)
+           ${cycleBlobJoinClause(dataPlatformBlobStoreEnabled())}
           WHERE f.frontier_id = ANY($1::uuid[])
           ORDER BY f.created_at,f.frontier_id`,
         [idsToArchive],

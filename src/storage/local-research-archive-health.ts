@@ -204,6 +204,8 @@ export function writeArchiveHealth(input: {
   readonly failureFamily?: ArchiveFailureFamily | null;
   readonly retryAfterHours?: number;
   readonly duckdbVerificationOverride?: LocalResearchArchiveHealth['duckdbVerification'];
+  /** the PostgreSQL storage governor's research gate; anything but ALLOW (including an unknown state) pauses new research subjects, the same as local spool pressure */
+  readonly postgresResearchGate?: 'ALLOW' | 'THROTTLE' | 'SKIP_LOW_PRIORITY';
 }): LocalResearchArchiveHealth {
   const healthPath = resolve(input.healthPath);
   const prior = readPersisted(healthPath);
@@ -240,6 +242,7 @@ export function writeArchiveHealth(input: {
     totalLocalResearchBytes: storage.totalLocalResearchBytes,
     spoolWatermark: storage.spoolWatermark,
     newSubjectScheduling: storage.spoolWatermark === 'HIGH' || storage.spoolWatermark === 'CRITICAL'
+      || (input.postgresResearchGate !== undefined && input.postgresResearchGate !== 'ALLOW')
       ? 'PAUSE_STORAGE_PRESSURE' : 'ALLOW',
     ...parquet,
     duckdbVerification: input.duckdbVerificationOverride ?? parquet.duckdbVerification,

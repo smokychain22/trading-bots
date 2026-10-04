@@ -1,0 +1,39 @@
+{
+  "measuredAt": "2026-10-03T16:23:37.457Z",
+  "method": "files written by the real archive codec (gzip NDJSON of to_jsonb(row)) and the real Parquet converter (ZSTD, typed columns, exact row parity verified), over the rows the real writer produced for real Production decisions",
+  "decisions": 100,
+  "datasets": {
+    "decision-context": {
+      "rows": 100,
+      "logicalBytes": 21172645,
+      "ndjsonGzipBytes": 5566799,
+      "parquetBytes": 3677956,
+      "parquetOk": true
+    },
+    "candidate-hot-detail": {
+      "rows": 314,
+      "logicalBytes": 2021167,
+      "ndjsonGzipBytes": 175151,
+      "parquetBytes": 84594,
+      "parquetOk": true
+    },
+    "candidate-ordinary-rejected": {
+      "rows": 100,
+      "logicalBytes": 44562,
+      "ndjsonGzipBytes": 6881,
+      "parquetBytes": 9661,
+      "parquetOk": true
+    }
+  },
+  "perDecisionKiB": {
+    "ndjsonGzip": 56.1,
+    "parquet": 36.8
+  },
+  "fullCycleArchive": {
+    "blobs": 20,
+    "rawBlobBytes": 21907121,
+    "coldNdjsonGzipBytes": 23710946,
+    "coldOverRaw": 1.0823,
+    "meanColdKiBPerDecision": 1158
+  }
+}

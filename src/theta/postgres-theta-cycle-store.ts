@@ -1,3 +1,8 @@
+import { fusionArchiveColumnValue, sessionDateNewYork, type CycleBlobSink } from '../storage/data-platform/cycle-blob-store.js';
+import { resolveLegacyPitTable, writePitEvidence, type PitWriterConfig } from '../storage/data-platform/pit-writer.js';
+import { gateAllows, type StorageWriteGate } from '../storage/data-platform/write-gate.js';
+import type { PayloadSink } from '../storage/data-platform/payload-store.js';
+import type { PitEvidenceRow } from '../storage/data-platform/pit-storage.js';
 import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { verifyFusionSnapshot, type JsonValue } from '../market/fusion-snapshot.js';
@@ -76,6 +81,26 @@ export interface PostgresThetaCycleStoreOptions {
    * high-volume relational candidate copies that belong in the local archive.
    */
   readonly persistRelationalCandidateEvidence: boolean;
+  /**
+   * Optional data-platform blob sink (default: none, behavior unchanged). When present the complete compressed cycle evidence is stored in the time-partitioned
+   * dp.cycle_evidence_blob inside the same transaction and the fusion snapshot row keeps only its hash and sizes.
+   */
+  readonly cycleBlobSink?: CycleBlobSink;
+  /**
+   * Optional rollout-aware point-in-time evidence writer (default: none, the legacy insert runs unchanged). See src/storage/data-platform/pit-writer.ts for the
+   * OFF / SHADOW / DUAL_WRITE_VALIDATE / AUTHORITATIVE modes and the pressure gate.
+   */
+  readonly pitWriter?: PitWriterConfig;
+  /**
+   * Optional storage pressure gate (default: none, every research write proceeds as before). Bulk research writers (relational candidate/chain/Optionomics research copies,
+   * shadow opportunities, point-in-time rows) ask it first; operational truth (decision, candidates' identity, route, frontier, receipts) is never gated.
+   */
+  readonly writeGate?: StorageWriteGate;
+  /**
+   * Optional content-addressed store for raw provider payloads (default: none, the payload stays in the raw observation row exactly as before). With a sink the row keeps the payload
+   * hash and identical bytes observed again are stored once (dp.payload_blob); the observation (who, when) is a separate row (dp.payload_observation).
+   */
+  readonly payloadSink?: PayloadSink;
 }
 
 export function deterministicRuntimeUuid(value: string): string {
@@ -328,7 +353,12 @@ export class PostgresThetaCycleStore {
     if (fusion.contentHash !== cycle.snapshotContentHash) throw new Error('FUSION_SNAPSHOT_HASH_MISMATCH');
     if (!verifyFusionSnapshot(fusion.snapshot as JsonValue, fusion.contentHash)) throw new Error('FUSION_SNAPSHOT_CONTENT_INVALID');
     const fusionSnapshotId = deterministicRuntimeUuid(`fusion:${context.botInstanceId}:${fusion.contentHash}`);
-    const persistRelationalCandidateEvidence = this.options.persistRelationalCandidateEvidence;
+    const gate = this.options.writeGate;
+    // research copies only: asked only when they would actually be written, so an off-by-default copy never produces a skip record
+    const persistRelationalCandidateEvidence = this.options.persistRelationalCandidateEvidence && await gateAllows(gate, 'canonical-candidate-research');
+    const shadowResearchAllowed = await gateAllows(gate, 'shadow-research-history');
+    // raw provider payloads are the lowest-priority bulk write: they yield first and are asked only when they would actually be stored in the data platform
+    const rawPayloadSink = this.options.payloadSink !== undefined && persistRelationalCandidateEvidence && await gateAllows(gate, 'raw-provider-history') ? this.options.payloadSink : null;
     const candidateResearchStorage: PersistedThetaCycle['candidateResearchStorage'] =
       persistRelationalCandidateEvidence ? 'POSTGRES_RELATIONAL' : 'CANONICAL_FRONTIER_PRIMARY_LOCAL_ARCHIVE_PENDING';
     const persistenceStartedAt = Date.now();
@@ -361,12 +391,16 @@ export class PostgresThetaCycleStore {
           JSON.stringify(objectField(fusion.snapshot, 'portfolioExposure')),
           JSON.stringify(objectField(fusion.snapshot, 'sourceProvenance')),
           JSON.stringify(objectField(fusion.snapshot, 'unknownFeatures')), JSON.stringify(storage.snapshot), fusion.contentHash,
-          postgresCycleEvidenceStorageVersion, storage.snapshotProjectionHash, storage.archive, storage.archiveHash,
+          postgresCycleEvidenceStorageVersion, storage.snapshotProjectionHash, fusionArchiveColumnValue(this.options.cycleBlobSink !== undefined, storage.archive), storage.archiveHash,
           storage.archiveUncompressedBytes, storage.archiveCompressedBytes, storage.fullContractCount,
           storage.projectedContractCount],
       );
 
-      await this.persistOptionomicsEvidence(client, fusionSnapshotId, fusion.snapshot, persistRelationalCandidateEvidence);
+      if (this.options.cycleBlobSink !== undefined) {
+        await this.options.cycleBlobSink(client, { fusionSnapshotId, decisionTimeUtc: String(fusion.snapshot.decisionTimeUtc), archiveHash: storage.archiveHash, uncompressedBytes: storage.archiveUncompressedBytes,
+          compressedBytes: storage.archiveCompressedBytes, blob: storage.archive });
+      }
+      await this.persistOptionomicsEvidence(client, fusionSnapshotId, fusion.snapshot, persistRelationalCandidateEvidence, rawPayloadSink);
       tracePersistence('OPTIONOMICS_COMPLETE');
       const strategyFrontierId = await this.persistCanonicalStrategyFrontier(client, fusionSnapshotId, cycle);
       if (strategyFrontierId !== null) {
@@ -417,7 +451,7 @@ export class PostgresThetaCycleStore {
         candidates.candidateIds,decisionId);
       tracePersistence('PIT_EVIDENCE_COMPLETE');
       const allShadowOpportunities = cycle.orchestration?.shadowOpportunities ?? [];
-      const shadowOpportunities = persistRelationalCandidateEvidence ? allShadowOpportunities
+      const shadowOpportunities = !shadowResearchAllowed ? [] : persistRelationalCandidateEvidence ? allShadowOpportunities
         : allShadowOpportunities.filter((entry,index,all)=>index===all.findIndex((other)=>
           other.strategyBranch===entry.strategyBranch&&other.outcome===entry.outcome)).slice(0,12);
       // One parameterized statement retains the existing transaction and
@@ -932,6 +966,7 @@ export class PostgresThetaCycleStore {
     fusionSnapshotId: string,
     snapshot: Readonly<Record<string, JsonValue>>,
     persistFullResearch = true,
+    payloadSink: PayloadSink | null = null,
   ): Promise<void> {
     const state = jsonObject(snapshot.optionomicsFeatureState);
     const features = jsonObject(state.features);
@@ -960,6 +995,13 @@ export class PostgresThetaCycleStore {
       // are quarantined from typed temporal columns as INVALID.
       const temporal = optionomicsRawObservationTime(retrievedAt, raw.providerTimestamp, provenance?.state);
       const observationId = deterministicRuntimeUuid(`optionomics-raw:${fusionSnapshotId}:${operationAlias}:${responseHash}`);
+      // content-addressed payload (optional): the legacy row keeps a reference, the identical bytes observed in another cycle are one blob and two observations
+      let storedPayloadHash: string | null = null;
+      if (payloadSink !== null && persistFullResearch && operationAlias !== 'optionomics.list_events' && raw.payload !== undefined && raw.payload !== null) {
+        const stored = await payloadSink(client, { observationId: deterministicRuntimeUuid(`dp-payload-observation:${observationId}`), observedAt: retrievedAt, sessionDate: sessionDateNewYork(retrievedAt), kind: operationAlias, provider: 'OPTIONOMICS',
+          requestHash: createHash('sha256').update(canonicalJson({ path: raw.requestPath ?? null, parameters: raw.requestParameters ?? null })).digest('hex'), status: temporal.quality, latencyMs: null, bytes: Buffer.from(canonicalJson(raw.payload)) });
+        storedPayloadHash = stored.contentHash;
+      }
       await client.query(
         `INSERT INTO market.optionomics_raw_observation(observation_id,fusion_snapshot_id,operation_alias,underlying,
           provider_timestamp,ingestion_timestamp,as_of,contract_version,data_quality,response_hash,payload_json,
@@ -970,7 +1012,9 @@ export class PostgresThetaCycleStore {
         [observationId, fusionSnapshotId, operationAlias, underlying,
           temporal.providerTimestamp, retrievedAt, temporal.asOf,
           typeof raw.contractVersion === 'string' ? raw.contractVersion : 'optionomics-public-api-unknown',
-          temporal.quality, responseHash, JSON.stringify(persistFullResearch || operationAlias==='optionomics.list_events'
+          temporal.quality, responseHash, JSON.stringify(storedPayloadHash !== null
+            ? {storageState:'PAYLOAD_IN_DP_PAYLOAD_BLOB',contentHash:storedPayloadHash,responseHash,operationAlias}
+            : persistFullResearch || operationAlias==='optionomics.list_events'
             ? raw.payload ?? null : {storageState:'FULL_PAYLOAD_IN_COMPRESSED_CYCLE_ARCHIVE',responseHash,operationAlias}),
           typeof raw.requestedAt === 'string' ? raw.requestedAt : null,
           typeof raw.requestPath === 'string' ? raw.requestPath : null, JSON.stringify(jsonObject(raw.requestParameters)),
@@ -1235,7 +1279,10 @@ export class PostgresThetaCycleStore {
       }
     }
     if(evidenceRows.length>0){
-      await client.query(`INSERT INTO trade.candidate_point_in_time_evidence(candidate_id,decision_id,fusion_snapshot_id,
+      const legacyInsert=async (rows:readonly Record<string,unknown>[]):Promise<void> => {
+        // after the compatibility swap the plain name is a view; the legacy table was renamed (only matters while rollback is still possible)
+        const legacyTable=this.options.pitWriter===undefined&&this.options.writeGate===undefined?'trade.candidate_point_in_time_evidence':await resolveLegacyPitTable(client);
+        await client.query(`INSERT INTO ${legacyTable}(candidate_id,decision_id,fusion_snapshot_id,
         decision_time,branch,rank_at_decision,selected,hard_status,soft_status,rejection_reason,contract_json,market_json,
         volatility_json,technical_json,event_json,flow_json,ownership_json,account_json,portfolio_json,aegis_json,
         execution_json,known_economics_json,unknown_economics_json,hard_blockers_json,soft_evidence_json,
@@ -1254,7 +1301,14 @@ export class PostgresThetaCycleStore {
           execution_json jsonb,known_economics_json jsonb,unknown_economics_json jsonb,hard_blockers_json jsonb,
           soft_evidence_json jsonb,provider_provenance_json jsonb,strategy_version text,risk_version text,
           feature_version text,cost_model_version text,regime_version text,execution_model_version text,content_hash char(64))
-        ON CONFLICT(candidate_id) DO NOTHING`,[JSON.stringify(evidenceRows)]);
+        ON CONFLICT(candidate_id) DO NOTHING`,[JSON.stringify(rows)]);
+      };
+      const pitWriter:PitWriterConfig|undefined=this.options.pitWriter===undefined
+        ? this.options.writeGate===undefined?undefined:{mode:'OFF',pressure:this.options.writeGate.provider}
+        : this.options.pitWriter.pressure!==undefined||this.options.writeGate===undefined?this.options.pitWriter:{...this.options.pitWriter,pressure:this.options.writeGate.provider};
+      if(pitWriter===undefined) await legacyInsert(evidenceRows);
+      else await writePitEvidence(client,{rows:evidenceRows as unknown as readonly PitEvidenceRow[],fusionSnapshotId,decisionTimeUtc:String(snapshot.decisionTimeUtc),
+        sessionDate:sessionDateNewYork(String(snapshot.decisionTimeUtc)),decisionId,legacyInsert:(rows) => legacyInsert(rows as unknown as readonly Record<string,unknown>[])},pitWriter);
     }
     if(quoteRows.length>0){
       await client.query(`INSERT INTO market.execution_quote_observation(quote_observation_id,candidate_id,observation_role,

@@ -1,7 +1,7 @@
 {
   "asOf": {
-    "deployedRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
-    "priorObservedRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+    "deployedRelease": "a5ff0a606f83e723cf5646ca8e695a9649e36afc",
+    "priorObservedRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
     "note": "rows describe the continuation branch head; runtime flags describe observation at the deployed release only",
     "runtimeSourcePaths": [
       "src/",
@@ -12,31 +12,31 @@
     ]
   },
   "computed": {
-    "totalRows": 89,
+    "totalRows": 100,
     "preMarketEngineering": {
-      "numerator": 87,
-      "denominator": 89,
-      "percent": 97.75
+      "numerator": 98,
+      "denominator": 100,
+      "percent": 98
     },
     "implementation": {
-      "numerator": 89,
-      "denominator": 89,
+      "numerator": 100,
+      "denominator": 100,
       "percent": 100
     },
     "wiring": {
-      "numerator": 83,
-      "denominator": 89,
-      "percent": 93.26
+      "numerator": 84,
+      "denominator": 100,
+      "percent": 84
     },
     "tested": {
-      "numerator": 89,
-      "denominator": 89,
+      "numerator": 100,
+      "denominator": 100,
       "percent": 100
     },
     "currentReleaseRuntime": {
-      "numerator": 7,
+      "numerator": 8,
       "denominator": 47,
-      "percent": 14.89
+      "percent": 17.02
     },
     "paperOperation": {
       "numerator": 0,
@@ -54,15 +54,18 @@
       "OWNERSHIP_MODEL",
       "WHOLE_CHAIN_FEES_DIVIDENDS_INPUT",
       "LOT_SPLIT_ACCOUNTING",
-      "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE"
+      "SHADOW_ONCE_SIZING_POLICY_DIVERGENCE",
+      "DATA_PLATFORM_ARCHIVE_BACKEND_CONTRACT",
+      "DATA_PLATFORM_PERMANENT_GROWTH",
+      "PRODUCTION_STORAGE_BUDGET"
     ],
     "releaseStatusCounts": {
-      "SOURCE_ONLY": 12,
-      "NOT_OBSERVABLE_YET": 33,
+      "SOURCE_ONLY": 18,
+      "NOT_OBSERVABLE_YET": 37,
       "DEPLOYED_NOT_YET_OBSERVED": 37,
-      "CURRENT_RELEASE_REAL_OBSERVED": 7
+      "CURRENT_RELEASE_REAL_OBSERVED": 8
     },
-    "unreleasedRowCount": 6,
+    "unreleasedRowCount": 12,
     "liveGraduation": {
       "numerator": 0,
       "denominator": null,
@@ -80,15 +83,15 @@
       "tested": 1,
       "engDone": 1,
       "obsNow": 1,
-      "runtime": 0,
+      "runtime": 1,
       "paperApplicable": 0,
       "paper": 0,
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
-      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
-      "releaseStatus": "SOURCE_ONLY"
+      "unreleased": 0,
+      "observedAtRelease": "a5ff0a606f83e723cf5646ca8e695a9649e36afc",
+      "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
       "id": "ALPACA_MARKET_CLOCK_CALENDAR",
@@ -106,7 +109,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -124,9 +127,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
-      "releaseStatus": "SOURCE_ONLY"
+      "unreleased": 0,
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "ALPACA_OPTION_QUOTES_BBO",
@@ -144,7 +147,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -163,7 +166,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -182,7 +185,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -201,7 +204,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -220,7 +223,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -258,7 +261,7 @@
       "emp": 0,
       "policyBlocked": 1,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -277,7 +280,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -315,7 +318,7 @@
       "emp": 0,
       "policyBlocked": 1,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -334,7 +337,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -353,7 +356,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -372,7 +375,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -391,7 +394,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -410,7 +413,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -429,7 +432,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -486,7 +489,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -505,7 +508,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -543,7 +546,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -562,7 +565,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -581,7 +584,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -600,7 +603,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -619,7 +622,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -789,9 +792,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "PAPER_ORDER_COORDINATOR",
@@ -808,9 +811,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "IDEMPOTENT_CLIENT_ORDER_ID",
@@ -827,9 +830,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
+      "unreleased": 0,
       "observedAtRelease": null,
-      "releaseStatus": "SOURCE_ONLY"
+      "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
       "id": "UNKNOWN_SUBMIT_RECONCILIATION",
@@ -885,7 +888,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "observedAtRelease": "a5ff0a606f83e723cf5646ca8e695a9649e36afc",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -942,7 +945,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "observedAtRelease": "a5ff0a606f83e723cf5646ca8e695a9649e36afc",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -979,9 +982,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
-      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
+      "unreleased": 1,
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "PROVIDER_FREE_REPLAY",
@@ -998,9 +1001,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 1,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
-      "releaseStatus": "SOURCE_ONLY"
+      "unreleased": 0,
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
       "id": "COMMAND5A_LOCAL_SCHEDULER",
@@ -1017,9 +1020,9 @@
       "empApplicable": 0,
       "emp": 0,
       "policyBlocked": 0,
-      "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
-      "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
+      "unreleased": 1,
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "releaseStatus": "SOURCE_ONLY"
     },
     {
       "id": "POSTGRES_OBSERVATION_JOBS",
@@ -1037,7 +1040,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1056,7 +1059,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1075,7 +1078,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1094,7 +1097,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1151,7 +1154,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "observedAtRelease": "a5ff0a606f83e723cf5646ca8e695a9649e36afc",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1170,7 +1173,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "observedAtRelease": "a5ff0a606f83e723cf5646ca8e695a9649e36afc",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1189,7 +1192,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "observedAtRelease": "a5ff0a606f83e723cf5646ca8e695a9649e36afc",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1208,7 +1211,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "observedAtRelease": "a5ff0a606f83e723cf5646ca8e695a9649e36afc",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1227,7 +1230,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1246,7 +1249,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1265,7 +1268,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "observedAtRelease": "a5ff0a606f83e723cf5646ca8e695a9649e36afc",
       "releaseStatus": "CURRENT_RELEASE_REAL_OBSERVED"
     },
     {
@@ -1360,7 +1363,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1687,6 +1690,215 @@
       "releaseStatus": "NOT_OBSERVABLE_YET"
     },
     {
+      "id": "DATA_PLATFORM_CONTROL_PLANE",
+      "domain": "DATA_PLATFORM",
+      "note": "one storage authority: dataset registry, governor, exactly-once archival, retention, compaction, SLO, board; crash-at-every-step tests; 250-session simulation bounded",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DATA_PLATFORM_POSTGRES_PARTITION_RETIREMENT",
+      "domain": "DATA_PLATFORM",
+      "note": "real PostgreSQL: archive, verify, detach, drop; partition drop returns the space at once, row DELETE plus VACUUM does not; automation entry point end to end",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DATA_PLATFORM_PARQUET_LONG_TERM_ARCHIVE",
+      "domain": "DATA_PLATFORM",
+      "note": "date-partitioned ZSTD Parquet with exact row parity, text fallback for non-round-tripping decimals, compaction with lineage; all six legacy populations converted and verified",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DATA_PLATFORM_EVIDENCE_READER",
+      "domain": "DATA_PLATFORM",
+      "note": "hot-first, verified cold fallback; cold cycle blob byte-identical on real PostgreSQL; DuckDB logical views over both tiers",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DATA_PLATFORM_NORMALIZATION",
+      "domain": "DATA_PLATFORM",
+      "note": "real normalized point-in-time writer (OFF, SHADOW, DUAL_WRITE_VALIDATE bounded, AUTHORITATIVE) with exact SQL reconstruction view, tiers and content-addressed payloads, proven on 14,437 real archived rows and a 2,619-candidate decision; inert until migration 069 and the staged cutover",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DATA_PLATFORM_CYCLE_BLOB_STORE",
+      "domain": "DATA_PLATFORM",
+      "note": "time-partitioned hot blob sink behind THETA_DATA_PLATFORM_BLOB_STORE (default off); consumers read through COALESCE when enabled; requires migration 069",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DATA_PLATFORM_AUTOMATION",
+      "domain": "DATA_PLATFORM",
+      "note": "pre-session (READY or NEW_RISK_STORAGE_LOCK, provider-calendar partitions, default-partition repair), post-session (archive, verify, replay, Parquet, two-authority retirement, one receipt), weekly integrity, SLO task; real-PG tested; Windows tasks dry-run tested; not installed",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DATA_PLATFORM_STORAGE_PRESSURE_GATE",
+      "domain": "DATA_PLATFORM",
+      "note": "pressure state read by bulk research writers (cycle blob, point-in-time, canonical candidate research, shadow, raw payload, Command-5A marks, local archiver) and the new-risk entry gate; absent/stale/malformed is STORAGE_PRESSURE_UNKNOWN (research throttled, new risk restricted, locked after 72 h); operational truth structurally exempt; inert unless THETA_STORAGE_GOVERNOR=1 and migration 069",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 0,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DATA_PLATFORM_ARCHIVE_BACKEND_CONTRACT",
+      "domain": "DATA_PLATFORM",
+      "note": "vendor-neutral production backend contract (create-only put, get, head, list, verify, retry, timeout, corruption detection) with a conformance suite; the purge rule requires a verified primary, a second authority and an off-machine copy; no provider chosen",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 1,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "DATA_PLATFORM_PERMANENT_GROWTH",
+      "domain": "DATA_PLATFORM",
+      "note": "MEASURED: decision truth (fusion projection, receipt, frontier) and legacy research/diagnostic tables stay in PostgreSQL at about 102 KiB per decision (15 MiB per session); as wired the post-archive size reaches the 8 GiB plan in about 226 sessions; bounding it needs an owner decision on immutable decision-truth tiering, diagnostics retention or cadence",
+      "impl": 1,
+      "wired": 0,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 1,
+      "unreleased": 1,
+      "observedAtRelease": null,
+      "releaseStatus": "SOURCE_ONLY"
+    },
+    {
+      "id": "PRODUCTION_STORAGE_BUDGET",
+      "domain": "DATA_PLATFORM",
+      "note": "Production is 4.66 GiB against the old 4 GiB guard; the destructive purge of the archived legacy populations awaits the exact-population owner approval",
+      "impl": 1,
+      "wired": 1,
+      "tested": 1,
+      "engDone": 1,
+      "obsNow": 0,
+      "runtime": 0,
+      "paperApplicable": 0,
+      "paper": 0,
+      "empApplicable": 0,
+      "emp": 0,
+      "policyBlocked": 1,
+      "unreleased": 0,
+      "observedAtRelease": null,
+      "releaseStatus": "NOT_OBSERVABLE_YET"
+    },
+    {
       "id": "SECRET_HYGIENE",
       "domain": "SECURITY",
       "note": "1,890 paths scanned, 0 findings",
@@ -1702,7 +1914,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1721,7 +1933,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1740,7 +1952,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {
@@ -1759,7 +1971,7 @@
       "emp": 0,
       "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "5006cdab0f318a78079d1ca6a3f9d43411b2ad56",
+      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     }
   ]

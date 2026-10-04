@@ -72,7 +72,7 @@ export const register = [
     [T + 'database-health-circuit.test.ts', T + 'phase4-historical-regressions.test.ts', T + 'database-recovery-gate.test.ts'], 'PASS', 'VERIFIED_AND_EXTENDED', 'HIGH', 'phase4-historical-regressions'),
   row('P4-029', 'Unreachable-code pins: capabilities not reachable today carry an explicit registry state instead of a silent default', ['src/providers/capability-registry.ts'],
     [T + 'capability-registry.test.ts', T + 'registry-reachability.test.ts', T + 'production-reachability.test.ts'], 'PASS', 'VERIFIED', 'LOW', 'existing reachability suites'),
-  row('P4-030', 'Board truth is not inflated: 89 rows, 8 runtime-observed, 39 deployed-not-observed, 36 need a position or order, 5 owner-policy', ['tools/theta-board.mjs'],
+  row('P4-030', 'Board truth is not inflated: counts are derived from rows; the 9 data-platform rows are built and proven offline but wired=0 and unreleased, so they add to neither runtime-observed nor wired percentages', ['tools/theta-board.mjs'],
     [T + 'theta-board.test.ts'], 'PASS', 'VERIFIED', 'MEDIUM', 'board test derives counts from rows'),
   row('P4-031', 'Paper order exercised under real broker latency, rate limits and partial fills', ['src/execution/paper-order-coordinator.ts'],
     [], 'FUTURE_PAPER', 'NEEDS_A_REAL_PAPER_ORDER', 'HIGH', 'no Paper order has ever been submitted; Paper gate stays LOCKED in Phase 4', 'Phase 5 owner-authorized activation in an open market'),

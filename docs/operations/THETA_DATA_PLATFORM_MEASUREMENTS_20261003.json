@@ -1,0 +1,1905 @@
+{
+  "measurementsVersion": "theta-data-platform-measurements-v1",
+  "observedAt": "2026-10-03T12:49:49.594Z",
+  "productionDatabaseBytes": 4.666,
+  "topRelations": [
+    {
+      "relation": "trade.candidate_point_in_time_evidence",
+      "tableMiB": 80.6,
+      "indexMiB": 3.7,
+      "toastMiB": 1321.5,
+      "totalMiB": 1405.8,
+      "estimatedRows": 26579,
+      "deadTuples": 0
+    },
+    {
+      "relation": "trade.fusion_snapshot",
+      "tableMiB": 2.0,
+      "indexMiB": 0.3,
+      "toastMiB": 1224.4,
+      "totalMiB": 1226.8,
+      "estimatedRows": 1019,
+      "deadTuples": 0
+    },
+    {
+      "relation": "trade.canonical_strategy_candidate_evidence",
+      "tableMiB": 647.3,
+      "indexMiB": 125.8,
+      "toastMiB": 0.0,
+      "totalMiB": 773.3,
+      "estimatedRows": 216702,
+      "deadTuples": 0
+    },
+    {
+      "relation": "trade.canonical_strategy_frontier",
+      "tableMiB": 0.5,
+      "indexMiB": 0.3,
+      "toastMiB": 219.0,
+      "totalMiB": 219.9,
+      "estimatedRows": 1019,
+      "deadTuples": 0
+    },
+    {
+      "relation": "trade.decision",
+      "tableMiB": 0.5,
+      "indexMiB": 0.2,
+      "toastMiB": 217.9,
+      "totalMiB": 218.6,
+      "estimatedRows": 1019,
+      "deadTuples": 0
+    },
+    {
+      "relation": "market.optionomics_feature_snapshot",
+      "tableMiB": 0.1,
+      "indexMiB": 0.2,
+      "toastMiB": 154.7,
+      "totalMiB": 155.0,
+      "estimatedRows": 107,
+      "deadTuples": 0
+    },
+    {
+      "relation": "market.optionomics_raw_observation",
+      "tableMiB": 5.5,
+      "indexMiB": 1.6,
+      "toastMiB": 128.9,
+      "totalMiB": 136.0,
+      "estimatedRows": 4981,
+      "deadTuples": 0
+    },
+    {
+      "relation": "trade.candidate",
+      "tableMiB": 75.6,
+      "indexMiB": 3.8,
+      "toastMiB": 43.1,
+      "totalMiB": 122.5,
+      "estimatedRows": 29898,
+      "deadTuples": 0
+    },
+    {
+      "relation": "research.theta_option_chain_decision_evidence",
+      "tableMiB": 1.1,
+      "indexMiB": 0.2,
+      "toastMiB": 118.1,
+      "totalMiB": 119.4,
+      "estimatedRows": 107,
+      "deadTuples": 0
+    },
+    {
+      "relation": "research.theta_execution_observation_job",
+      "tableMiB": 31.1,
+      "indexMiB": 34.6,
+      "toastMiB": 0.0,
+      "totalMiB": 65.7,
+      "estimatedRows": 156655,
+      "deadTuples": 0
+    },
+    {
+      "relation": "legacy_neon.artifact_record",
+      "tableMiB": 18.6,
+      "indexMiB": 8.2,
+      "toastMiB": 31.6,
+      "totalMiB": 58.4,
+      "estimatedRows": 24408,
+      "deadTuples": 0
+    },
+    {
+      "relation": "trade.candidate_reason",
+      "tableMiB": 35.5,
+      "indexMiB": 5.5,
+      "toastMiB": 0.0,
+      "totalMiB": 41.0,
+      "estimatedRows": 118556,
+      "deadTuples": 0
+    },
+    {
+      "relation": "trade.broker_reconciliation_snapshot",
+      "tableMiB": 5.1,
+      "indexMiB": 2.8,
+      "toastMiB": 31.1,
+      "totalMiB": 38.9,
+      "estimatedRows": 13971,
+      "deadTuples": 0
+    },
+    {
+      "relation": "ops.runtime_worker_cycle",
+      "tableMiB": 35.3,
+      "indexMiB": 2.5,
+      "toastMiB": 0.0,
+      "totalMiB": 37.8,
+      "estimatedRows": 14768,
+      "deadTuples": 2999
+    },
+    {
+      "relation": "ops.scheduler_checkpoint",
+      "tableMiB": 21.6,
+      "indexMiB": 12.6,
+      "toastMiB": 0.0,
+      "totalMiB": 34.2,
+      "estimatedRows": 48721,
+      "deadTuples": 3146
+    },
+    {
+      "relation": "legacy_neon.promotion_record",
+      "tableMiB": 14.0,
+      "indexMiB": 8.8,
+      "toastMiB": 0.0,
+      "totalMiB": 22.8,
+      "estimatedRows": 25126,
+      "deadTuples": 0
+    },
+    {
+      "relation": "trade.shadow_opportunity",
+      "tableMiB": 17.5,
+      "indexMiB": 3.0,
+      "toastMiB": 0.0,
+      "totalMiB": 20.6,
+      "estimatedRows": 28925,
+      "deadTuples": 0
+    },
+    {
+      "relation": "market.execution_quote_observation",
+      "tableMiB": 10.0,
+      "indexMiB": 8.5,
+      "toastMiB": 0.0,
+      "totalMiB": 18.6,
+      "estimatedRows": 26729,
+      "deadTuples": 0
+    },
+    {
+      "relation": "market.option_quote_snapshot",
+      "tableMiB": 5.2,
+      "indexMiB": 3.5,
+      "toastMiB": 0.0,
+      "totalMiB": 8.8,
+      "estimatedRows": 19469,
+      "deadTuples": 0
+    },
+    {
+      "relation": "research.optionomics_temporal_feature_observation",
+      "tableMiB": 2.0,
+      "indexMiB": 2.6,
+      "toastMiB": 0.0,
+      "totalMiB": 4.7,
+      "estimatedRows": 3419,
+      "deadTuples": 0
+    }
+  ],
+  "relationDetail": {
+    "trade.candidate_point_in_time_evidence": {
+      "oldest": "2026-09-16 15:32:50.392+00",
+      "newest": "2026-10-02 19:56:43.11+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-21",
+          "rows": "3876"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "10745"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "10703"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "6579"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "1594"
+        },
+        {
+          "day": "2026-09-29",
+          "rows": "286"
+        },
+        {
+          "day": "2026-09-30",
+          "rows": "509"
+        },
+        {
+          "day": "2026-10-01",
+          "rows": "576"
+        },
+        {
+          "day": "2026-10-02",
+          "rows": "365"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "volatility_json",
+          "type": "jsonb",
+          "storedBytes": 985717589
+        },
+        {
+          "column": "event_json",
+          "type": "jsonb",
+          "storedBytes": 155485950
+        },
+        {
+          "column": "provider_provenance_json",
+          "type": "jsonb",
+          "storedBytes": 64431526
+        },
+        {
+          "column": "portfolio_json",
+          "type": "jsonb",
+          "storedBytes": 30560457
+        }
+      ]
+    },
+    "trade.fusion_snapshot": {
+      "oldest": "2026-09-16 15:32:50.392+00",
+      "newest": "2026-10-02 19:56:43.11+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-21",
+          "rows": "77"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "70"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "154"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "89"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "22"
+        },
+        {
+          "day": "2026-09-29",
+          "rows": "114"
+        },
+        {
+          "day": "2026-09-30",
+          "rows": "171"
+        },
+        {
+          "day": "2026-10-01",
+          "rows": "212"
+        },
+        {
+          "day": "2026-10-02",
+          "rows": "119"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "evidence_archive_gzip",
+          "type": "bytea",
+          "storedBytes": 852515618
+        },
+        {
+          "column": "snapshot_json",
+          "type": "jsonb",
+          "storedBytes": 380405426
+        },
+        {
+          "column": "provider_provenance_json",
+          "type": "jsonb",
+          "storedBytes": 1905728
+        },
+        {
+          "column": "portfolio_state_json",
+          "type": "jsonb",
+          "storedBytes": 1062078
+        }
+      ]
+    },
+    "trade.canonical_strategy_candidate_evidence": {
+      "oldest": "2026-09-16 15:32:56.291797+00",
+      "newest": "2026-09-24 19:59:58.864347+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-21",
+          "rows": "3876"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "77180"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "139306"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "79628"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "legs_json",
+          "type": "jsonb",
+          "storedBytes": 192173876
+        },
+        {
+          "column": "economics_json",
+          "type": "jsonb",
+          "storedBytes": 106648986
+        },
+        {
+          "column": "unknown_evidence_json",
+          "type": "jsonb",
+          "storedBytes": 29152599
+        },
+        {
+          "column": "content_hash",
+          "type": "character(64)",
+          "storedBytes": 19806735
+        }
+      ]
+    },
+    "trade.canonical_strategy_frontier": {
+      "oldest": "2026-09-16 15:32:50.392+00",
+      "newest": "2026-10-02 19:56:43.11+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-21",
+          "rows": "77"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "70"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "154"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "89"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "22"
+        },
+        {
+          "day": "2026-09-29",
+          "rows": "114"
+        },
+        {
+          "day": "2026-09-30",
+          "rows": "171"
+        },
+        {
+          "day": "2026-10-01",
+          "rows": "212"
+        },
+        {
+          "day": "2026-10-02",
+          "rows": "119"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "frontier_json",
+          "type": "jsonb",
+          "storedBytes": 172610919
+        },
+        {
+          "column": "content_hash",
+          "type": "character(64)",
+          "storedBytes": 70655
+        },
+        {
+          "column": "decision_authority_version",
+          "type": "text",
+          "storedBytes": 41306
+        },
+        {
+          "column": "contract_version",
+          "type": "text",
+          "storedBytes": 40219
+        }
+      ]
+    },
+    "trade.decision": {
+      "oldest": "2026-09-16 15:32:50.392+00",
+      "newest": "2026-10-02 19:56:43.11+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-21",
+          "rows": "77"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "70"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "154"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "89"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "22"
+        },
+        {
+          "day": "2026-09-29",
+          "rows": "114"
+        },
+        {
+          "day": "2026-09-30",
+          "rows": "171"
+        },
+        {
+          "day": "2026-10-01",
+          "rows": "212"
+        },
+        {
+          "day": "2026-10-02",
+          "rows": "119"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "receipt_json",
+          "type": "jsonb",
+          "storedBytes": 174127306
+        },
+        {
+          "column": "explanation_text",
+          "type": "text",
+          "storedBytes": 108572
+        },
+        {
+          "column": "explanation_hash",
+          "type": "character(64)",
+          "storedBytes": 70655
+        },
+        {
+          "column": "model_versions_json",
+          "type": "jsonb",
+          "storedBytes": 45575
+        }
+      ]
+    },
+    "market.optionomics_feature_snapshot": {
+      "oldest": "2026-09-16 15:32:50.169+00",
+      "newest": "2026-09-25 14:19:36.09+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-21",
+          "rows": "75"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "70"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "151"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "89"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "22"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "feature_state_json",
+          "type": "jsonb",
+          "storedBytes": 106668026
+        },
+        {
+          "column": "content_hash",
+          "type": "character(64)",
+          "storedBytes": 30290
+        },
+        {
+          "column": "schema_version",
+          "type": "text",
+          "storedBytes": 13980
+        },
+        {
+          "column": "feature_snapshot_id",
+          "type": "uuid",
+          "storedBytes": 7456
+        }
+      ]
+    },
+    "market.optionomics_raw_observation": {
+      "oldest": "2026-09-16 15:32:56.291797+00",
+      "newest": "2026-10-02 19:58:05.403231+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-21",
+          "rows": "366"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "359"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "818"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "463"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "122"
+        },
+        {
+          "day": "2026-09-29",
+          "rows": "594"
+        },
+        {
+          "day": "2026-09-30",
+          "rows": "924"
+        },
+        {
+          "day": "2026-10-01",
+          "rows": "1134"
+        },
+        {
+          "day": "2026-10-02",
+          "rows": "541"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "payload_json",
+          "type": "jsonb",
+          "storedBytes": 89291327
+        },
+        {
+          "column": "rate_limit_json",
+          "type": "jsonb",
+          "storedBytes": 458326
+        },
+        {
+          "column": "response_hash",
+          "type": "character(64)",
+          "storedBytes": 358930
+        },
+        {
+          "column": "credential_identity_ref_hash",
+          "type": "character(64)",
+          "storedBytes": 358930
+        }
+      ]
+    },
+    "trade.candidate": {
+      "oldest": null,
+      "newest": null,
+      "perDayLast14": [],
+      "largestColumns": [
+        {
+          "column": "metrics_json",
+          "type": "jsonb",
+          "storedBytes": 72896330
+        },
+        {
+          "column": "candidate_id",
+          "type": "uuid",
+          "storedBytes": 639392
+        },
+        {
+          "column": "candidate_set_id",
+          "type": "uuid",
+          "storedBytes": 639392
+        },
+        {
+          "column": "underlying_id",
+          "type": "uuid",
+          "storedBytes": 639392
+        }
+      ]
+    },
+    "research.theta_option_chain_decision_evidence": {
+      "oldest": "2026-09-16 15:32:50.392+00",
+      "newest": "2026-09-25 14:19:36.574+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-21",
+          "rows": "77"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "70"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "154"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "89"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "22"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "structure_comparator_json",
+          "type": "jsonb",
+          "storedBytes": 34296636
+        },
+        {
+          "column": "optionomics_attachments_json",
+          "type": "jsonb",
+          "storedBytes": 27911924
+        },
+        {
+          "column": "chain_snapshot_json",
+          "type": "jsonb",
+          "storedBytes": 19227305
+        },
+        {
+          "column": "strike_delta_frontier_json",
+          "type": "jsonb",
+          "storedBytes": 2081786
+        }
+      ]
+    },
+    "research.theta_execution_observation_job": {
+      "oldest": "2026-09-16 15:34:07.000074+00",
+      "newest": "2026-10-02 19:58:20.49701+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-21",
+          "rows": "15504"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "42980"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "42812"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "26316"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "6376"
+        },
+        {
+          "day": "2026-09-29",
+          "rows": "1144"
+        },
+        {
+          "day": "2026-09-30",
+          "rows": "2036"
+        },
+        {
+          "day": "2026-10-01",
+          "rows": "2304"
+        },
+        {
+          "day": "2026-10-02",
+          "rows": "1460"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "horizon_version",
+          "type": "text",
+          "storedBytes": 6324600
+        },
+        {
+          "column": "missing_reason",
+          "type": "text",
+          "storedBytes": 4850168
+        },
+        {
+          "column": "contract_symbol",
+          "type": "text",
+          "storedBytes": 3085638
+        },
+        {
+          "column": "observation_job_id",
+          "type": "uuid",
+          "storedBytes": 2529840
+        }
+      ]
+    },
+    "legacy_neon.artifact_record": {
+      "oldest": null,
+      "newest": null,
+      "perDayLast14": [],
+      "largestColumns": [
+        {
+          "column": "payload",
+          "type": "jsonb",
+          "storedBytes": 42098212
+        },
+        {
+          "column": "source_checksum",
+          "type": "character(64)",
+          "storedBytes": 1633190
+        },
+        {
+          "column": "source_record_key",
+          "type": "text",
+          "storedBytes": 929671
+        },
+        {
+          "column": "classification",
+          "type": "text",
+          "storedBytes": 610688
+        }
+      ]
+    },
+    "trade.candidate_reason": {
+      "oldest": null,
+      "newest": null,
+      "perDayLast14": [],
+      "largestColumns": [
+        {
+          "column": "value_json",
+          "type": "jsonb",
+          "storedBytes": 10325567
+        },
+        {
+          "column": "reason_code",
+          "type": "text",
+          "storedBytes": 4428430
+        },
+        {
+          "column": "candidate_id",
+          "type": "uuid",
+          "storedBytes": 2562448
+        },
+        {
+          "column": "candidate_reason_id",
+          "type": "bigint",
+          "storedBytes": 1281224
+        }
+      ]
+    },
+    "trade.broker_reconciliation_snapshot": {
+      "oldest": "2026-09-16 15:20:13.802+00",
+      "newest": "2026-10-03 10:13:31.898+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-19",
+          "rows": "1006"
+        },
+        {
+          "day": "2026-09-20",
+          "rows": "276"
+        },
+        {
+          "day": "2026-09-21",
+          "rows": "749"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "1233"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "1994"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "1614"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "551"
+        },
+        {
+          "day": "2026-09-28",
+          "rows": "727"
+        },
+        {
+          "day": "2026-09-29",
+          "rows": "1062"
+        },
+        {
+          "day": "2026-09-30",
+          "rows": "1562"
+        },
+        {
+          "day": "2026-10-01",
+          "rows": "1420"
+        },
+        {
+          "day": "2026-10-02",
+          "rows": "1244"
+        },
+        {
+          "day": "2026-10-03",
+          "rows": "576"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "detail_json",
+          "type": "jsonb",
+          "storedBytes": 27194068
+        },
+        {
+          "column": "payload_hash",
+          "type": "character(64)",
+          "storedBytes": 976820
+        },
+        {
+          "column": "correlation_id",
+          "type": "text",
+          "storedBytes": 761983
+        },
+        {
+          "column": "broker_host",
+          "type": "text",
+          "storedBytes": 375700
+        }
+      ]
+    },
+    "ops.runtime_worker_cycle": {
+      "oldest": "2026-09-16 15:20:10.655736+00",
+      "newest": "2026-10-03 10:13:29.855538+00",
+      "perDayLast14": [
+        {
+          "day": "2026-09-19",
+          "rows": "1006"
+        },
+        {
+          "day": "2026-09-20",
+          "rows": "276"
+        },
+        {
+          "day": "2026-09-21",
+          "rows": "749"
+        },
+        {
+          "day": "2026-09-22",
+          "rows": "1231"
+        },
+        {
+          "day": "2026-09-23",
+          "rows": "1997"
+        },
+        {
+          "day": "2026-09-24",
+          "rows": "1599"
+        },
+        {
+          "day": "2026-09-25",
+          "rows": "549"
+        },
+        {
+          "day": "2026-09-28",
+          "rows": "727"
+        },
+        {
+          "day": "2026-09-29",
+          "rows": "1061"
+        },
+        {
+          "day": "2026-09-30",
+          "rows": "1561"
+        },
+        {
+          "day": "2026-10-01",
+          "rows": "1420"
+        },
+        {
+          "day": "2026-10-02",
+          "rows": "1245"
+        },
+        {
+          "day": "2026-10-03",
+          "rows": "576"
+        }
+      ],
+      "largestColumns": [
+        {
+          "column": "result_json",
+          "type": "jsonb",
+          "storedBytes": 18636273
+        },
+        {
+          "column": "worker_instance",
+          "type": "text",
+          "storedBytes": 630420
+        },
+        {
+          "column": "correlation_id",
+          "type": "text",
+          "storedBytes": 610980
+        },
+        {
+          "column": "runtime_version",
+          "type": "text",
+          "storedBytes": 420280
+        }
+      ]
+    }
+  },
+  "hotBytesPerDecision": {
+    "definition": "stored bytes of every large column of every hot table keyed by the decision (fusion snapshot, decision, frontier, point-in-time evidence, chain evidence, raw Optionomics, features); main tables only, excluding indexes",
+    "currentContractV3": {
+      "decisions": 608,
+      "p50KiB": 794,
+      "p95KiB": 4969,
+      "meanKiB": 1777,
+      "blob": {
+        "p50KiB": 604,
+        "p95KiB": 3834
+      },
+      "withoutBlob": {
+        "p50KiB": 190,
+        "p95KiB": 1192
+      },
+      "withoutBlobAndNestedNormalization": {
+        "p50KiB": 139,
+        "p95KiB": 384,
+        "note": "applies the measured shared-context fraction (0.97) of the legacy evidence to the point-in-time bytes of each decision; an estimate, not a deployed writer"
+      }
+    },
+    "legacyPreContract": {
+      "decisions": 471,
+      "p50KiB": 3412,
+      "p95KiB": 12243,
+      "meanKiB": 4383
+    },
+    "targetP95KiB": 250,
+    "targetMet": false
+  },
+  "archiveBlobIdentity": {
+    "rows": 616,
+    "uniqueArchiveHashes": 616,
+    "note": "every blob is distinct: content addressing cannot shrink it, only retention can"
+  },
+  "blobAnatomy": {
+    "note": "parts are measured AFTER decoding (references expanded) and compressed independently, so their sum (55.8 MiB) overstates the stored blobs (20.9 MiB): the stored blob already references rebuildable chain and Optionomics duplicates (packCycleEvidence), so no further format change is claimed",
+    "archives": 20,
+    "storedBlobBytes": 21907121,
+    "partsCompressedIndependentlyBytes": 58514186,
+    "parts": [
+      {
+        "part": "snapshot",
+        "decodedMiB": 345.4,
+        "compressedMiB": 31.43,
+        "shareOfCompressed": 0.563
+      },
+      {
+        "part": "strategyFrontier",
+        "decodedMiB": 322.8,
+        "compressedMiB": 13.12,
+        "shareOfCompressed": 0.235
+      },
+      {
+        "part": "canonicalFrontierInput.optionomicsContext",
+        "decodedMiB": 180.7,
+        "compressedMiB": 9.98,
+        "shareOfCompressed": 0.179
+      },
+      {
+        "part": "canonicalFrontierInput.contracts",
+        "decodedMiB": 18.3,
+        "compressedMiB": 1.18,
+        "shareOfCompressed": 0.021
+      },
+      {
+        "part": "other",
+        "decodedMiB": 0.4,
+        "compressedMiB": 0.05,
+        "shareOfCompressed": 0.001
+      },
+      {
+        "part": "canonicalFrontierInput.other",
+        "decodedMiB": 0.6,
+        "compressedMiB": 0.04,
+        "shareOfCompressed": 0.001
+      }
+    ]
+  },
+  "legacyPitEvidenceNormalization": {
+    "rows": 38226,
+    "decisions": 461,
+    "avgCandidatesPerDecision": 82.9,
+    "hotRows": 32209,
+    "finalistRank": 10,
+    "children": {
+      "contract_json": [
+        "contractSymbol",
+        "dte",
+        "expiration",
+        "moneyness",
+        "multiplier",
+        "optionType",
+        "strike",
+        "underlying"
+      ],
+      "market_json": [
+        "ask",
+        "askSize",
+        "bid",
+        "bidSize",
+        "dataQuality",
+        "feed",
+        "quoteReceivedAt",
+        "quoteSource",
+        "quoteTimestamp",
+        "stockPrice",
+        "underlyingQuoteReceivedAt",
+        "underlyingQuoteSource",
+        "underlyingQuoteTimestamp",
+        "underlyingReferencePrice"
+      ],
+      "volatility_json": [
+        "contractVolatility",
+        "iv",
+        "ivAvailableAt",
+        "ivEvidenceAuthority",
+        "ivFeed",
+        "ivProviderTimestamp",
+        "ivSource",
+        "marketStructure",
+        "providerExposureHeatmap",
+        "providerMetrics",
+        "skew",
+        "surface",
+        "termStructure"
+      ],
+      "technical_json": [
+        "drawdown",
+        "momentum",
+        "realizedVolatility",
+        "trend"
+      ],
+      "event_json": [
+        "companyEvent",
+        "earningsDistance",
+        "exDividendState",
+        "state"
+      ],
+      "flow_json": [
+        "featureSchemaVersion",
+        "interpretation",
+        "optionomicsNetFlowWindows",
+        "providerFlowAggregates",
+        "unavailableFamilies"
+      ],
+      "ownership_json": [
+        "candidateAssessment",
+        "state"
+      ],
+      "account_json": [
+        "accountStatus",
+        "buyingPower",
+        "cash",
+        "equity",
+        "maskedAccountId",
+        "optionsApprovedLevel",
+        "optionsBuyingPower",
+        "optionsTradingLevel",
+        "receivedAt",
+        "tradingBlocked",
+        "transfersBlocked"
+      ],
+      "portfolio_json": [
+        "buyingPower",
+        "cash",
+        "correlationObservation",
+        "cspCollateralRequired",
+        "equity",
+        "exposureByUnderlying",
+        "largestConcentrationUnderlying",
+        "longCallCount",
+        "longPutCount",
+        "openOrderCount",
+        "optionsBuyingPower",
+        "pendingAssignmentCollateral",
+        "pendingExposureByUnderlying",
+        "pendingOpeningCapitalAtRisk",
+        "portfolioCapitalAtRiskPct",
+        "riskyUnderlyings",
+        "shortCallCount",
+        "shortPutCount",
+        "stockInventoryValue",
+        "stockValueByUnderlying",
+        "tickerConcentrationPct",
+        "unclassifiedOpenOrderIds",
+        "unparsedOptionSymbols"
+      ],
+      "aegis_json": [
+        "state"
+      ],
+      "execution_json": [
+        "ask",
+        "askSize",
+        "bid",
+        "bidSize",
+        "executable",
+        "feed",
+        "proposedLimit",
+        "quoteReceivedAt",
+        "quoteSource",
+        "quoteTimestamp",
+        "recommendedAction",
+        "stockPrice",
+        "underlyingQuoteReceivedAt",
+        "underlyingQuoteSource",
+        "underlyingQuoteTimestamp",
+        "underlyingReferencePrice"
+      ],
+      "known_economics_json": [
+        "break_even_price",
+        "credit_collateral_ratio",
+        "ev_net",
+        "ev_net_unknown_reason",
+        "max_profit",
+        "secured_collateral_per_contract"
+      ]
+    },
+    "fields": [
+      {
+        "field": "volatility_json.surface",
+        "rows": 37903,
+        "uniqueHashesPerDecisionSum": 456,
+        "duplicationRatio": 83.12,
+        "totalBytes": 1515711299,
+        "normalizedBytes": 14123508,
+        "estimatedSavingBytes": 1501587791
+      },
+      {
+        "field": "volatility_json.providerMetrics",
+        "rows": 37903,
+        "uniqueHashesPerDecisionSum": 456,
+        "duplicationRatio": 83.12,
+        "totalBytes": 536023192,
+        "normalizedBytes": 8303299,
+        "estimatedSavingBytes": 527719893
+      },
+      {
+        "field": "event_json.state",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 432143537,
+        "normalizedBytes": 7366800,
+        "estimatedSavingBytes": 424776737
+      },
+      {
+        "field": "provider_provenance_json",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 167243983,
+        "normalizedBytes": 3850516,
+        "estimatedSavingBytes": 163393467
+      },
+      {
+        "field": "technical_json.trend",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 52871643,
+        "normalizedBytes": 2550624,
+        "estimatedSavingBytes": 50321019
+      },
+      {
+        "field": "flow_json.optionomicsNetFlowWindows",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 41988926,
+        "normalizedBytes": 2321736,
+        "estimatedSavingBytes": 39667190
+      },
+      {
+        "field": "soft_evidence_json",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 7826,
+        "duplicationRatio": 4.88,
+        "totalBytes": 17015654,
+        "normalizedBytes": 4452034,
+        "estimatedSavingBytes": 12563620
+      },
+      {
+        "field": "volatility_json.providerExposureHeatmap",
+        "rows": 1629,
+        "uniqueHashesPerDecisionSum": 27,
+        "duplicationRatio": 60.33,
+        "totalBytes": 15688189,
+        "normalizedBytes": 258678,
+        "estimatedSavingBytes": 15429511
+      },
+      {
+        "field": "portfolio_json.correlationObservation",
+        "rows": 18876,
+        "uniqueHashesPerDecisionSum": 265,
+        "duplicationRatio": 71.23,
+        "totalBytes": 11521286,
+        "normalizedBytes": 1067811,
+        "estimatedSavingBytes": 10453475
+      },
+      {
+        "field": "volatility_json.marketStructure",
+        "rows": 37641,
+        "uniqueHashesPerDecisionSum": 30947,
+        "duplicationRatio": 1.22,
+        "totalBytes": 10357646,
+        "normalizedBytes": 10417278,
+        "estimatedSavingBytes": -59632
+      },
+      {
+        "field": "volatility_json.contractVolatility",
+        "rows": 37641,
+        "uniqueHashesPerDecisionSum": 30125,
+        "duplicationRatio": 1.25,
+        "totalBytes": 4843172,
+        "normalizedBytes": 5672860,
+        "estimatedSavingBytes": -829688
+      },
+      {
+        "field": "volatility_json.skew",
+        "rows": 37903,
+        "uniqueHashesPerDecisionSum": 456,
+        "duplicationRatio": 83.12,
+        "totalBytes": 3297561,
+        "normalizedBytes": 1859016,
+        "estimatedSavingBytes": 1438545
+      },
+      {
+        "field": "flow_json.providerFlowAggregates",
+        "rows": 5492,
+        "uniqueHashesPerDecisionSum": 65,
+        "duplicationRatio": 84.49,
+        "totalBytes": 2295563,
+        "normalizedBytes": 290434,
+        "estimatedSavingBytes": 2005129
+      },
+      {
+        "field": "volatility_json.termStructure",
+        "rows": 37903,
+        "uniqueHashesPerDecisionSum": 456,
+        "duplicationRatio": 83.12,
+        "totalBytes": 2238114,
+        "normalizedBytes": 1846353,
+        "estimatedSavingBytes": 391761
+      },
+      {
+        "field": "unknown_economics_json",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 815,
+        "duplicationRatio": 46.9,
+        "totalBytes": 1297743,
+        "normalizedBytes": 1912376,
+        "estimatedSavingBytes": -614633
+      },
+      {
+        "field": "known_economics_json.ev_net_unknown_reason",
+        "rows": 32208,
+        "uniqueHashesPerDecisionSum": 619,
+        "duplicationRatio": 52.03,
+        "totalBytes": 1156875,
+        "normalizedBytes": 1620644,
+        "estimatedSavingBytes": -463769
+      },
+      {
+        "field": "market_json.quoteTimestamp",
+        "rows": 38225,
+        "uniqueHashesPerDecisionSum": 33818,
+        "duplicationRatio": 1.13,
+        "totalBytes": 1142555,
+        "normalizedBytes": 2845603,
+        "estimatedSavingBytes": -1703048
+      },
+      {
+        "field": "execution_json.quoteTimestamp",
+        "rows": 38225,
+        "uniqueHashesPerDecisionSum": 33818,
+        "duplicationRatio": 1.13,
+        "totalBytes": 1142555,
+        "normalizedBytes": 2845603,
+        "estimatedSavingBytes": -1703048
+      },
+      {
+        "field": "flow_json.featureSchemaVersion",
+        "rows": 37903,
+        "uniqueHashesPerDecisionSum": 456,
+        "duplicationRatio": 83.12,
+        "totalBytes": 1099187,
+        "normalizedBytes": 1832568,
+        "estimatedSavingBytes": -733381
+      },
+      {
+        "field": "flow_json.unavailableFamilies",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 1073769,
+        "normalizedBytes": 1847650,
+        "estimatedSavingBytes": -773881
+      },
+      {
+        "field": "flow_json.interpretation",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 993876,
+        "normalizedBytes": 1846834,
+        "estimatedSavingBytes": -852958
+      },
+      {
+        "field": "account_json.receivedAt",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 917424,
+        "normalizedBytes": 1845912,
+        "estimatedSavingBytes": -928488
+      },
+      {
+        "field": "contract_json.contractSymbol",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 38226,
+        "duplicationRatio": 1.0,
+        "totalBytes": 708184,
+        "normalizedBytes": 2543032,
+        "estimatedSavingBytes": -1834848
+      },
+      {
+        "field": "hard_blockers_json",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 1593,
+        "duplicationRatio": 24.0,
+        "totalBytes": 626151,
+        "normalizedBytes": 1894358,
+        "estimatedSavingBytes": -1268207
+      },
+      {
+        "field": "event_json.companyEvent",
+        "rows": 555,
+        "uniqueHashesPerDecisionSum": 175,
+        "duplicationRatio": 3.17,
+        "totalBytes": 571532,
+        "normalizedBytes": 205454,
+        "estimatedSavingBytes": 366078
+      },
+      {
+        "field": "volatility_json.ivEvidenceAuthority",
+        "rows": 18876,
+        "uniqueHashesPerDecisionSum": 707,
+        "duplicationRatio": 26.7,
+        "totalBytes": 551801,
+        "normalizedBytes": 924102,
+        "estimatedSavingBytes": -372301
+      },
+      {
+        "field": "market_json.underlyingQuoteTimestamp",
+        "rows": 18069,
+        "uniqueHashesPerDecisionSum": 243,
+        "duplicationRatio": 74.36,
+        "totalBytes": 539413,
+        "normalizedBytes": 874571,
+        "estimatedSavingBytes": -335158
+      },
+      {
+        "field": "execution_json.underlyingQuoteTimestamp",
+        "rows": 18069,
+        "uniqueHashesPerDecisionSum": 243,
+        "duplicationRatio": 74.36,
+        "totalBytes": 539413,
+        "normalizedBytes": 874571,
+        "estimatedSavingBytes": -335158
+      },
+      {
+        "field": "market_json.quoteReceivedAt",
+        "rows": 18876,
+        "uniqueHashesPerDecisionSum": 1591,
+        "duplicationRatio": 11.86,
+        "totalBytes": 453024,
+        "normalizedBytes": 944232,
+        "estimatedSavingBytes": -491208
+      },
+      {
+        "field": "execution_json.quoteReceivedAt",
+        "rows": 18876,
+        "uniqueHashesPerDecisionSum": 1591,
+        "duplicationRatio": 11.86,
+        "totalBytes": 453024,
+        "normalizedBytes": 944232,
+        "estimatedSavingBytes": -491208
+      },
+      {
+        "field": "market_json.underlyingQuoteReceivedAt",
+        "rows": 18069,
+        "uniqueHashesPerDecisionSum": 243,
+        "duplicationRatio": 74.36,
+        "totalBytes": 433656,
+        "normalizedBytes": 873144,
+        "estimatedSavingBytes": -439488
+      },
+      {
+        "field": "execution_json.underlyingQuoteReceivedAt",
+        "rows": 18069,
+        "uniqueHashesPerDecisionSum": 243,
+        "duplicationRatio": 74.36,
+        "totalBytes": 433656,
+        "normalizedBytes": 873144,
+        "estimatedSavingBytes": -439488
+      },
+      {
+        "field": "known_economics_json.credit_collateral_ratio",
+        "rows": 32208,
+        "uniqueHashesPerDecisionSum": 24534,
+        "duplicationRatio": 1.31,
+        "totalBytes": 427455,
+        "normalizedBytes": 1961944,
+        "estimatedSavingBytes": -1534489
+      },
+      {
+        "field": "contract_json.expiration",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 1242,
+        "duplicationRatio": 30.78,
+        "totalBytes": 382260,
+        "normalizedBytes": 1847268,
+        "estimatedSavingBytes": -1465008
+      },
+      {
+        "field": "execution_json.feed",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 382260,
+        "normalizedBytes": 1839458,
+        "estimatedSavingBytes": -1457198
+      },
+      {
+        "field": "market_json.feed",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 382260,
+        "normalizedBytes": 1839458,
+        "estimatedSavingBytes": -1457198
+      },
+      {
+        "field": "volatility_json.ivAvailableAt",
+        "rows": 15799,
+        "uniqueHashesPerDecisionSum": 1591,
+        "duplicationRatio": 9.93,
+        "totalBytes": 379176,
+        "normalizedBytes": 796536,
+        "estimatedSavingBytes": -417360
+      },
+      {
+        "field": "portfolio_json.buyingPower",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 344034,
+        "normalizedBytes": 1838997,
+        "estimatedSavingBytes": -1494963
+      },
+      {
+        "field": "account_json.buyingPower",
+        "rows": 38226,
+        "uniqueHashesPerDecisionSum": 461,
+        "duplicationRatio": 82.92,
+        "totalBytes": 344034,
+        "normalizedBytes": 1838997,
+        "estimatedSavingBytes": -1494963
+      },
+      {
+        "field": "contract_json.moneyness",
+        "rows": 18069,
+        "uniqueHashesPerDecisionSum": 10206,
+        "duplicationRatio": 1.77,
+        "totalBytes": 333471,
+        "normalizedBytes": 1055384,
+        "estimatedSavingBytes": -721913
+      }
+    ],
+    "perDecisionBytes": {
+      "original": {
+        "p50": 4162783,
+        "p95": 20883831,
+        "mean": 6155604,
+        "max": 31605918,
+        "sum": 2837733585
+      },
+      "normalizedAllRows": {
+        "p50": 155819,
+        "p95": 412559,
+        "mean": 177867,
+        "max": 478868,
+        "sum": 81996853
+      },
+      "normalizedAndTiered": {
+        "p50": 151268,
+        "p95": 276839,
+        "mean": 157290,
+        "max": 466249,
+        "sum": 72510622
+      }
+    },
+    "reductionPercentMeanNormalizedOnly": 97.1,
+    "reductionPercentMeanNormalizedAndTiered": 97.4
+  },
+  "orphans": [
+    {
+      "candidates_without_set": "0",
+      "reasons_without_candidate": "0",
+      "candidate_evidence_without_frontier": "0",
+      "decisions_without_snapshot": "0"
+    }
+  ],
+  "unusedIndexes": [
+    {
+      "table_name": "trade.canonical_strategy_candidate_evidence",
+      "index_name": "canonical_strategy_candidate_evidence_content_hash_key",
+      "bytes": "47644672",
+      "scans": "0",
+      "is_unique": true,
+      "is_primary": false
+    },
+    {
+      "table_name": "trade.canonical_strategy_candidate_evidence",
+      "index_name": "canonical_strategy_candidate_evidence_pkey",
+      "bytes": "16351232",
+      "scans": "0",
+      "is_unique": true,
+      "is_primary": true
+    },
+    {
+      "table_name": "trade.candidate_reason",
+      "index_name": "candidate_reason_pkey",
+      "bytes": "5750784",
+      "scans": "0",
+      "is_unique": true,
+      "is_primary": true
+    },
+    {
+      "table_name": "legacy_neon.promotion_record",
+      "index_name": "legacy_neon_promotion_record_target_idx",
+      "bytes": "5251072",
+      "scans": "0",
+      "is_unique": false,
+      "is_primary": false
+    },
+    {
+      "table_name": "market.execution_quote_observation",
+      "index_name": "execution_quote_observation_content_hash_key",
+      "bytes": "5095424",
+      "scans": "0",
+      "is_unique": true,
+      "is_primary": false
+    },
+    {
+      "table_name": "legacy_neon.artifact_record",
+      "index_name": "artifact_record_import_batch_id_source_checksum_key",
+      "bytes": "3825664",
+      "scans": "0",
+      "is_unique": true,
+      "is_primary": false
+    }
+  ],
+  "bloatIndicators": [
+    {
+      "table_name": "ops.scheduler_checkpoint",
+      "live": "48774",
+      "dead": "3146",
+      "dead_pct": 6.1,
+      "last_autovacuum": "2026-10-03 04:47:10.988125+00",
+      "last_autoanalyze": "2026-10-03 10:04:20.161755+00",
+      "autovacuum_count": "1",
+      "updates": "6198",
+      "deletes": "0"
+    },
+    {
+      "table_name": "ops.runtime_worker_cycle",
+      "live": "15010",
+      "dead": "2999",
+      "dead_pct": 16.7,
+      "last_autovacuum": null,
+      "last_autoanalyze": "2026-10-03 06:58:13.985242+00",
+      "autovacuum_count": "0",
+      "updates": "968",
+      "deletes": "0"
+    },
+    {
+      "table_name": "trade.broker_activity_fact",
+      "live": "9",
+      "dead": "45",
+      "dead_pct": 83.3,
+      "last_autovacuum": "2026-10-03 04:27:09.83473+00",
+      "last_autoanalyze": "2026-10-03 10:13:18.625527+00",
+      "autovacuum_count": "217",
+      "updates": "8703",
+      "deletes": "0"
+    },
+    {
+      "table_name": "ops.runtime_worker_status",
+      "live": "37",
+      "dead": "25",
+      "dead_pct": 40.3,
+      "last_autovacuum": "2026-10-03 10:08:18.525981+00",
+      "last_autoanalyze": "2026-10-03 10:07:18.395904+00",
+      "autovacuum_count": "223",
+      "updates": "2916",
+      "deletes": "0"
+    },
+    {
+      "table_name": "copy.alpaca_oauth_token",
+      "live": "2",
+      "dead": "15",
+      "dead_pct": 88.2,
+      "last_autovacuum": "2026-10-03 04:27:09.812731+00",
+      "last_autoanalyze": "2026-10-03 10:01:18.213892+00",
+      "autovacuum_count": "191",
+      "updates": "1717",
+      "deletes": "0"
+    }
+  ],
+  "parquetConversions": [
+    {
+      "state": "PASS",
+      "dataset": "legacy-optionomics-raw-observation",
+      "rows": 2329,
+      "sourceRows": 2329,
+      "files": 7,
+      "smallFiles": 7,
+      "parquetBytes": 42398486,
+      "sourceJsonGzipBytes": 48635780,
+      "sourceUncompressedBytes": 257852488,
+      "textColumns": [],
+      "ratioVsUncompressed": 6.08,
+      "ratioVsJsonGzip": 1.15,
+      "seconds": 45.0,
+      "manifest": "C:\\ProjectBackups\\trading-bots\\storage-archives\\theta-20261003\\parquet\\legacy-optionomics-raw-observation\\parquet-manifest.json"
+    },
+    {
+      "state": "PASS",
+      "dataset": "legacy-canonical-strategy-candidate-evidence",
+      "rows": 304719,
+      "sourceRows": 304719,
+      "files": 6,
+      "smallFiles": 5,
+      "parquetBytes": 36543817,
+      "sourceJsonGzipBytes": 82502558,
+      "sourceUncompressedBytes": 623907514,
+      "textColumns": [],
+      "ratioVsUncompressed": 17.07,
+      "ratioVsJsonGzip": 2.26,
+      "seconds": 139.7,
+      "manifest": "C:\\ProjectBackups\\trading-bots\\storage-archives\\theta-20261003\\parquet\\legacy-canonical-strategy-candidate-evidence\\parquet-manifest.json"
+    },
+    {
+      "state": "PASS",
+      "dataset": "legacy-option-chain-decision-evidence",
+      "rows": 471,
+      "sourceRows": 471,
+      "files": 7,
+      "smallFiles": 7,
+      "parquetBytes": 38440870,
+      "sourceJsonGzipBytes": 52364989,
+      "sourceUncompressedBytes": 813716960,
+      "textColumns": [],
+      "ratioVsUncompressed": 21.17,
+      "ratioVsJsonGzip": 1.36,
+      "seconds": 119.7,
+      "manifest": "C:\\ProjectBackups\\trading-bots\\storage-archives\\theta-20261003\\parquet\\legacy-option-chain-decision-evidence\\parquet-manifest.json"
+    },
+    {
+      "state": "PASS",
+      "dataset": "legacy-optionomics-feature-snapshot",
+      "rows": 466,
+      "sourceRows": 466,
+      "files": 7,
+      "smallFiles": 7,
+      "parquetBytes": 50776171,
+      "sourceJsonGzipBytes": 62849686,
+      "sourceUncompressedBytes": 1061749761,
+      "textColumns": [],
+      "ratioVsUncompressed": 20.91,
+      "ratioVsJsonGzip": 1.24,
+      "seconds": 177.6,
+      "manifest": "C:\\ProjectBackups\\trading-bots\\storage-archives\\theta-20261003\\parquet\\legacy-optionomics-feature-snapshot\\parquet-manifest.json"
+    },
+    {
+      "state": "PASS",
+      "dataset": "legacy-fusion-snapshot-payload",
+      "rows": 471,
+      "sourceRows": 471,
+      "files": 7,
+      "smallFiles": 4,
+      "parquetBytes": 117271178,
+      "sourceJsonGzipBytes": 214972441,
+      "sourceUncompressedBytes": 2007887474,
+      "textColumns": [],
+      "ratioVsUncompressed": 17.12,
+      "ratioVsJsonGzip": 1.83,
+      "seconds": 364.0,
+      "manifest": "C:\\ProjectBackups\\trading-bots\\storage-archives\\theta-20261003\\parquet\\legacy-fusion-snapshot-payload\\parquet-manifest.json"
+    },
+    {
+      "state": "PASS",
+      "dataset": "legacy-candidate-point-in-time-evidence",
+      "rows": 38226,
+      "sourceRows": 38226,
+      "files": 7,
+      "smallFiles": 4,
+      "parquetBytes": 95575036,
+      "sourceJsonGzipBytes": 754163844,
+      "sourceUncompressedBytes": 3126216758,
+      "textColumns": [],
+      "ratioVsUncompressed": 32.71,
+      "ratioVsJsonGzip": 7.89,
+      "seconds": 528.0,
+      "manifest": "C:\\ProjectBackups\\trading-bots\\storage-archives\\theta-20261003\\parquet\\legacy-candidate-point-in-time-evidence\\parquet-manifest.json"
+    }
+  ],
+  "archiveVerificationAgainstProduction": [
+    [
+      {
+        "id": "legacy-optionomics-raw-observation",
+        "diskOk": true,
+        "rows": "2329/2329",
+        "aggregateByDayEqual": true,
+        "sample": "150/150",
+        "problems": []
+      }
+    ],
+    [
+      {
+        "id": "legacy-optionomics-feature-snapshot",
+        "diskOk": true,
+        "rows": "466/466",
+        "aggregateByDayEqual": true,
+        "sample": "150/150",
+        "problems": []
+      }
+    ],
+    [
+      {
+        "id": "legacy-option-chain-decision-evidence",
+        "diskOk": true,
+        "rows": "471/471",
+        "aggregateByDayEqual": true,
+        "sample": "150/150",
+        "problems": []
+      }
+    ],
+    [
+      {
+        "id": "legacy-canonical-strategy-candidate-evidence",
+        "diskOk": true,
+        "rows": "304719/304719",
+        "aggregateByDayEqual": true,
+        "sample": "150/150",
+        "problems": []
+      }
+    ],
+    [
+      {
+        "id": "legacy-fusion-snapshot-payload",
+        "diskOk": true,
+        "rows": "471/471",
+        "aggregateByDayEqual": true,
+        "sample": "150/150",
+        "problems": []
+      }
+    ],
+    [
+      {
+        "id": "legacy-candidate-point-in-time-evidence",
+        "diskOk": true,
+        "rows": "38226/38226",
+        "aggregateByDayEqual": true,
+        "sample": "150/150",
+        "problems": []
+      }
+    ]
+  ],
+  "cycleBlobReplaySample": {
+    "sampled": 20,
+    "replayExecuted": 20,
+    "errors": 0,
+    "states": {
+      "CROSS_SOURCE_CHANGED_RESULT": 14,
+      "CROSS_SOURCE_SAME_RESULT": 6
+    },
+    "blobBytes": 21907121
+  },
+  "simulation": {
+    "scenario250": {
+      "postArchiveMedianGiB": {
+        "sessions10to30": 1.798,
+        "sessions40to60": 2.065,
+        "sessions90to110": 2.156,
+        "sessions230to250": 2.102
+      },
+      "session1PostArchiveGiB": 0.62,
+      "session250PostArchiveGiB": 2.18,
+      "preSessionMedianGiB": 2.14,
+      "sessionPeakMedianGiB": 2.36,
+      "sessionPeakMaxGiB": 2.85,
+      "steadyState": {
+        "state": "STEADY",
+        "slopeMiBPerSession": -1.3425,
+        "tau": -0.276,
+        "meanGiB": 2.149
+      },
+      "linearGrowthDetected": false,
+      "newRiskGateOpenAllSessions": true,
+      "capacityStateNormalAfterWarmup": true,
+      "partitionsRetired": 1457,
+      "livePartitions": 67,
+      "archivedPartitions": 1522,
+      "externalArchiveGiB": 0,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "criticalIncidents": 0
+    },
+    "projectionHotGiB": {
+      "oneYear": 2.85,
+      "threeYears": 3.034,
+      "fiveYears": 3.217,
+      "permanentDriftMiBPerSession": 0.376
+    },
+    "extremeSession": {
+      "baselineGiB": 2.074,
+      "spikePeakGiB": 4.852,
+      "postArchiveAfterSpikeGiB": 4.347,
+      "recoveredGiB": 2.105,
+      "newRiskLocked": false
+    },
+    "archiveOutageFiveSessions": {
+      "baselineGiB": 2.055,
+      "peakDuringGiB": 2.798,
+      "recoveredGiB": 2.034,
+      "newRiskOpenDuring": true,
+      "backlogIncidentEverySession": true
+    },
+    "archiveOutageEightySessions": {
+      "maxPeakGiB": 4.348,
+      "criticalBandGiB": 6.6,
+      "firstResearchThrottleSession": 41,
+      "firstNewRiskGateSession": -1,
+      "spooledGiB": 1.78,
+      "skippedGiB": 14.634,
+      "skippedRecords": 564,
+      "neverDroppedWithoutVerifiedArchive": true
+    }
+  }
+}

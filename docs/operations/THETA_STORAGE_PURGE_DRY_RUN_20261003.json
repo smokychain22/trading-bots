@@ -1,0 +1,395 @@
+{
+  "THETA_STORAGE_PURGE_DRY_RUN": true,
+  "observedAt": "2026-10-03T12:59:11.248Z",
+  "cutoff": "2026-09-26T04:00:00Z",
+  "releaseSha": "99dbaf83cf94d715e71e14e11029fc11896ba15c",
+  "CURRENT_DB_GIB": 4.666,
+  "PROJECTED_8GIB_DATE": "13.7 active sessions from now",
+  "TOP_10_STORAGE_OBJECTS": [
+    {
+      "name": "trade.candidate_point_in_time_evidence",
+      "GiB": 1.373
+    },
+    {
+      "name": "trade.fusion_snapshot",
+      "GiB": 1.198
+    },
+    {
+      "name": "trade.canonical_strategy_candidate_evidence",
+      "GiB": 0.755
+    },
+    {
+      "name": "trade.canonical_strategy_frontier",
+      "GiB": 0.215
+    },
+    {
+      "name": "trade.decision",
+      "GiB": 0.213
+    },
+    {
+      "name": "market.optionomics_feature_snapshot",
+      "GiB": 0.151
+    },
+    {
+      "name": "market.optionomics_raw_observation",
+      "GiB": 0.133
+    },
+    {
+      "name": "trade.candidate",
+      "GiB": 0.12
+    },
+    {
+      "name": "research.theta_option_chain_decision_evidence",
+      "GiB": 0.117
+    },
+    {
+      "name": "research.theta_execution_observation_job",
+      "GiB": 0.064
+    }
+  ],
+  "ARCHIVE_CANDIDATE_ROWS": 346682,
+  "ARCHIVE_CANDIDATE_GIB_LOGICAL_RECLAIM": 2.667,
+  "ARCHIVE_DESTINATION": "C:\\ProjectBackups\\trading-bots\\storage-archives\\theta-20261003",
+  "ARCHIVE_FILE_GIB": 1.132,
+  "ARCHIVE_COMPLETE_AND_VERIFIED_FOR_ALL": true,
+  "populations": [
+    {
+      "populationId": "legacy-candidate-point-in-time-evidence",
+      "table": "trade.candidate_point_in_time_evidence",
+      "tier": "TIER_C_RESEARCH_ARCHIVABLE",
+      "purgeAction": "DELETE_ROWS",
+      "candidateRows": 38226,
+      "candidateStoredPayloadGiB": 1.016,
+      "expectedLogicalReclaimGiB": 1.313,
+      "archiveRows": 38226,
+      "archiveComplete": true,
+      "archiveFileMiB": 719,
+      "archiveDigest": "6eb830e8380ee9232f9fdf868dbb4ded4a50d43cffd0681d68fe34fb5ed6559c",
+      "archiveVerified": true,
+      "rowCountProof": "38226/38226",
+      "aggregateByDayEqual": true,
+      "sampleRestore": "150/150",
+      "foreignKeyDependents": [],
+      "immutabilityTriggerPresent": true,
+      "parquet": {
+        "rows": 38226,
+        "bytes": 95575036,
+        "files": 7,
+        "manifestSha256": "6d5f17caa0d163640df007a5d75904d3c2149aa4d986986c5435a7b49641fe8b",
+        "rowsMatchArchive": true
+      },
+      "physicalReclaimGiB": 1.313,
+      "physicalMethod": "REBUILD_RETAINED_ROWS_THEN_DROP_OLD",
+      "purgeEligible": true,
+      "blockers": []
+    },
+    {
+      "populationId": "legacy-canonical-strategy-candidate-evidence",
+      "table": "trade.canonical_strategy_candidate_evidence",
+      "tier": "TIER_C_RESEARCH_ARCHIVABLE",
+      "purgeAction": "DELETE_ROWS",
+      "candidateRows": 304719,
+      "candidateStoredPayloadGiB": 0.323,
+      "expectedLogicalReclaimGiB": 0.755,
+      "archiveRows": 304719,
+      "archiveComplete": true,
+      "archiveFileMiB": 79,
+      "archiveDigest": "36c86565130942ba96580f968a860a723fa7940cb0464cd51566718d7c55dbc6",
+      "archiveVerified": true,
+      "rowCountProof": "304719/304719",
+      "aggregateByDayEqual": true,
+      "sampleRestore": "150/150",
+      "foreignKeyDependents": [],
+      "immutabilityTriggerPresent": true,
+      "parquet": {
+        "rows": 304719,
+        "bytes": 36543817,
+        "files": 6,
+        "manifestSha256": "e276750645f76ea05183e74c47ad41e76a8cb3defd7ec0f551d48bd83d159df8",
+        "rowsMatchArchive": true
+      },
+      "physicalReclaimGiB": 0.755,
+      "physicalMethod": "DROP_TABLE",
+      "purgeEligible": true,
+      "blockers": []
+    },
+    {
+      "populationId": "legacy-fusion-snapshot-payload",
+      "table": "trade.fusion_snapshot",
+      "tier": "TIER_C_RESEARCH_ARCHIVABLE",
+      "purgeAction": "REPLACE_PAYLOAD_WITH_ARCHIVE_POINTER",
+      "candidateRows": 471,
+      "candidateStoredPayloadGiB": 0.342,
+      "expectedLogicalReclaimGiB": 0.342,
+      "archiveRows": 471,
+      "archiveComplete": true,
+      "archiveFileMiB": 205,
+      "archiveDigest": "8e165ffb3ca23308cdaf0b49c25a2c5451702073bac875e60c8098b6a7be52bc",
+      "archiveVerified": true,
+      "rowCountProof": "471/471",
+      "aggregateByDayEqual": true,
+      "sampleRestore": "150/150",
+      "foreignKeyDependents": [
+        {
+          "dependent": "market.optionomics_feature_snapshot",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "market.optionomics_raw_observation",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "research.theta_option_chain_decision_evidence",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "research.theta_replay_observation",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "research.theta_shadow_order_intent",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "research.theta_shadow_scan_member",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.candidate_point_in_time_evidence",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.candidate_set",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.canonical_strategy_branch_evidence",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.canonical_strategy_frontier",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.decision",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.management_decision",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.management_input_snapshot",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.management_opportunity",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.shadow_opportunity",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "trade.strategy_route",
+          "on_delete": "a"
+        }
+      ],
+      "immutabilityTriggerPresent": true,
+      "parquet": {
+        "rows": 471,
+        "bytes": 117271178,
+        "files": 7,
+        "manifestSha256": "0147fb3013052a8cbe3e853edaad2241aad82f0afb4561ab63dffdffb7222afd",
+        "rowsMatchArchive": true
+      },
+      "physicalReclaimGiB": 0,
+      "physicalMethod": "NONE_REUSE_ONLY",
+      "purgeEligible": true,
+      "blockers": []
+    },
+    {
+      "populationId": "legacy-optionomics-feature-snapshot",
+      "table": "market.optionomics_feature_snapshot",
+      "tier": "TIER_C_RESEARCH_ARCHIVABLE",
+      "purgeAction": "REPLACE_PAYLOAD_WITH_ARCHIVE_POINTER",
+      "candidateRows": 466,
+      "candidateStoredPayloadGiB": 0.099,
+      "expectedLogicalReclaimGiB": 0.099,
+      "archiveRows": 466,
+      "archiveComplete": true,
+      "archiveFileMiB": 60,
+      "archiveDigest": "0898552ca2348724d7a7b778056cb7e70102479f0ba59ea1d106beb48a9ae99b",
+      "archiveVerified": true,
+      "rowCountProof": "466/466",
+      "aggregateByDayEqual": true,
+      "sampleRestore": "150/150",
+      "foreignKeyDependents": [
+        {
+          "dependent": "market.optionomics_feature_observation_link",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "research.optionomics_temporal_feature_observation",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "research.optionomics_temporal_feature_observation",
+          "on_delete": "a"
+        }
+      ],
+      "immutabilityTriggerPresent": true,
+      "parquet": {
+        "rows": 466,
+        "bytes": 50776171,
+        "files": 7,
+        "manifestSha256": "4f909dcfdb36c991f5e699cc8dde84675735575d9e62bd4f5db563c5f9d79478",
+        "rowsMatchArchive": true
+      },
+      "physicalReclaimGiB": 0,
+      "physicalMethod": "NONE_REUSE_ONLY",
+      "purgeEligible": true,
+      "blockers": []
+    },
+    {
+      "populationId": "legacy-option-chain-decision-evidence",
+      "table": "research.theta_option_chain_decision_evidence",
+      "tier": "TIER_C_RESEARCH_ARCHIVABLE",
+      "purgeAction": "REPLACE_PAYLOAD_WITH_ARCHIVE_POINTER",
+      "candidateRows": 471,
+      "candidateStoredPayloadGiB": 0.076,
+      "expectedLogicalReclaimGiB": 0.076,
+      "archiveRows": 471,
+      "archiveComplete": true,
+      "archiveFileMiB": 50,
+      "archiveDigest": "ff7de7136844aff3b3aa0239d19af8f93d7ac8d0779626bb62d7a9dc770fd563",
+      "archiveVerified": true,
+      "rowCountProof": "471/471",
+      "aggregateByDayEqual": true,
+      "sampleRestore": "150/150",
+      "foreignKeyDependents": [
+        {
+          "dependent": "research.theta_outcome_subject",
+          "on_delete": "a"
+        }
+      ],
+      "immutabilityTriggerPresent": true,
+      "parquet": {
+        "rows": 471,
+        "bytes": 38440870,
+        "files": 7,
+        "manifestSha256": "2e9ae18be63c115f83b38c927d2138b1a63e1b5b5aed8112d4ce7f43823c24a5",
+        "rowsMatchArchive": true
+      },
+      "physicalReclaimGiB": 0,
+      "physicalMethod": "NONE_REUSE_ONLY",
+      "purgeEligible": true,
+      "blockers": []
+    },
+    {
+      "populationId": "legacy-optionomics-raw-observation",
+      "table": "market.optionomics_raw_observation",
+      "tier": "TIER_C_RESEARCH_ARCHIVABLE",
+      "purgeAction": "REPLACE_PAYLOAD_WITH_ARCHIVE_POINTER",
+      "candidateRows": 2329,
+      "candidateStoredPayloadGiB": 0.082,
+      "expectedLogicalReclaimGiB": 0.082,
+      "archiveRows": 2329,
+      "archiveComplete": true,
+      "archiveFileMiB": 46,
+      "archiveDigest": "2a258b1ca7387b4ee3c43694d9a8fadd3262c0a192b16b6a4dac303b337b641e",
+      "archiveVerified": true,
+      "rowCountProof": "2329/2329",
+      "aggregateByDayEqual": true,
+      "sampleRestore": "150/150",
+      "foreignKeyDependents": [
+        {
+          "dependent": "market.optionomics_event_first_observation",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "market.optionomics_feature_observation_link",
+          "on_delete": "a"
+        },
+        {
+          "dependent": "market.optionomics_feature_snapshot",
+          "on_delete": "a"
+        }
+      ],
+      "immutabilityTriggerPresent": true,
+      "parquet": {
+        "rows": 2329,
+        "bytes": 42398486,
+        "files": 7,
+        "manifestSha256": "404d3b6dd5a2a70a13def97c2c442782851826a48cb1f96d952ff5d8d4eef7c1",
+        "rowsMatchArchive": true
+      },
+      "physicalReclaimGiB": 0,
+      "physicalMethod": "NONE_REUSE_ONLY",
+      "purgeEligible": true,
+      "blockers": []
+    }
+  ],
+  "WOULD_DELETE_ROWS": 342945,
+  "WOULD_REPLACE_PAYLOAD_ROWS": 3737,
+  "WOULD_RECLAIM_LOGICAL_GIB": 2.667,
+  "ESTIMATED_PHYSICAL_RECLAIM_GIB_IMMEDIATE": 2.068,
+  "REUSE_ONLY_GIB_NOT_RETURNED_TO_FILESYSTEM": 0.599,
+  "PHYSICAL_RECLAIM_NOTE": "DELETE or payload replacement alone never shrinks PostgreSQL files (freed pages are reused by NEW rows); immediate physical reclaim comes only from dropping a foreign-key-free table, or from rebuilding such a table with its retained rows and dropping the old one. Payload replacement in foreign-key-referenced tables is reuse only, until a table rewrite (pg_repack or dump and restore), which is disruptive and not part of this decision",
+  "FREED_SPACE_REUSE_SESSIONS_AT_MEASURED_GROWTH": 10.9,
+  "OPERATIONAL_TABLES_TOUCHED": "NO",
+  "ORDERS_TOUCHED": 0,
+  "FILLS_TOUCHED": 0,
+  "ACTION_PLANS_TOUCHED": 0,
+  "BROKER_EVENTS_TOUCHED": 0,
+  "WHOLE_CHAIN_TOUCHED": 0,
+  "OPERATIONAL_ROW_COUNTS_NOT_IN_ANY_POPULATION": {
+    "order_intent": "0",
+    "broker_order": "0",
+    "fill": "0",
+    "action_plan": "0",
+    "broker_activity": "9"
+  },
+  "CURRENT_CONTRACT_EVIDENCE_ARCHIVE": {
+    "rows": 616,
+    "GiB": 0.794,
+    "purgeCandidateNow": 0,
+    "reason": "all contract-v3 archives are inside the hot window; they are the only raw replay source for the current release"
+  },
+  "POST_PURGE_PROJECTED_LOGICAL_LIVE_DATA_GIB": 1.998,
+  "POST_PURGE_PROJECTED_PG_DATABASE_SIZE_GIB_IMMEDIATE": 2.597,
+  "POST_PURGE_PROJECTED_PG_DATABASE_SIZE_GIB_WITH_FULL_REWRITE": 1.998,
+  "BUDGET_BEFORE": {
+    "policyVersion": "theta-storage-budget-v2",
+    "currentBytes": 5009594047,
+    "softBudgetBytes": 3435973837,
+    "hardBudgetBytes": 4294967296,
+    "providerHardLimitBytes": 8589934592,
+    "growthBytesPerSession": 262144000,
+    "sessionsToSoft": 0,
+    "sessionsToHard": 0,
+    "sessionsToProviderLimit": 13.657915287017822,
+    "archivableBytes": 2864072259,
+    "nonArchivableBytes": 2145521788,
+    "growthKind": "UNKNOWN",
+    "actionState": "RESEARCH_DIVERT",
+    "writePolicy": {
+      "ORDERS": "ALLOW",
+      "FILLS": "ALLOW",
+      "BROKER_RECONCILIATION": "ALLOW",
+      "EXECUTION_STATE": "ALLOW",
+      "INVENTORY": "ALLOW",
+      "RISK_STATE": "ALLOW",
+      "MANAGEMENT_STATE": "ALLOW",
+      "AUDIT_LINEAGE": "ALLOW",
+      "DECISION_TRUTH": "ALLOW",
+      "SAFETY_EVENTS": "ALLOW",
+      "CURRENT_RUNTIME_EVIDENCE": "ALLOW",
+      "RESEARCH_HISTORY": "DIVERT_TO_LOCAL_ARCHIVE",
+      "RAW_PROVIDER_PAYLOADS": "DIVERT_TO_LOCAL_ARCHIVE",
+      "CYCLE_ARCHIVE_BLOBS": "DIVERT_TO_LOCAL_ARCHIVE"
+    }
+  },
+  "BUDGET_AFTER_NOTE": "RESEARCH_DIVERT",
+  "PRODUCTION_DELETE_EXECUTED": "NO"
+}

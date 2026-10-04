@@ -503,7 +503,7 @@
     },
     {
       "ID": "P4-030",
-      "CAPABILITY": "Board truth is not inflated: 89 rows, 8 runtime-observed, 39 deployed-not-observed, 36 need a position or order, 5 owner-policy",
+      "CAPABILITY": "Board truth is not inflated: counts are derived from rows; the 9 data-platform rows are built and proven offline but wired=0 and unreleased, so they add to neither runtime-observed nor wired percentages",
       "SOURCE": [
         "tools/theta-board.mjs"
       ],

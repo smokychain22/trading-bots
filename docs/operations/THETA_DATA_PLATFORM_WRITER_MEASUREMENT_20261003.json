@@ -1,0 +1,1863 @@
+{
+ "measurementVersion": "theta-data-platform-writer-measurement-v1",
+ "measuredAt": "2026-10-03T16:18:23.440Z",
+ "method": "REAL cycle store and REAL normalized writer on disposable PostgreSQL; production-shaped section reads the 100 most recent real Production decisions READ ONLY and writes their real point-in-time rows through the real writer; stored bytes are pg_column_size of every column (compressed/TOAST) plus 28 bytes tuple overhead per row plus index bytes per row of each relation",
+ "productionShaped": {
+  "decisions": 100,
+  "pitRowsPerDecision": {
+   "p50": 3,
+   "p95": 5,
+   "max": 6
+  },
+  "exactReconstructionOfFullFidelityRows": "PASS",
+  "hotKiBPerDecision": {
+   "OLD": {
+    "p50": 1371.6,
+    "p95": 4951.7,
+    "max": 5270.3,
+    "mean": 1725.3
+   },
+   "NEW": {
+    "p50": 1223.8,
+    "p95": 4136.6,
+    "max": 4349.8,
+    "mean": 1519.5
+   }
+  },
+  "hotKiBPerDecisionExcludingBlob": {
+   "OLD": {
+    "p50": 315.1,
+    "p95": 1193.3,
+    "max": 1388.3,
+    "mean": 390.9
+   },
+   "NEW": {
+    "p50": 183.8,
+    "p95": 351.8,
+    "max": 371.9,
+    "mean": 185
+   }
+  },
+  "hotKiBPerCandidate": {
+   "OLD": {
+    "p50": 73.6,
+    "p95": 215.7,
+    "max": 228.4,
+    "mean": 82.5
+   },
+   "NEW": {
+    "p50": 25.1,
+    "p95": 51.3,
+    "max": 62,
+    "mean": 25.4
+   }
+  },
+  "blobKiB": {
+   "p50": 1047.5,
+   "p95": 3766.8,
+   "max": 3977.9,
+   "mean": 1334.5
+  },
+  "meanKiBByRelationOld": {
+   "trade.fusion_snapshot": 1363.6,
+   "trade.candidate_point_in_time_evidence": 288.6,
+   "trade.decision": 27.5,
+   "trade.canonical_strategy_frontier": 25.9,
+   "trade.candidate": 7.3,
+   "market.optionomics_raw_observation": 5.2,
+   "trade.canonical_strategy_branch_evidence": 2.8,
+   "trade.candidate_reason": 1.4,
+   "trade.shadow_opportunity": 1,
+   "trade.strategy_route": 1,
+   "trade.candidate_set_evidence": 0.5,
+   "trade.candidate_set": 0.4,
+   "trade.canonical_strategy_candidate_evidence": 0,
+   "trade.global_wait_evidence": 0,
+   "market.optionomics_feature_snapshot": 0,
+   "research.theta_option_chain_decision_evidence": 0
+  },
+  "meanKiBByBucket": {
+   "OLD": {
+    "PIT": 288.6,
+    "BLOB": 1334.5,
+    "OTHER": 102.2,
+    "INDEX": 0
+   },
+   "NEW": {
+    "DECISION_CONTEXT": 69.4,
+    "CANDIDATE": 11.3,
+    "AUDIT": 0.4,
+    "BLOB": 1334.5,
+    "OTHER": 102.2,
+    "INDEX": 1.8
+   }
+  },
+  "newLayout": {
+   "totalPerDecision": {
+    "p50KiB": 1221.7,
+    "p95KiB": 4133.8,
+    "maxKiB": 4346.9,
+    "meanKiB": 1517.4
+   },
+   "nonBlobPerDecision": {
+    "p50KiB": 181.7,
+    "p95KiB": 349.0,
+    "maxKiB": 369.1,
+    "meanKiB": 182.9
+   },
+   "decisionContext": {
+    "p50KiB": 60.6,
+    "p95KiB": 189.8,
+    "maxKiB": 200.9,
+    "meanKiB": 69.4
+   },
+   "candidateInline": {
+    "p50KiB": 11.6,
+    "p95KiB": 17.5,
+    "maxKiB": 18.0,
+    "meanKiB": 11.3
+   },
+   "blob": {
+    "p50KiB": 1047.5,
+    "p95KiB": 3766.8,
+    "maxKiB": 3977.9,
+    "meanKiB": 1334.5
+   },
+   "permanentAfterRetirement": {
+    "p50KiB": 114.4,
+    "p95KiB": 144.6,
+    "maxKiB": 159.1,
+    "meanKiB": 102.2
+   },
+   "permanentDetailThatIsDerivableFromTheBlob": {
+    "p50KiB": 94.7,
+    "p95KiB": 117.2,
+    "maxKiB": 127.7,
+    "meanKiB": 82.5
+   }
+  },
+  "samples": [
+   {
+    "blob": 1083220,
+    "decisionContext": 63181,
+    "candidate": 11919,
+    "permanent": 71086,
+    "permanentDetail": 50631,
+    "oldPit": 230387,
+    "pitRows": 3
+   },
+   {
+    "blob": 3987397,
+    "decisionContext": 199931,
+    "candidate": 17292,
+    "permanent": 132497,
+    "permanentDetail": 107605,
+    "oldPit": 909686,
+    "pitRows": 4
+   },
+   {
+    "blob": 2155283,
+    "decisionContext": 111257,
+    "candidate": 10029,
+    "permanent": 78695,
+    "permanentDetail": 57914,
+    "oldPit": 391079,
+    "pitRows": 3
+   },
+   {
+    "blob": 3913878,
+    "decisionContext": 194331,
+    "candidate": 17912,
+    "permanent": 145784,
+    "permanentDetail": 116602,
+    "oldPit": 1105165,
+    "pitRows": 5
+   },
+   {
+    "blob": 890246,
+    "decisionContext": 54804,
+    "candidate": 11982,
+    "permanent": 70557,
+    "permanentDetail": 50270,
+    "oldPit": 199816,
+    "pitRows": 3
+   },
+   {
+    "blob": 1082901,
+    "decisionContext": 63168,
+    "candidate": 11902,
+    "permanent": 71133,
+    "permanentDetail": 50749,
+    "oldPit": 230359,
+    "pitRows": 3
+   },
+   {
+    "blob": 3916296,
+    "decisionContext": 194350,
+    "candidate": 17921,
+    "permanent": 145075,
+    "permanentDetail": 115904,
+    "oldPit": 1105240,
+    "pitRows": 5
+   },
+   {
+    "blob": 1789657,
+    "decisionContext": 92856,
+    "candidate": 10060,
+    "permanent": 74439,
+    "permanentDetail": 53686,
+    "oldPit": 328828,
+    "pitRows": 3
+   },
+   {
+    "blob": 1083970,
+    "decisionContext": 63159,
+    "candidate": 11919,
+    "permanent": 70930,
+    "permanentDetail": 50555,
+    "oldPit": 230396,
+    "pitRows": 3
+   },
+   {
+    "blob": 3917251,
+    "decisionContext": 194334,
+    "candidate": 17288,
+    "permanent": 132728,
+    "permanentDetail": 107806,
+    "oldPit": 883340,
+    "pitRows": 4
+   },
+   {
+    "blob": 3478746,
+    "decisionContext": 173248,
+    "candidate": 11853,
+    "permanent": 83429,
+    "permanentDetail": 62976,
+    "oldPit": 595630,
+    "pitRows": 3
+   },
+   {
+    "blob": 1083658,
+    "decisionContext": 63187,
+    "candidate": 11918,
+    "permanent": 71012,
+    "permanentDetail": 50608,
+    "oldPit": 230467,
+    "pitRows": 3
+   },
+   {
+    "blob": 590678,
+    "decisionContext": 4500,
+    "candidate": 9475,
+    "permanent": 138385,
+    "permanentDetail": 124975,
+    "oldPit": 26539,
+    "pitRows": 3
+   },
+   {
+    "blob": 316737,
+    "decisionContext": 4344,
+    "candidate": 8997,
+    "permanent": 64851,
+    "permanentDetail": 50083,
+    "oldPit": 25937,
+    "pitRows": 3
+   },
+   {
+    "blob": 234636,
+    "decisionContext": 4336,
+    "candidate": 9116,
+    "permanent": 60590,
+    "permanentDetail": 47442,
+    "oldPit": 25835,
+    "pitRows": 3
+   },
+   {
+    "blob": 206759,
+    "decisionContext": 4579,
+    "candidate": 5479,
+    "permanent": 55849,
+    "permanentDetail": 44219,
+    "oldPit": 17214,
+    "pitRows": 2
+   },
+   {
+    "blob": 588977,
+    "decisionContext": 4506,
+    "candidate": 9482,
+    "permanent": 131514,
+    "permanentDetail": 118082,
+    "oldPit": 26566,
+    "pitRows": 3
+   },
+   {
+    "blob": 236522,
+    "decisionContext": 4337,
+    "candidate": 9083,
+    "permanent": 60356,
+    "permanentDetail": 47219,
+    "oldPit": 25815,
+    "pitRows": 3
+   },
+   {
+    "blob": 366326,
+    "decisionContext": 4335,
+    "candidate": 9210,
+    "permanent": 67795,
+    "permanentDetail": 53263,
+    "oldPit": 25998,
+    "pitRows": 3
+   },
+   {
+    "blob": 591277,
+    "decisionContext": 4509,
+    "candidate": 9396,
+    "permanent": 131360,
+    "permanentDetail": 118157,
+    "oldPit": 26477,
+    "pitRows": 3
+   },
+   {
+    "blob": 234202,
+    "decisionContext": 4336,
+    "candidate": 9074,
+    "permanent": 60220,
+    "permanentDetail": 47092,
+    "oldPit": 25771,
+    "pitRows": 3
+   },
+   {
+    "blob": 590909,
+    "decisionContext": 4497,
+    "candidate": 9400,
+    "permanent": 133238,
+    "permanentDetail": 120038,
+    "oldPit": 26459,
+    "pitRows": 3
+   },
+   {
+    "blob": 234119,
+    "decisionContext": 4329,
+    "candidate": 9078,
+    "permanent": 61591,
+    "permanentDetail": 48456,
+    "oldPit": 25783,
+    "pitRows": 3
+   },
+   {
+    "blob": 213151,
+    "decisionContext": 4339,
+    "candidate": 9197,
+    "permanent": 60823,
+    "permanentDetail": 46208,
+    "oldPit": 25913,
+    "pitRows": 3
+   },
+   {
+    "blob": 408897,
+    "decisionContext": 4347,
+    "candidate": 8966,
+    "permanent": 69970,
+    "permanentDetail": 55074,
+    "oldPit": 25823,
+    "pitRows": 3
+   },
+   {
+    "blob": 232830,
+    "decisionContext": 4329,
+    "candidate": 9111,
+    "permanent": 61229,
+    "permanentDetail": 48081,
+    "oldPit": 25787,
+    "pitRows": 3
+   },
+   {
+    "blob": 593087,
+    "decisionContext": 4499,
+    "candidate": 9408,
+    "permanent": 131595,
+    "permanentDetail": 118397,
+    "oldPit": 26453,
+    "pitRows": 3
+   },
+   {
+    "blob": 586976,
+    "decisionContext": 4501,
+    "candidate": 9475,
+    "permanent": 122179,
+    "permanentDetail": 108745,
+    "oldPit": 26592,
+    "pitRows": 3
+   },
+   {
+    "blob": 234805,
+    "decisionContext": 4333,
+    "candidate": 9113,
+    "permanent": 60529,
+    "permanentDetail": 47426,
+    "oldPit": 25803,
+    "pitRows": 3
+   },
+   {
+    "blob": 410398,
+    "decisionContext": 4341,
+    "candidate": 8930,
+    "permanent": 69331,
+    "permanentDetail": 54437,
+    "oldPit": 25796,
+    "pitRows": 3
+   },
+   {
+    "blob": 408499,
+    "decisionContext": 4338,
+    "candidate": 8946,
+    "permanent": 69138,
+    "permanentDetail": 54257,
+    "oldPit": 25779,
+    "pitRows": 3
+   },
+   {
+    "blob": 232831,
+    "decisionContext": 4328,
+    "candidate": 9075,
+    "permanent": 59979,
+    "permanentDetail": 46845,
+    "oldPit": 25737,
+    "pitRows": 3
+   },
+   {
+    "blob": 593328,
+    "decisionContext": 4505,
+    "candidate": 9437,
+    "permanent": 131257,
+    "permanentDetail": 117980,
+    "oldPit": 26547,
+    "pitRows": 3
+   },
+   {
+    "blob": 4073341,
+    "decisionContext": 205720,
+    "candidate": 17897,
+    "permanent": 154300,
+    "permanentDetail": 125113,
+    "oldPit": 1169175,
+    "pitRows": 5
+   },
+   {
+    "blob": 893161,
+    "decisionContext": 54852,
+    "candidate": 11961,
+    "permanent": 70043,
+    "permanentDetail": 49688,
+    "oldPit": 200404,
+    "pitRows": 3
+   },
+   {
+    "blob": 1064881,
+    "decisionContext": 61757,
+    "candidate": 11939,
+    "permanent": 70429,
+    "permanentDetail": 50061,
+    "oldPit": 225088,
+    "pitRows": 3
+   },
+   {
+    "blob": 3848650,
+    "decisionContext": 187989,
+    "candidate": 17905,
+    "permanent": 152285,
+    "permanentDetail": 123130,
+    "oldPit": 1068811,
+    "pitRows": 5
+   },
+   {
+    "blob": 3523201,
+    "decisionContext": 176369,
+    "candidate": 11840,
+    "permanent": 83129,
+    "permanentDetail": 62694,
+    "oldPit": 605388,
+    "pitRows": 3
+   },
+   {
+    "blob": 1066779,
+    "decisionContext": 61493,
+    "candidate": 11912,
+    "permanent": 71409,
+    "permanentDetail": 51015,
+    "oldPit": 224185,
+    "pitRows": 3
+   },
+   {
+    "blob": 3848609,
+    "decisionContext": 187988,
+    "candidate": 17909,
+    "permanent": 152910,
+    "permanentDetail": 123756,
+    "oldPit": 1068979,
+    "pitRows": 5
+   },
+   {
+    "blob": 1069698,
+    "decisionContext": 61510,
+    "candidate": 11899,
+    "permanent": 70753,
+    "permanentDetail": 50406,
+    "oldPit": 224169,
+    "pitRows": 3
+   },
+   {
+    "blob": 541236,
+    "decisionContext": 36977,
+    "candidate": 11280,
+    "permanent": 77068,
+    "permanentDetail": 56332,
+    "oldPit": 137941,
+    "pitRows": 3
+   },
+   {
+    "blob": 3847149,
+    "decisionContext": 187979,
+    "candidate": 17945,
+    "permanent": 146714,
+    "permanentDetail": 117514,
+    "oldPit": 1068798,
+    "pitRows": 5
+   },
+   {
+    "blob": 1067386,
+    "decisionContext": 61500,
+    "candidate": 11942,
+    "permanent": 70659,
+    "permanentDetail": 50289,
+    "oldPit": 224264,
+    "pitRows": 3
+   },
+   {
+    "blob": 2032447,
+    "decisionContext": 102733,
+    "candidate": 10003,
+    "permanent": 79808,
+    "permanentDetail": 58972,
+    "oldPit": 361014,
+    "pitRows": 3
+   },
+   {
+    "blob": 3842839,
+    "decisionContext": 188485,
+    "candidate": 17850,
+    "permanent": 148109,
+    "permanentDetail": 118027,
+    "oldPit": 1071534,
+    "pitRows": 5
+   },
+   {
+    "blob": 891773,
+    "decisionContext": 55757,
+    "candidate": 11935,
+    "permanent": 70601,
+    "permanentDetail": 49362,
+    "oldPit": 203199,
+    "pitRows": 3
+   },
+   {
+    "blob": 1067623,
+    "decisionContext": 62026,
+    "candidate": 11852,
+    "permanent": 73077,
+    "permanentDetail": 51757,
+    "oldPit": 225831,
+    "pitRows": 3
+   },
+   {
+    "blob": 1600369,
+    "decisionContext": 91567,
+    "candidate": 11771,
+    "permanent": 77850,
+    "permanentDetail": 56619,
+    "oldPit": 322187,
+    "pitRows": 3
+   },
+   {
+    "blob": 3817678,
+    "decisionContext": 185984,
+    "candidate": 18483,
+    "permanent": 151957,
+    "permanentDetail": 118577,
+    "oldPit": 1269710,
+    "pitRows": 6
+   },
+   {
+    "blob": 1083549,
+    "decisionContext": 63224,
+    "candidate": 11880,
+    "permanent": 71853,
+    "permanentDetail": 50499,
+    "oldPit": 230235,
+    "pitRows": 3
+   },
+   {
+    "blob": 3857154,
+    "decisionContext": 195099,
+    "candidate": 17796,
+    "permanent": 162928,
+    "permanentDetail": 130766,
+    "oldPit": 1110752,
+    "pitRows": 5
+   },
+   {
+    "blob": 1086543,
+    "decisionContext": 67288,
+    "candidate": 11842,
+    "permanent": 73755,
+    "permanentDetail": 50355,
+    "oldPit": 244242,
+    "pitRows": 3
+   },
+   {
+    "blob": 3414318,
+    "decisionContext": 165664,
+    "candidate": 9956,
+    "permanent": 83281,
+    "permanentDetail": 59635,
+    "oldPit": 575303,
+    "pitRows": 3
+   },
+   {
+    "blob": 3814781,
+    "decisionContext": 185979,
+    "candidate": 17250,
+    "permanent": 139365,
+    "permanentDetail": 113516,
+    "oldPit": 845002,
+    "pitRows": 4
+   },
+   {
+    "blob": 1602374,
+    "decisionContext": 92018,
+    "candidate": 7691,
+    "permanent": 73653,
+    "permanentDetail": 55456,
+    "oldPit": 215415,
+    "pitRows": 2
+   },
+   {
+    "blob": 1081019,
+    "decisionContext": 63218,
+    "candidate": 11912,
+    "permanent": 72502,
+    "permanentDetail": 51129,
+    "oldPit": 230309,
+    "pitRows": 3
+   },
+   {
+    "blob": 946323,
+    "decisionContext": 57346,
+    "candidate": 6194,
+    "permanent": 117888,
+    "permanentDetail": 100104,
+    "oldPit": 136735,
+    "pitRows": 2
+   },
+   {
+    "blob": 1078621,
+    "decisionContext": 63002,
+    "candidate": 11934,
+    "permanent": 117018,
+    "permanentDetail": 96622,
+    "oldPit": 229905,
+    "pitRows": 3
+   },
+   {
+    "blob": 1080559,
+    "decisionContext": 63489,
+    "candidate": 11908,
+    "permanent": 120592,
+    "permanentDetail": 99216,
+    "oldPit": 231475,
+    "pitRows": 3
+   },
+   {
+    "blob": 529650,
+    "decisionContext": 36877,
+    "candidate": 11731,
+    "permanent": 118764,
+    "permanentDetail": 96683,
+    "oldPit": 138559,
+    "pitRows": 3
+   },
+   {
+    "blob": 899270,
+    "decisionContext": 55775,
+    "candidate": 11899,
+    "permanent": 119527,
+    "permanentDetail": 98245,
+    "oldPit": 202861,
+    "pitRows": 3
+   },
+   {
+    "blob": 1084658,
+    "decisionContext": 63487,
+    "candidate": 11866,
+    "permanent": 121925,
+    "permanentDetail": 100560,
+    "oldPit": 231364,
+    "pitRows": 3
+   },
+   {
+    "blob": 1081906,
+    "decisionContext": 63062,
+    "candidate": 11918,
+    "permanent": 118297,
+    "permanentDetail": 97925,
+    "oldPit": 229531,
+    "pitRows": 3
+   },
+   {
+    "blob": 1072619,
+    "decisionContext": 61879,
+    "candidate": 11950,
+    "permanent": 117543,
+    "permanentDetail": 97121,
+    "oldPit": 226071,
+    "pitRows": 3
+   },
+   {
+    "blob": 1079396,
+    "decisionContext": 66459,
+    "candidate": 11839,
+    "permanent": 121053,
+    "permanentDetail": 97642,
+    "oldPit": 241729,
+    "pitRows": 3
+   },
+   {
+    "blob": 1568638,
+    "decisionContext": 95651,
+    "candidate": 7657,
+    "permanent": 125543,
+    "permanentDetail": 105283,
+    "oldPit": 224328,
+    "pitRows": 2
+   },
+   {
+    "blob": 1070188,
+    "decisionContext": 61889,
+    "candidate": 11897,
+    "permanent": 118267,
+    "permanentDetail": 97914,
+    "oldPit": 225992,
+    "pitRows": 3
+   },
+   {
+    "blob": 1059710,
+    "decisionContext": 61697,
+    "candidate": 11929,
+    "permanent": 117683,
+    "permanentDetail": 97291,
+    "oldPit": 224550,
+    "pitRows": 3
+   },
+   {
+    "blob": 900187,
+    "decisionContext": 55561,
+    "candidate": 11956,
+    "permanent": 120015,
+    "permanentDetail": 99653,
+    "oldPit": 202660,
+    "pitRows": 3
+   },
+   {
+    "blob": 1061688,
+    "decisionContext": 61677,
+    "candidate": 11929,
+    "permanent": 118725,
+    "permanentDetail": 97432,
+    "oldPit": 224531,
+    "pitRows": 3
+   },
+   {
+    "blob": 1569108,
+    "decisionContext": 88508,
+    "candidate": 11857,
+    "permanent": 124723,
+    "permanentDetail": 104414,
+    "oldPit": 311753,
+    "pitRows": 3
+   },
+   {
+    "blob": 1077458,
+    "decisionContext": 62566,
+    "candidate": 11889,
+    "permanent": 117175,
+    "permanentDetail": 96810,
+    "oldPit": 227857,
+    "pitRows": 3
+   },
+   {
+    "blob": 518541,
+    "decisionContext": 34226,
+    "candidate": 11831,
+    "permanent": 113500,
+    "permanentDetail": 92427,
+    "oldPit": 129523,
+    "pitRows": 3
+   },
+   {
+    "blob": 1079938,
+    "decisionContext": 62592,
+    "candidate": 11931,
+    "permanent": 119071,
+    "permanentDetail": 98678,
+    "oldPit": 228053,
+    "pitRows": 3
+   },
+   {
+    "blob": 525074,
+    "decisionContext": 34788,
+    "candidate": 11836,
+    "permanent": 118184,
+    "permanentDetail": 97094,
+    "oldPit": 131187,
+    "pitRows": 3
+   },
+   {
+    "blob": 984607,
+    "decisionContext": 61590,
+    "candidate": 6203,
+    "permanent": 115952,
+    "permanentDetail": 98281,
+    "oldPit": 147440,
+    "pitRows": 2
+   },
+   {
+    "blob": 1078231,
+    "decisionContext": 63052,
+    "candidate": 11899,
+    "permanent": 116914,
+    "permanentDetail": 96537,
+    "oldPit": 229677,
+    "pitRows": 3
+   },
+   {
+    "blob": 957899,
+    "decisionContext": 58725,
+    "candidate": 6168,
+    "permanent": 116543,
+    "permanentDetail": 98885,
+    "oldPit": 140306,
+    "pitRows": 2
+   },
+   {
+    "blob": 1078033,
+    "decisionContext": 63064,
+    "candidate": 11907,
+    "permanent": 116232,
+    "permanentDetail": 95859,
+    "oldPit": 229658,
+    "pitRows": 3
+   },
+   {
+    "blob": 1090971,
+    "decisionContext": 63939,
+    "candidate": 11899,
+    "permanent": 117153,
+    "permanentDetail": 96804,
+    "oldPit": 232581,
+    "pitRows": 3
+   },
+   {
+    "blob": 1086307,
+    "decisionContext": 63932,
+    "candidate": 11912,
+    "permanent": 117328,
+    "permanentDetail": 96953,
+    "oldPit": 232526,
+    "pitRows": 3
+   },
+   {
+    "blob": 958320,
+    "decisionContext": 58703,
+    "candidate": 6202,
+    "permanent": 116245,
+    "permanentDetail": 98572,
+    "oldPit": 140352,
+    "pitRows": 2
+   },
+   {
+    "blob": 901061,
+    "decisionContext": 55493,
+    "candidate": 11961,
+    "permanent": 118590,
+    "permanentDetail": 98300,
+    "oldPit": 202771,
+    "pitRows": 3
+   },
+   {
+    "blob": 1076236,
+    "decisionContext": 63235,
+    "candidate": 11937,
+    "permanent": 116432,
+    "permanentDetail": 96061,
+    "oldPit": 230529,
+    "pitRows": 3
+   },
+   {
+    "blob": 1075367,
+    "decisionContext": 63236,
+    "candidate": 11933,
+    "permanent": 116916,
+    "permanentDetail": 96528,
+    "oldPit": 230427,
+    "pitRows": 3
+   },
+   {
+    "blob": 1080418,
+    "decisionContext": 63637,
+    "candidate": 11852,
+    "permanent": 119096,
+    "permanentDetail": 97778,
+    "oldPit": 231484,
+    "pitRows": 3
+   },
+   {
+    "blob": 1636305,
+    "decisionContext": 94530,
+    "candidate": 11745,
+    "permanent": 123326,
+    "permanentDetail": 102089,
+    "oldPit": 332155,
+    "pitRows": 3
+   },
+   {
+    "blob": 1082685,
+    "decisionContext": 63148,
+    "candidate": 11923,
+    "permanent": 117249,
+    "permanentDetail": 96865,
+    "oldPit": 230005,
+    "pitRows": 3
+   },
+   {
+    "blob": 1084257,
+    "decisionContext": 63615,
+    "candidate": 11857,
+    "permanent": 119914,
+    "permanentDetail": 98591,
+    "oldPit": 231466,
+    "pitRows": 3
+   },
+   {
+    "blob": 1637372,
+    "decisionContext": 94529,
+    "candidate": 11817,
+    "permanent": 122795,
+    "permanentDetail": 101514,
+    "oldPit": 332215,
+    "pitRows": 3
+   },
+   {
+    "blob": 1093862,
+    "decisionContext": 67991,
+    "candidate": 11849,
+    "permanent": 119986,
+    "permanentDetail": 96585,
+    "oldPit": 246724,
+    "pitRows": 3
+   },
+   {
+    "blob": 1664819,
+    "decisionContext": 103197,
+    "candidate": 11763,
+    "permanent": 126012,
+    "permanentDetail": 102680,
+    "oldPit": 363220,
+    "pitRows": 3
+   },
+   {
+    "blob": 1063993,
+    "decisionContext": 61514,
+    "candidate": 11921,
+    "permanent": 119469,
+    "permanentDetail": 99116,
+    "oldPit": 224490,
+    "pitRows": 3
+   },
+   {
+    "blob": 946410,
+    "decisionContext": 57420,
+    "candidate": 6163,
+    "permanent": 116495,
+    "permanentDetail": 98843,
+    "oldPit": 137188,
+    "pitRows": 2
+   },
+   {
+    "blob": 1063391,
+    "decisionContext": 61510,
+    "candidate": 11938,
+    "permanent": 119650,
+    "permanentDetail": 99261,
+    "oldPit": 224556,
+    "pitRows": 3
+   },
+   {
+    "blob": 523213,
+    "decisionContext": 35007,
+    "candidate": 11773,
+    "permanent": 118611,
+    "permanentDetail": 97400,
+    "oldPit": 131438,
+    "pitRows": 3
+   },
+   {
+    "blob": 1549049,
+    "decisionContext": 86506,
+    "candidate": 11786,
+    "permanent": 124561,
+    "permanentDetail": 103286,
+    "oldPit": 304912,
+    "pitRows": 3
+   },
+   {
+    "blob": 1064287,
+    "decisionContext": 62009,
+    "candidate": 11867,
+    "permanent": 120470,
+    "permanentDetail": 99152,
+    "oldPit": 226104,
+    "pitRows": 3
+   },
+   {
+    "blob": 1063377,
+    "decisionContext": 61322,
+    "candidate": 11911,
+    "permanent": 119976,
+    "permanentDetail": 99591,
+    "oldPit": 223671,
+    "pitRows": 3
+   }
+  ]
+ },
+ "syntheticChainScenarios": {
+  "note": "cycle fixtures with seeded random contract values; blob sizes are smaller than Production (Production blobs carry raw provider payloads); use for scaling with chain size, not for Production totals",
+  "scenarios": [
+   {
+    "contracts": 40,
+    "variant": "LEGACY",
+    "relationalResearchCopies": false,
+    "decisions": 12,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 62,
+     "p95": 99.1,
+     "max": 99.1
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 52.4,
+     "p95": 89,
+     "max": 89
+    },
+    "hotKiBPerCandidate": {
+     "p50": 17.2,
+     "p95": 35.5
+    },
+    "meanKiBByBucket": {
+     "BLOB": 9.5,
+     "DECISION_CONTEXT": 0,
+     "CANDIDATE": 39.1,
+     "AUDIT_AND_FRONTIER": 10.2,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.1
+    }
+   },
+   {
+    "contracts": 40,
+    "variant": "NORMALIZED",
+    "relationalResearchCopies": false,
+    "decisions": 12,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 49.8,
+     "p95": 68.5,
+     "max": 68.5
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 40,
+     "p95": 58.3,
+     "max": 58.3
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 9.6,
+     "DECISION_CONTEXT": 14.6,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 10.5,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 40,
+    "variant": "NORMALIZED_TIERED",
+    "relationalResearchCopies": false,
+    "decisions": 12,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 49.8,
+     "p95": 68.5,
+     "max": 68.5
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 40,
+     "p95": 58.3,
+     "max": 58.3
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 9.6,
+     "DECISION_CONTEXT": 14.6,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 10.5,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 300,
+    "variant": "LEGACY",
+    "relationalResearchCopies": false,
+    "decisions": 10,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 86.5,
+     "p95": 124.1,
+     "max": 124.1
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 53.8,
+     "p95": 90.5,
+     "max": 90.5
+    },
+    "hotKiBPerCandidate": {
+     "p50": 17.1,
+     "p95": 35.5
+    },
+    "meanKiBByBucket": {
+     "BLOB": 32.9,
+     "DECISION_CONTEXT": 0,
+     "CANDIDATE": 41.5,
+     "AUDIT_AND_FRONTIER": 11.7,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.1
+    }
+   },
+   {
+    "contracts": 300,
+    "variant": "NORMALIZED",
+    "relationalResearchCopies": false,
+    "decisions": 10,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 74.3,
+     "p95": 93.5,
+     "max": 93.5
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 59.8,
+     "max": 59.8
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 33,
+     "DECISION_CONTEXT": 15.8,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 300,
+    "variant": "NORMALIZED_TIERED",
+    "relationalResearchCopies": false,
+    "decisions": 10,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 74.3,
+     "p95": 93.6,
+     "max": 93.6
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 59.8,
+     "max": 59.8
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 32.9,
+     "DECISION_CONTEXT": 15.8,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 1000,
+    "variant": "LEGACY",
+    "relationalResearchCopies": false,
+    "decisions": 8,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 135.6,
+     "p95": 172.4,
+     "max": 172.4
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 53.8,
+     "p95": 90.5,
+     "max": 90.5
+    },
+    "hotKiBPerCandidate": {
+     "p50": 17.1,
+     "p95": 35.5
+    },
+    "meanKiBByBucket": {
+     "BLOB": 81.7,
+     "DECISION_CONTEXT": 0,
+     "CANDIDATE": 39.7,
+     "AUDIT_AND_FRONTIER": 11.7,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.1
+    }
+   },
+   {
+    "contracts": 1000,
+    "variant": "NORMALIZED",
+    "relationalResearchCopies": false,
+    "decisions": 8,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 123.5,
+     "p95": 142.2,
+     "max": 142.2
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 59.8,
+     "max": 59.8
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 82,
+     "DECISION_CONTEXT": 14.9,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 1000,
+    "variant": "NORMALIZED_TIERED",
+    "relationalResearchCopies": false,
+    "decisions": 8,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 123.1,
+     "p95": 142,
+     "max": 142
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 59.8,
+     "max": 59.8
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 81.9,
+     "DECISION_CONTEXT": 14.9,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 2619,
+    "variant": "LEGACY",
+    "relationalResearchCopies": false,
+    "decisions": 8,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 241.2,
+     "p95": 277.9,
+     "max": 277.9
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 53.8,
+     "p95": 90.5,
+     "max": 90.5
+    },
+    "hotKiBPerCandidate": {
+     "p50": 17.2,
+     "p95": 35.5
+    },
+    "meanKiBByBucket": {
+     "BLOB": 187.9,
+     "DECISION_CONTEXT": 0,
+     "CANDIDATE": 39.7,
+     "AUDIT_AND_FRONTIER": 11.6,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.1
+    }
+   },
+   {
+    "contracts": 2619,
+    "variant": "NORMALIZED",
+    "relationalResearchCopies": false,
+    "decisions": 8,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 228.5,
+     "p95": 247.2,
+     "max": 247.2
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 59.8,
+     "max": 59.8
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 187.9,
+     "DECISION_CONTEXT": 14.9,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 2619,
+    "variant": "NORMALIZED_TIERED",
+    "relationalResearchCopies": false,
+    "decisions": 8,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 228.6,
+     "p95": 247.9,
+     "max": 247.9
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 59.8,
+     "max": 59.8
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 188,
+     "DECISION_CONTEXT": 14.9,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 5000,
+    "variant": "LEGACY",
+    "relationalResearchCopies": false,
+    "decisions": 4,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 385.3,
+     "p95": 421.9,
+     "max": 421.9
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 53.8,
+     "p95": 90.5,
+     "max": 90.5
+    },
+    "hotKiBPerCandidate": {
+     "p50": 17.1,
+     "p95": 35.5
+    },
+    "meanKiBByBucket": {
+     "BLOB": 331.2,
+     "DECISION_CONTEXT": 0,
+     "CANDIDATE": 45.2,
+     "AUDIT_AND_FRONTIER": 11.7,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.1
+    }
+   },
+   {
+    "contracts": 5000,
+    "variant": "NORMALIZED",
+    "relationalResearchCopies": false,
+    "decisions": 4,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 372.7,
+     "p95": 391.7,
+     "max": 391.7
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 59.8,
+     "max": 59.8
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 332.2,
+     "DECISION_CONTEXT": 17.7,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 5000,
+    "variant": "NORMALIZED_TIERED",
+    "relationalResearchCopies": false,
+    "decisions": 4,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 373.2,
+     "p95": 391.3,
+     "max": 391.3
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 59.8,
+     "max": 59.8
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 19.8
+    },
+    "meanKiBByBucket": {
+     "BLOB": 331.4,
+     "DECISION_CONTEXT": 17.7,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 10000,
+    "variant": "LEGACY",
+    "relationalResearchCopies": false,
+    "decisions": 3,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 684.6,
+     "p95": 710.5,
+     "max": 710.5
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 53.8,
+     "p95": 75.8,
+     "max": 75.8
+    },
+    "hotKiBPerCandidate": {
+     "p50": 17.1,
+     "p95": 28.1
+    },
+    "meanKiBByBucket": {
+     "BLOB": 633.1,
+     "DECISION_CONTEXT": 0,
+     "CANDIDATE": 36.6,
+     "AUDIT_AND_FRONTIER": 11.7,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.1
+    }
+   },
+   {
+    "contracts": 10000,
+    "variant": "NORMALIZED",
+    "relationalResearchCopies": false,
+    "decisions": 3,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 673,
+     "p95": 687.5,
+     "max": 687.5
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 52.4,
+     "max": 52.4
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 16.1
+    },
+    "meanKiBByBucket": {
+     "BLOB": 633.4,
+     "DECISION_CONTEXT": 13.4,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 10000,
+    "variant": "NORMALIZED_TIERED",
+    "relationalResearchCopies": false,
+    "decisions": 3,
+    "candidateRowsPerDecision": 2,
+    "hotKiBPerDecision": {
+     "p50": 677.6,
+     "p95": 688,
+     "max": 688
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 41.4,
+     "p95": 52.4,
+     "max": 52.4
+    },
+    "hotKiBPerCandidate": {
+     "p50": 10.6,
+     "p95": 16.1
+    },
+    "meanKiBByBucket": {
+     "BLOB": 634.2,
+     "DECISION_CONTEXT": 13.4,
+     "CANDIDATE": 9,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 0,
+     "INDEX": 3.5
+    }
+   },
+   {
+    "contracts": 300,
+    "variant": "LEGACY_RELATIONAL",
+    "relationalResearchCopies": true,
+    "decisions": 6,
+    "candidateRowsPerDecision": 300,
+    "hotKiBPerDecision": {
+     "p50": 4248.6,
+     "p95": 10854,
+     "max": 10854
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 4216.2,
+     "p95": 10820.7,
+     "max": 10820.7
+    },
+    "hotKiBPerCandidate": {
+     "p50": 13.4,
+     "p95": 35.5
+    },
+    "meanKiBByBucket": {
+     "BLOB": 32.6,
+     "DECISION_CONTEXT": 0,
+     "CANDIDATE": 5664,
+     "AUDIT_AND_FRONTIER": 11.7,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 92.5,
+     "INDEX": 74.3
+    }
+   },
+   {
+    "contracts": 300,
+    "variant": "NORMALIZED_RELATIONAL_FULL_FIDELITY",
+    "relationalResearchCopies": true,
+    "decisions": 6,
+    "candidateRowsPerDecision": 300,
+    "hotKiBPerDecision": {
+     "p50": 1568.1,
+     "p95": 1591.1,
+     "max": 1591.1
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 1535.4,
+     "p95": 1557.4,
+     "max": 1557.4
+    },
+    "hotKiBPerCandidate": {
+     "p50": 4.5,
+     "p95": 4.6
+    },
+    "meanKiBByBucket": {
+     "BLOB": 32.8,
+     "DECISION_CONTEXT": 14,
+     "CANDIDATE": 1350.7,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 92.5,
+     "INDEX": 67.1
+    }
+   },
+   {
+    "contracts": 300,
+    "variant": "NORMALIZED_RELATIONAL_TIERED",
+    "relationalResearchCopies": true,
+    "decisions": 6,
+    "candidateRowsPerDecision": 300,
+    "hotKiBPerDecision": {
+     "p50": 989.9,
+     "p95": 1012.5,
+     "max": 1012.5
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 957.2,
+     "p95": 979,
+     "max": 979
+    },
+    "hotKiBPerCandidate": {
+     "p50": 2.6,
+     "p95": 2.7
+    },
+    "meanKiBByBucket": {
+     "BLOB": 32.9,
+     "DECISION_CONTEXT": 14,
+     "CANDIDATE": 772,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 92.7,
+     "INDEX": 67.1
+    }
+   },
+   {
+    "contracts": 1000,
+    "variant": "NORMALIZED_RELATIONAL_FULL_FIDELITY",
+    "relationalResearchCopies": true,
+    "decisions": 4,
+    "candidateRowsPerDecision": 1000,
+    "hotKiBPerDecision": {
+     "p50": 5035.7,
+     "p95": 5055,
+     "max": 5055
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 4953.9,
+     "p95": 4972.5,
+     "max": 4972.5
+    },
+    "hotKiBPerCandidate": {
+     "p50": 4.5,
+     "p95": 4.5
+    },
+    "meanKiBByBucket": {
+     "BLOB": 82.1,
+     "DECISION_CONTEXT": 17.7,
+     "CANDIDATE": 4443.1,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 267.5,
+     "INDEX": 214.4
+    }
+   },
+   {
+    "contracts": 1000,
+    "variant": "NORMALIZED_RELATIONAL_TIERED",
+    "relationalResearchCopies": true,
+    "decisions": 4,
+    "candidateRowsPerDecision": 1000,
+    "hotKiBPerDecision": {
+     "p50": 3084.3,
+     "p95": 3103.2,
+     "max": 3103.2
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 3002.2,
+     "p95": 3021.2,
+     "max": 3021.2
+    },
+    "hotKiBPerCandidate": {
+     "p50": 2.5,
+     "p95": 2.5
+    },
+    "meanKiBByBucket": {
+     "BLOB": 81.9,
+     "DECISION_CONTEXT": 17.7,
+     "CANDIDATE": 2491.6,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 267.7,
+     "INDEX": 214.4
+    }
+   },
+   {
+    "contracts": 2619,
+    "variant": "NORMALIZED_RELATIONAL_FULL_FIDELITY",
+    "relationalResearchCopies": true,
+    "decisions": 3,
+    "candidateRowsPerDecision": 2619,
+    "hotKiBPerDecision": {
+     "p50": 13050,
+     "p95": 13061.8,
+     "max": 13061.8
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 12862.4,
+     "p95": 12873.2,
+     "max": 12873.2
+    },
+    "hotKiBPerCandidate": {
+     "p50": 4.4,
+     "p95": 4.4
+    },
+    "meanKiBByBucket": {
+     "BLOB": 188,
+     "DECISION_CONTEXT": 13.4,
+     "CANDIDATE": 11597.2,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 681.1,
+     "INDEX": 555.1
+    }
+   },
+   {
+    "contracts": 2619,
+    "variant": "NORMALIZED_RELATIONAL_TIERED",
+    "relationalResearchCopies": true,
+    "decisions": 3,
+    "candidateRowsPerDecision": 2619,
+    "hotKiBPerDecision": {
+     "p50": 7923.1,
+     "p95": 7935.2,
+     "max": 7935.2
+    },
+    "hotKiBPerDecisionExcludingBlob": {
+     "p50": 7735.6,
+     "p95": 7746.9,
+     "max": 7746.9
+    },
+    "hotKiBPerCandidate": {
+     "p50": 2.5,
+     "p95": 2.5
+    },
+    "meanKiBByBucket": {
+     "BLOB": 188.2,
+     "DECISION_CONTEXT": 13.4,
+     "CANDIDATE": 6470.6,
+     "AUDIT_AND_FRONTIER": 12,
+     "FUSION_PROJECTION": 4.7,
+     "RAW_AND_RESEARCH": 680.7,
+     "INDEX": 555.1
+    }
+   }
+  ],
+  "writerFailures": [
+   {
+    "contracts": 1000,
+    "variant": "LEGACY_RELATIONAL",
+    "relational": true,
+    "error": "total size of jsonb array elements exceeds the maximum of 268435455 bytes"
+   },
+   {
+    "contracts": 2619,
+    "variant": "LEGACY_RELATIONAL",
+    "relational": true,
+    "error": "total size of jsonb array elements exceeds the maximum of 268435455 bytes"
+   }
+  ]
+ },
+ "archivedProductionParity": {
+  "source": "REAL_ARCHIVED_PRODUCTION_EVIDENCE_READ_ONLY",
+  "archiveFiles": 47,
+  "archivedRows": 38226,
+  "archivedDecisions": 461,
+  "sampledDecisions": 155,
+  "rowsChecked": 14437,
+  "tsReconstruction": {
+   "exactDecisions": 155,
+   "mismatchedRows": 0
+  },
+  "jsonBytesPerDecision": {
+   "originalKiB": {
+    "p50": 5340,
+    "p95": 21271,
+    "max": 29886
+   },
+   "normalizedKiB": {
+    "p50": 442,
+    "p95": 990,
+    "max": 1303
+   }
+  },
+  "rowsPerDecision": {
+   "p50": 87,
+   "p95": 234,
+   "max": 258
+  },
+  "realPostgres": {
+   "decisionsLoaded": 44,
+   "rows": 5210,
+   "viewMissing": 0,
+   "viewDiffering": 0,
+   "canonicalEquivalence": "PASS",
+   "storedBytes": {
+    "legacyJsonColumnsKiB": 151025,
+    "decisionContextKiB": 981,
+    "candidateInlineKiB": 12237,
+    "normalizedTotalKiB": 13218,
+    "reduction": 0.9125
+   },
+   "perDecisionStoredKiB": {
+    "legacyMean": 3432,
+    "normalizedMean": 300
+   },
+   "candidateRows": 5210,
+   "probeParityRows": {
+    "compared": 5210,
+    "differing": 0
+   }
+  }
+ }
+}

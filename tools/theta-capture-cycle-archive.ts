@@ -6,6 +6,7 @@ import { loadEnvironmentFile } from '../src/config/environment.js';
 import { decodeCycleEvidenceArchive } from '../src/theta/postgres-cycle-evidence-storage.js';
 import { canonicalJson } from '../src/research/point-in-time-evidence.js';
 import type { CycleArchiveReplayIdentity } from '../src/theta/cycle-archive-replay.js';
+import { cycleBlobJoinClause, cycleBlobSelectExpression, dataPlatformBlobStoreEnabled } from '../src/storage/data-platform/cycle-blob-store.js';
 
 const cycleId = process.argv.find((value) => value.startsWith('--cycle-id='))?.slice('--cycle-id='.length);
 if (cycleId === undefined || !/^[0-9a-f-]{36}$/.test(cycleId)) throw new Error('CYCLE_ID_REQUIRED');
@@ -23,7 +24,8 @@ try {
     await client.query('BEGIN READ ONLY');
     const result = await client.query<{ evidence_archive_gzip: Buffer | null; evidence_archive_hash: string | null;
       receipt_json: unknown }>(
-      `SELECT s.evidence_archive_gzip,s.evidence_archive_hash,d.receipt_json FROM trade.fusion_snapshot s
+      `SELECT ${cycleBlobSelectExpression(dataPlatformBlobStoreEnabled())} AS evidence_archive_gzip,s.evidence_archive_hash,d.receipt_json FROM trade.fusion_snapshot s
+       ${cycleBlobJoinClause(dataPlatformBlobStoreEnabled())}
        JOIN LATERAL (SELECT receipt_json FROM trade.decision WHERE fusion_snapshot_id=s.fusion_snapshot_id
          ORDER BY decided_at DESC,decision_id DESC LIMIT 1) d ON true
        WHERE s.fusion_snapshot_id=$1::uuid`, [cycleId]);

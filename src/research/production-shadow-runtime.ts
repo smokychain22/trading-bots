@@ -1,3 +1,4 @@
+import {admitNewRiskPlan,cycleStoreDataPlatformOptions,dataPlatformRuntime} from '../storage/data-platform/runtime-wiring.js';
 import path from 'node:path';
 import type { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
@@ -410,7 +411,12 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   // must not become a blocker for the Paper-authorized champion cohort.
   // Optionomics remains in the immutable research snapshot but cannot grant
   // or veto Paper authority while its as-of and schema-065 contract is open.
+  // Data platform (inert unless THETA_STORAGE_GOVERNOR / THETA_PIT_STORAGE_MODE / THETA_DATA_PLATFORM_BLOB_STORE are set): bulk research writers consult the storage
+  // pressure gate; operational truth never does. The new-risk entry gate below only tightens, and never touches management or closing.
+  const dataPlatform=dataPlatformRuntime(input.pool,process.env);
+  const storageNewRiskGate=await dataPlatform.newRiskGate();
   const cycleStore=new PostgresThetaCycleStore(input.pool,{
+    ...cycleStoreDataPlatformOptions(dataPlatform),
     // The immutable canonical frontier retains every candidate in PostgreSQL.
     // Avoid a second high-volume relational copy. The Windows worker exports
     // this frontier to its durable SQLite WAL after the server cycle returns.
@@ -424,7 +430,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const readOnlyPreSubmitProofs:ReadOnlyPreSubmitProof[]=[];
   const entrySafetyBySymbol=new Map<string,RuntimeFirstPaperSymbolEvidence['entrySafetyPolicy']>();
   const readOnlyQuoteSource=input.readOnlyPreSubmitPreview===true?new AlpacaExecutionQuoteSource(input.alpaca,input.now):null;
-  const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool);
+  const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool,dataPlatform.writeGate);
   for(const member of scan.results){
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
@@ -539,7 +545,10 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         paperEvidenceRiskCap:input.environment.PAPER_EVIDENCE_RISK_CAP,
         firstCanaryCompleted,
         modeledRoundTripCostPerContract:n(assumptions.totalModeledCostPerContract),now:planNow,decisionExpiresAt});
-      if(assembled.state==='READY'){
+      const storageAdmission=admitNewRiskPlan(storageNewRiskGate.gate,actionPlansReady);
+      if(assembled.state==='READY'&&!storageAdmission.admitted){
+        actionPlansBlocked.push(`${member.symbol}:${storageAdmission.blocker??'STORAGE_NEW_RISK_BLOCKED'}:${storageNewRiskGate.reason}`);
+      }else if(assembled.state==='READY'){
         if(runtimePlanEnqueueEnabled&&await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
           {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}))actionPlansReady++;
         if(readOnlyQuoteSource!==null){

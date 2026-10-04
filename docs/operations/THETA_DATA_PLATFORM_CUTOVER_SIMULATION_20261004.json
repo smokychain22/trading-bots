@@ -1,0 +1,256 @@
+{
+  "simulatedAt": "2026-10-04T08:45:15.441Z",
+  "inputs": "MEASURED real-writer bytes per decision (bootstrap resampled); legacy datasets the wired writers do not move use the earlier modeled per-decision bytes, listed as MODELED_INPUT",
+  "startingDatabaseGiB": 2.598,
+  "decisionsPerSessionMean": 154,
+  "asWired": {
+    "mode": "AS_WIRED",
+    "session250": {
+      "postArchiveStartGiB": 2.809,
+      "postArchiveEndGiB": 8.357,
+      "medianGiB": {
+        "sessions10to30": 4.179,
+        "sessions90to110": 6.128,
+        "sessions230to250": 8.127
+      },
+      "postArchiveSlopeMiBPerSession": 15.084,
+      "tau": 0.914,
+      "steadyState": "LINEAR_GROWTH",
+      "linearGrowthDetected": true,
+      "sessionPeakMedianGiB": 6.766,
+      "sessionPeakMaxGiB": 8.357,
+      "newRiskGateOpenAllSessions": false,
+      "firstNonOpenNewRiskGateSession": 67,
+      "firstCriticalSession": 122,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "partitionsRetired": 453,
+      "criticalIncidents": 0,
+      "bytesWrittenIntoRetiringPartitionsPerSessionMiB": 125.056
+    },
+    "extremeSession": {
+      "baselineGiB": 5.923,
+      "spikePeakGiB": 9.006,
+      "postArchiveAfterSpikeGiB": 8.526,
+      "newRiskGateDuringSpike": "LOCKED",
+      "returnedToPreSpikeTrend": true
+    },
+    "archiveOutageFiveSessions": {
+      "baselineGiB": 5.62,
+      "peakDuringGiB": 6.829,
+      "recoveredGiB": 6.563,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "newRiskGateOpen": false
+    },
+    "archiveOutageEightySessions": {
+      "maxPeakGiB": 8.386,
+      "firstResearchThrottleSession": 26,
+      "firstNewRiskGateSession": 40,
+      "firstCriticalSession": 49,
+      "skippedGiB": 15.059,
+      "skippedRecords": 320,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "settledGiB": 6.547
+    },
+    "projectionPostgresHotGiB": {
+      "oneYear": 8.387,
+      "threeYears": 15.811,
+      "fiveYears": 23.235,
+      "planGiB": 8,
+      "sessionsUntilPlanLimit": 226,
+      "meanSteadyGiB": 6.768
+    }
+  },
+  "tombstonedProposal": {
+    "mode": "TOMBSTONED",
+    "session250": {
+      "postArchiveStartGiB": 2.799,
+      "postArchiveEndGiB": 6.477,
+      "medianGiB": {
+        "sessions10to30": 3.942,
+        "sessions90to110": 4.898,
+        "sessions230to250": 6.488
+      },
+      "postArchiveSlopeMiBPerSession": 11.801,
+      "tau": 0.874,
+      "steadyState": "LINEAR_GROWTH",
+      "linearGrowthDetected": true,
+      "sessionPeakMedianGiB": 5.738,
+      "sessionPeakMaxGiB": 6.846,
+      "newRiskGateOpenAllSessions": false,
+      "firstNonOpenNewRiskGateSession": 123,
+      "firstCriticalSession": 248,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "partitionsRetired": 740,
+      "criticalIncidents": 0,
+      "bytesWrittenIntoRetiringPartitionsPerSessionMiB": 212.138
+    },
+    "extremeSession": {
+      "baselineGiB": 4.85,
+      "spikePeakGiB": 7.806,
+      "postArchiveAfterSpikeGiB": 7.31,
+      "newRiskGateDuringSpike": "LOCKED",
+      "returnedToPreSpikeTrend": true
+    },
+    "archiveOutageFiveSessions": {
+      "baselineGiB": 4.661,
+      "peakDuringGiB": 5.886,
+      "recoveredGiB": 5.28,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "newRiskGateOpen": false
+    },
+    "archiveOutageEightySessions": {
+      "maxPeakGiB": 7.497,
+      "firstResearchThrottleSession": 42,
+      "firstNewRiskGateSession": 42,
+      "firstCriticalSession": 51,
+      "skippedGiB": 13.918,
+      "skippedRecords": 288,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "settledGiB": 5.184
+    },
+    "projectionPostgresHotGiB": {
+      "oneYear": 6.714,
+      "threeYears": 12.522,
+      "fiveYears": 18.331,
+      "planGiB": 8,
+      "sessionsUntilPlanLimit": 382,
+      "meanSteadyGiB": 5.512
+    }
+  },
+  "tombstonedPlusDiagnosticsRetentionProposal": {
+    "mode": "TOMBSTONED",
+    "session250": {
+      "postArchiveStartGiB": 2.792,
+      "postArchiveEndGiB": 4.986,
+      "medianGiB": {
+        "sessions10to30": 3.782,
+        "sessions90to110": 4.207,
+        "sessions230to250": 4.921
+      },
+      "postArchiveSlopeMiBPerSession": 5.171,
+      "tau": 0.728,
+      "steadyState": "STEADY",
+      "linearGrowthDetected": false,
+      "sessionPeakMedianGiB": 4.662,
+      "sessionPeakMaxGiB": 5.276,
+      "newRiskGateOpenAllSessions": true,
+      "firstNonOpenNewRiskGateSession": -1,
+      "firstCriticalSession": -1,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "partitionsRetired": 759,
+      "criticalIncidents": 0,
+      "bytesWrittenIntoRetiringPartitionsPerSessionMiB": 212.751
+    },
+    "extremeSession": {
+      "baselineGiB": 4.248,
+      "spikePeakGiB": 7.146,
+      "postArchiveAfterSpikeGiB": 6.643,
+      "newRiskGateDuringSpike": "RESTRICTED",
+      "returnedToPreSpikeTrend": true
+    },
+    "archiveOutageFiveSessions": {
+      "baselineGiB": 4.089,
+      "peakDuringGiB": 5.2,
+      "recoveredGiB": 4.328,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "newRiskGateOpen": false
+    },
+    "archiveOutageEightySessions": {
+      "maxPeakGiB": 7.063,
+      "firstResearchThrottleSession": 43,
+      "firstNewRiskGateSession": 43,
+      "firstCriticalSession": 53,
+      "skippedGiB": 13.56,
+      "skippedRecords": 282,
+      "neverDroppedWithoutVerifiedArchive": true,
+      "settledGiB": 4.304
+    },
+    "projectionPostgresHotGiB": {
+      "oneYear": 5.25,
+      "threeYears": 7.795,
+      "fiveYears": 10.34,
+      "planGiB": 8,
+      "sessionsUntilPlanLimit": 847,
+      "meanSteadyGiB": 4.464
+    }
+  },
+  "boundedHistoricalTruth": {
+    "mode": "BOUNDED",
+    "model": "MEASURED_RING_BUFFER_RETENTION_PROJECTION",
+    "sessionRuns": [
+      {
+        "sessions": 250,
+        "startGiB": 2.876,
+        "endGiB": 4.669,
+        "tailSlopeMiBPerSession": 0.987,
+        "maxPeakGiB": 5.288,
+        "neverDroppedWithoutVerifiedArchive": true
+      },
+      {
+        "sessions": 500,
+        "startGiB": 2.876,
+        "endGiB": 5.004,
+        "tailSlopeMiBPerSession": 2.147,
+        "maxPeakGiB": 5.339,
+        "neverDroppedWithoutVerifiedArchive": true
+      },
+      {
+        "sessions": 1250,
+        "startGiB": 2.876,
+        "endGiB": 4.743,
+        "tailSlopeMiBPerSession": -2.71,
+        "maxPeakGiB": 5.339,
+        "neverDroppedWithoutVerifiedArchive": true
+      },
+      {
+        "sessions": 2500,
+        "startGiB": 2.876,
+        "endGiB": 4.858,
+        "tailSlopeMiBPerSession": -1.655,
+        "maxPeakGiB": 5.362,
+        "neverDroppedWithoutVerifiedArchive": true
+      }
+    ],
+    "outageRuns": [
+      {
+        "sessions": 5,
+        "peakGiB": 5.598,
+        "planExceeded": false,
+        "recoveredGiB": 4.551,
+        "finalQueueBytes": 0,
+        "neverDroppedWithoutVerifiedArchive": true
+      },
+      {
+        "sessions": 20,
+        "peakGiB": 9.21,
+        "planExceeded": true,
+        "recoveredGiB": 4.537,
+        "finalQueueBytes": 0,
+        "neverDroppedWithoutVerifiedArchive": true
+      },
+      {
+        "sessions": 80,
+        "peakGiB": 22.632,
+        "planExceeded": true,
+        "recoveredGiB": 4.527,
+        "finalQueueBytes": 0,
+        "neverDroppedWithoutVerifiedArchive": true
+      }
+    ],
+    "extremeSession": {
+      "peakGiB": 6.071,
+      "recoveredGiB": 4.59
+    },
+    "tenYearManifestBoundMiB": 19.688,
+    "longHorizonEndpointSlopeMiBPerSession": 0.086,
+    "postArchiveLinearGrowth": false,
+    "boundedAndPredictableUnderHealthyArchive": true,
+    "outagePolicy": "AN_OUTAGE_MAY_EXCEED_THE_POSTGRES_PLAN_WITHOUT_PRESSURE_GATING; STORAGE_PRESSURE_GATE_MUST_LOCK_NEW_RISK_AND_SPOOL_OR_SKIP_RESEARCH"
+  },
+  "modeledInputs": [
+    "execution-observation",
+    "outcome-observation",
+    "provider-request-history",
+    "runtime-diagnostics (7 MiB per session)"
+  ]
+}

@@ -1,0 +1,587 @@
+{
+  "generatedAt": "2026-10-04T09:04:16.839Z",
+  "sourceSha": "9a50039c42ded5155c1d6911a606b712c13eb742",
+  "evidenceScope": "SOURCE_AND_EXECUTED_TEST_EVIDENCE_NOT_CURRENT_WORKER_L7",
+  "sourceHashes": {
+    "bots/theta/quant/models/theta_q_lattice.py": "06f846d9ca08cde9d269466be1341ba7c5d89558d8d81925f47ed9b742d485d3",
+    "docs/proposals/071_bounded_historical_truth_DRAFT.sql": "05e1e608395e766c65a156dd9235c470601fd3d10b8b501155309618b7fcafef",
+    "src/execution/broker-reconciliation-worker.ts": "444b95eade6f20c3914bccad9941af618802a5b4522a20e8a710800ea86b0bae",
+    "src/execution/broker.ts": "a74f3519f1bf6f04dbdce4b39d944d0059c00e5d4bfcb5174d3c5cdcfb80a3d9",
+    "src/execution/execution-option-quote.ts": "8cca2460b0f288b174924eaeba6711790c094b3e69e3a5e1727207427979b03e",
+    "src/execution/master-paper-execution-orchestrator.ts": "192199296dfad354af845fca474ca0a8396ee54f0484011744dc2546f4ec9428",
+    "src/execution/master-paper-plan-assembly.ts": "494bab9f0bf3465f72566fa54833a6a6931ef40e271014f8567c01b0e6e50682",
+    "src/execution/paper-order-coordinator.ts": "327829f9cd19d3acf5b462f812793faf2d22dc11e764665708724f92faf13e0a",
+    "src/execution/postgres-paper-order-store.ts": "3507d0ec64bab0024685d2553877946b54c0d7a28ef2b826af63530987b97b3b",
+    "src/execution/read-only-paper-broker.ts": "9d7179457cb508b23b1e232d850d2c2b93a39dd6710a8234b10d11e2ffb44bc4",
+    "src/research/defined-risk-shadow-candidate-generator.ts": "838efdf5eb1639e1dfdaa3831c9ca664f460b10ba2cffaf9b16c8fdb929cacd6",
+    "src/research/empirical-model-registry.ts": "bccc5422e6f54d64ae82855003d6a9fb84a786c4b2a869518fc995e88594a0bb",
+    "src/research/hold-strike-shadow-candidate-generator.ts": "acc3eb41aaf2a00c3c0407b6c3c7512e6fab5d1a03f166d90baa6b02bd021986",
+    "src/research/p2g-receipt-store.ts": "cbf699ca93e93c43f2103c583870f3397039b4dd45968865f870e2c19b17e517",
+    "src/research/production-shadow-runtime.ts": "dc22e648449d2b0c933b7a428f62d92a24027c6ca3301144bbc29a6601b7e170",
+    "src/storage/data-platform/automation.ts": "3b4e0b8077855b6f44c19b3fd19816fdb301037aee20de8d3401fefe061a9011",
+    "src/storage/data-platform/cycle-blob-store.ts": "8ae80361dc2984498b19b7014eb609ae7bf690de95b1a09ab7880bd5e215c496",
+    "src/storage/data-platform/dataset-registry.ts": "961f1221c51091bcccd49d43aeb8c9d4b8414dc7eb1537a8d967908ea899297f",
+    "src/storage/data-platform/evidence-reader.ts": "c314e3f1c97fb6a853ed7fbb90859becb3678a68be370a4d382f6a326712433e",
+    "src/storage/data-platform/partition-lifecycle.ts": "c50dabacd1287026fe415ae526e5102346efd024b88b647e40d8511b1d565efc",
+    "src/storage/data-platform/payload-store.ts": "ea1b6832354d457a08260ba929cfbd91f27227399a3c28572600c2d23c713421",
+    "src/storage/data-platform/session-finalizer.ts": "7b681f4a0cf0759c24a6ecbc3ddc92c5f24c794c074d606df3b15a8479d4b2f2",
+    "src/storage/data-platform/session-integrity.ts": "6d9e87a9f1646560da54b3c07b3958d130b26504822106a3608b7a94fa522ef5",
+    "src/theta/aegis-contract.ts": "0f63623764c2bf78fd830d5e69cbec45cdca3a187b30398d9932f5f36c37d054",
+    "src/theta/autonomous-runtime.ts": "fc8b81dca981245fc81878c1480eedf936e45be156c72214769803918207e951",
+    "src/theta/canonical-decision-authority.ts": "e3e4f5258a31cc81c4c59134a0b0817eaa9044394523787733a79a9864071d23",
+    "src/theta/canonical-shadow-comparison.ts": "a9758b6590d45cf9a2d40f7396990650e3a8160774832e6d897c1fe74a393934",
+    "src/theta/canonical-strategy-frontier.ts": "2484cfb0ccad23c456e15ebc0b06bdd7bbf2ce2f34f4b9adbeb0252402551803",
+    "src/theta/cycle-archive-replay.ts": "a5cab5e83b111e5b96fc00fee14ec139d7386c91fbb782eb3ae3e7ce11fef831",
+    "src/theta/execution-quality-contract.ts": "f6e6cca0c7dd9246be2a35a5086519b393d23302c8210dd1ebb41651ce756665",
+    "src/theta/management-action-frontier.ts": "f3cda94ffdafcee46fa9253b1258ea18ebb29553f8061a4db47dce3dc6c20b02",
+    "src/theta/option-chain-ingestion.ts": "97ec072e397144aea3b08c104823e4a1ca0a9271f7dc87af02647f4a6dbc6a8b",
+    "src/theta/optionomics-feature-engine.ts": "f3a4413b08f480da2a08739be046902fd5017757bbb2ecd429b640039666eadd",
+    "src/theta/optionomics-provider.ts": "2d1e0d6bd9cfa12c2a4af28bc306cb0e40c99252a112fba10f4015d8606e059e",
+    "src/theta/postgres-cycle-evidence-storage.ts": "13c636ca8015091dc0999f5c3b7596e60c7f0092a91612f05c59b8e321727664",
+    "src/theta/postgres-lifecycle-application-store.ts": "445feebed5a1b19a986ee0de46b8d5f8fc9934fcdf3e9c115c35e4e68550d142",
+    "src/theta/postgres-theta-cycle-store.ts": "cc19ce0defa58b359fa789dc5f2c20164591713b5275a0a74e48e628de35cf32",
+    "src/theta/postgres-whole-chain-components-repository.ts": "823a4e4e2c172766bcae3ca0a3b4c8688959223f0dee35c01442289739b9184b",
+    "src/theta/production-paper-management-candidate-source.ts": "4861f2e1f695ad94517158a30b39b42b942fc827b3737687d66258b10e12bab7",
+    "src/theta/profitability-brain-reality.ts": "455088ae9b6730cdb80edf67cf9a3f04e151db3fe91b4c92d9b7855c5f5811d3",
+    "src/theta/sizing-contract.ts": "137efb0f637f065a3774ae070d10a39be865b97abcdabaf08a2c5bb6bcaea177",
+    "src/theta/t0-replay-bundle.ts": "dbeb95684abbd5423b12079ba8f563c5a74c41165c71d611100f741a628fb0a6",
+    "src/theta/theta-shadow-cycle.ts": "9f7d44bf674de332af28aa70822461df4fb55fb02da8976a3ede3f09ba0b31f8",
+    "src/theta/whole-chain-economics.ts": "953dd3b89aba9c687c6f7465fee642c116fb7181538cd1e17664a336c8a0f425",
+    "tests/aegis-contract.test.ts": "862b63e85693ed1bccaaaf37039a3aa41f65ee81fca83523f906f5c5ed89adaf",
+    "tests/alpaca-provider.test.ts": "8b06131fd5d65213765a60de1ddf5148eaf0846d8951f36d26497f65d3a5b282",
+    "tests/broker-reconciliation-worker.test.ts": "7f9a454b54debaf3311784f8d5028c5d2a282ed61b309846cef8e093ea616b44",
+    "tests/canonical-decision-authority.test.ts": "18e5da207216e14f7525ad5337bcbb1c3520df00a9428687b77a458c641b6c59",
+    "tests/canonical-strategy-frontier.test.ts": "bf6a658a15cae4d43a75a4c6ab07fae5cbc5f12c1549ce1c57f5c8d021cabe5d",
+    "tests/cycle-archive-replay.test.ts": "9f87749bc1cc1c93483ed6dc1d8e20b17233b5cf6e2b0b2f0f27ccaac891727b",
+    "tests/execution-option-quote.test.ts": "f381ae50473cbe21dcd9856c43a97d95ee9d97502e2b096bada4051f15104c62",
+    "tests/management-action-frontier.test.ts": "e2293a312e16ccf86816e7447c760c73f418a1772b33a0a32dd3a2bf51cdc481",
+    "tests/option-chain-ingestion.test.ts": "72bc292ac9e18510ae10ad23d5b9b3d8797f76a33f9d1040c40f94af2631b276",
+    "tests/optionomics-provider.test.ts": "65b74ac1a51a182ce832605ecefe9c437c66bb610e8520608918b9085974f82c",
+    "tests/paper-order-coordinator.test.ts": "d75fa10b533ceba8d6892d132fa0168218d2e92d81a22f51d5f1ea4497e263e8",
+    "tests/phase2-sizing-capital-conservation.test.ts": "cb40c07a247e30f7e47b9bacbccdb2a5590b8261738a0ff194c792596a824a5e",
+    "tests/phase4-bounded-history.test.ts": "22e10eaf2b4f3bbdbadfda977a17ec8e918eca7c0b0b7e68f3eb9345dbc3c7dd",
+    "tests/phase4-data-platform-simulation.test.ts": "a32e6ce4509adbded80488896b6563488042fb036d2903baa7796b01463ed401",
+    "tests/profitability-brain-reality.test.ts": "174febfb302b5457b269aa49f1b231932783bc21973cf5f1331de6062c4865ee",
+    "tests/whole-chain-economics.test.ts": "1eabac1e22e692853e950bf0eb7988305739c57f995e1f8a1255c88343ea800e"
+  },
+  "capabilities": [
+    {
+      "id": "BROKER_ACCOUNT_TRUTH",
+      "authority": "AlpacaPaperBrokerAdapter",
+      "producer": [
+        "src/execution/broker.ts"
+      ],
+      "normalizer": [
+        "src/execution/read-only-paper-broker.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-theta-cycle-store.ts"
+      ],
+      "consumer": [
+        "src/theta/theta-shadow-cycle.ts"
+      ],
+      "tests": [
+        "tests/alpaca-provider.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Current-worker proof requires a supported session and authenticated provider response."
+    },
+    {
+      "id": "OPTION_CONTRACT_DISCOVERY",
+      "authority": "Alpaca contract API",
+      "producer": [
+        "src/theta/option-chain-ingestion.ts"
+      ],
+      "normalizer": [
+        "src/theta/option-chain-ingestion.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-theta-cycle-store.ts"
+      ],
+      "consumer": [
+        "src/theta/theta-shadow-cycle.ts"
+      ],
+      "tests": [
+        "tests/option-chain-ingestion.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Source is runtime reachable. Current-session completeness is forward data."
+    },
+    {
+      "id": "EXECUTABLE_BBO",
+      "authority": "Alpaca BBO",
+      "producer": [
+        "src/execution/execution-option-quote.ts"
+      ],
+      "normalizer": [
+        "src/theta/execution-quality-contract.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-theta-cycle-store.ts"
+      ],
+      "consumer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "tests": [
+        "tests/execution-option-quote.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Optionomics is never executable-price authority."
+    },
+    {
+      "id": "OPTIONOMICS_CONTEXT",
+      "authority": "Optionomics research adapter",
+      "producer": [
+        "src/theta/optionomics-provider.ts"
+      ],
+      "normalizer": [
+        "src/theta/optionomics-feature-engine.ts"
+      ],
+      "persistence": [
+        "src/storage/data-platform/payload-store.ts"
+      ],
+      "consumer": [
+        "src/theta/theta-shadow-cycle.ts"
+      ],
+      "tests": [
+        "tests/optionomics-provider.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "PROVIDER_LIMITED",
+      "note": "Only qualified fields contribute. Partial semantics stay partial."
+    },
+    {
+      "id": "Q_CANDIDATES",
+      "authority": "canonical-strategy-frontier Q branch",
+      "producer": [
+        "bots/theta/quant/models/theta_q_lattice.py"
+      ],
+      "normalizer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-theta-cycle-store.ts"
+      ],
+      "consumer": [
+        "src/theta/canonical-decision-authority.ts"
+      ],
+      "tests": [
+        "tests/canonical-strategy-frontier.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Production-facing but execution remains locked."
+    },
+    {
+      "id": "H_CANDIDATES",
+      "authority": "canonical-strategy-frontier H branch",
+      "producer": [
+        "src/research/hold-strike-shadow-candidate-generator.ts"
+      ],
+      "normalizer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "persistence": [
+        "src/research/production-shadow-runtime.ts"
+      ],
+      "consumer": [
+        "src/theta/canonical-shadow-comparison.ts"
+      ],
+      "tests": [
+        "tests/canonical-strategy-frontier.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "EMPIRICALLY_UNPROVEN",
+      "note": "Research-only and brokerAuthority=false."
+    },
+    {
+      "id": "D_CANDIDATES",
+      "authority": "canonical-strategy-frontier D branch",
+      "producer": [
+        "src/research/defined-risk-shadow-candidate-generator.ts"
+      ],
+      "normalizer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "persistence": [
+        "src/research/production-shadow-runtime.ts"
+      ],
+      "consumer": [
+        "src/theta/canonical-shadow-comparison.ts"
+      ],
+      "tests": [
+        "tests/canonical-strategy-frontier.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "EMPIRICALLY_UNPROVEN",
+      "note": "Research-only and brokerAuthority=false."
+    },
+    {
+      "id": "RECOVERY_A",
+      "authority": "canonical lifecycle frontier",
+      "producer": [
+        "src/theta/management-action-frontier.ts"
+      ],
+      "normalizer": [
+        "src/theta/whole-chain-economics.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-lifecycle-application-store.ts"
+      ],
+      "consumer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "tests": [
+        "tests/canonical-strategy-frontier.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Requires stock inventory to be applicable."
+    },
+    {
+      "id": "COVERED_CALL_C",
+      "authority": "canonical lifecycle frontier",
+      "producer": [
+        "src/theta/production-paper-management-candidate-source.ts"
+      ],
+      "normalizer": [
+        "src/theta/whole-chain-economics.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-lifecycle-application-store.ts"
+      ],
+      "consumer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "tests": [
+        "tests/management-action-frontier.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Requires covered shares to be applicable."
+    },
+    {
+      "id": "AEGIS",
+      "authority": "AEGIS contract",
+      "producer": [
+        "src/theta/aegis-contract.ts"
+      ],
+      "normalizer": [
+        "src/theta/aegis-contract.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-theta-cycle-store.ts"
+      ],
+      "consumer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "tests": [
+        "tests/aegis-contract.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Risk authority, never a profitability oracle."
+    },
+    {
+      "id": "SIZING",
+      "authority": "canonical structuralSizing",
+      "producer": [
+        "src/theta/sizing-contract.ts"
+      ],
+      "normalizer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-theta-cycle-store.ts"
+      ],
+      "consumer": [
+        "src/theta/canonical-decision-authority.ts"
+      ],
+      "tests": [
+        "tests/phase2-sizing-capital-conservation.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Quantity zero is valid and no minimum-one fallback exists."
+    },
+    {
+      "id": "CANONICAL_DECISION",
+      "authority": "canonical-decision-authority",
+      "producer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "normalizer": [
+        "src/theta/canonical-decision-authority.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-theta-cycle-store.ts"
+      ],
+      "consumer": [
+        "src/execution/master-paper-plan-assembly.ts"
+      ],
+      "tests": [
+        "tests/canonical-decision-authority.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Single Production decision authority."
+    },
+    {
+      "id": "BROKER_MUTATION",
+      "authority": "PaperOrderCoordinator",
+      "producer": [
+        "src/execution/master-paper-execution-orchestrator.ts"
+      ],
+      "normalizer": [
+        "src/execution/paper-order-coordinator.ts"
+      ],
+      "persistence": [
+        "src/execution/postgres-paper-order-store.ts"
+      ],
+      "consumer": [
+        "src/execution/broker.ts"
+      ],
+      "tests": [
+        "tests/paper-order-coordinator.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "OWNER_PERMISSION_REQUIRED",
+      "note": "Only mutation authority. Paper and live authorization remain separate owner gates."
+    },
+    {
+      "id": "RECONCILIATION",
+      "authority": "BrokerReconciliationWorker",
+      "producer": [
+        "src/execution/broker-reconciliation-worker.ts"
+      ],
+      "normalizer": [
+        "src/execution/broker-reconciliation-worker.ts"
+      ],
+      "persistence": [
+        "src/execution/postgres-paper-order-store.ts"
+      ],
+      "consumer": [
+        "src/theta/autonomous-runtime.ts"
+      ],
+      "tests": [
+        "tests/broker-reconciliation-worker.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Current-worker broker proof is runtime evidence."
+    },
+    {
+      "id": "WHOLE_CHAIN_ACCOUNTING",
+      "authority": "whole-chain economics",
+      "producer": [
+        "src/theta/postgres-whole-chain-components-repository.ts"
+      ],
+      "normalizer": [
+        "src/theta/whole-chain-economics.ts"
+      ],
+      "persistence": [
+        "src/theta/postgres-lifecycle-application-store.ts"
+      ],
+      "consumer": [
+        "src/theta/management-action-frontier.ts"
+      ],
+      "tests": [
+        "tests/whole-chain-economics.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Roll losses and assigned-stock losses remain explicit."
+    },
+    {
+      "id": "T0_REPLAY",
+      "authority": "cycle archive replay",
+      "producer": [
+        "src/theta/postgres-cycle-evidence-storage.ts"
+      ],
+      "normalizer": [
+        "src/theta/cycle-archive-replay.ts"
+      ],
+      "persistence": [
+        "src/storage/data-platform/cycle-blob-store.ts"
+      ],
+      "consumer": [
+        "src/theta/t0-replay-bundle.ts"
+      ],
+      "tests": [
+        "tests/cycle-archive-replay.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "FORWARD_DATA_REQUIRED",
+      "note": "Current-release provider-free replay needs a persisted current-worker T0."
+    },
+    {
+      "id": "BOUNDED_STORAGE",
+      "authority": "data-platform control plane",
+      "producer": [
+        "src/storage/data-platform/dataset-registry.ts"
+      ],
+      "normalizer": [
+        "src/storage/data-platform/automation.ts"
+      ],
+      "persistence": [
+        "src/storage/data-platform/partition-lifecycle.ts"
+      ],
+      "consumer": [
+        "src/storage/data-platform/evidence-reader.ts"
+      ],
+      "tests": [
+        "tests/phase4-data-platform-simulation.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "OWNER_PERMISSION_REQUIRED",
+      "note": "069/070/071 remain draft migrations and no purge is authorized."
+    },
+    {
+      "id": "SESSION_INTEGRITY",
+      "authority": "session finalizer",
+      "producer": [
+        "src/storage/data-platform/session-integrity.ts"
+      ],
+      "normalizer": [
+        "src/storage/data-platform/session-finalizer.ts"
+      ],
+      "persistence": [
+        "docs/proposals/071_bounded_historical_truth_DRAFT.sql"
+      ],
+      "consumer": [
+        "src/storage/data-platform/evidence-reader.ts"
+      ],
+      "tests": [
+        "tests/phase4-bounded-history.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "OWNER_PERMISSION_REQUIRED",
+      "note": "Merkle and chained-root implementation and executable tests exist. Runtime activation, terminal-chain materialization, and current-worker proof remain unavailable until governed migration 071 deployment. No runtime-complete claim is made."
+    },
+    {
+      "id": "PROFITABILITY_MODEL",
+      "authority": "empirical model registry",
+      "producer": [
+        "src/research/empirical-model-registry.ts"
+      ],
+      "normalizer": [
+        "src/theta/profitability-brain-reality.ts"
+      ],
+      "persistence": [
+        "src/research/p2g-receipt-store.ts"
+      ],
+      "consumer": [
+        "src/theta/canonical-strategy-frontier.ts"
+      ],
+      "tests": [
+        "tests/profitability-brain-reality.test.ts"
+      ],
+      "sourceStatus": "SOURCE_EVIDENCE_PRESENT",
+      "testStatus": "EXECUTABLE_TEST_PRESENT",
+      "runtimeStatus": "EMPIRICALLY_UNPROVEN",
+      "note": "Expected after-cost EV remains null until PIT-safe outcomes support calibration."
+    }
+  ],
+  "endToEndTraces": [
+    {
+      "id": "LOCKED_NO_SUBMIT",
+      "test": "tests/no-submit-decision-authority.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "Q_ENTRY_FRONTIER",
+      "test": "tests/canonical-strategy-frontier.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "H_SHADOW_ISOLATION",
+      "test": "tests/canonical-strategy-frontier.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "D_SHADOW_ISOLATION",
+      "test": "tests/canonical-strategy-frontier.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "MANAGEMENT_FIRST",
+      "test": "tests/management-first-loop.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "ASSIGNMENT_ECONOMICS",
+      "test": "tests/phase2-chain-assignment-economics.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "RECOVERY_COVERED_CALL",
+      "test": "tests/covered-call-management-orchestrator.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "BROKER_RECONCILIATION",
+      "test": "tests/broker-reconciliation-worker.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "PROVIDER_FAILURE_TYPED",
+      "test": "tests/alpaca-failure-matrix.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "DATABASE_OUTAGE_LOCAL_OBSERVATION",
+      "test": "tests/database-independent-shadow-observation.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "T0_PROVIDER_FREE_REPLAY",
+      "test": "tests/cycle-archive-replay.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "HOT_COLD_ARCHIVE_READER",
+      "test": "tests/phase4-data-platform-reader.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "SIZING_ZERO_EXPLICIT",
+      "test": "tests/phase2-sizing-zero-label.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    },
+    {
+      "id": "BROKER_MUTATION_IDEMPOTENCY",
+      "test": "tests/paper-order-coordinator.test.ts",
+      "evidence": "EXECUTABLE_TEST_PRESENT"
+    }
+  ],
+  "remainingCodeSolvableBlockers": 0,
+  "remainingCodeSolvableBlockersScope": "CURRENT_CANONICAL_CAPABILITY_REGISTER_AND_STATIC_WIRING_AUDIT",
+  "executionProof": "SEE_EXECUTED_VALIDATION_RECEIPT_SEPARATE_FROM_THIS_SOURCE_REGISTER",
+  "unresolved": [
+    "EMPIRICALLY_UNPROVEN",
+    "FORWARD_DATA_REQUIRED",
+    "OWNER_PERMISSION_REQUIRED",
+    "PROVIDER_LIMITED"
+  ]
+}

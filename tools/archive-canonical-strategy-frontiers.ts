@@ -7,6 +7,7 @@ import {
   writeArchiveHealth,
 } from '../src/storage/local-research-archive-health.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
+import { PostgresPressureProvider } from '../src/storage/data-platform/pressure-state.js';
 
 const value = (prefix: string): string | undefined =>
   process.argv.slice(2).find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
@@ -23,8 +24,17 @@ const duckdbVerificationRaw = value('--duckdb-verification=');
 const duckdbVerification = duckdbVerificationRaw === 'PASS' || duckdbVerificationRaw === 'FAILED'
   || duckdbVerificationRaw === 'NOT_AVAILABLE' ? duckdbVerificationRaw : undefined;
 const now = new Date();
+// the PostgreSQL storage governor pauses NEW research subjects here too (absent or stale pressure state is UNKNOWN, which also pauses); unset THETA_STORAGE_GOVERNOR leaves behavior unchanged
+async function postgresResearchGate(): Promise<'ALLOW' | 'THROTTLE' | 'SKIP_LOW_PRIORITY' | undefined> {
+  if (process.env.THETA_STORAGE_GOVERNOR !== '1') return undefined;
+  const gatePool = createRuntimePostgresPool(loadEnvironmentFile(environmentFile).DATABASE_URL);
+  try { return (await new PostgresPressureProvider(gatePool).read()).researchGate; } catch { return 'THROTTLE'; } finally { await gatePool.end(); }
+}
+const pressureGate = await postgresResearchGate();
+const gateOptions = pressureGate === undefined ? {} : { postgresResearchGate: pressureGate };
 if (process.argv.includes('--health-only')) {
   const health = writeArchiveHealth({
+    ...gateOptions,
     healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: now,
     archiveState: 'HEALTH_REFRESHED', outcome: 'UNCHANGED',
     duckdbVerificationOverride: duckdbVerification,
@@ -35,6 +45,7 @@ if (process.argv.includes('--health-only')) {
 if (sourceSha === undefined || since === undefined) throw new Error('LOCAL_ARCHIVE_SOURCE_SHA_AND_SINCE_REQUIRED');
 if (!archiveRetryAllowed(healthPath, now)) {
   const health = writeArchiveHealth({
+    ...gateOptions,
     healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: now,
     archiveState: 'DEFERRED_TRANSFER_QUOTA_COOLDOWN', outcome: 'UNCHANGED',
   });
@@ -45,6 +56,7 @@ const environment = loadEnvironmentFile(environmentFile);
 const pool = createRuntimePostgresPool(environment.DATABASE_URL);
 try {
   writeArchiveHealth({
+    ...gateOptions,
     healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: now,
     archiveState: 'ARCHIVE_QUERY_IN_PROGRESS', outcome: 'RETRYING',
   });
@@ -57,6 +69,7 @@ try {
       limit: limitRaw === undefined ? 10_000 : Number(limitRaw),
     });
     const health = writeArchiveHealth({
+    ...gateOptions,
       healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: new Date(),
       archiveState: report.state, outcome: 'SUCCESS',
     });
@@ -65,6 +78,7 @@ try {
     const failureFamily = classifyArchiveFailure(error);
     const quota = failureFamily === 'DATABASE_RESOURCE_QUOTA';
     const health = writeArchiveHealth({
+    ...gateOptions,
       healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: new Date(),
       archiveState: quota ? 'DEFERRED_TRANSFER_QUOTA' : 'FAILED_NONCRITICAL',
       outcome: quota ? 'QUOTA_EXHAUSTED' : 'FAILURE', failureFamily,
