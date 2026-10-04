@@ -148,7 +148,10 @@ export async function finalizeSession(pool: Pool, input: SessionFinalizationInpu
       sourceSha: input.sourceSha,
       policyVersions: input.policyVersions,
       schemaVersions: input.schemaVersions,
-      previousSessionIntegrityRoot: prior?.previousSessionIntegrityRoot ?? previousRoot,
+      // A persisted first manifest legitimately has a null predecessor. Do not
+      // coalesce that null to the current head, which is the same session on an
+      // idempotent replay and would create a different chained root.
+      previousSessionIntegrityRoot: prior !== null ? prior.previousSessionIntegrityRoot : previousRoot,
       createdAt: input.finalizedAt,
       verifiedAt: input.finalizedAt,
     });
