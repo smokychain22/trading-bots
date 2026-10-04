@@ -858,7 +858,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const accountRequiredValuesPresent = account.accountStatus !== null
       && account.equity !== null
       && account.cash !== null
-      && (account.optionsBuyingPower !== null || account.buyingPower !== null)
+      && account.optionsBuyingPower !== null
       && account.optionsApprovedLevel !== null
       && account.optionsTradingLevel !== null;
     accountEvidence = accountRequiredValuesPresent
@@ -1339,7 +1339,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       asOf: finalistChosenAt,
       capital: {
         equity: account?.equity ?? null,
-        buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
+        buyingPower: account?.optionsBuyingPower ?? null,
         hardTickerConcentrationLimitPct: typeof config.aegisPolicy.maxTickerConcentrationPct === 'number'
           && typeof config.aegisPolicy.hardCapMultiplier === 'number'
           ? config.aegisPolicy.maxTickerConcentrationPct * config.aegisPolicy.hardCapMultiplier : null,
@@ -1543,7 +1543,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         blockers.push(`CANDIDATE_BID_UNKNOWN:${contract.optionSymbol}`);
         continue;
       }
-      const availableOptionBuyingPower = account?.optionsBuyingPower ?? account?.buyingPower ?? null;
+      const availableOptionBuyingPower = account?.optionsBuyingPower ?? null;
       const collateralPerContract = contract.strike * contract.multiplier;
       const brokerAllowedQty = wholeContractsAffordable(availableOptionBuyingPower, collateralPerContract) ?? 0;
       candidates.push({
@@ -1807,7 +1807,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
           const contract = mergedBySymbol.get(optionSymbol);
           if (contract === undefined || !exposureDerivationTrustworthy || candidateCapacityPolicy === null) return null;
           const collateral = contract.strike * contract.multiplier;
-          const availableBuyingPower = account?.optionsBuyingPower ?? account?.buyingPower ?? null;
+          const availableBuyingPower = account?.optionsBuyingPower ?? null;
           const compatibility = assessStrategyAccountPolicyCompatibility({
             strategy: 'THETA_CONVENTIONAL', underlying: contract.underlying, marketApplicable: true,
             minimumCapitalRequired: collateral, brokerAllowedQty: wholeContractsAffordable(availableBuyingPower, collateral),
@@ -1820,7 +1820,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const frontierInput: CanonicalStrategyFrontierInput = {
     snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
     contracts: mergedContractsForSnapshot, routing, stock: stockState, assignmentCapacityQty: null,
-    buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
+    buyingPower: account?.optionsBuyingPower ?? null,
     capitalBudgetAccountEvidence: exposureDerivationTrustworthy && account !== null ? {
       observedAt: [account.receivedAt, ...positions.map(position => position.receivedAt), ...openOrders.map(order => order.receivedAt)]
         .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? account.receivedAt,
@@ -1877,7 +1877,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       qEntryFunnel = buildCycleQEntryFunnelSummary({
         contracts: mergedContractsForSnapshot,
         account: {
-          equity: account?.equity ?? null, buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
+          equity: account?.equity ?? null, buyingPower: account?.optionsBuyingPower ?? null,
           instrumentApproval: instrumentClassification.paperBootstrapApproved ? { state: 'APPROVED', reason: null }
             : { state: instrumentClassification.state === 'UNKNOWN' || instrumentClassification.state === 'CONFLICT' ? 'UNKNOWN' : 'NOT_APPROVED',
               reason: `INSTRUMENT_${instrumentClassification.state}` },
@@ -2143,7 +2143,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     candidates: runtimeCandidates,
     sizingPolicy: config.sizingPolicy,
     sizingAccount: {
-      equity: account?.equity ?? null, cash: account?.cash ?? null, buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
+      equity: account?.equity ?? null, cash: account?.cash ?? null, buyingPower: account?.optionsBuyingPower ?? null,
     },
     executionQualityPolicy: config.executionQualityPolicy,
     paperEntryBootstrap: config.paperEntryBootstrap,

@@ -969,6 +969,29 @@ itMockedProviderRealCodePath('an account fetch failure is recorded as a blocker,
   assert.ok(result.blockers.some((b) => b.startsWith('ACCOUNT_FETCH_FAILED')));
 });
 
+itMockedProviderRealCodePath('generic broker margin buying power never substitutes for missing options buying power', async () => {
+  const regular = mockAlpacaFetch({ hasContracts: true, hasBars: true });
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes('/v2/account')) return jsonResponse(200, {
+      id: 'synthetic-test-account-0000', status: 'ACTIVE', equity: '100000', cash: '100000',
+      buying_power: '400000', options_buying_power: null,
+      options_approved_level: 3, options_trading_level: 3,
+    });
+    return regular(input, init);
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({
+    alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl },
+  }));
+  assert.equal(result.canonicalFrontierInput?.buyingPower, null);
+  assert.equal(result.canonicalFrontierInput?.capitalBudgetAccountEvidence, null);
+  const qCandidates = result.strategyFrontier?.branches
+    .find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates ?? [];
+  assert.ok(qCandidates.every((candidate) => candidate.sizing.quantity === 0));
+  assert.ok(qCandidates.every((candidate) => candidate.sizing.bindingConstraint === 'BROKER_CAPACITY'
+    || candidate.sizing.bindingConstraint === 'COLLATERAL_CAP'
+    || candidate.sizing.bindingConstraint === 'ACCOUNT_EVIDENCE_UNKNOWN'));
+});
+
 itMockedProviderRealCodePath('runId is unique per cycle', async () => {
   const first = await runThetaShadowCycle(baseConfig());
   const second = await runThetaShadowCycle(baseConfig());
