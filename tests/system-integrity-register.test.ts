@@ -12,7 +12,7 @@ test('system integrity register is evidence-bound and preserves external and emp
     && row.testStatus === 'EXECUTABLE_TEST_PRESENT' && row.producer.length > 0 && row.consumer.length > 0), true);
   assert.equal(system.executionProof, 'SEE_EXECUTED_VALIDATION_RECEIPT_SEPARATE_FROM_THIS_SOURCE_REGISTER');
   assert.equal(system.capabilities.find((row) => row.id === 'PROFITABILITY_MODEL')?.runtimeStatus, 'EMPIRICALLY_UNPROVEN');
-  assert.equal(system.capabilities.find((row) => row.id === 'BROKER_MUTATION')?.runtimeStatus, 'OWNER_PERMISSION_REQUIRED');
+  assert.equal(system.capabilities.find((row) => row.id === 'BROKER_MUTATION')?.runtimeStatus, 'FORWARD_DATA_REQUIRED');
   assert.equal(system.endToEndTraces.length, 14);
   assert.equal(system.endToEndTraces.every((trace) => trace.evidence === 'EXECUTABLE_TEST_PRESENT'), true);
   const duplication = JSON.parse(readFileSync('docs/operations/THETA_DUPLICATION_MAP_20261004.json', 'utf8')) as { concepts: Array<{ concept: string; canonical: string }> };

@@ -384,11 +384,10 @@ export const infrastructureInventory: readonly DeepSystemInventoryRow[] = infras
     runtimeCaller: sourceFile, currentAuthority: authority, realityLevel: authority === 'RESEARCH_ONLY'
       ? 'L4_CANONICAL_INTEGRATED' : 'L6_RUNTIME_REACHABLE', historicalRealData: false, currentWorkerRealData: false,
     empiricalStatus: authority === 'RESEARCH_ONLY' ? 'EMPIRICALLY_UNPROVEN' : 'NOT_APPLICABLE',
-    paperAuthority: id === 'PAPER_CANARY_GOVERNANCE' ? 'OWNER_PERMISSION_REQUIRED'
-      : authority === 'PRODUCTION_LOCKED' ? 'LOCKED_PAPER_PATH' : 'NO', liveAuthority: 'NO', unknownFields: [],
+    paperAuthority: authority === 'PRODUCTION_LOCKED' ? 'LOCKED_PAPER_PATH' : 'NO', liveAuthority: 'NO', unknownFields: [],
     failureBehavior: 'typed failure or degraded state, never an empty opportunity or strategy WAIT', replaySupport: 'component receipt or recovery replay',
     tests: ['tests/storage-authority-registry.test.ts', 'tests/worker-runtime-store.test.ts'],
-    currentBlocker: id === 'PAPER_CANARY_GOVERNANCE' ? 'owner permission for first Paper order not granted'
+    currentBlocker: id === 'PAPER_CANARY_GOVERNANCE' ? 'Master Paper permission is granted; current-session technical activation and an eligible quantity-positive decision are still required'
       : id === 'LIVE_GRADUATION_GOVERNANCE' ? 'empirical thresholds, Paper outcomes and live owner permission are absent'
         : authority === 'RESEARCH_ONLY' ? 'empirical or current-worker evidence pending' : 'current integration release is not deployed',
     nextAction: 'preserve authority boundary and collect the next required runtime receipt',

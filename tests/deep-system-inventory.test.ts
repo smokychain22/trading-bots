@@ -24,7 +24,7 @@ test('deep inventory covers every mandated cardinality without duplicate or blan
   assert.equal(summary.byCategory.CLAUDE_WORK_PACKAGE, 100);
   assert.equal(summary.byCategory.INFRASTRUCTURE, 20);
   assert.equal(summary.liveAuthorizedRows, 0);
-  assert.equal(summary.ownerPermissionRequiredRows, 1);
+  assert.equal(summary.ownerPermissionRequiredRows, 0);
 });
 
 test('deep audit denominator matches the canonical typed evidence registry', () => {
@@ -79,5 +79,6 @@ test('Claude WP audit preserves provider and empirical blockers instead of decla
     assert.equal(row?.empiricalStatus, 'INSUFFICIENT_SAMPLE');
     assert.equal(row?.currentBlocker, 'insufficient independent resolved outcomes');
   }
-  assert.equal(deepSystemInventory.filter((row) => row.paperAuthority === 'OWNER_PERMISSION_REQUIRED').length, 1);
+  assert.equal(deepSystemInventory.filter((row) => row.paperAuthority === 'OWNER_PERMISSION_REQUIRED').length, 0);
+  assert.equal(deepSystemInventory.find((row) => row.id === 'PAPER_CANARY_GOVERNANCE')?.paperAuthority, 'LOCKED_PAPER_PATH');
 });

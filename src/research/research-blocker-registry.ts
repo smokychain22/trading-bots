@@ -83,9 +83,9 @@ export const RESEARCH_BLOCKER_REGISTRY: readonly BlockerRecord[] = [
     contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-RESEARCH-ZERO-REAL-EPISODES',
     domain: 'ALL_STRATEGY_RESEARCH_PROGRAMS', owner: 'OWNER',
     currentState: 'Zero real resolved Q/H/D/Recovery/CC/WAIT episodes exist -- every research pipeline is contract-complete and fixture-tested but has nothing real to run against.',
-    exactMissingInput: 'Real Paper trading history, gated by owner authorization for the first Paper canary.',
+    exactMissingInput: 'Real Paper trading history, gated by current-session technical activation and a naturally eligible quantity-positive first Paper canary.',
     whyRequired: 'No amount of research-side code can manufacture real economic outcomes.', consumer: 'every dataset/analysis module in the registry',
-    canBeBuiltAround: false, nextAction: 'Owner authorization for first Paper canary, after Codex runtime closure.',
+    canBeBuiltAround: false, nextAction: 'Use the granted Master Paper authority only after current-session technical activation and a naturally eligible quantity-positive decision.',
     testToClose: 'N/A -- this closes only when real episodes exist, not by a test.', blockerClass: 'REAL_DATA_REQUIRED', resolvedAt: null,
   },
   {
