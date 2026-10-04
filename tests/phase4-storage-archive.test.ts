@@ -131,6 +131,9 @@ test('archive location must be inside the external archive root, never an arbitr
   assert.equal(isOutsideDatabaseArchiveRoot('C:\\ProjectBackups\\trading-bots\\storage-archives\\x\\pop', 'C:\\ProjectBackups\\trading-bots\\storage-archives'), true);
   assert.equal(isOutsideDatabaseArchiveRoot('C:\\ProjectBackups\\trading-bots\\storage-archives-evil\\pop', 'C:\\ProjectBackups\\trading-bots\\storage-archives'), false);
   assert.equal(isOutsideDatabaseArchiveRoot('C:\\Windows\\Temp\\pop', 'C:\\ProjectBackups\\trading-bots\\storage-archives'), false);
+  assert.equal(isOutsideDatabaseArchiveRoot('/srv/theta/storage-archives/x/pop', '/srv/theta/storage-archives'), true);
+  assert.equal(isOutsideDatabaseArchiveRoot('/srv/theta/storage-archives-evil/pop', '/srv/theta/storage-archives'), false);
+  assert.equal(isOutsideDatabaseArchiveRoot('/srv/theta/storage-archives/x', 'C:\\ProjectBackups\\trading-bots\\storage-archives'), false);
 });
 
 test('the candidate populations are all Tier C/D, none is operational, each is bounded by the cutoff parameter, and FK-referenced tables never DELETE rows', () => {

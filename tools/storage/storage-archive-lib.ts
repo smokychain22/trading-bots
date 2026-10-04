@@ -3,7 +3,7 @@
 // ranges, per-chunk and whole-population digests and the source identity. Purge eligibility is a pure function over verified evidence.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, join, posix, win32 } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
 export const archiveManifestVersion = 'theta-storage-archive-manifest-v1' as const;
@@ -199,9 +199,15 @@ export function evaluatePurgeEligibility(evidence: PurgeEligibilityEvidence): Pu
 }
 
 export function isOutsideDatabaseArchiveRoot(path: string, root: string): boolean {
-  const resolved = resolve(path);
-  const base = resolve(root);
-  return resolved === base || resolved.startsWith(base + sep);
+  const isWindowsAbsolute = (value: string): boolean => /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\');
+  const pathIsWindows = isWindowsAbsolute(path);
+  const rootIsWindows = isWindowsAbsolute(root);
+  if (pathIsWindows !== rootIsWindows) return false;
+  const pathApi = pathIsWindows ? win32 : posix;
+  const resolved = pathApi.resolve(path);
+  const base = pathApi.resolve(root);
+  const relative = pathApi.relative(base, resolved);
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${pathApi.sep}`) && !pathApi.isAbsolute(relative));
 }
 
 export function ensureParent(path: string): void { mkdirSync(dirname(path), { recursive: true }); }
