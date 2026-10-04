@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-04T09:08:20.623Z",
-  "sourceSha": "75e4092f8bead3f69b9f41a4645eefab6020bce1",
+  "generatedAt": "2026-10-04T09:19:25.366Z",
+  "sourceSha": "72fac52be25cadaedad04810177deb1ebec75dd4",
   "evidenceScope": "SOURCE_AND_EXECUTED_TEST_EVIDENCE_NOT_CURRENT_WORKER_L7",
   "sourceHashes": {
     "bots/theta/quant/models/theta_q_lattice.py": "06f846d9ca08cde9d269466be1341ba7c5d89558d8d81925f47ed9b742d485d3",
@@ -24,7 +24,7 @@
     "src/storage/data-platform/evidence-reader.ts": "c314e3f1c97fb6a853ed7fbb90859becb3678a68be370a4d382f6a326712433e",
     "src/storage/data-platform/partition-lifecycle.ts": "c50dabacd1287026fe415ae526e5102346efd024b88b647e40d8511b1d565efc",
     "src/storage/data-platform/payload-store.ts": "ea1b6832354d457a08260ba929cfbd91f27227399a3c28572600c2d23c713421",
-    "src/storage/data-platform/session-finalizer.ts": "7b681f4a0cf0759c24a6ecbc3ddc92c5f24c794c074d606df3b15a8479d4b2f2",
+    "src/storage/data-platform/session-finalizer.ts": "9e916efd71b6c1f2e103f02dd3ec4da20b34189aa78d239db923e43822baf8fe",
     "src/storage/data-platform/session-integrity.ts": "6d9e87a9f1646560da54b3c07b3958d130b26504822106a3608b7a94fa522ef5",
     "src/theta/aegis-contract.ts": "0f63623764c2bf78fd830d5e69cbec45cdca3a187b30398d9932f5f36c37d054",
     "src/theta/autonomous-runtime.ts": "fc8b81dca981245fc81878c1480eedf936e45be156c72214769803918207e951",
