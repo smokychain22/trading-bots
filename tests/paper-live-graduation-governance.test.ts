@@ -23,11 +23,21 @@ const policy: LiveGraduationThresholdPolicy = {
     killSwitchPolicyVersion:'test-kill-switch-v1',manualReviewRequired:true,automaticDowngradeToPaper:true},
 };
 
-test('first Paper canary governance requires owner permission and exactly one SPY Q contract',()=>{
+test('first Paper canary governance requires owner permission and exactly one approved-cohort Q contract',()=>{
   const ready=evaluateFirstPaperCanaryGovernance({strategy:'THETA_CONVENTIONAL',underlying:'SPY',quantity:1,
     priorBrokerOrderCount:0,currentWorkerProven:true,operationalReadinessPassed:true,ownerPermissionGranted:false,
     masterExecutionEnabled:false,followerExecutionEnabled:false,pauseNewOrders:true});
   assert.equal(ready.state,'READY_FOR_OWNER_AUTHORIZATION');
+  for (const underlying of ['TLT','XLE']) {
+    assert.equal(evaluateFirstPaperCanaryGovernance({strategy:'THETA_CONVENTIONAL',underlying,quantity:1,
+      priorBrokerOrderCount:0,currentWorkerProven:true,operationalReadinessPassed:true,ownerPermissionGranted:true,
+      masterExecutionEnabled:true,followerExecutionEnabled:false,pauseNewOrders:false}).state,'AUTHORIZED_BOUNDED_CANARY');
+  }
+  const unapproved=evaluateFirstPaperCanaryGovernance({strategy:'THETA_CONVENTIONAL',underlying:'AAPL',quantity:1,
+    priorBrokerOrderCount:0,currentWorkerProven:true,operationalReadinessPassed:true,ownerPermissionGranted:true,
+    masterExecutionEnabled:true,followerExecutionEnabled:false,pauseNewOrders:false});
+  assert.equal(unapproved.state,'LOCKED');
+  assert.ok(unapproved.blockers.includes('FIRST_CANARY_UNDERLYING_NOT_APPROVED'));
   assert.deepEqual(ready.blockers,['OWNER_PERMISSION_REQUIRED']);
   assert.equal(ready.liveAuthorized,false);
   const tooLarge=evaluateFirstPaperCanaryGovernance({strategy:'THETA_CONVENTIONAL',underlying:'SPY',quantity:2,

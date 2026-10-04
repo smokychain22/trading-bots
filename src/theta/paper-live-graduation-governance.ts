@@ -4,7 +4,7 @@ export const firstPaperCanaryPolicy = Object.freeze({
   policyVersion: 'theta-first-paper-canary-policy-v1',
   environment: 'PAPER' as const,
   strategy: 'THETA_CONVENTIONAL' as const,
-  underlying: 'SPY' as const,
+  approvedUnderlyings: ['SPY', 'TLT', 'XLE'] as const,
   maximumInitialOrders: 1,
   maximumInitialQuantity: 1,
   automaticNewRiskRelockRequired: true,
@@ -48,7 +48,8 @@ export function evaluateFirstPaperCanaryGovernance(
 ): FirstPaperCanaryGovernanceReceipt {
   const blockers: string[] = [];
   if (input.strategy !== firstPaperCanaryPolicy.strategy) blockers.push('FIRST_CANARY_STRATEGY_NOT_APPROVED');
-  if (input.underlying !== firstPaperCanaryPolicy.underlying) blockers.push('FIRST_CANARY_UNDERLYING_NOT_APPROVED');
+  if (!(firstPaperCanaryPolicy.approvedUnderlyings as readonly string[]).includes(input.underlying))
+    blockers.push('FIRST_CANARY_UNDERLYING_NOT_APPROVED');
   if (input.quantity !== firstPaperCanaryPolicy.maximumInitialQuantity) blockers.push('FIRST_CANARY_QUANTITY_MUST_BE_ONE');
   if (input.priorBrokerOrderCount !== 0) blockers.push('FIRST_CANARY_ALREADY_USED');
   if (!input.currentWorkerProven) blockers.push('CURRENT_WORKER_RUNTIME_PROOF_REQUIRED');
