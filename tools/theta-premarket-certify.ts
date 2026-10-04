@@ -5,6 +5,7 @@ import { classifyExactCi, classifyLockedWorker, premarketCertificationGroups, pr
   '../src/operations/premarket-certification-plan.js';
 import { auditPresessionConfiguration, paperBootstrapRuntimePolicy } from
   '../src/theta/paper-bootstrap-runtime-policy.js';
+import { resolveRuntimeTruthEnvironmentFile } from '../src/config/environment.js';
 
 type CheckState = 'PASS' | 'FAIL' | 'EXTERNAL_BLOCKED' | 'FORWARD_DATA_REQUIRED';
 interface Check { readonly id: string; readonly state: CheckState; readonly detail: string }
@@ -88,8 +89,9 @@ if (process.platform === 'win32') {
   } catch { checks.push(check('LOCKED_WORKER', 'FAIL', 'WORKER_STATUS_UNREADABLE')); }
 }
 
+const runtimeTruthEnvironmentFile = resolveRuntimeTruthEnvironmentFile(process.argv);
 const runtime = run(process.execPath, ['--import', 'tsx', 'tools/theta-runtime-truth.ts',
-  '--environment-file=.env.local', '--json'], 90_000);
+  `--environment-file=${runtimeTruthEnvironmentFile}`, '--json'], 90_000);
 try {
   const truth = JSON.parse(line(runtime.stdout)) as Record<string, unknown>;
   const healthy = truth.databaseReachable === true && truth.databaseReadOnlyState === 'off'
@@ -113,6 +115,7 @@ const receipt = {
     : externalBlocks.length > 0 ? 'EXTERNAL_BLOCKED'
       : forwardBlocks.length > 0 ? 'FORWARD_DATA_REQUIRED' : 'PASS',
   checks,
+  runtimeTruthEnvironmentFile,
   configuration: {
     state: configurationAudit.state,
     policyVersion: paperBootstrapRuntimePolicy.policyVersion,

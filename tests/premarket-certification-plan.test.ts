@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import test from 'node:test';
 import { classifyExactCi, classifyLockedWorker, expectedPremarketCertificationGroupIds, premarketCertificationGroups } from
   '../src/operations/premarket-certification-plan.js';
+import { resolveRuntimeTruthEnvironmentFile } from '../src/config/environment.js';
 
 test('premarket certification covers provider, database, strategies, risk, lifecycle, and resilience', () => {
   assert.deepEqual(expectedPremarketCertificationGroupIds, [
@@ -40,4 +41,14 @@ test('worker alignment compares the runtime SHA with current source', () => {
   assert.equal(classifyLockedWorker({ ...healthy, taskScriptAligned: false }, 'new').state, 'FAIL');
   assert.equal(classifyLockedWorker({ ...governedOffline, taskScriptAligned: false }, 'new').state, 'FAIL');
   assert.equal(classifyLockedWorker({ ...governedOffline, executionGate: 'ACTIVE' }, 'new').state, 'FAIL');
+});
+
+test('runtime truth uses the installed worker environment without overriding an explicit diagnostic file', () => {
+  assert.equal(resolveRuntimeTruthEnvironmentFile([], (path) => path === '.theta-local-worker/production.env'),
+    '.theta-local-worker/production.env');
+  assert.equal(resolveRuntimeTruthEnvironmentFile([], () => false), '.env.local');
+  assert.equal(resolveRuntimeTruthEnvironmentFile(['--environment-file=controlled.env'], () => true),
+    'controlled.env');
+  assert.throws(() => resolveRuntimeTruthEnvironmentFile(['--environment-file='], () => true),
+    /RUNTIME_TRUTH_ENVIRONMENT_FILE_EMPTY/);
 });

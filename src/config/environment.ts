@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { parse } from 'dotenv';
 import { z } from 'zod';
 
@@ -105,6 +105,28 @@ export const environmentPrecedence = [
 ] as const;
 
 const VERCEL_REDACTED_VALUE = '[SENSITIVE]';
+const LOCAL_PRODUCTION_ENVIRONMENT_FILE = '.theta-local-worker/production.env';
+
+/**
+ * Runtime truth must inspect the same authority as the installed resident worker.
+ * An explicit file remains authoritative for CI and controlled diagnostics. On an
+ * installed workstation, prefer the provisioned production environment instead
+ * of a developer .env.local that may intentionally point at an archive database.
+ */
+export const resolveRuntimeTruthEnvironmentFile = (
+  args: readonly string[],
+  fileExists: (path: string) => boolean = existsSync,
+): string => {
+  const argument = args.find((value) => value.startsWith('--environment-file='));
+  if (argument !== undefined) {
+    const explicit = argument.slice('--environment-file='.length).trim();
+    if (!explicit) throw new Error('RUNTIME_TRUTH_ENVIRONMENT_FILE_EMPTY');
+    return explicit;
+  }
+  return fileExists(LOCAL_PRODUCTION_ENVIRONMENT_FILE)
+    ? LOCAL_PRODUCTION_ENVIRONMENT_FILE
+    : '.env.local';
+};
 
 // No .env variant is loaded implicitly. Callers must name the intended file.
 // Explicit file values override stale shell/process values for deterministic checks.

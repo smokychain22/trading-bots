@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { Pool } from 'pg';
-import { loadEnvironmentFile } from '../src/config/environment.js';
+import { loadEnvironmentFile, resolveRuntimeTruthEnvironmentFile } from '../src/config/environment.js';
 import { deriveDatabaseRuntimeMismatches,
   deriveRuntimeMismatches } from '../src/theta/runtime-system-truth.js';
 import { canonicalSystemTruthRegister } from '../src/theta/canonical-system-truth.js';
@@ -12,8 +12,7 @@ const sourceGitOptions = { encoding: 'utf8' as const, maxBuffer: 1024 * 1024,
   timeout: 30_000, windowsHide: true };
 const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], sourceGitOptions).trim();
 const sourceDirty = execFileSync('git', ['status', '--porcelain'], sourceGitOptions).trim().length > 0;
-const environmentFile = process.argv.find((arg) => arg.startsWith('--environment-file='))
-  ?.slice('--environment-file='.length) ?? '.env.local';
+const environmentFile = resolveRuntimeTruthEnvironmentFile(process.argv);
 const environment = loadEnvironmentFile(environmentFile);
 const brokerHost = environment.ALPACA_BASE_URL ? new URL(environment.ALPACA_BASE_URL).hostname : null;
 const paperBrokerConfigured = brokerHost === 'paper-api.alpaca.markets'
