@@ -40,6 +40,13 @@ test('runtime and recovery tools bound immutable source identity probes', () => 
   }
 });
 
+test('runtime truth bounds queries without unsupported PostgreSQL startup options', () => {
+  const source = readFileSync('tools/theta-runtime-truth.ts', 'utf8');
+  assert.match(source, /connectionTimeoutMillis:\s*5_000/);
+  assert.match(source, /query_timeout:\s*5_000/);
+  assert.doesNotMatch(source, /options:\s*['"`][^'"`]*statement_timeout/);
+});
+
 test('forensic and legacy discovery processes have bounded execution', () => {
   const forensic = readFileSync('tools/local-forensic-recovery-sweep.ts', 'utf8');
   assert.match(forensic, /timeout:localSearchTimeoutMs/);

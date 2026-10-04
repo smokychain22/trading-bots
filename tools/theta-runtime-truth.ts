@@ -38,7 +38,7 @@ async function brokerGet(path: string): Promise<{ status: number | null; body: u
 }
 
 const pool = environment.DATABASE_URL ? new Pool({ connectionString: environment.DATABASE_URL,
-  max: 1, connectionTimeoutMillis: 5_000, options: '-c statement_timeout=5000',
+  max: 1, connectionTimeoutMillis: 5_000, query_timeout: 5_000,
   application_name: 'theta-runtime-truth-read-only' }) : null;
 let databaseConnectionFailed = false;
 let databaseEvidenceComplete = false;
