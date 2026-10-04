@@ -43,7 +43,7 @@ const rawRows = [
   r('OPTIONOMICS_CONTEXT', 'PROVIDERS', 'flow/metrics/context fetched on cadence', { runtime: 1 }),
   r('OPTIONOMICS_EVENT_COVERAGE', 'PROVIDERS', 'macro event coverage typed', { runtime: 1 }),
   r('UNIVERSE_DISCOVERY_RANKING', 'PROVIDERS', 'ranked before bound in source; deployed release still cuts first 100', { runtime: 0 }),
-  r('PAPER_INSTRUMENT_MANIFEST', 'PROVIDERS', 'SPY only; promotion contract written; widening is an owner decision', { runtime: 1, policyBlocked: 1 }),
+  r('PAPER_INSTRUMENT_MANIFEST', 'PROVIDERS', 'bounded SPY/TLT/XLE Paper-only cohort; evidence-derived promotion receipt; execution remains separately gated', { runtime: 0 }),
   // --- features and brain
   r('UNDERLYING_FEATURES_TS', 'BRAIN', 'production feature definitions locked by golden vectors', { runtime: 1 }),
   r('FEATURE_PYTHON_SERVING_PARITY', 'BRAIN', 'research definitions locked to TS for RV, trend, gaps', { wired: 0, obsNow: 0 }),

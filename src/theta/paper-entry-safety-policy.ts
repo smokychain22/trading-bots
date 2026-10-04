@@ -6,6 +6,7 @@ import type { OptionomicsEarningsEvidence } from './earnings-event-evidence.js';
 import type { MacroRiskEvidence } from './macro-event-policy.js';
 
 export const instrumentClassificationPolicyVersion = 'theta-paper-instrument-classification-v1' as const;
+export const paperInstrumentClassificationManifestVersion = 'theta-paper-instrument-manifest-v2' as const;
 export const companyEventPaperPolicyVersion = 'theta-company-event-paper-policy-v1' as const;
 export const corporateActionPaperPolicyVersion = 'theta-corporate-action-paper-policy-v1' as const;
 export const paperEntrySafetyPolicyVersion = 'theta-paper-entry-safety-policy-v1' as const;
@@ -25,7 +26,7 @@ export interface PaperInstrumentManifestEntry {
  * Research labels, ticker inference, and model knowledge never populate this
  * manifest. Approval is scoped to Alpaca Paper and does not grant execution. */
 export const paperInstrumentClassificationManifest = {
-  version: instrumentClassificationPolicyVersion,
+  version: paperInstrumentClassificationManifestVersion,
   entries: [{
     symbol: 'SPY',
     instrumentClass: 'NON_COMPANY_FUND',
@@ -33,6 +34,20 @@ export const paperInstrumentClassificationManifest = {
     authorityRef: 'official-issuer:state-street:spy:53cdbf688962ece5d59a3e56166dc51a2efc4f7b7ec2e44a457fa862c2b20f39',
     effectiveAt: '2026-09-23T19:27:56.058Z',
     reviewedAt: '2026-09-23T19:54:51.183Z',
+  }, {
+    symbol: 'TLT',
+    instrumentClass: 'NON_COMPANY_FUND',
+    paperBootstrapApproved: true,
+    authorityRef: 'official-issuer:ishares:tlt:3caa2923df8f6f923b83adf57d26424301e6874356ab18d7bba8fd19b1906c92',
+    effectiveAt: '2026-10-04T11:41:12.937Z',
+    reviewedAt: '2026-10-04T11:41:12.937Z',
+  }, {
+    symbol: 'XLE',
+    instrumentClass: 'NON_COMPANY_FUND',
+    paperBootstrapApproved: true,
+    authorityRef: 'official-issuer:state-street:xle:60c163065b159411553a226697f7f747f986b878dc1e0da5ba8293950fad8a1a',
+    effectiveAt: '2026-10-04T11:41:12.937Z',
+    reviewedAt: '2026-10-04T11:41:12.937Z',
   }] as readonly PaperInstrumentManifestEntry[],
 } as const;
 

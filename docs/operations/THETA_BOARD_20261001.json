@@ -50,7 +50,6 @@
     },
     "openCodeSolvable": [],
     "ownerPolicyBlocked": [
-      "PAPER_INSTRUMENT_MANIFEST",
       "OWNERSHIP_MODEL",
       "WHOLE_CHAIN_FEES_DIVIDENDS_INPUT",
       "LOT_SPLIT_ACCOUNTING",
@@ -248,7 +247,7 @@
     {
       "id": "PAPER_INSTRUMENT_MANIFEST",
       "domain": "PROVIDERS",
-      "note": "SPY only; promotion contract written; widening is an owner decision",
+      "note": "bounded SPY/TLT/XLE Paper-only cohort; evidence-derived promotion receipt; execution remains separately gated",
       "impl": 1,
       "wired": 1,
       "tested": 1,
@@ -259,9 +258,9 @@
       "paper": 0,
       "empApplicable": 0,
       "emp": 0,
-      "policyBlocked": 1,
+      "policyBlocked": 0,
       "unreleased": 0,
-      "observedAtRelease": "35654f214c6d0a3ec38cda4555bab40058aea635",
+      "observedAtRelease": null,
       "releaseStatus": "DEPLOYED_NOT_YET_OBSERVED"
     },
     {

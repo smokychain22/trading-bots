@@ -1,10 +1,10 @@
 {
   "computed": {
     "PHASE2_TOTAL": 80,
-    "PASS": 59,
-    "OWNER_POLICY": 11,
+    "PASS": 61,
+    "OWNER_POLICY": 10,
     "PROVIDER_LIMITED": 1,
-    "FUTURE_MARKET": 2,
+    "FUTURE_MARKET": 1,
     "FUTURE_PAPER": 4,
     "EMPIRICAL_ONLY": 3,
     "NOT_APPLICABLE": 0,
@@ -1064,25 +1064,29 @@
     {
       "ID": "INSTRUMENT-APPROVAL-EXPANSION",
       "DOMAIN": "UNIVERSE",
-      "SOURCE": "paper manifest",
-      "CANONICAL_AUTHORITY": "owner policy",
-      "CURRENT_BEHAVIOR": "SPY only",
-      "EXPECTED_BEHAVIOR": "owner approves instruments",
-      "TEST": [],
-      "STATUS": "OWNER_POLICY",
-      "SOLVABILITY": "POLICY_NOT_DEFECT",
-      "NEXT_ACTION": "owner decision"
+      "SOURCE": "paper manifest + governed promotion receipt",
+      "CANONICAL_AUTHORITY": "owner-authorized evidence gate",
+      "CURRENT_BEHAVIOR": "SPY/TLT/XLE approved for bounded Master Paper bootstrap; no execution grant",
+      "EXPECTED_BEHAVIOR": "current-session enumeration and normal gates",
+      "TEST": [
+        "tests/master-paper-instrument-promotion.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
+      "NEXT_ACTION": "none"
     },
     {
       "ID": "INSTRUMENT-FIT-RESEARCH",
       "DOMAIN": "UNIVERSE",
-      "SOURCE": "docs/operations/THETA_PHASE2_INSTRUMENT_FIT_RESEARCH_20261002.json",
-      "CANONICAL_AUTHORITY": "research only",
-      "CURRENT_BEHAVIOR": "arithmetic fit threshold stated; no offline non-SPY data",
-      "EXPECTED_BEHAVIOR": "capture in session if owner nominates symbols",
-      "TEST": [],
-      "STATUS": "FUTURE_MARKET",
-      "SOLVABILITY": "NEEDS_PROVIDER_DATA",
+      "SOURCE": "docs/operations/THETA_MASTER_PAPER_UNIVERSE_PROMOTION_20261004.json",
+      "CANONICAL_AUTHORITY": "provider-observed qualification",
+      "CURRENT_BEHAVIOR": "real Alpaca contracts/BBO and unchanged cap geometry qualify TLT/XLE; XLF/HYG remain capacity-bound, LQD rejected",
+      "EXPECTED_BEHAVIOR": "current-session exact BBO and full funnel",
+      "TEST": [
+        "tests/master-paper-instrument-promotion.test.ts"
+      ],
+      "STATUS": "PASS",
+      "SOLVABILITY": "FIXED_THIS_PHASE",
       "NEXT_ACTION": "none"
     },
     {

@@ -157,12 +157,17 @@ test('leveraged or inverse instruments are flagged for owner review, not silentl
   assert.ok(r.reviewFlags.includes('LEVERAGED_OR_INVERSE_REQUIRES_OWNER_REVIEW'));
 });
 
-test('the real approval manifest, not discovery, is the only approval source: only SPY is approved, others stay discovered-not-approved', () => {
+test('the real approval manifest, not discovery, is the only approval source for the bounded SPY/TLT/XLE cohort', () => {
   const earnings = (state: string) => ({ state, evidenceId: null, thetaObservedAt: null }) as never;
-  const asOf = '2026-10-02T00:00:00.000Z';
+  const asOf = '2026-10-05T00:00:00.000Z';
   const spy = classifyPaperInstrument({ symbol: 'SPY', decisionAsOf: asOf, earnings: earnings('UNKNOWN') });
   assert.equal(approvalAuthorityFromClassification(spy).paperBootstrapApproved, true);
-  assert.deepEqual(paperInstrumentClassificationManifest.entries.map((entry) => entry.symbol), ['SPY']);
+  assert.deepEqual(paperInstrumentClassificationManifest.entries.map((entry) => entry.symbol), ['SPY', 'TLT', 'XLE']);
+  for (const symbol of ['TLT', 'XLE'] as const) {
+    const evidence = classifyPaperInstrument({ symbol, decisionAsOf: asOf, earnings: earnings('UNKNOWN') });
+    assert.equal(evidence.state, 'NON_COMPANY_FUND', symbol);
+    assert.equal(approvalAuthorityFromClassification(evidence).paperBootstrapApproved, true, symbol);
+  }
   for (const [symbol, earn] of [['QQQ', 'UNKNOWN'], ['AAPL', 'KNOWN_POSITIVE_DISTANCE']] as const) {
     const evidence = classifyPaperInstrument({ symbol, decisionAsOf: asOf, earnings: earnings(earn) });
     const authority = approvalAuthorityFromClassification(evidence);

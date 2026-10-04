@@ -160,8 +160,11 @@ SHA through a complete supported options session. The following remain
   receipts
 - restart and lease evidence from the eventual governed release
 
-The first actual Paper order remains `OWNER_PERMISSION_REQUIRED`. Paper and
-live execution stay locked while this runtime evidence accumulates.
+Owner authorization for one bounded Master Alpaca Paper canary is granted.
+That permission is not an instruction to force a trade. The canary remains
+blocked until a currently approved instrument naturally clears the unchanged
+provider, event, AEGIS, sizing, economic and exact-finalist gates. Follower and
+live execution remain unauthorized.
 
 ## Validation
 
@@ -192,7 +195,13 @@ CURRENT_WORKER_REAL_SESSION = FORWARD_DATA_REQUIRED
 
 READY_FOR_FIRST_PAPER = NO
 
-FIRST_PAPER_ORDER = OWNER_PERMISSION_REQUIRED
+FIRST_PAPER_ORDER = SUPERSEDED_HISTORICAL_STATE
+
+The owner granted Master Alpaca Paper authority after this receipt. Current
+truth is `MASTER_PAPER_PERMISSION = GRANTED`. The remaining first-Paper gate is
+`CURRENT_SESSION_TECHNICAL_AND_ECONOMIC_ELIGIBILITY`. Followers and live money
+remain unauthorized. This note preserves the historical receipt without using
+its former permission state as current operational truth.
 
 PAPER_AND_BROKER_AUTHORITY = false
 

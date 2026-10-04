@@ -70,8 +70,8 @@ test('explicit fund classification makes company earnings not applicable while r
   assert.equal(blocked.state,'MACRO_EVENT_BLOCK');
 });
 
-test('the canonical manifest approves only SPY and still preserves macro blocking',()=>{
-  assert.deepEqual(paperInstrumentClassificationManifest.entries.map((entry)=>entry.symbol),['SPY']);
+test('the canonical manifest approves the bounded owner-authorized Paper fund cohort and preserves macro blocking',()=>{
+  assert.deepEqual(paperInstrumentClassificationManifest.entries.map((entry)=>entry.symbol),['SPY','TLT','XLE']);
   const manifestDecision='2026-09-24T14:00:00.000Z';
   const unknownEarnings=earnings('UNKNOWN',null);
   const instrument=classifyPaperInstrument({symbol:'SPY',decisionAsOf:manifestDecision,earnings:unknownEarnings});

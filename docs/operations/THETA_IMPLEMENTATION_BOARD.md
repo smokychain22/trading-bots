@@ -391,6 +391,16 @@ new source guarantees its provider-confirmed scan reachability. AEGIS baseline
 maturity and current-release open-session proof still block new risk. Do not unlock
 new risk or cut over the worker based on the completed no-submit scan alone.
 
+That paragraph is retained as historical runtime evidence. It was superseded
+on 2026-10-04 by the governed Master Paper universe promotion receipt. The
+current source-controlled Paper-bootstrap cohort is `SPY`, `TLT`, and `XLE`.
+Real Alpaca contract and session-recorded BBO evidence proved unchanged Q and
+account-cap compatibility for TLT and XLE. XLF and HYG qualified but were not
+selected because the cohort is bounded to three full-chain symbols. LQD did
+not produce a qualifying Q contract. This promotion changes instrument scope
+only. It grants no execution authority, changes no risk threshold, and still
+requires current-session exact BBO and every normal safety gate.
+
 | Slice | Current evidence | Next closure proof |
 | --- | --- | --- |
 | Database operability, WRITES_RESTORED_NOT_RELEASE_READY | Fresh Aiven capture `2026-09-22_100128-c600e016` passed isolated restore and preserved the previous verified generation. On 2026-09-22 the existing connection reported both read-only settings `off`, database size 688,453,311 bytes and migration head `064_alpaca_corporate_action_observation`. A rollback-safe temporary write, rollback-safe worker-cycle update/readback and immutable quote-ledger insert/readback passed. The quote row count remained 8,755 after rollback. Five newly persisted worker cycles succeeded. No management input/frontier row yet exists, so management persistence remains unobserved. | Confirm the provider transition is fully RUNNING and monitor real storage/memory. Verify management persistence and broker reconciliation on the locked current release; do not restart or unlock merely because DB writes recovered. |

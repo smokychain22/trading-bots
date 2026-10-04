@@ -29,11 +29,11 @@ test('official first-Paper proposal remains immutable while the exact owner-appr
   assert.equal(approval.paperBootstrapApproved,true);
   assert.equal(approvalSource.url,source.url);
   assert.equal(approvalSource.evidenceHash,source.evidenceHash);
-  assert.equal(paperInstrumentClassificationManifest.entries.length,1);
-  assert.deepEqual(paperInstrumentClassificationManifest.entries[0],{
+  assert.equal(paperInstrumentClassificationManifest.entries.length,3);
+  assert.deepEqual(paperInstrumentClassificationManifest.entries.find((entry)=>entry.symbol==='SPY'),{
     symbol:'SPY',instrumentClass:'NON_COMPANY_FUND',paperBootstrapApproved:true,
     authorityRef:`official-issuer:state-street:spy:${String(source.evidenceHash)}`,
     effectiveAt:String(source.observedAt),reviewedAt:'2026-09-23T19:54:51.183Z',
   });
-  assert.deepEqual(approvedEntry,paperInstrumentClassificationManifest.entries[0]);
+  assert.deepEqual(approvedEntry,paperInstrumentClassificationManifest.entries.find((entry)=>entry.symbol==='SPY'));
 });
