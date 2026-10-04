@@ -1,5 +1,5 @@
 {
-  "simulatedAt": "2026-10-04T08:45:15.441Z",
+  "simulatedAt": "2026-10-04T09:12:29.639Z",
   "inputs": "MEASURED real-writer bytes per decision (bootstrap resampled); legacy datasets the wired writers do not move use the earlier modeled per-decision bytes, listed as MODELED_INPUT",
   "startingDatabaseGiB": 2.598,
   "decisionsPerSessionMean": 154,
