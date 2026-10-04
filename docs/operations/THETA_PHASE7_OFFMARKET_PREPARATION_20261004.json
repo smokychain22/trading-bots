@@ -1,0 +1,5044 @@
+{
+  "contractVersion": "theta-phase7-offmarket-preparation-v1",
+  "generatedAt": "2026-10-04T13:35:09.822Z",
+  "sourceSha": "9bccafc41cc5a59465245742655545a995c1fa82",
+  "replayClass": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+  "sourceCorpus": {
+    "replayRoot": "C:\\ProjectBackups\\trading-bots\\storage-archives\\theta-20261003\\replay-samples",
+    "cycles": 20,
+    "approvedSymbolCycles": 4,
+    "symbols": {
+      "AAPL": 1,
+      "AMZD": 2,
+      "CTS": 1,
+      "GDXY": 1,
+      "IYM": 1,
+      "KORU": 4,
+      "MSFT": 1,
+      "NVDA": 3,
+      "SHOP": 1,
+      "SPCX": 1,
+      "SPY": 3,
+      "TLT": 1
+    },
+    "limitations": [
+      "XLE_HAS_QUALIFICATION_EVIDENCE_BUT_NO_FULL_CYCLE_ARCHIVE_IN_RETAINED_SAMPLE",
+      "COMPACT_T0_EVENT_CLEARANCE_NOT_RECONSTRUCTIBLE",
+      "NO_RESOLVED_AFTER_COST_OPTION_OUTCOME_LABELS"
+    ]
+  },
+  "cycles": [
+    {
+      "cycleId": "3c28a3a4-c256-4075-b5eb-b81890ac044e",
+      "decisionTime": "2026-09-30 13:47:51.302+00",
+      "symbol": "SHOP",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 392,
+      "valid": 392,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 392,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 392,
+            "PASS_COUNT": 392,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 392,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 392,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 392
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 135,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 135,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 74,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "858b7d05-7d9b-4d59-ae67-8878a746a744",
+      "decisionTime": "2026-10-01 13:55:33.853+00",
+      "symbol": "SPY",
+      "approvedSymbol": true,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 2619,
+      "valid": 2619,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 2619,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 2619,
+            "PASS_COUNT": 2619,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 2619,
+            "PASS_COUNT": 2619,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 2619,
+            "PASS_COUNT": 2219,
+            "FAIL_COUNT": 400,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "CONTRACT_NOT_EXECUTABLE": 400,
+              "SPREAD_TOO_WIDE": 400
+            }
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 2219,
+            "PASS_COUNT": 2217,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 2,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DELTA_UNKNOWN": 2
+            }
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 2217,
+            "PASS_COUNT": 2217,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 2217,
+            "PASS_COUNT": 923,
+            "FAIL_COUNT": 1294,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DTE_OUTSIDE_LATTICE": 1294
+            }
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 923,
+            "PASS_COUNT": 601,
+            "FAIL_COUNT": 322,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DELTA_OUTSIDE_ALL_BANDS": 322
+            }
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 601,
+            "PASS_COUNT": 601,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 601,
+            "PASS_COUNT": 498,
+            "FAIL_COUNT": 81,
+            "UNKNOWN_COUNT": 22,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "OPEN_INTEREST_BELOW_FLOOR": 81,
+              "OPEN_INTEREST_UNKNOWN": 22
+            }
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 498,
+            "PASS_COUNT": 262,
+            "FAIL_COUNT": 236,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "VOLUME_BELOW_FLOOR": 236
+            }
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 262,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 262,
+            "reasonCounts": {
+              "NO_PRODUCTION_PREMIUM_GATE": 262
+            }
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 262,
+            "PASS_COUNT": 262,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 262,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 262,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "EVENT_COVERAGE_UNKNOWN": 262
+            }
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "Q_STRICTNESS",
+        "extinctionStage": "EVENT_WINDOW"
+      },
+      "qCandidates": 961,
+      "aegisReached": 4,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 5,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 302,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "08613805-234c-4df1-b337-33e850f0debb",
+      "decisionTime": "2026-10-01 18:20:11.759+00",
+      "symbol": "KORU",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 270,
+      "valid": 270,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 270,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 270,
+            "PASS_COUNT": 270,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 270,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 270,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 270
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 127,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 5,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "af265b6b-73ff-494d-beaa-55d1176c9d07",
+      "decisionTime": "2026-10-01 14:55:42.979+00",
+      "symbol": "KORU",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 270,
+      "valid": 270,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 270,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 270,
+            "PASS_COUNT": 270,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 270,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 270,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 270
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 127,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 127,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "a1855957-adf6-45ba-9157-b51bbbca5682",
+      "decisionTime": "2026-10-01 18:43:39.329+00",
+      "symbol": "IYM",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 62,
+      "valid": 62,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 62,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 62,
+            "PASS_COUNT": 62,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 62,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 62,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 62
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 29,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 29,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 934,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "ed44dd13-9e8b-4a7d-b2ff-a0f76f48d755",
+      "decisionTime": "2026-10-01 14:49:05.425+00",
+      "symbol": "KORU",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 270,
+      "valid": 270,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 270,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 270,
+            "PASS_COUNT": 270,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 270,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 270,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 270
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 127,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 127,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "6f01d761-4100-4252-bd97-9be0eaa52625",
+      "decisionTime": "2026-10-01 14:49:06.434+00",
+      "symbol": "SPY",
+      "approvedSymbol": true,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 2619,
+      "valid": 2619,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 2619,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 2619,
+            "PASS_COUNT": 2619,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 2619,
+            "PASS_COUNT": 2619,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 2619,
+            "PASS_COUNT": 2271,
+            "FAIL_COUNT": 348,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "CONTRACT_NOT_EXECUTABLE": 348,
+              "SPREAD_TOO_WIDE": 348
+            }
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 2271,
+            "PASS_COUNT": 2193,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 78,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DELTA_UNKNOWN": 78
+            }
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 2193,
+            "PASS_COUNT": 2193,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 2193,
+            "PASS_COUNT": 923,
+            "FAIL_COUNT": 1270,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DTE_OUTSIDE_LATTICE": 1270
+            }
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 923,
+            "PASS_COUNT": 588,
+            "FAIL_COUNT": 335,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DELTA_OUTSIDE_ALL_BANDS": 335
+            }
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 588,
+            "PASS_COUNT": 588,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 588,
+            "PASS_COUNT": 500,
+            "FAIL_COUNT": 88,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "OPEN_INTEREST_BELOW_FLOOR": 88
+            }
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 500,
+            "PASS_COUNT": 300,
+            "FAIL_COUNT": 200,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "VOLUME_BELOW_FLOOR": 200
+            }
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 300,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 300,
+            "reasonCounts": {
+              "NO_PRODUCTION_PREMIUM_GATE": 300
+            }
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 300,
+            "PASS_COUNT": 300,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 300,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 300,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "EVENT_COVERAGE_UNKNOWN": 300
+            }
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "Q_STRICTNESS",
+        "extinctionStage": "EVENT_WINDOW"
+      },
+      "qCandidates": 961,
+      "aegisReached": 2,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 5,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 302,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "f8a25352-3bd0-450b-a643-33cb0102fc65",
+      "decisionTime": "2026-09-29 18:16:34.313+00",
+      "symbol": "CTS",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 26,
+      "valid": 26,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 26,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 26,
+            "PASS_COUNT": 26,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 26,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 26,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 26
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 12,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 12,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 157,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "e144cc9b-618e-4696-b22c-4989d494e644",
+      "decisionTime": "2026-09-30 14:45:17.19+00",
+      "symbol": "SPY",
+      "approvedSymbol": true,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 2597,
+      "valid": 2597,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 2597,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 2597,
+            "PASS_COUNT": 2597,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 2597,
+            "PASS_COUNT": 2597,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 2597,
+            "PASS_COUNT": 2162,
+            "FAIL_COUNT": 435,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "CONTRACT_NOT_EXECUTABLE": 435,
+              "SPREAD_TOO_WIDE": 435
+            }
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 2162,
+            "PASS_COUNT": 2155,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 7,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DELTA_UNKNOWN": 7
+            }
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 2155,
+            "PASS_COUNT": 2155,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 2155,
+            "PASS_COUNT": 601,
+            "FAIL_COUNT": 1554,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DTE_OUTSIDE_LATTICE": 1554
+            }
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 601,
+            "PASS_COUNT": 383,
+            "FAIL_COUNT": 218,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DELTA_OUTSIDE_ALL_BANDS": 218
+            }
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 383,
+            "PASS_COUNT": 383,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 383,
+            "PASS_COUNT": 358,
+            "FAIL_COUNT": 25,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "OPEN_INTEREST_BELOW_FLOOR": 25
+            }
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 358,
+            "PASS_COUNT": 210,
+            "FAIL_COUNT": 148,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "VOLUME_BELOW_FLOOR": 148
+            }
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 210,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 210,
+            "reasonCounts": {
+              "NO_PRODUCTION_PREMIUM_GATE": 210
+            }
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 210,
+            "PASS_COUNT": 210,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 210,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 210,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "EVENT_COVERAGE_UNKNOWN": 210
+            }
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "Q_STRICTNESS",
+        "extinctionStage": "EVENT_WINDOW"
+      },
+      "qCandidates": 637,
+      "aegisReached": 3,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 637,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 322,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "016e90b9-8102-4971-a860-05db7328c024",
+      "decisionTime": "2026-10-02 15:09:23.091+00",
+      "symbol": "NVDA",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_SAME_RESULT",
+      "chain": 740,
+      "valid": 740,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 740,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 740,
+            "PASS_COUNT": 740,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 740,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 740,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 740
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 290,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 5,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 98,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "a7e4dc96-d904-4f5a-a39d-1e60a4175a96",
+      "decisionTime": "2026-09-29 17:23:16.297+00",
+      "symbol": "AMZD",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 38,
+      "valid": 38,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 38,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 38,
+            "PASS_COUNT": 38,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 38,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 38,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 38
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 17,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 17,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 346,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "ae5331bb-70f7-4026-af02-613eb8afe0d0",
+      "decisionTime": "2026-10-02 16:22:36.615+00",
+      "symbol": "SPCX",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_SAME_RESULT",
+      "chain": 537,
+      "valid": 537,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 537,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 537,
+            "PASS_COUNT": 537,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 537,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 537,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 537
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 284,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 5,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "179d7a0e-fa45-4e63-a7de-9d72097692ef",
+      "decisionTime": "2026-09-29 18:49:19.165+00",
+      "symbol": "GDXY",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 44,
+      "valid": 44,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 44,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 44,
+            "PASS_COUNT": 44,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 44,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 44,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 44
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 21,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 21,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 463,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "02cb022f-7320-4eb7-952b-56cbd25c5a6c",
+      "decisionTime": "2026-09-29 16:17:42.617+00",
+      "symbol": "AMZD",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 38,
+      "valid": 38,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 38,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 38,
+            "PASS_COUNT": 38,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 38,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 38,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 38
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 17,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 17,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 346,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "84791519-ea14-4ff5-b863-8d21718355a1",
+      "decisionTime": "2026-10-02 19:52:12.363+00",
+      "symbol": "NVDA",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_SAME_RESULT",
+      "chain": 740,
+      "valid": 740,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 740,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 740,
+            "PASS_COUNT": 740,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 740,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 740,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 740
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 290,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 5,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 98,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "00e36993-7131-4eef-b921-b4db9334bb04",
+      "decisionTime": "2026-10-02 16:31:45.735+00",
+      "symbol": "AAPL",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_SAME_RESULT",
+      "chain": 686,
+      "valid": 686,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 686,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 686,
+            "PASS_COUNT": 686,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 686,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 686,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 686
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 267,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 267,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 97,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "8fe12acb-7966-41cd-a45b-fbefd00bc8c2",
+      "decisionTime": "2026-10-01 14:04:33.598+00",
+      "symbol": "KORU",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 270,
+      "valid": 270,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 270,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 270,
+            "PASS_COUNT": 270,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 270,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 270,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 270
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 127,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 127,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 0,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "505e251a-6930-4b9b-905c-51cfaf58152a",
+      "decisionTime": "2026-09-30 16:06:14.698+00",
+      "symbol": "TLT",
+      "approvedSymbol": true,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_CHANGED_RESULT",
+      "chain": 530,
+      "valid": 530,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 530,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 530,
+            "PASS_COUNT": 530,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 530,
+            "PASS_COUNT": 530,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 530,
+            "PASS_COUNT": 365,
+            "FAIL_COUNT": 165,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "CONTRACT_NOT_EXECUTABLE": 165,
+              "QUOTE_STALE": 42,
+              "SPREAD_TOO_WIDE": 136
+            }
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 365,
+            "PASS_COUNT": 365,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 365,
+            "PASS_COUNT": 365,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 365,
+            "PASS_COUNT": 73,
+            "FAIL_COUNT": 292,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DTE_OUTSIDE_LATTICE": 292
+            }
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 73,
+            "PASS_COUNT": 24,
+            "FAIL_COUNT": 49,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "DELTA_OUTSIDE_ALL_BANDS": 49
+            }
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 24,
+            "PASS_COUNT": 24,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 24,
+            "PASS_COUNT": 24,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 24,
+            "PASS_COUNT": 24,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 24,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 24,
+            "reasonCounts": {
+              "NO_PRODUCTION_PREMIUM_GATE": 24
+            }
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 24,
+            "PASS_COUNT": 24,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 24,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 24,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "EVENT_COVERAGE_UNKNOWN": 24
+            }
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "Q_STRICTNESS",
+        "extinctionStage": "EVENT_WINDOW"
+      },
+      "qCandidates": 131,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 131,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 81,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "ce9ee797-11b6-427b-b275-017efe3329e7",
+      "decisionTime": "2026-10-02 13:49:54.405+00",
+      "symbol": "MSFT",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_SAME_RESULT",
+      "chain": 789,
+      "valid": 789,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 789,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 789,
+            "PASS_COUNT": 789,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 789,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 789,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 789
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 310,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 310,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 112,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    },
+    {
+      "cycleId": "20e7d9cf-9f79-410e-9ecf-0c266f4b9a73",
+      "decisionTime": "2026-10-02 19:43:09.377+00",
+      "symbol": "NVDA",
+      "approvedSymbol": false,
+      "replayMode": "CURRENT_POLICY_COUNTERFACTUAL_REPLAY",
+      "replayState": "CROSS_SOURCE_SAME_RESULT",
+      "chain": 740,
+      "valid": 740,
+      "funnel": {
+        "totals": {
+          "INPUT_CONTRACTS": 740,
+          "Q_VALID": 0,
+          "FINALIST_REACHED": 0,
+          "AEGIS_REACHED": 0,
+          "AEGIS_PASS": 0,
+          "CAPITAL_FIT": 0,
+          "FINAL_QTY_POSITIVE": 0
+        },
+        "stages": [
+          {
+            "stageId": "PUT_CONTRACT_IDENTITY",
+            "order": 1,
+            "category": "IDENTITY",
+            "INPUT_COUNT": 740,
+            "PASS_COUNT": 740,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "INSTRUMENT_APPROVAL",
+            "order": 2,
+            "category": "INSTRUMENT_APPROVAL",
+            "INPUT_COUNT": 740,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 740,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {
+              "INSTRUMENT_NOT_IN_CURRENT_PAPER_MANIFEST": 740
+            }
+          },
+          {
+            "stageId": "EXECUTABLE_ALPACA_QUOTE",
+            "order": 3,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_KNOWN",
+            "order": 4,
+            "category": "DATA_UNKNOWN",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_FRESHNESS",
+            "order": 5,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DTE_WINDOW",
+            "order": 6,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "DELTA_BAND",
+            "order": 7,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "SPREAD",
+            "order": 8,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "OPEN_INTEREST",
+            "order": 9,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "VOLUME",
+            "order": 10,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "PREMIUM_ECONOMICS",
+            "order": 11,
+            "category": "Q_STRICTNESS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "QUOTE_AGE_BUDGET",
+            "order": 12,
+            "category": "LIQUIDITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "EVENT_WINDOW",
+            "order": 13,
+            "category": "EVENTS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINALIST_SHORTLIST",
+            "order": 14,
+            "category": "SHORTLIST_BOUND",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "ENTRY_ELIGIBILITY",
+            "order": 15,
+            "category": "ENTRY_ELIGIBILITY",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "CAPITAL_FIT",
+            "order": 16,
+            "category": "CAPITAL",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "AEGIS",
+            "order": 17,
+            "category": "AEGIS",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          },
+          {
+            "stageId": "FINAL_QUANTITY",
+            "order": 18,
+            "category": "SIZING",
+            "INPUT_COUNT": 0,
+            "PASS_COUNT": 0,
+            "FAIL_COUNT": 0,
+            "UNKNOWN_COUNT": 0,
+            "NOT_APPLICABLE_COUNT": 0,
+            "reasonCounts": {}
+          }
+        ],
+        "dominantBlocker": "INSTRUMENT_APPROVAL",
+        "extinctionStage": "INSTRUMENT_APPROVAL"
+      },
+      "qCandidates": 290,
+      "aegisReached": 0,
+      "aegisPass": 0,
+      "structuralQtyPositive": 0,
+      "finalists": 5,
+      "currentAction": "SYSTEM_HOLD",
+      "currentQuantity": 0,
+      "wait": true,
+      "hCandidates": 98,
+      "dCandidates": 1000,
+      "hStructuralQtyPositive": 0,
+      "dStructuralQtyPositive": 0,
+      "brokerAuthority": false,
+      "providerRequests": 0,
+      "brokerMutations": 0
+    }
+  ],
+  "reachability": [
+    {
+      "symbol": "SPY",
+      "minimumObservedValidCollateralOneContract": 37500,
+      "optionsBuyingPower": 99999.96,
+      "tickerCap": 0,
+      "portfolioCap": 1,
+      "assignmentCap": 2,
+      "aegisCap": 0,
+      "strategyCap": 3,
+      "maximumTheoreticalQty": 0,
+      "qty1Reachable": false,
+      "reason": "ACCOUNT_POLICY_INCOMPATIBILITY"
+    },
+    {
+      "symbol": "TLT",
+      "minimumObservedValidCollateralOneContract": 6700,
+      "optionsBuyingPower": 99999.96,
+      "tickerCap": 2,
+      "portfolioCap": 7,
+      "assignmentCap": 14,
+      "aegisCap": 2,
+      "strategyCap": 3,
+      "maximumTheoreticalQty": 2,
+      "qty1Reachable": true,
+      "reason": "STRUCTURALLY_REACHABLE"
+    },
+    {
+      "symbol": "XLE",
+      "minimumObservedValidCollateralOneContract": 5500,
+      "optionsBuyingPower": 99999.96,
+      "tickerCap": 2,
+      "portfolioCap": 9,
+      "assignmentCap": 18,
+      "aegisCap": 2,
+      "strategyCap": 3,
+      "maximumTheoreticalQty": 2,
+      "qty1Reachable": true,
+      "reason": "STRUCTURALLY_REACHABLE"
+    }
+  ],
+  "structuralUniverseReachable": true,
+  "strictness": {
+    "gateRoles": {
+      "PUT_CONTRACT_IDENTITY": "HARD_SAFETY",
+      "INSTRUMENT_APPROVAL": "HARD_SAFETY",
+      "EXECUTABLE_ALPACA_QUOTE": "HARD_DATA_QUALITY",
+      "DELTA_KNOWN": "HARD_DATA_QUALITY",
+      "QUOTE_FRESHNESS": "HARD_SAFETY",
+      "DTE_WINDOW": "HARD_STRUCTURAL",
+      "DELTA_BAND": "HARD_STRUCTURAL",
+      "SPREAD": "HARD_DATA_QUALITY",
+      "OPEN_INTEREST": "HARD_DATA_QUALITY",
+      "VOLUME": "HARD_DATA_QUALITY",
+      "PREMIUM_ECONOMICS": "HARD_STRUCTURAL",
+      "QUOTE_AGE_BUDGET": "HARD_DATA_QUALITY",
+      "EVENT_WINDOW": "HARD_SAFETY",
+      "FINALIST_SHORTLIST": "SOFT_RANKING",
+      "ENTRY_ELIGIBILITY": "HARD_SAFETY",
+      "CAPITAL_FIT": "HARD_ACCOUNT",
+      "AEGIS": "HARD_PORTFOLIO",
+      "FINAL_QUANTITY": "HARD_ACCOUNT"
+    },
+    "allCorpusTopReasonCounts": {
+      "GATE:EVENT_WINDOW:UNKNOWN": 14277,
+      "GATE:DTE_WINDOW:FAIL": 9117,
+      "GATE:VOLUME:FAIL": 8019,
+      "GATE:OPEN_INTEREST:FAIL": 7525,
+      "GATE:DELTA_BAND:FAIL": 5682,
+      "GATE:EXECUTABLE_ALPACA_QUOTE:FAIL": 4676,
+      "GATE:SPREAD:FAIL": 4477,
+      "HARD:THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND": 2708,
+      "GATE:QUOTE_AGE_BUDGET:FAIL": 916,
+      "GATE:DELTA_KNOWN:UNKNOWN": 768,
+      "GATE:DELTA_BAND:UNKNOWN": 768,
+      "HARD:THETA_Q_NOT_SENT_UPSTREAM_REJECT:NOT_SELECTED_FOR_FINALIST_REFRESH": 758,
+      "GATE:QUOTE_FRESHNESS:FAIL": 710,
+      "HARD:ACCOUNT_POLICY_INCOMPATIBILITY": 460,
+      "GATE:OPEN_INTEREST:UNKNOWN": 256,
+      "GATE:VOLUME:UNKNOWN": 207,
+      "HARD:THETA_Q_ACTION_INFEASIBLE": 32,
+      "HARD:THETA_Q_INFEASIBLE_REASON:OWNERSHIP_ACCEPTABILITY_UNKNOWN": 25,
+      "HARD:AEGIS_HARD_VETO": 9,
+      "GATE:CAPITAL_FIT:FAIL": 6,
+      "HARD:THETA_Q_INFEASIBLE_REASON:VOLUME_BELOW_FLOOR": 5,
+      "HARD:THETA_Q_NOT_SENT_UPSTREAM_REJECT:CONTRACT_NOT_EXECUTABLE": 4,
+      "HARD:NO_ASSIGNMENT_CAPACITY": 3,
+      "HARD:THETA_Q_INFEASIBLE_REASON:OPEN_INTEREST_UNKNOWN": 1,
+      "HARD:THETA_Q_INFEASIBLE_REASON:OPEN_INTEREST_BELOW_FLOOR": 1
+    },
+    "approvedCorpusTopReasonCounts": {
+      "GATE:EVENT_WINDOW:UNKNOWN": 8365,
+      "GATE:DTE_WINDOW:FAIL": 5675,
+      "GATE:VOLUME:FAIL": 4345,
+      "GATE:OPEN_INTEREST:FAIL": 3878,
+      "GATE:DELTA_BAND:FAIL": 3534,
+      "HARD:THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND": 1912,
+      "GATE:EXECUTABLE_ALPACA_QUOTE:FAIL": 1348,
+      "GATE:SPREAD:FAIL": 1319,
+      "HARD:THETA_Q_NOT_SENT_UPSTREAM_REJECT:NOT_SELECTED_FOR_FINALIST_REFRESH": 758,
+      "GATE:OPEN_INTEREST:UNKNOWN": 193,
+      "GATE:VOLUME:UNKNOWN": 144,
+      "GATE:DELTA_KNOWN:UNKNOWN": 104,
+      "GATE:DELTA_BAND:UNKNOWN": 104,
+      "GATE:QUOTE_AGE_BUDGET:FAIL": 42,
+      "GATE:QUOTE_FRESHNESS:FAIL": 13,
+      "HARD:THETA_Q_ACTION_INFEASIBLE": 11,
+      "HARD:AEGIS_HARD_VETO": 9,
+      "GATE:CAPITAL_FIT:FAIL": 6,
+      "HARD:THETA_Q_INFEASIBLE_REASON:VOLUME_BELOW_FLOOR": 5,
+      "HARD:THETA_Q_INFEASIBLE_REASON:OWNERSHIP_ACCEPTABILITY_UNKNOWN": 5,
+      "HARD:NO_ASSIGNMENT_CAPACITY": 3,
+      "HARD:THETA_Q_INFEASIBLE_REASON:OPEN_INTEREST_UNKNOWN": 1
+    },
+    "policyChanged": false,
+    "productionThresholdChanged": false
+  },
+  "gateRegret": {
+    "state": "UNKNOWN_NO_RESOLVED_AFTER_COST_OPTION_OUTCOMES",
+    "futureObservableCount": 0,
+    "positiveAfterCostCounterfactualCount": null,
+    "negativeAfterCostCounterfactualCount": null
+  },
+  "falseAccept": {
+    "state": "UNKNOWN_NO_RESOLVED_AFTER_COST_OPTION_OUTCOMES",
+    "evaluatedOpenCount": 0
+  },
+  "shadow": {
+    "hCandidateCount": 1584,
+    "dCandidateCount": 17246,
+    "approvedHCandidateCount": 1007,
+    "approvedDCandidateCount": 4000,
+    "approvedHStructuralQtyPositive": 0,
+    "approvedDStructuralQtyPositive": 0,
+    "brokerAuthority": false
+  },
+  "managementApplicability": {
+    "recovery": "NOT_APPLICABLE_FLAT_ACCOUNT",
+    "coveredCall": "NOT_APPLICABLE_FLAT_ACCOUNT"
+  },
+  "offlineVerificationContracts": {
+    "canaryAuthorityChain": "tests/phase3-first-paper-path.test.ts",
+    "boundaryMutationMatrix": "tests/master-paper-action-handoff.test.ts",
+    "exactQuoteValidation": "tests/execution-option-quote.test.ts",
+    "idempotencyAndConflictHandling": "tests/paper-order-coordinator.test.ts",
+    "managementActionComparison": [
+      "tests/management-counterfactual-analysis.test.ts",
+      "tests/profit-taking-replay.test.ts",
+      "tests/defined-risk-management-replay.test.ts"
+    ],
+    "wholeChainAccounting": "tests/phase2-chain-random-episodes.test.ts",
+    "authorityIsolation": "tests/architecture-authority-guards.test.ts"
+  },
+  "executionAuthorized": false,
+  "providerRequests": 0,
+  "brokerMutations": 0
+}
