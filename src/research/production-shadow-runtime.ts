@@ -25,7 +25,8 @@ import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment } from '../t
 import { loadRecoveryHistory } from '../theta/recovery-history-loader.js';
 import { loadPersistedPendingCorporateActionSymbols, persistAlpacaCorporateActionRead, readAlpacaCorporateActions,
   type CorporateActionRead } from '../theta/alpaca-corporate-action-evidence.js';
-import type { CanonicalBranchFrontier, CanonicalFrontierCandidate } from '../theta/canonical-strategy-frontier.js';
+import type { CanonicalBranchFrontier, CanonicalFrontierCandidate,
+  CanonicalStrategyFrontier } from '../theta/canonical-strategy-frontier.js';
 import { probeAlpacaProcessEnvironmentAuth } from '../providers/readiness.js';
 import { refreshAegisIvStress, type AegisIvStressRefreshResult } from '../theta/aegis-iv-stress.js';
 import { assessAegisSpreadStressForContracts } from '../theta/aegis-spread-stress.js';
@@ -51,6 +52,15 @@ export function observedDecisionCounts(cycle: ThetaShadowCycleResult | null):
   Pick<ProductionShadowSymbolDiagnostic, 'qLatticeTotal' | 'selectedQuantity'> {
   return { qLatticeTotal: cycle?.orchestration?.thetaQ?.candidates.length ?? null,
     selectedQuantity: cycle?.strategyFrontier?.selectedQuantity ?? null };
+}
+
+/** Resolve the exact broker contract identity for the selected frontier row.
+ * Frontier candidate ids include the strategy namespace and are not valid
+ * keys for the persisted per-contract IV assessment map. */
+export function selectedExactOptionSymbol(frontier: CanonicalStrategyFrontier | null): string | null {
+  if(frontier?.selectedCandidateId===null||frontier===null)return null;
+  return frontier.branches.flatMap((branch)=>branch.candidates)
+    .find((candidate)=>candidate.candidateId===frontier.selectedCandidateId)?.legs[0]?.optionSymbol??null;
 }
 
 export interface ProductionShadowScanReport {
@@ -435,9 +445,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
-    const selectedOptionSymbol=member.cycle.strategyFrontier?.selectedCandidateId??null;
     const selectedFrontierCandidate=member.cycle.strategyFrontier?.branches.flatMap((branch)=>branch.candidates)
       .find((candidate)=>candidate.candidateId===member.cycle?.strategyFrontier?.selectedCandidateId);
+    const selectedOptionSymbol=selectedExactOptionSymbol(member.cycle.strategyFrontier);
     const selectedLeg=selectedFrontierCandidate?.legs[0];
     const eventState=member.cycle.fusionSnapshot.snapshot.eventState;
     const eventObject=eventState!==null&&typeof eventState==='object'&&!Array.isArray(eventState)

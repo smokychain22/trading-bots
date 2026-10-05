@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AlpacaProviderError } from '../src/theta/alpaca-provider.js';
 import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressApplicability, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, paperBootstrapAuthoritySymbols, paperEntryEventEvidenceBlockers, refreshScanIvStress, missingObservationReason,
-  universeDiscoveryDiagnosticBlockers,productionScanDecisionStatus,loadCorporateActionSafetyEvidence,observedDecisionCounts } from '../src/research/production-shadow-runtime.js';
+  universeDiscoveryDiagnosticBlockers,productionScanDecisionStatus,loadCorporateActionSafetyEvidence,observedDecisionCounts,
+  selectedExactOptionSymbol } from '../src/research/production-shadow-runtime.js';
 import { parseRuntimeFirstPaperEvidence } from '../src/customer/operator-readiness.js';
 import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
 import { assessAegisIvStress, normalizeOptionomicsAtmIvObservation,
@@ -153,6 +154,14 @@ test('research breadth IV uncertainty does not block Paper-authorized symbols',(
 test('Paper authority is limited to approved symbols that the provider actually discovered',()=>{
   assert.deepEqual(paperBootstrapAuthoritySymbols(['SQQQ','SPY','QQQ']),['SPY']);
   assert.deepEqual(paperBootstrapAuthoritySymbols(['SQQQ','QQQ']),[]);
+});
+
+test('Paper IV verification uses the selected exact OCC symbol rather than the namespaced frontier candidate id',()=>{
+  const frontier={selectedCandidateId:'THETA_CONVENTIONAL:TLT261030P00076000',branches:[{candidates:[{
+    candidateId:'THETA_CONVENTIONAL:TLT261030P00076000',legs:[{optionSymbol:'TLT261030P00076000'}],
+  }]}]} as unknown as import('../src/theta/canonical-strategy-frontier.js').CanonicalStrategyFrontier;
+  assert.equal(selectedExactOptionSymbol(frontier),'TLT261030P00076000');
+  assert.equal(selectedExactOptionSymbol({...frontier,selectedCandidateId:null}),null);
 });
 
 test('Paper-plan assembly requires persisted IV assessment or a governed accumulating baseline',()=>{
