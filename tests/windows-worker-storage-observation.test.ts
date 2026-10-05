@@ -6,14 +6,16 @@ import test from 'node:test';
 test('deferred Windows storage measurements stay unknown rather than zero or healthy',()=>{
   const source=readFileSync('tools/windows/theta-local-worker.ps1','utf8');
   const start=source.indexOf('$localResearchArchiveState = if');
-  const end=source.indexOf('if ($report.reconciliation.marketOpen -ne $true)',start);
+  const end=source.indexOf(
+    'if ($hostResourceGuard.AllowHeavyResearch -and $report.reconciliation.marketOpen -ne $true)',start);
   assert.ok(start>0 && end>start);
   // Execute only the variable-initialization block, never the supervisor.
   const initialization=source.slice(start,end);
   assert.doesNotMatch(initialization,/Invoke-|Start-Process|Stop-Process|Remove-Item/);
   const names=['localResearchArchiveRows','localResearchSpoolRows','localResearchPendingCompactionRows',
     'localResearchActiveSpoolBytes','localResearchTotalBytes','localResearchParquetFiles','localResearchParquetBytes'];
-  const script=`$report=@{reconciliation=@{marketOpen=$true}}; ${initialization}
+  const script=`$report=@{reconciliation=@{marketOpen=$true}};
+    $hostResourceGuard=@{AllowHeavyResearch=$true}; ${initialization}
     @{ ${names.map((name)=>`${name}=$${name}`).join(';')};
       watermark=$localResearchStorageWatermark; quota=$localResearchTransferQuotaState;
       state=$localResearchArchiveState } | ConvertTo-Json -Compress`;
