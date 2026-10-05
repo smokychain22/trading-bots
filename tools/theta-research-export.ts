@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, link, mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { loadEnvironment } from '../src/config/environment.js';
 import { PostgresDatasetExporter, researchExportSafeFailureCode } from '../src/research/postgres-dataset-export.js';
@@ -38,7 +38,7 @@ async function main():Promise<void>{
   const artifact=await exporter.export({start,end,exportedAt,featureSetVersion});
   if (!hasExportableEvidence(artifact.rowCounts)) throw new Error('NO_POINT_IN_TIME_EVIDENCE_IN_WINDOW');
   const readiness=await buildR6ReadinessReceipt(pool);
-  const root=resolve('research_exports');
+  const root=resolve(value('--output-root')??'research_exports');
   const destination=resolve(root,artifact.datasetHash);
   const latest=resolve(root,'latest');
   const manifest={schemaVersion:artifact.schemaVersion,datasetHash:artifact.datasetHash,
@@ -53,12 +53,16 @@ async function main():Promise<void>{
   await writeFile(resolve(destination,'handoff.json'),`${JSON.stringify(handoff,null,2)}\n`,'utf8');
   await rm(latest,{recursive:true,force:true});
   await mkdir(latest,{recursive:true});
-  await Promise.all([
-    writeFile(resolve(latest,'dataset.json'),`${JSON.stringify(artifact,null,2)}\n`,'utf8'),
-    writeFile(resolve(latest,'manifest.json'),`${JSON.stringify(manifest,null,2)}\n`,'utf8'),
-    writeFile(resolve(latest,'data-quality.json'),`${JSON.stringify(readiness,null,2)}\n`,'utf8'),
-    writeFile(resolve(latest,'handoff.json'),`${JSON.stringify(handoff,null,2)}\n`,'utf8'),
-  ]);
+  for (const name of ['dataset.json','manifest.json','data-quality.json','handoff.json']) {
+    const source=resolve(destination,name);
+    const target=resolve(latest,name);
+    try { await link(source,target); }
+    catch (error) {
+      const code=(error as NodeJS.ErrnoException).code;
+      if (!['EXDEV','EPERM','EACCES','ENOTSUP'].includes(code??'')) throw error;
+      await copyFile(source,target);
+    }
+  }
   process.stdout.write(`${JSON.stringify({state:'EXPORTED',datasetHash:artifact.datasetHash,
     sourceWindow:artifact.sourceWindow,rowCounts:artifact.rowCounts,latest:'research_exports/latest',
     readiness:{pointInTimeDataset:readiness.POINT_IN_TIME_DATASET_READY,shadowCapture:readiness.SHADOW_CAPTURE_READY,

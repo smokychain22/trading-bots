@@ -47,7 +47,7 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /storage-audit-failure\.json/);
   assert.match(source, /theta-storage-audit\.ts/);
   assert.match(source, /STORAGE_AUDIT_PROCESS_TIMEOUT/);
-  assert.match(source, /storageAuditState.*DEFERRED_MARKET_CRITICAL/);
+  assert.match(source, /storageAuditState[\s\S]{0,220}DEFERRED_MARKET_CRITICAL/);
   assert.match(source, /storageAuditRetryAllowed/);
   assert.match(source, /storageCooldownHours/);
   assert.match(source, /storageErrorCode -eq '53000'/);
@@ -57,6 +57,15 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /verify-local-research-parquet\.py/);
   assert.match(source, /PAUSED_STORAGE_WATERMARK/);
   assert.match(source, /newSubjectScheduling/);
+  assert.match(source, /Get-ThetaHostResourceGuard -Path \$stateRoot/);
+  assert.match(source, /PAUSED_HOST_RESOURCE_GUARD/);
+  assert.match(source, /hostNonCriticalPaused=\$hostResourceGuard\.PauseNonCritical/);
+  assert.match(source, /--output-root/);
+  assert.match(source, /Join-Path \$ControlRoot 'research_exports/);
+  const exporter = await readFile('tools/theta-research-export.ts', 'utf8');
+  assert.match(exporter, /value\('--output-root'\)/);
+  assert.match(exporter, /await link\(source,target\)/);
+  assert.match(exporter, /await copyFile\(source,target\)/);
   const command5a = await readFile('tools/theta-command5a-runtime.ts', 'utf8');
   assert.match(command5a, /PAUSED_STORAGE_WATERMARK/);
   assert.match(command5a, /measureLocalResearchStorageBytes/);

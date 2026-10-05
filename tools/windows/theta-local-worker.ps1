@@ -234,6 +234,8 @@ try {
       $command5aOldestOverdueSeconds = $null
       $command5aSourceCursor = $null
       $command5aArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
+      $hostResourceGuard = Get-ThetaHostResourceGuard -Path $stateRoot
+      $command5aSchedulingPausedForHost = -not $hostResourceGuard.AllowHeavyResearch
       $command5aSchedulingPausedForStorage = $false
       if (Test-Path -LiteralPath $command5aArchiveHealthPath -PathType Leaf) {
         try {
@@ -244,7 +246,9 @@ try {
       $previousErrorActionPreference = $ErrorActionPreference
       $ErrorActionPreference = 'Continue'
       try {
-        if ($command5aSchedulingPausedForStorage) {
+        if ($command5aSchedulingPausedForHost) {
+          $command5aScheduleState = 'PAUSED_HOST_RESOURCE_GUARD'
+        } elseif ($command5aSchedulingPausedForStorage) {
           $command5aScheduleState = 'PAUSED_STORAGE_WATERMARK'
         } else {
           # The local source cursor advances across bounded pages. On first
@@ -274,46 +278,54 @@ try {
         # Run the bounded worker whenever jobs are due. The read-only source
         # accepts only fresh latest marks after close and types stale/missing
         # marks explicitly, so this cannot fabricate an in-session observation.
-        $command5aObservationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 180 -Arguments @(
-          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=observe',
-          "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath","--spool=$command5aSpoolPath")
-        $command5aObservationOutput = $command5aObservationProcess.Output
-        if ($command5aObservationProcess.State -eq 'COMPLETED' -and $command5aObservationProcess.ExitCode -eq 0) {
-          $command5aObservationResult = $command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json
-          $command5aObservationState = [string]$command5aObservationResult.state
-          $command5aObserved = [int]$command5aObservationResult.observed
-          $command5aMissed = [int]$command5aObservationResult.missed
-          $command5aDeferredProvider = [int]$command5aObservationResult.deferredProvider
-          $command5aDeferredMarket = [int]$command5aObservationResult.deferredMarket
-          $command5aCensoredRetryExhausted = [int]$command5aObservationResult.censoredRetryExhausted
+        if ($command5aSchedulingPausedForHost) {
+          $command5aObservationState = 'PAUSED_HOST_RESOURCE_GUARD'
         } else {
-          $command5aObservationState = 'FAILED_NONCRITICAL'
-          if ($command5aObservationProcess.State -eq 'TIMED_OUT') {
-            $command5aObservationErrorCode = 'COMMAND5A_OBSERVATION_PROCESS_TIMEOUT'
+          $command5aObservationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 180 -Arguments @(
+            '--import','tsx','tools/theta-command5a-runtime.ts','--mode=observe',
+            "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath","--spool=$command5aSpoolPath")
+          $command5aObservationOutput = $command5aObservationProcess.Output
+          if ($command5aObservationProcess.State -eq 'COMPLETED' -and $command5aObservationProcess.ExitCode -eq 0) {
+            $command5aObservationResult = $command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json
+            $command5aObservationState = [string]$command5aObservationResult.state
+            $command5aObserved = [int]$command5aObservationResult.observed
+            $command5aMissed = [int]$command5aObservationResult.missed
+            $command5aDeferredProvider = [int]$command5aObservationResult.deferredProvider
+            $command5aDeferredMarket = [int]$command5aObservationResult.deferredMarket
+            $command5aCensoredRetryExhausted = [int]$command5aObservationResult.censoredRetryExhausted
           } else {
-            try { $command5aObservationErrorCode = [string](($command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
-            catch { $command5aObservationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+            $command5aObservationState = 'FAILED_NONCRITICAL'
+            if ($command5aObservationProcess.State -eq 'TIMED_OUT') {
+              $command5aObservationErrorCode = 'COMMAND5A_OBSERVATION_PROCESS_TIMEOUT'
+            } else {
+              try { $command5aObservationErrorCode = [string](($command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+              catch { $command5aObservationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+            }
           }
         }
         # Maturation is local and provider-free. It may run while the market
         # is closed and only consumes already verified observation archives.
-        $command5aMaturationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 120 -Arguments @(
-          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=mature',
-          "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath","--spool=$command5aSpoolPath",'--limit=64')
-        $command5aMaturationOutput = $command5aMaturationProcess.Output
-        if ($command5aMaturationProcess.State -eq 'COMPLETED' -and $command5aMaturationProcess.ExitCode -eq 0) {
-          $command5aMaturationResult = $command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json
-          $command5aMaturationState = [string]$command5aMaturationResult.state
-          $command5aMaterialized = [int]$command5aMaturationResult.materialized
-          $command5aMaturationPending = [int]$command5aMaturationResult.pending
-          $command5aMaturationCensored = [int]$command5aMaturationResult.censored
+        if ($command5aSchedulingPausedForHost) {
+          $command5aMaturationState = 'PAUSED_HOST_RESOURCE_GUARD'
         } else {
-          $command5aMaturationState = 'FAILED_NONCRITICAL'
-          if ($command5aMaturationProcess.State -eq 'TIMED_OUT') {
-            $command5aMaturationErrorCode = 'COMMAND5A_MATURATION_PROCESS_TIMEOUT'
+          $command5aMaturationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 120 -Arguments @(
+            '--import','tsx','tools/theta-command5a-runtime.ts','--mode=mature',
+            "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath","--spool=$command5aSpoolPath",'--limit=64')
+          $command5aMaturationOutput = $command5aMaturationProcess.Output
+          if ($command5aMaturationProcess.State -eq 'COMPLETED' -and $command5aMaturationProcess.ExitCode -eq 0) {
+            $command5aMaturationResult = $command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json
+            $command5aMaturationState = [string]$command5aMaturationResult.state
+            $command5aMaterialized = [int]$command5aMaturationResult.materialized
+            $command5aMaturationPending = [int]$command5aMaturationResult.pending
+            $command5aMaturationCensored = [int]$command5aMaturationResult.censored
           } else {
-            try { $command5aMaturationErrorCode = [string](($command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
-            catch { $command5aMaturationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+            $command5aMaturationState = 'FAILED_NONCRITICAL'
+            if ($command5aMaturationProcess.State -eq 'TIMED_OUT') {
+              $command5aMaturationErrorCode = 'COMMAND5A_MATURATION_PROCESS_TIMEOUT'
+            } else {
+              try { $command5aMaturationErrorCode = [string](($command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+              catch { $command5aMaturationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+            }
           }
         }
         $command5aHealthProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 30 -Arguments @(
@@ -441,7 +453,9 @@ try {
       $pendingExportSession = if (Test-Path -LiteralPath $pendingExportSessionFile) {
         (Get-Content -Raw -LiteralPath $pendingExportSessionFile).Trim()
       } else { '' }
-      if ($pendingExportSession -and $lastExportedSession -ne $pendingExportSession -and
+      if (-not $hostResourceGuard.AllowHeavyResearch) {
+        $researchExport = 'DEFERRED_HOST_RESOURCE_GUARD'
+      } elseif ($pendingExportSession -and $lastExportedSession -ne $pendingExportSession -and
         $report.reconciliation.marketOpen -eq $true) {
         $researchExport = 'DEFERRED_MARKET_CRITICAL'
       } elseif ($pendingExportSession -and $lastExportedSession -ne $pendingExportSession) {
@@ -449,7 +463,8 @@ try {
         $ErrorActionPreference = 'Continue'
         try {
           $researchProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 600 -Arguments @(
-            "--env-file=$productionEnvFile",'--import','tsx','tools/theta-research-export.ts','--latest')
+            "--env-file=$productionEnvFile",'--import','tsx','tools/theta-research-export.ts','--latest',
+            '--output-root',(Join-Path $ControlRoot 'research_exports'))
           $researchExit = if ($researchProcess.State -eq 'COMPLETED') { $researchProcess.ExitCode } else { -1 }
         } finally { $ErrorActionPreference = $previousErrorActionPreference }
         if ($researchExit -eq 0) {
@@ -462,9 +477,11 @@ try {
           $researchExport = 'BLOCKED_ON_EVIDENCE'
         }
       }
-      $latestDataset = Join-Path $RepositoryPath 'research_exports\latest\dataset.json'
-      $latestManifest = Join-Path $RepositoryPath 'research_exports\latest\manifest.json'
-      if ($report.reconciliation.marketOpen -eq $true) {
+      $latestDataset = Join-Path $ControlRoot 'research_exports\latest\dataset.json'
+      $latestManifest = Join-Path $ControlRoot 'research_exports\latest\manifest.json'
+      if (-not $hostResourceGuard.AllowHeavyResearch) {
+        $researchExport = 'DEFERRED_HOST_RESOURCE_GUARD'
+      } elseif ($report.reconciliation.marketOpen -eq $true) {
         if ($researchExport -ne 'DEFERRED_MARKET_CRITICAL') { $researchExport = 'RESEARCH_DEFERRED_MARKET_CRITICAL' }
       } elseif ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
         $manifest = Get-Content -Raw -LiteralPath $latestManifest | ConvertFrom-Json
@@ -479,7 +496,7 @@ try {
           $env:PYTHONPATH = Join-Path $RepositoryPath 'bots\theta\quant'
           $runTimestamp = (Get-Date).ToUniversalTime().ToString('o')
           $experimentId = "AUTO-DESCRIPTIVE-$($runtime.buildSha.Substring(0,12))"
-          $resultManifestPath = Join-Path $RepositoryPath "research_outputs\$datasetHash\$experimentId\manifest.json"
+          $resultManifestPath = Join-Path $ControlRoot "research_outputs\$datasetHash\$experimentId\manifest.json"
           $existingResultValid = $false
           if (Test-Path -LiteralPath $resultManifestPath) {
             $existingResult = Get-Content -Raw -LiteralPath $resultManifestPath | ConvertFrom-Json
@@ -501,7 +518,7 @@ try {
             $ErrorActionPreference = 'Continue'
             try {
               $pipelineProcess = Invoke-ThetaBoundedProcess -Executable $python -TimeoutSeconds 900 -Arguments @(
-                '-m','research.empirical_pipeline','--export',$latestDataset,'--output',(Join-Path $RepositoryPath 'research_outputs'),
+                '-m','research.empirical_pipeline','--export',$latestDataset,'--output',(Join-Path $ControlRoot 'research_outputs'),
                 '--evidence-source','LIVE_SHADOW','--strategy-branch','THETA_CONVENTIONAL',
                 '--experiment-id',$experimentId,'--target-version','theta-research-targets-v1',
                 '--feature-version',([string]$manifest.featureSetVersion),'--cost-model-version','theta-cost-model-v1',
@@ -530,12 +547,15 @@ try {
       # reconciliation or the Aiven-backed runtime.
       $localEvidenceState = 'NO_EXPORT_AVAILABLE'
       $localEvidenceHash = $null
-      if ($report.reconciliation.marketOpen -eq $true) {
+      if (-not $hostResourceGuard.AllowHeavyResearch) {
+        $localEvidenceState = 'PAUSED_HOST_RESOURCE_GUARD'
+      } elseif ($report.reconciliation.marketOpen -eq $true) {
         $localEvidenceState = 'DEFERRED_MARKET_CRITICAL'
       } elseif ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
         try {
           $localEvidenceProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 120 -Arguments @(
-            'tools/write-local-durable-evidence.mjs','research_exports/latest',(Join-Path $stateRoot 'evidence'))
+            'tools/write-local-durable-evidence.mjs',(Join-Path $ControlRoot 'research_exports\latest'),
+            (Join-Path $stateRoot 'evidence'))
           $localEvidenceOutput = $localEvidenceProcess.Output
           if ($localEvidenceProcess.State -eq 'COMPLETED' -and $localEvidenceProcess.ExitCode -eq 0) {
             $localEvidenceResult = $localEvidenceOutput | ConvertFrom-Json
@@ -549,7 +569,8 @@ try {
       # Storage inventory is operational evidence, but it performs catalog and
       # bounded timestamp-window reads. Run it once per UTC day and only when
       # the supported options session is closed.
-      $storageAuditState = if ($report.reconciliation.marketOpen -eq $true) { 'DEFERRED_MARKET_CRITICAL' } else { 'NOT_DUE' }
+      $storageAuditState = if (-not $hostResourceGuard.AllowHeavyResearch) { 'PAUSED_HOST_RESOURCE_GUARD' }
+        elseif ($report.reconciliation.marketOpen -eq $true) { 'DEFERRED_MARKET_CRITICAL' } else { 'NOT_DUE' }
       $storageAuditDate = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
       $lastStorageAuditDate = if (Test-Path -LiteralPath $storageAuditDateFile) {
         (Get-Content -Raw -LiteralPath $storageAuditDateFile).Trim()
@@ -565,7 +586,8 @@ try {
           }
         } catch { $storageAuditRetryAllowed = $true }
       }
-      if ($report.reconciliation.marketOpen -ne $true -and $lastStorageAuditDate -ne $storageAuditDate -and $storageAuditRetryAllowed) {
+      if ($hostResourceGuard.AllowHeavyResearch -and $report.reconciliation.marketOpen -ne $true -and
+        $lastStorageAuditDate -ne $storageAuditDate -and $storageAuditRetryAllowed) {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
@@ -602,7 +624,9 @@ try {
       # into a local SQLite WAL, then compacts verified batches to ZSTD Parquet.
       # Both steps are closed-session and non-critical so research work cannot
       # consume resources needed by the trading worker.
-      $localResearchArchiveState = if ($report.reconciliation.marketOpen -eq $true) {
+      $localResearchArchiveState = if (-not $hostResourceGuard.AllowHeavyResearch) {
+        'PAUSED_HOST_RESOURCE_GUARD'
+      } elseif ($report.reconciliation.marketOpen -eq $true) {
         'DEFERRED_MARKET_CRITICAL'
       } else { 'NOT_ATTEMPTED' }
       $localResearchArchiveRows = $null
@@ -618,10 +642,12 @@ try {
       $localResearchParquetBytes = $null
       $localResearchLastManifestHash = $null
       $localResearchDuckdbVerification = 'NOT_AVAILABLE'
-      $localResearchParquetState = if ($report.reconciliation.marketOpen -eq $true) {
+      $localResearchParquetState = if (-not $hostResourceGuard.AllowHeavyResearch) {
+        'PAUSED_HOST_RESOURCE_GUARD'
+      } elseif ($report.reconciliation.marketOpen -eq $true) {
         'DEFERRED_MARKET_CRITICAL'
       } else { 'NOT_ATTEMPTED' }
-      if ($report.reconciliation.marketOpen -ne $true) {
+      if ($hostResourceGuard.AllowHeavyResearch -and $report.reconciliation.marketOpen -ne $true) {
         $researchSpoolPath = Join-Path $stateRoot 'research-spool\theta-research.sqlite'
         $researchArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
         $researchParquetRoot = $command5aParquetRoot
@@ -737,6 +763,9 @@ try {
         mode='MASTER_THETA_PAPER';executionGate=[string]$report.executionGate;researchExport=$researchExport;
         databaseCircuitState='DB_HEALTHY';decisionAuthority='AVAILABLE';carryForwardCandidateAllowed=$false;
         storageAuditState=$storageAuditState;
+        hostMemoryState=$hostResourceGuard.MemoryState;hostStorageState=$hostResourceGuard.StorageState;
+        hostRamUsedPercent=$hostResourceGuard.RamUsedPercent;hostFreeDiskGb=$hostResourceGuard.FreeDiskGb;
+        hostNonCriticalPaused=$hostResourceGuard.PauseNonCritical;
         localResearchArchiveState=$localResearchArchiveState;localResearchArchiveRows=$localResearchArchiveRows;
         localResearchParquetState=$localResearchParquetState;
         localResearchArchiveFailureFamily=$localResearchArchiveFailureFamily;

@@ -48,3 +48,23 @@ Startup never follows arbitrary new commits.
 `ops.runtime_worker_status` holds current sanitized health. `ops.runtime_worker_lease` enforces one primary collector. `ops.runtime_worker_event` is append-only startup, lease, gap, shutdown, and error evidence. The private operations UI reads the same status, including build SHA, heartbeat, market session, provider health, last reconciliation, and last candidate scan.
 
 Local status is also available through `npm run worker:windows:status`. It contains no credentials.
+
+## Trading-host resource policy
+
+The Windows trading host runs focused regression tests only. Full Node, Python,
+and browser certification belongs in GitHub Actions. Do not run those suites
+together on the trading host.
+
+The resident supervisor measures free disk and physical memory before starting
+non-critical research work. Free disk below 50 GB or RAM use at or above 75%
+pauses heavy research export, empirical analysis, archive projection, Parquet
+compaction, and storage audits. Free disk below 30 GB or RAM use at or above
+85% records a stronger pause state. Free disk below 20 GB records
+`EMERGENCY_STORAGE_PRESSURE`, and RAM use above 90% records
+`HOST_MEMORY_PRESSURE`.
+
+These host states never become a strategy `WAIT`, never change AEGIS or sizing,
+and never stop broker reconciliation, runtime receipts, or the bounded outage
+spool. Future research exports are written below the control checkout rather
+than inside an immutable release. The `latest` view uses hard links when the
+filesystem supports them, avoiding a second full dataset copy.

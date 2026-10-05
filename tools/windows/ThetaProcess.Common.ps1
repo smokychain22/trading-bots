@@ -1,6 +1,45 @@
 #Requires -Version 7
 Set-StrictMode -Version Latest
 
+function Get-ThetaHostResourceGuard {
+  param(
+    [string]$Path = (Get-Location).Path,
+    [Nullable[long]]$TotalMemoryBytes = $null,
+    [Nullable[long]]$FreeMemoryBytes = $null,
+    [Nullable[long]]$FreeDiskBytes = $null
+  )
+  if ($null -eq $TotalMemoryBytes -or $null -eq $FreeMemoryBytes) {
+    $os = Get-CimInstance Win32_OperatingSystem
+    $TotalMemoryBytes = [long]$os.TotalVisibleMemorySize * 1024
+    $FreeMemoryBytes = [long]$os.FreePhysicalMemory * 1024
+  }
+  if ($null -eq $FreeDiskBytes) {
+    $root = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path))
+    $FreeDiskBytes = [long]([IO.DriveInfo]::new($root)).AvailableFreeSpace
+  }
+  if ($TotalMemoryBytes -le 0 -or $FreeMemoryBytes -lt 0 -or $FreeDiskBytes -lt 0) {
+    throw 'THETA_HOST_RESOURCE_MEASUREMENT_INVALID'
+  }
+  $ramUsedPercent = [Math]::Round((1 - ($FreeMemoryBytes / $TotalMemoryBytes)) * 100, 2)
+  $freeDiskGb = [Math]::Round($FreeDiskBytes / 1GB, 2)
+  $memoryState = if ($ramUsedPercent -gt 90) { 'HOST_MEMORY_PRESSURE' }
+    elseif ($ramUsedPercent -ge 85) { 'HOST_MEMORY_PAUSE_NONCRITICAL' }
+    elseif ($ramUsedPercent -ge 75) { 'HOST_MEMORY_THROTTLE_NONCRITICAL' }
+    else { 'NORMAL' }
+  $storageState = if ($freeDiskGb -lt 20) { 'EMERGENCY_STORAGE_PRESSURE' }
+    elseif ($freeDiskGb -lt 30) { 'HOST_STORAGE_ARCHIVES_DISABLED' }
+    elseif ($freeDiskGb -lt 50) { 'HOST_STORAGE_THROTTLE_NONCRITICAL' }
+    else { 'NORMAL' }
+  $throttleNonCritical = $ramUsedPercent -ge 75 -or $freeDiskGb -lt 50
+  $pauseNonCritical = $ramUsedPercent -ge 85 -or $freeDiskGb -lt 30
+  [pscustomobject]@{
+    MemoryState=$memoryState; StorageState=$storageState; RamUsedPercent=$ramUsedPercent;
+    FreeMemoryBytes=[long]$FreeMemoryBytes; FreeDiskBytes=[long]$FreeDiskBytes; FreeDiskGb=$freeDiskGb;
+    ThrottleNonCritical=$throttleNonCritical; PauseNonCritical=$pauseNonCritical;
+    AllowHeavyResearch=(-not $throttleNonCritical)
+  }
+}
+
 function ConvertTo-ThetaSanitizedStandardError {
   param([AllowNull()][string]$Diagnostic)
   if ([string]::IsNullOrWhiteSpace($Diagnostic)) { return [string[]]@() }
