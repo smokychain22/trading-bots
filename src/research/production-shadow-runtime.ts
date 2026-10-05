@@ -282,6 +282,8 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
 export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;
   executionAccountId?:string|null;reconciliation:BrokerReconciliationResult;now:()=>string;
   readOnlyPreSubmitPreview?:boolean;
+  /** Run the existing sovereign handoff as soon as a READY plan is durable. */
+  onActionPlanEnqueued?:(actionPlanId:string)=>Promise<void>;
   // Phase 1 Zero-Unknown Reclosure Pass 3 (item 2): forwarded, never
   // recomputed, into the persistence context so trade.decision.receipt_json
   // carries the exact release identity this cycle actually ran under.
@@ -560,7 +562,12 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         actionPlansBlocked.push(`${member.symbol}:${storageAdmission.blocker??'STORAGE_NEW_RISK_BLOCKED'}:${storageNewRiskGate.reason}`);
       }else if(assembled.state==='READY'){
         if(runtimePlanEnqueueEnabled&&await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
-          {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}))actionPlansReady++;
+          {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId})){
+          actionPlansReady++;
+          // The 45-second plan window starts at durable enqueue. Execute the
+          // canonical handoff before research observations and diagnostics.
+          await input.onActionPlanEnqueued?.(assembled.plan.actionPlanId);
+        }
         if(readOnlyQuoteSource!==null){
           try{
             const prepared=await prepareMasterPaperAction(assembled.plan,readOnlyQuoteSource,planNow,true,undefined,input.now);

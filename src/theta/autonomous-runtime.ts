@@ -630,9 +630,14 @@ export async function runAutonomousRuntimeCycle(
         const session=shadowSessionDecision(reconciliation?.marketOpen??null,reconciliation?.calendarSessionConfirmed??false);
         if(session==='MARKET_CLOSED')return skipped('MARKET_CLOSED_NO_WAIT_RECHECK');
         if(session!=='RUN')return degraded('OPTION_MARKET_SESSION_UNCONFIRMED',retryAt);
+        const immediateHandoff:{result:JobRunResult|null}={result:null};
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
-          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null});
+          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null,
+          onActionPlanEnqueued:async()=>{
+            immediateHandoff.result=await executor('PAPER_EXECUTION_HANDOFF','IMMEDIATE_READY_PLAN',jobId);
+          }});
+        if(immediateHandoff.result!==null&&immediateHandoff.result.status!=='SUCCEEDED')return immediateHandoff.result;
         if(scan.completeness!=='COMPLETE')return degraded(`WAIT_RECHECK_SCAN_${scan.completeness}`,retryAt);
         await cycleStore.markNearMissesTriggered(pending,new Date().toISOString(),scan.scanId);
         opportunityScanCompleted=true;
@@ -645,9 +650,14 @@ export async function runAutonomousRuntimeCycle(
         if (session!=='RUN') {
           return degraded('OPTION_MARKET_SESSION_UNCONFIRMED', retryAt);
         }
+        const immediateHandoff:{result:JobRunResult|null}={result:null};
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
-          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null});
+          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null,
+          onActionPlanEnqueued:async()=>{
+            immediateHandoff.result=await executor('PAPER_EXECUTION_HANDOFF','IMMEDIATE_READY_PLAN',jobId);
+          }});
+        if(immediateHandoff.result!==null&&immediateHandoff.result.status!=='SUCCEEDED')return immediateHandoff.result;
         return scan.completeness==='COMPLETE' ? succeeded() : degraded(`SHADOW_SCAN_${scan.completeness}`,retryAt);
       }
       if(jobType==='PAPER_EXECUTION_HANDOFF'){
