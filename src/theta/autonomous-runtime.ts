@@ -345,7 +345,12 @@ export const jobTypesForScope=(scope:'FULL'|'CORE'|'BROKER'|'LIFECYCLE'|'MANAGEM
     'COPY_FANOUT_PREPARATION', 'HEALTH_HEARTBEAT',
   ];
   if(scope==='FULL')return all;
-  if(scope==='EVIDENCE')return ['POSITION_RECONCILIATION','WAIT_RECHECK','OPPORTUNITY_SCAN'];
+  // A new-risk plan is created by the evidence scan with a deliberately short
+  // decision window. Claim it in the same serialized request so the mandatory
+  // exact-contract refresh can run while that decision is still current.
+  // Deferring the handoff to the later MANAGEMENT scope makes every otherwise
+  // valid plan expire before it can reach its pre-submit safety checks.
+  if(scope==='EVIDENCE')return ['POSITION_RECONCILIATION','WAIT_RECHECK','OPPORTUNITY_SCAN','PAPER_EXECUTION_HANDOFF'];
   if(scope==='MANAGEMENT')return ['POSITION_RECONCILIATION','POSITION_MANAGEMENT_SCAN','PAPER_EXECUTION_HANDOFF'];
   if(scope==='LIFECYCLE')return ['POSITION_RECONCILIATION','ASSIGNMENT_EXPIRY_RECONCILIATION'];
   if(scope==='OBSERVATION')return ['POSITION_RECONCILIATION','MARKET_STATE_REFRESH'];

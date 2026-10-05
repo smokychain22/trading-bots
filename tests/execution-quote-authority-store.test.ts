@@ -54,7 +54,11 @@ test('serverless runtime scopes keep management and evidence bounded without dro
   assert.ok(jobTypesForScope('BROKER').includes('PENDING_ORDER_MANAGEMENT'));
   assert.ok(!jobTypesForScope('BROKER').includes('ASSIGNMENT_EXPIRY_RECONCILIATION'));
   assert.ok(!jobTypesForScope('BROKER').includes('PAPER_EXECUTION_HANDOFF'));
-  assert.deepEqual(evidence, ['POSITION_RECONCILIATION', 'WAIT_RECHECK', 'OPPORTUNITY_SCAN']);
+  assert.deepEqual(evidence, [
+    'POSITION_RECONCILIATION', 'WAIT_RECHECK', 'OPPORTUNITY_SCAN', 'PAPER_EXECUTION_HANDOFF',
+  ]);
+  assert.ok(evidence.indexOf('PAPER_EXECUTION_HANDOFF') > evidence.indexOf('OPPORTUNITY_SCAN'),
+    'the exact-contract handoff must immediately follow the scan that creates the short-lived plan');
 });
 
 test('an exhausted read-only checkpoint cannot permanently suppress fresh evidence', () => {
