@@ -363,14 +363,9 @@ try {
       # valid complete scan structurally blocked later in the same session.
       # Legacy date-only sentinels do not parse as a fresh timestamp and are
       # therefore upgraded by the next successful qualification.
-      $alpacaQualificationFresh = $false
-      if (Test-Path -LiteralPath $alpacaQualificationSessionFile) {
-        $alpacaQualificationText = (Get-Content -Raw -LiteralPath $alpacaQualificationSessionFile).Trim()
-        $alpacaQualificationAt = [DateTimeOffset]::MinValue
-        if ([DateTimeOffset]::TryParse($alpacaQualificationText, [ref]$alpacaQualificationAt)) {
-          $alpacaQualificationFresh = $alpacaQualificationAt.ToUniversalTime() -gt [DateTimeOffset]::UtcNow.AddMinutes(-45)
-        }
-      }
+      $alpacaQualificationFresh = (Test-Path -LiteralPath $alpacaQualificationSessionFile) -and
+        (Test-ThetaTimestampFresh -TimestampText ((Get-Content -Raw -LiteralPath $alpacaQualificationSessionFile).Trim()) `
+          -Now ([DateTimeOffset]::UtcNow) -MaximumAgeSeconds (45 * 60))
       if ($report.reconciliation.marketOpen -eq $true -and !$alpacaQualificationFresh) {
         $currentOperation = 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION'
         $operationStartedAt = [DateTimeOffset]::UtcNow
@@ -407,9 +402,7 @@ try {
       # intentionally skipped with FULL_FRONTIER_ALREADY_RESCANNED. Treat both
       # successful scan jobs as complete evidence so activation and export do
       # not become structurally unreachable while near-miss rechecks are due.
-      $completeScan = @($report.jobResults | Where-Object {
-        $_.status -eq 'SUCCEEDED' -and $_.jobType -in @('WAIT_RECHECK','OPPORTUNITY_SCAN')
-      }).Count -gt 0
+      $completeScan = Test-ThetaCompleteEvidenceScan -JobResults @($report.jobResults)
       # Owner Paper authorization is already durable. After a real complete
       # open-session scan, ask the canonical authorization store to arm only
       # the one-contract first-canary lane. The endpoint independently

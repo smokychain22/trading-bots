@@ -1,0 +1,120 @@
+{
+  "fixtureVersion": "theta-phase1-session-regression-v1",
+  "purpose": "Deterministic no-submit replay of the October 5 Phase-1 runtime transitions",
+  "provenance": {
+    "datasetSchemaVersion": "theta-r6-dataset-v6",
+    "datasetHash": "c7bfe5668ca75c4406cdb3205388d41f8056c2f0888dbe7626855d6170ccb0a6",
+    "datasetSourceWindow": {
+      "start": "2026-10-05T00:00:00.000Z",
+      "end": "2026-10-06T00:00:00.000Z"
+    },
+    "runtimeReceiptHash": "2242e9bb5613d4cd193331b43a45eebeb5adc5f7aaf1bd7fd90425509b8dfad0",
+    "runtimeReceiptObservedAt": "2026-10-05T19:59:24.634Z",
+    "qualificationObservedAt": "2026-10-05T19:30:21.1284250+00:00",
+    "realFields": [
+      "candidateSet",
+      "candidate",
+      "frontier",
+      "waitRecheck",
+      "qualification.qualifiedAt"
+    ],
+    "derivedFields": [
+      "qualification.justInsideFreshnessBoundary",
+      "qualification.atFreshnessBoundary",
+      "qualification.justOutsideFreshnessBoundary",
+      "timingPath"
+    ],
+    "sanitizedFields": [
+      "account identifiers omitted",
+      "provider credentials omitted",
+      "raw provider payloads omitted",
+      "plan and handoff identifiers replaced with deterministic fixture identifiers"
+    ]
+  },
+  "candidateSet": {
+    "candidateSetId": "26c10e03-7b6f-46e9-a3fb-2fd01e4b2b9d",
+    "decisionTime": "2026-10-05T16:04:34.878Z",
+    "underlying": "TLT",
+    "branch": "THETA_CONVENTIONAL",
+    "completenessState": "COMPLETE",
+    "missingScope": [],
+    "candidateCount": 6
+  },
+  "candidate": {
+    "persistedCandidateId": "4295d331-dc1d-48cf-b877-d54fab957d69",
+    "decisionId": "3ea4cd81-70f8-4e4e-9a1f-5d9d9c1db906",
+    "fusionSnapshotId": "1eba2746-91e4-4c50-bfc9-acfa678b3a8f",
+    "runtimeCandidateId": "THETA_CONVENTIONAL:TLT261030P00076000",
+    "occSymbol": "TLT261030P00076000",
+    "underlying": "TLT",
+    "optionType": "PUT",
+    "strike": 76,
+    "expiration": "2026-10-30",
+    "dte": 25,
+    "multiplier": 100,
+    "bid": 0.84,
+    "ask": 0.86,
+    "bidSize": 212,
+    "askSize": 741,
+    "quoteSource": "ALPACA",
+    "feed": "INDICATIVE",
+    "quoteTimestamp": "2026-10-05T16:04:34.476887391Z",
+    "quoteReceivedAt": "2026-10-05T16:04:34.784Z",
+    "decisionAsOf": "2026-10-05T16:04:34.878Z",
+    "dataQuality": "GOOD",
+    "executable": true,
+    "empiricalExecutionUtility": null,
+    "utilityEvidenceState": "PAPER_BOOTSTRAP_UNCALIBRATED",
+    "grossPremium": 84,
+    "securedCollateral": 7600,
+    "maxProfitAfterOpeningCost": 82.3,
+    "expectedAfterCostEv": null,
+    "expectedAfterCostEvState": "EV_MODEL_NOT_EMPIRICALLY_READY",
+    "aegisState": "ALLOW_REDUCED",
+    "preAegisQuantity": 2,
+    "selectedQuantity": 1,
+    "bindingConstraint": "AEGIS_ALLOW_REDUCED"
+  },
+  "frontier": {
+    "frontierId": "1b31cb3f-c0a2-465c-a34f-a6a99af4a85f",
+    "selectedBranch": "THETA_CONVENTIONAL",
+    "selectedCandidateId": "THETA_CONVENTIONAL:TLT261030P00076000",
+    "primaryAction": "OPEN_CSP",
+    "selectedQuantity": 1,
+    "globalWaitEarned": false,
+    "empiricalUtilityState": "UNKNOWN_NOT_YET_CALIBRATED",
+    "executionAuthorized": false
+  },
+  "waitRecheck": {
+    "runtimeReceiptHash": "2242e9bb5613d4cd193331b43a45eebeb5adc5f7aaf1bd7fd90425509b8dfad0",
+    "jobType": "WAIT_RECHECK",
+    "outcome": "RAN",
+    "status": "SUCCEEDED",
+    "opportunityScanStatus": "SKIPPED",
+    "marketOpen": true,
+    "accountStatus": "ACTIVE",
+    "positionCount": 0,
+    "openOrderCount": 0,
+    "masterPaperOrdersSubmitted": 0,
+    "followerPaperOrdersSubmitted": 0,
+    "liveOrdersSubmitted": 0
+  },
+  "qualification": {
+    "qualifiedAt": "2026-10-05T19:30:21.1284250+00:00",
+    "maximumAgeSeconds": 2700,
+    "futureClockSkewSeconds": 5,
+    "justInsideFreshnessBoundary": "2026-10-05T20:15:21.1274250+00:00",
+    "atFreshnessBoundary": "2026-10-05T20:15:21.1284250+00:00",
+    "justOutsideFreshnessBoundary": "2026-10-05T20:15:21.1294250+00:00"
+  },
+  "timingPath": {
+    "scanId": "theta-phase1-replay-scan",
+    "decisionPersistedAt": "2026-10-05T16:04:34.878Z",
+    "planId": "theta-phase1-replay-plan",
+    "planQuantity": 1,
+    "planBrokerAuthority": false,
+    "handoffId": "theta-phase1-replay-handoff",
+    "handoffState": "LOCKED_NO_SUBMIT",
+    "brokerMutationAllowed": false
+  }
+}

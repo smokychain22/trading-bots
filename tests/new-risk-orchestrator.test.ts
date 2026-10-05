@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { runNewRiskOrchestration, type RawCandidateInput, type NewRiskOrchestrationRequest } from '../src/theta/new-risk-orchestrator.js';
@@ -384,6 +385,108 @@ itMockedProviderRealCodePath('Paper bootstrap can select a fresh executable cand
   assert.equal(result.shadowOpportunities[0]?.executionQualityAcceptable, true);
   assert.ok(result.shadowOpportunities[0]?.reasons.some((reason) =>
     reason.code === 'PAPER_BOOTSTRAP_UTILITY_UNCALIBRATED_NO_ADDITIONAL_SLIPPAGE'));
+});
+
+itMockedProviderRealCodePath('October 5 persisted TLT evidence replays through the production decision path without broker authority', async () => {
+  const fixture = JSON.parse(await readFile(
+    'tests/fixtures/theta-phase1-2026-10-05-session.json', 'utf8',
+  )) as {
+    candidateSet: { completenessState: string; candidateCount: number };
+    candidate: {
+      runtimeCandidateId: string; occSymbol: string; underlying: string; optionType: 'PUT'; strike: number;
+      expiration: string; dte: number; multiplier: number; bid: number; ask: number; bidSize: number;
+      askSize: number; quoteTimestamp: string; quoteReceivedAt: string; decisionAsOf: string;
+      executable: boolean; empiricalExecutionUtility: null; utilityEvidenceState: string;
+      selectedQuantity: number; aegisState: string;
+    };
+    frontier: { executionAuthorized: boolean; selectedQuantity: number; selectedCandidateId: string };
+    waitRecheck: { jobType: string; status: string; masterPaperOrdersSubmitted: number };
+    timingPath: { brokerMutationAllowed: boolean; handoffState: string };
+  };
+  const input = fixture.candidate;
+  assert.equal(fixture.candidateSet.completenessState, 'COMPLETE');
+  assert.ok(fixture.candidateSet.candidateCount > 0);
+  assert.notEqual(input.runtimeCandidateId, input.occSymbol);
+  assert.equal(fixture.waitRecheck.jobType, 'WAIT_RECHECK');
+  assert.equal(fixture.waitRecheck.status, 'SUCCEEDED');
+
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    snapshotId: 'theta-phase1-october-5-replay',
+    timestamp: input.decisionAsOf,
+    underlying: input.underlying,
+    ownershipInputs: {
+      ...baseRequest().ownershipInputs,
+      spreadPct: (input.ask - input.bid) / ((input.ask + input.bid) / 2),
+      optionOpenInterest: 500,
+      optionVolume: 100,
+      historicalRecoveryMedianDays: null,
+      historicalRecoveryP95Days: null,
+      severeDrawdownEpisodeCount: null,
+      earningsDistanceDays: null,
+      exDividendDistanceDays: null,
+      knownEventDistanceDays: null,
+    },
+    regimeInputs: {
+      ...baseRequest().regimeInputs,
+      earningsDistanceDays: null,
+      corporateActionPending: null,
+      macroRiskFlag: null,
+      spreadPct: (input.ask - input.bid) / ((input.ask + input.bid) / 2),
+    },
+    aegisInputs: {
+      ...baseRequest().aegisInputs,
+      tickerConcentrationPct: 0.2,
+    },
+    candidates: [candidate(input.runtimeCandidateId, {
+      contract: contract({
+        underlying: input.underlying,
+        optionSymbol: input.occSymbol,
+        occSymbol: input.occSymbol,
+        optionType: input.optionType,
+        strike: input.strike,
+        expiration: input.expiration,
+        dte: input.dte,
+        multiplier: input.multiplier,
+        bid: input.bid,
+        ask: input.ask,
+        bidSize: input.bidSize,
+        askSize: input.askSize,
+        midpointReference: (input.bid + input.ask) / 2,
+        spread: input.ask - input.bid,
+        spreadPct: (input.ask - input.bid) / ((input.ask + input.bid) / 2),
+        quoteTimestamp: input.quoteTimestamp,
+        receivedAt: input.quoteReceivedAt,
+        dataAgeSeconds: (Date.parse(input.decisionAsOf) - Date.parse(input.quoteTimestamp)) / 1_000,
+        executable: input.executable,
+        nonExecutableReason: null,
+      }),
+      entryPremiumPerShare: input.bid,
+      preSlippageExpectedUtility: input.empiricalExecutionUtility,
+      severeDrawdownProbability: null,
+      paperEventNear: false,
+      brokerAllowedQty: 13,
+    })],
+    paperEntryBootstrap: assessPaperEntryBootstrap({
+      enabled: true, runtimeMode: 'MASTER_THETA_PAPER', brokerEnvironment: 'PAPER', accountStatus: 'ACTIVE',
+      reconciliationQuality: 'GOOD', localOnlyIntentCount: 0, externalOrUnknownOrderCount: 0,
+      marketOpen: true, calendarSessionConfirmed: true, followerExecutionEnabled: false, liveMoneyAuthorized: false,
+    }),
+  }));
+
+  assert.equal(result.receipt.selectedCandidateId, input.runtimeCandidateId);
+  assert.equal(result.receipt.quantity, input.selectedQuantity);
+  assert.equal(result.aegis?.newRiskState, input.aegisState);
+  assert.equal(result.candidateEconomics?.[0]?.evNet, null);
+  assert.equal(result.shadowOpportunities[0]?.executionQualityAcceptable, true);
+  assert.ok(result.shadowOpportunities[0]?.reasons.some((reason) =>
+    reason.code === 'PAPER_BOOTSTRAP_UTILITY_UNCALIBRATED_NO_ADDITIONAL_SLIPPAGE'));
+  assert.equal(fixture.frontier.selectedCandidateId, input.runtimeCandidateId);
+  assert.equal(fixture.frontier.selectedQuantity, result.receipt.quantity);
+  assert.equal(result.receipt.executionAuthorized, false);
+  assert.equal(fixture.frontier.executionAuthorized, false);
+  assert.equal(fixture.timingPath.brokerMutationAllowed, false);
+  assert.equal(fixture.timingPath.handoffState, 'LOCKED_NO_SUBMIT');
+  assert.equal(fixture.waitRecheck.masterPaperOrdersSubmitted, 0);
 });
 
 itMockedProviderRealCodePath('an actionable candidate without deterministic directional-tolerance facts fails closed', async () => {

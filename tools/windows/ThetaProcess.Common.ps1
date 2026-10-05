@@ -40,6 +40,32 @@ function Get-ThetaHostResourceGuard {
   }
 }
 
+function Test-ThetaTimestampFresh {
+  param(
+    [AllowNull()][string]$TimestampText,
+    [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow,
+    [ValidateRange(1, [int]::MaxValue)][int]$MaximumAgeSeconds,
+    [ValidateRange(0, 300)][int]$MaximumFutureSkewSeconds = 5
+  )
+  if ([string]::IsNullOrWhiteSpace($TimestampText)) { return $false }
+  $parsed = [DateTimeOffset]::MinValue
+  $style = [Globalization.DateTimeStyles]::RoundtripKind
+  if (-not [DateTimeOffset]::TryParse($TimestampText, [Globalization.CultureInfo]::InvariantCulture, $style, [ref]$parsed)) {
+    return $false
+  }
+  $ageSeconds = ($Now.ToUniversalTime() - $parsed.ToUniversalTime()).TotalSeconds
+  if ($ageSeconds -lt (-1 * $MaximumFutureSkewSeconds)) { return $false }
+  return $ageSeconds -lt $MaximumAgeSeconds
+}
+
+function Test-ThetaCompleteEvidenceScan {
+  param([AllowNull()][object[]]$JobResults)
+  if ($null -eq $JobResults) { return $false }
+  return @($JobResults | Where-Object {
+    $_.status -eq 'SUCCEEDED' -and $_.jobType -in @('WAIT_RECHECK', 'OPPORTUNITY_SCAN')
+  }).Count -gt 0
+}
+
 function ConvertTo-ThetaSanitizedStandardError {
   param([AllowNull()][string]$Diagnostic)
   if ([string]::IsNullOrWhiteSpace($Diagnostic)) { return [string[]]@() }

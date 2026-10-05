@@ -14,9 +14,11 @@ const report=(status:string|null,errorCode:string|null):AutonomousRuntimeReport=
 
 test('Windows supervisor exports once after a complete scan without gaining an order surface', async () => {
   const source = await readFile('tools/windows/theta-local-worker.ps1', 'utf8');
+  const processCommonSource = await readFile('tools/windows/ThetaProcess.Common.ps1', 'utf8');
   assert.match(source, /last-auto-export-session/);
-  assert.match(source, /OPPORTUNITY_SCAN/);
-  assert.match(source, /\.status -eq 'SUCCEEDED'/);
+  assert.match(processCommonSource, /\.status -eq 'SUCCEEDED'/);
+  assert.match(processCommonSource, /WAIT_RECHECK/);
+  assert.match(processCommonSource, /OPPORTUNITY_SCAN/);
   assert.match(source, /--env-file=\$productionEnvFile/);
   assert.match(source, /Invoke-ThetaBoundedProcess[\s\S]{0,220}theta-research-export\.ts/);
   assert.match(source, /THETA_PRODUCTION_ENV_NOT_PROVISIONED/);
@@ -30,8 +32,8 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /last-alpaca-indicative-qualification-session/);
   assert.match(source, /alpaca-indicative-quote-qualification/);
   assert.match(source, /alpacaQualificationFresh/);
-  assert.match(source, /AddMinutes\(-45\)/);
-  assert.match(source, /\[DateTimeOffset\]::TryParse\(\$alpacaQualificationText/);
+  assert.match(processCommonSource, /MaximumAgeSeconds/);
+  assert.match(processCommonSource, /\[DateTimeOffset\]::TryParse\(\$TimestampText/);
   assert.match(source, /\.qualified -eq \$true/);
   assert.match(source, /AUTO-DESCRIPTIVE-\$\(\$runtime\.buildSha\.Substring\(0,12\)\)/);
   assert.match(source, /RESEARCH_RESULT_IDENTITY_INVALID/);
@@ -118,7 +120,8 @@ test('Windows supervisor requests canonical first-canary activation once per com
   const source = await readFile('tools/windows/theta-local-worker.ps1', 'utf8');
   assert.match(source, /last-first-canary-activation-attempt/);
   assert.match(source, /\$completeScan -and \$report\.reconciliation\.marketOpen -eq \$true/);
-  assert.match(source, /\$_\.status -eq 'SUCCEEDED' -and \$_\.jobType -in @\('WAIT_RECHECK','OPPORTUNITY_SCAN'\)/);
+  assert.match(source, /Test-ThetaCompleteEvidenceScan -JobResults @\(\$report\.jobResults\)/);
+  assert.match(source, /Test-ThetaTimestampFresh[\s\S]{0,220}-MaximumAgeSeconds \(45 \* 60\)/);
   assert.match(source, /FULL_FRONTIER_ALREADY_RESCANNED/);
   assert.match(source, /\$report\.executionGate -eq 'LOCKED'/);
   assert.match(source, /\$lastCanaryActivationScanId -ne \$firstCanaryActivationScanId/);

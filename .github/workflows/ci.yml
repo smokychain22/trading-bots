@@ -65,6 +65,7 @@ jobs:
           ./tests/windows/theta-snapshot-heartbeat.test.ps1
           ./tests/windows/theta-sequence-parity.test.ps1
           ./tests/windows/theta-process-quoting.test.ps1
+          ./tests/windows/theta-phase1-runtime-regressions.test.ps1
           ./tests/windows/theta-data-platform-tasks.test.ps1
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
