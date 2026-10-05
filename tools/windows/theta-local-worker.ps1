@@ -379,8 +379,13 @@ try {
       $researchExport = if ($lastExportedSession -eq $marketSessionDate) {
         'CURRENT_SESSION_EXPORTED'
       } else { 'WAITING_FOR_COMPLETE_SCAN' }
+      # WAIT_RECHECK executes the same full Production shadow scan as
+      # OPPORTUNITY_SCAN. Once that scan completes, OPPORTUNITY_SCAN is
+      # intentionally skipped with FULL_FRONTIER_ALREADY_RESCANNED. Treat both
+      # successful scan jobs as complete evidence so activation and export do
+      # not become structurally unreachable while near-miss rechecks are due.
       $completeScan = @($report.jobResults | Where-Object {
-        $_.jobType -eq 'OPPORTUNITY_SCAN' -and $_.status -eq 'SUCCEEDED'
+        $_.status -eq 'SUCCEEDED' -and $_.jobType -in @('WAIT_RECHECK','OPPORTUNITY_SCAN')
       }).Count -gt 0
       # Owner Paper authorization is already durable. After a real complete
       # open-session scan, ask the canonical authorization store to arm only

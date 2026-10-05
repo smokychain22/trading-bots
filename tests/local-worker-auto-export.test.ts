@@ -106,6 +106,8 @@ test('Windows supervisor requests canonical first-canary activation once per com
   const source = await readFile('tools/windows/theta-local-worker.ps1', 'utf8');
   assert.match(source, /last-first-canary-activation-attempt/);
   assert.match(source, /\$completeScan -and \$report\.reconciliation\.marketOpen -eq \$true/);
+  assert.match(source, /\$_\.status -eq 'SUCCEEDED' -and \$_\.jobType -in @\('WAIT_RECHECK','OPPORTUNITY_SCAN'\)/);
+  assert.match(source, /FULL_FRONTIER_ALREADY_RESCANNED/);
   assert.match(source, /\$report\.executionGate -eq 'LOCKED'/);
   assert.match(source, /\$lastCanaryActivationScanId -ne \$firstCanaryActivationScanId/);
   assert.match(source, /'X-Theta-Operation'\] = 'first-paper-canary-activate'/);
