@@ -33,6 +33,10 @@ test('router applicability and adaptive economic switching remain separate capab
     'L5_PERSISTED');
   assert.equal(receipt.methods.find((item) => item.methodId === 'ENTRY_PROFITABILITY_MODEL')?.level,
     'L1_TYPED_CONTRACT');
+  assert.equal(receipt.methods.find((item) => item.methodId === 'STRATEGY_ROUTER_PROMOTION_SEAM')?.level,
+    'L3_DETERMINISTIC_TESTED');
+  assert.equal(receipt.methods.find((item) => item.methodId === 'ENTRY_MODEL_PROMOTION_SEAM')?.level,
+    'L3_DETERMINISTIC_TESTED');
 });
 
 test('V12 matrix covers each real strategy once and keeps D locked and non-authoritative', () => {

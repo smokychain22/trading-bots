@@ -3,7 +3,7 @@ import { canonicalV7ProfitTakingPolicies } from '../research/profit-taking-exper
 import { canonicalThetaStrategySources, thetaFeatureFamily, thetaHardRule, thetaStrategyAction } from './strategy-package.js';
 import { RISK_POLICY_REGISTRY, type RiskPolicyRegistryEntry } from './risk-policy-registry.js';
 
-export const profitabilityBrainRealityVersion = 'theta-profitability-brain-reality-v4' as const;
+export const profitabilityBrainRealityVersion = 'theta-profitability-brain-reality-v5' as const;
 
 export type RealityLevel = 'L0_ABSENT' | 'L1_TYPED_CONTRACT' | 'L2_SOURCE_IMPLEMENTED'
   | 'L3_DETERMINISTIC_TESTED' | 'L4_CANONICAL_INTEGRATED' | 'L5_PERSISTED'
@@ -119,6 +119,9 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
   method('ADAPTIVE_ECONOMIC_STRATEGY_SWITCHING', 'SELECTION', 'RESEARCH_ONLY', 1,
     ['src/theta/adaptive-decision-brain.ts'],
     'Only an applicability router and a non-authoritative utility contract exist. No adaptive switching policy is implemented.'),
+  method('STRATEGY_ROUTER_PROMOTION_SEAM', 'SELECTION', 'RESEARCH_ONLY', 3,
+    ['src/theta/empirical-policy-promotion.ts', 'src/theta/promoted-decision-policy-provider.ts'],
+    'A pinned, explicitly approved OOS policy can be admitted through the tested seam, but no promoted strategy-routing artifact exists and the seam is not active in the canonical runtime.'),
   method('AEGIS_RISK_PERMISSION', 'RISK', 'PRODUCTION_LOCKED', 6,
     ['bots/theta/quant/models/aegis.py', 'src/theta/aegis-derivation.ts']),
   method('CONSTRAINED_QUANTITY_SIZING', 'SIZING', 'PRODUCTION_LOCKED', 6,
@@ -184,6 +187,9 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
   method('ENTRY_PROFITABILITY_MODEL', 'LEARNING', 'RESEARCH_ONLY', 1,
     ['src/research/theta-entry-model-readiness.ts'],
     'Model readiness contracts exist, but no model is trained, calibrated, OOS-supported, or promoted.'),
+  method('ENTRY_MODEL_PROMOTION_SEAM', 'LEARNING', 'RESEARCH_ONLY', 3,
+    ['src/research/empirical-model-registry.ts', 'src/theta/promoted-decision-policy-provider.ts'],
+    'A pinned, calibrated, explicitly approved PAPER_PROMOTED model can be admitted through the tested seam, but no qualifying artifact exists and the seam is not active in the canonical runtime.'),
   method('MANAGED_EPISODE_DISTRIBUTION_MODEL', 'LEARNING', 'RESEARCH_ONLY', 2,
     ['src/research/managed-episode-outcome-distribution.ts'],
     'Output contract is implemented, but real distribution estimates remain empirically unproven.'),

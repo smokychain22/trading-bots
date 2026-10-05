@@ -28,13 +28,33 @@ const candidate = {
   paretoRank: 1, dominatedBy: [], executionAuthorized: false,
 } as const;
 
+const neighboringStrike = {
+  ...candidate,
+  candidateId: 'THETA_CONVENTIONAL:SPY261106P00495000',
+  legs: [{ ...candidate.legs[0], optionSymbol: 'SPY261106P00495000', strike: 495 }],
+  delta: -0.18,
+  economics: { ...candidate.economics, grossPremium: 170, collateral: 49_500, breakEven: 493.3,
+    downsideCushion: 106.7, modeledOpeningCosts: { ...candidate.economics.modeledOpeningCosts,
+      capitalDayYieldAfterOpeningCost: 0.00009 } },
+} as const;
+
+const neighboringExpiry = {
+  ...candidate,
+  candidateId: 'THETA_CONVENTIONAL:SPY261113P00500000',
+  legs: [{ ...candidate.legs[0], optionSymbol: 'SPY261113P00500000', expiration: '2026-11-13' }],
+  dte: 43,
+  economics: { ...candidate.economics, grossPremium: 230, modeledOpeningCosts: {
+    ...candidate.economics.modeledOpeningCosts, capitalDayYieldAfterOpeningCost: 0.000095 } },
+} as const;
+
 const frontier = {
   contractVersion: 'theta-canonical-strategy-frontier-v1', snapshotId: 'snap', timestamp: '2026-10-01T15:00:00Z',
   strategyVersion: 'strategy-v1', decisionAuthorityVersion: 'theta-canonical-decision-authority-v1',
   branches: [{ branch: 'THETA_CONVENTIONAL', strategyVersion: 'strategy-v1', status: 'SHADOW', applicable: true,
     evaluated: true, routeReasons: ['ROUTE_APPLICABLE'], evaluationState: 'EVALUATED', candidateCount: 1,
     mechanicallyRejected: 0, enumerationTruncated: false, hardVetoed: 0, softRanked: 1, dataInsufficient: 0,
-    candidates: [candidate], bestCandidateId: candidate.candidateId, secondBestCandidateId: null,
+    candidates: [candidate, neighboringStrike, neighboringExpiry], bestCandidateId: candidate.candidateId,
+    secondBestCandidateId: neighboringStrike.candidateId,
     bestRejectedCandidateId: null, empiricalEconomicsReady: false, executionAuthorized: false }],
   branchesConsidered: ['THETA_CONVENTIONAL'], branchesEvaluated: ['THETA_CONVENTIONAL'],
   selectedBranch: 'THETA_CONVENTIONAL', selectedCandidateId: candidate.candidateId,
@@ -52,6 +72,10 @@ test('canonical explanation answers underlying, strategy, expiry, strike, time a
   assert.equal(result.whyExpiry.expiration, '2026-11-06');
   assert.equal(result.whyStrike.strike, 500);
   assert.equal(result.whyNow.aegisState, 'ALLOW_FULL');
+  assert.equal(result.whyNow.state, 'ENTER_NOW_STRUCTURALLY_ELIGIBLE');
+  assert.equal(result.whyExpiry.neighboringExpiries[0]?.candidateId, neighboringExpiry.candidateId);
+  assert.equal(result.whyStrike.neighboringStrikes[0]?.candidateId, neighboringStrike.candidateId);
+  assert.equal(result.whyStrike.neighboringStrikes[0]?.capitalDayYieldAfterOpeningCost, 0.00009);
   assert.equal(result.whySize.quantity, 1);
   assert.equal(result.whySize.bindingConstraint, 'BROKER_ALLOWED');
   assert.equal(result.empiricalUtilityState, 'UNKNOWN_NOT_YET_CALIBRATED');
@@ -64,6 +88,14 @@ test('unreached frontier stays an explicit system hold', () => {
   assert.equal(result.whyUnderlying.state, 'NOT_REACHED');
   assert.equal(result.whySize.quantity, null);
   assert.ok(result.whyNow.waitReasons.includes('CANONICAL_FRONTIER_NOT_REACHED'));
+});
+
+test('a reached frontier with no selected candidate reports a timing conclusion rather than NOT_REACHED', () => {
+  const waiting = { ...frontier, selectedBranch: null, selectedCandidateId: null, selectedAction: 'WAIT',
+    globalWaitEarned: true, globalWaitReasons: ['WAIT_LIQUIDITY_QUOTE_STALE'] } as const;
+  const result = buildCanonicalDecisionExplanation({ frontier: waiting, universe: null });
+  assert.equal(result.whyNow.state, 'DEFER_EXECUTION_QUALITY');
+  assert.deepEqual(result.whyNow.waitReasons, ['WAIT_LIQUIDITY_QUOTE_STALE']);
 });
 
 test('canonical persistence embeds the structured explanation in the existing receipt', () => {

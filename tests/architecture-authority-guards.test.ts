@@ -79,7 +79,7 @@ test('structuralSizing has exactly one definition and no max(1) quantity floor e
 
 test('production decision directories import only a pinned set of research modules (a new research->production edge is a reviewed change)', () => {
   const pinned = ['aegis-stress-baseline-maturity', 'branch-research-readiness', 'canonical-event-export', 'cross-strategy-common-horizon-contract',
-    'defined-risk-locked-plan', 'point-in-time-evidence', 'production-shadow-runtime', 'profit-taking-experiment', 'risk-policy-empirical-study',
+    'defined-risk-locked-plan', 'empirical-model-registry', 'point-in-time-evidence', 'production-shadow-runtime', 'profit-taking-experiment', 'risk-policy-empirical-study',
     'shadow-evidence-runtime', 'strategy-quality-shadow-diagnostics', 'theta-entry-model-readiness'];
   const found = new Set<string>();
   const dirs = ['src/theta', 'src/execution', 'src/worker'].flatMap((dir) => walk(join(root, dir), ['.ts']));
