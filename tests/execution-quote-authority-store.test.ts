@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import type { Pool } from 'pg';
 import {
@@ -59,6 +60,20 @@ test('serverless runtime scopes keep management and evidence bounded without dro
   ]);
   assert.ok(evidence.indexOf('PAPER_EXECUTION_HANDOFF') > evidence.indexOf('OPPORTUNITY_SCAN'),
     'the exact-contract handoff must immediately follow the scan that creates the short-lived plan');
+});
+
+test('a durable READY plan reaches the canonical handoff before scan post-processing consumes its window',()=>{
+  const scanSource=readFileSync('src/research/production-shadow-runtime.ts','utf8');
+  const enqueueAt=scanSource.indexOf('new PostgresMasterPaperActionPlanStore(input.pool).enqueue');
+  const callbackAt=scanSource.indexOf('await input.onActionPlanEnqueued?.(assembled.plan.actionPlanId)',enqueueAt);
+  const scanPersistenceAt=scanSource.indexOf('await evidenceStore.saveScan(scan,persisted)',callbackAt);
+  assert.ok(enqueueAt>=0&&callbackAt>enqueueAt&&scanPersistenceAt>callbackAt,
+    'durable enqueue must invoke the handoff before non-decision scan persistence');
+  const runtimeSource=readFileSync('src/theta/autonomous-runtime.ts','utf8');
+  assert.match(runtimeSource,/onActionPlanEnqueued:async\(\)=>\{\s*immediateHandoff\.result=await executor\('PAPER_EXECUTION_HANDOFF'/,
+    'the callback must reuse the existing PAPER_EXECUTION_HANDOFF authority');
+  assert.match(runtimeSource,/if\(paperExecutionHandoffCompleted\)return skipped\('PAPER_EXECUTION_HANDOFF_ALREADY_ATTEMPTED'\)/,
+    'one scan request must never create two broker handoff attempts');
 });
 
 test('an exhausted read-only checkpoint cannot permanently suppress fresh evidence', () => {

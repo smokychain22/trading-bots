@@ -483,6 +483,7 @@ export async function runAutonomousRuntimeCycle(
   const jobs=[...recoveredByType.values(),...scheduledJobs(bucket,scope).filter((job)=>!recoveredByType.has(job.jobType))];
   let reconciliation: BrokerReconciliationResult | null = null;
   let opportunityScanCompleted = false;
+  let paperExecutionHandoffCompleted = false;
   let masterPaperOrdersSubmitted = 0;
   const retryAt = new Date(now.getTime() + 60_000).toISOString();
 
@@ -630,9 +631,14 @@ export async function runAutonomousRuntimeCycle(
         const session=shadowSessionDecision(reconciliation?.marketOpen??null,reconciliation?.calendarSessionConfirmed??false);
         if(session==='MARKET_CLOSED')return skipped('MARKET_CLOSED_NO_WAIT_RECHECK');
         if(session!=='RUN')return degraded('OPTION_MARKET_SESSION_UNCONFIRMED',retryAt);
+        const immediateHandoff:{result:JobRunResult|null}={result:null};
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
-          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null});
+          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null,
+          onActionPlanEnqueued:async()=>{
+            immediateHandoff.result=await executor('PAPER_EXECUTION_HANDOFF','IMMEDIATE_READY_PLAN',jobId);
+          }});
+        if(immediateHandoff.result!==null&&immediateHandoff.result.status!=='SUCCEEDED')return immediateHandoff.result;
         if(scan.completeness!=='COMPLETE')return degraded(`WAIT_RECHECK_SCAN_${scan.completeness}`,retryAt);
         await cycleStore.markNearMissesTriggered(pending,new Date().toISOString(),scan.scanId);
         opportunityScanCompleted=true;
@@ -645,12 +651,22 @@ export async function runAutonomousRuntimeCycle(
         if (session!=='RUN') {
           return degraded('OPTION_MARKET_SESSION_UNCONFIRMED', retryAt);
         }
+        const immediateHandoff:{result:JobRunResult|null}={result:null};
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
-          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null});
+          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null,
+          onActionPlanEnqueued:async()=>{
+            immediateHandoff.result=await executor('PAPER_EXECUTION_HANDOFF','IMMEDIATE_READY_PLAN',jobId);
+          }});
+        if(immediateHandoff.result!==null&&immediateHandoff.result.status!=='SUCCEEDED')return immediateHandoff.result;
         return scan.completeness==='COMPLETE' ? succeeded() : degraded(`SHADOW_SCAN_${scan.completeness}`,retryAt);
       }
       if(jobType==='PAPER_EXECUTION_HANDOFF'){
+        // One runtime request may enqueue more than one research-qualified
+        // symbol. The first canary lane may attempt exactly one sovereign
+        // handoff per request. Persisted controls govern later requests.
+        if(paperExecutionHandoffCompleted)return skipped('PAPER_EXECUTION_HANDOFF_ALREADY_ATTEMPTED');
+        paperExecutionHandoffCompleted=true;
         if(reconciliation===null)return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
         {
           const marketGate=paperExecutionHandoffMarketGate(reconciliation);
