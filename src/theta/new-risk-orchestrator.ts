@@ -977,7 +977,7 @@ export async function runNewRiskOrchestration(
     const executionQualityResult = await invokeAndValidate(
       bridge, 'executionQuality',
       {
-        contractVersion: 'theta-execution-quality-runtime-v2', decisionId: `${request.snapshotId}:${request.underlying}`,
+        contractVersion: 'theta-execution-quality-runtime-v3', decisionId: `${request.snapshotId}:${request.underlying}`,
         snapshotId: request.snapshotId, timestamp: request.timestamp, policy: request.executionQualityPolicy,
         inputs: {
           positionIntent: 'SELL_TO_OPEN',
@@ -988,6 +988,10 @@ export async function runNewRiskOrchestration(
           // an absent executable price into a zero-dollar order reference.
           limitPrice: candidate.contract.bid,
           preSlippageExpectedUtility: candidate.preSlippageExpectedUtility,
+          utilityEvidenceState: candidate.preSlippageExpectedUtility !== null
+            ? 'EMPIRICAL_ESTIMATE'
+            : bootstrapByCandidateId.get(candidate.candidateId)?.eligible === true
+              ? 'PAPER_BOOTSTRAP_UNCALIBRATED' : 'UNAVAILABLE',
         },
       },
       (payload) => parseExecutionQualityResponse(payload),

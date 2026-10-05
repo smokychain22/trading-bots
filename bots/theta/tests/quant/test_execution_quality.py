@@ -11,6 +11,7 @@ from models.execution_quality import (  # noqa: E402
     ExecutionQualityInputs,
     ExecutionQualityPolicy,
     PositionIntent,
+    UtilityEvidenceState,
     assess_execution_quality,
 )
 
@@ -32,6 +33,7 @@ def _inputs(**overrides) -> ExecutionQualityInputs:
         position_intent=PositionIntent.BUY_TO_OPEN,
         bid=0.55, ask=0.60, quote_size=50, quote_age_seconds=1.0,
         limit_price=0.58, pre_slippage_expected_utility=10.0,
+        utility_evidence_state=UtilityEvidenceState.EMPIRICAL_ESTIMATE,
     )
     defaults.update(overrides)
     return ExecutionQualityInputs(**defaults)
@@ -96,6 +98,51 @@ class EconomicValueGuardTests(unittest.TestCase):
         result = assess_execution_quality(_policy(), _inputs(pre_slippage_expected_utility=100.0))
         self.assertEqual(result.recommended_action, "SUBMIT")
         self.assertTrue(result.acceptable)
+
+    def test_paper_bootstrap_without_utility_accepts_only_zero_additional_slippage(self):
+        result = assess_execution_quality(
+            _policy(),
+            _inputs(
+                position_intent=PositionIntent.SELL_TO_OPEN,
+                bid=0.55,
+                ask=0.60,
+                limit_price=0.55,
+                pre_slippage_expected_utility=None,
+                utility_evidence_state=UtilityEvidenceState.PAPER_BOOTSTRAP_UNCALIBRATED,
+            ),
+        )
+        self.assertTrue(result.acceptable)
+        self.assertEqual(result.recommended_action, "SUBMIT")
+        self.assertEqual(result.expected_slippage_per_share, 0)
+        self.assertIn(
+            "PAPER_BOOTSTRAP_UTILITY_UNCALIBRATED_NO_ADDITIONAL_SLIPPAGE",
+            [reason.code for reason in result.reasons],
+        )
+
+    def test_paper_bootstrap_without_utility_cannot_cross_the_spread(self):
+        result = assess_execution_quality(
+            _policy(),
+            _inputs(
+                position_intent=PositionIntent.SELL_TO_OPEN,
+                bid=0.55,
+                ask=0.60,
+                limit_price=0.60,
+                pre_slippage_expected_utility=None,
+                utility_evidence_state=UtilityEvidenceState.PAPER_BOOTSTRAP_UNCALIBRATED,
+            ),
+        )
+        self.assertIsNone(result.acceptable)
+        self.assertEqual(result.recommended_action, "UNKNOWN")
+
+    def test_missing_utility_without_bootstrap_remains_unknown(self):
+        result = assess_execution_quality(
+            _policy(), _inputs(
+                pre_slippage_expected_utility=None,
+                utility_evidence_state=UtilityEvidenceState.UNAVAILABLE,
+            )
+        )
+        self.assertIsNone(result.acceptable)
+        self.assertEqual(result.recommended_action, "UNKNOWN")
 
 
 class UnknownInputTests(unittest.TestCase):

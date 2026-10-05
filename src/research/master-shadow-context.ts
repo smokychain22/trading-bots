@@ -6,10 +6,10 @@ import { canonicalJson } from './point-in-time-evidence.js';
 import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 
 export const masterShadowContextVersions = Object.freeze({
-  strategy: 'theta-conventional@1.0.2-research',
+  strategy: 'theta-conventional@1.0.3-research',
   feature: 'theta-feature-set-v1',
   risk: 'theta-aegis-runtime-v1',
-  execution: 'theta-execution-quality-runtime-v2',
+  execution: 'theta-execution-quality-runtime-v3',
   cost: 'theta-cost-model-v2',
 });
 

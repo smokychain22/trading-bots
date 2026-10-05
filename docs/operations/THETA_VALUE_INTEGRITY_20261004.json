@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-04T21:00:21.350Z",
-  "sourceSha": "679bcdb83a5d2fae117cf3c1918e1382bacef76d",
+  "generatedAt": "2026-10-05T14:53:35.742Z",
+  "sourceSha": "1061908ba73f11ffabc3e666a40ede4886576d14",
   "evidenceScope": "SOURCE_AND_EXECUTED_TEST_EVIDENCE_NOT_CURRENT_WORKER_L7",
   "sourceHashes": {
     "bots/theta/quant/models/theta_q_lattice.py": "06f846d9ca08cde9d269466be1341ba7c5d89558d8d81925f47ed9b742d485d3",
@@ -32,7 +32,7 @@
     "src/theta/canonical-shadow-comparison.ts": "a9758b6590d45cf9a2d40f7396990650e3a8160774832e6d897c1fe74a393934",
     "src/theta/canonical-strategy-frontier.ts": "2212560dd3a94cd931f9105c46ae8b9efc2da86e6865c4701111814f16c6f15d",
     "src/theta/cycle-archive-replay.ts": "a5cab5e83b111e5b96fc00fee14ec139d7386c91fbb782eb3ae3e7ce11fef831",
-    "src/theta/execution-quality-contract.ts": "f6e6cca0c7dd9246be2a35a5086519b393d23302c8210dd1ebb41651ce756665",
+    "src/theta/execution-quality-contract.ts": "d2d25fe7a31b13c29dce90c14ceb6588236b9fe71ef924e41046da11f57bb360",
     "src/theta/management-action-frontier.ts": "f3cda94ffdafcee46fa9253b1258ea18ebb29553f8061a4db47dce3dc6c20b02",
     "src/theta/option-chain-ingestion.ts": "97ec072e397144aea3b08c104823e4a1ca0a9271f7dc87af02647f4a6dbc6a8b",
     "src/theta/optionomics-feature-engine.ts": "f3a4413b08f480da2a08739be046902fd5017757bbb2ecd429b640039666eadd",
@@ -42,7 +42,7 @@
     "src/theta/postgres-theta-cycle-store.ts": "659545a2d46be692d1296772f5948ad3bd100c8ab9014040d0ff8f7c49b465ad",
     "src/theta/postgres-whole-chain-components-repository.ts": "823a4e4e2c172766bcae3ca0a3b4c8688959223f0dee35c01442289739b9184b",
     "src/theta/production-paper-management-candidate-source.ts": "4861f2e1f695ad94517158a30b39b42b942fc827b3737687d66258b10e12bab7",
-    "src/theta/profitability-brain-reality.ts": "455088ae9b6730cdb80edf67cf9a3f04e151db3fe91b4c92d9b7855c5f5811d3",
+    "src/theta/profitability-brain-reality.ts": "1f787c5fb756c41d53c843c3e06e34a55bb652af005a9ab85ef8cc386a5ce916",
     "src/theta/sizing-contract.ts": "137efb0f637f065a3774ae070d10a39be865b97abcdabaf08a2c5bb6bcaea177",
     "src/theta/t0-replay-bundle.ts": "dbeb95684abbd5423b12079ba8f563c5a74c41165c71d611100f741a628fb0a6",
     "src/theta/theta-shadow-cycle.ts": "46b73b227f01434bd31246cd7fd55f4fef54eb5296617499d3ca3a912fdcc2cb",
@@ -61,7 +61,7 @@
     "tests/phase2-sizing-capital-conservation.test.ts": "cb40c07a247e30f7e47b9bacbccdb2a5590b8261738a0ff194c792596a824a5e",
     "tests/phase4-bounded-history.test.ts": "65494ddd8fa71746156f030d6c7596227c1ccd9cd26e84b67a3abc3b18e3c308",
     "tests/phase4-data-platform-simulation.test.ts": "a32e6ce4509adbded80488896b6563488042fb036d2903baa7796b01463ed401",
-    "tests/profitability-brain-reality.test.ts": "174febfb302b5457b269aa49f1b231932783bc21973cf5f1331de6062c4865ee",
+    "tests/profitability-brain-reality.test.ts": "604b3a95bd1c65dbacf949b0c4f3ecbe1f6fcfdf075dbea00209437f06a2c082",
     "tests/whole-chain-economics.test.ts": "1eabac1e22e692853e950bf0eb7988305739c57f995e1f8a1255c88343ea800e"
   },
   "values": [

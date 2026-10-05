@@ -25,7 +25,8 @@ const aegis = (state: AegisAssessmentResponse['newRiskState']): AegisAssessmentR
 });
 
 const executionQuality = (action: ExecutionQualityResponse['recommendedAction']): ExecutionQualityResponse => ({
-  contractVersion: 'theta-execution-quality-runtime-v2', decisionId: 'd1', snapshotId: 's1', timestamp: NOW, policyVersion: 'v1', positionIntent: 'BUY_TO_CLOSE',
+  contractVersion: 'theta-execution-quality-runtime-v3', decisionId: 'd1', snapshotId: 's1', timestamp: NOW, policyVersion: 'v1', positionIntent: 'BUY_TO_CLOSE',
+  utilityEvidenceState: 'EMPIRICAL_ESTIMATE',
   spreadPct: 0.05, fillProbability: 0.8, expectedSlippagePerShare: 0.01,
   acceptable: action === 'SUBMIT', recommendedAction: action, reasons: [],
 });

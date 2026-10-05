@@ -3,12 +3,13 @@ import test from 'node:test';
 import { parseExecutionQualityResponse } from '../src/theta/execution-quality-contract.js';
 
 const basePayload = (overrides: Record<string, unknown> = {}) => ({
-  contractVersion: 'theta-execution-quality-runtime-v2',
+  contractVersion: 'theta-execution-quality-runtime-v3',
   decisionId: 'decision-1',
   snapshotId: 'snapshot-1',
   timestamp: new Date().toISOString(),
   policyVersion: 'v1',
   positionIntent: 'SELL_TO_OPEN',
+  utilityEvidenceState: 'EMPIRICAL_ESTIMATE',
   spreadPct: 0.02,
   fillProbability: 0.8,
   expectedSlippagePerShare: 0.01,

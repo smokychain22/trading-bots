@@ -33,8 +33,8 @@ function requireRegistryEntry(key: string): NonNullable<ReturnType<typeof canoni
   if (entry === undefined) throw new Error(`SHADOW_ORCHESTRATOR_REGISTRY_ENTRY_MISSING:${key}`);
   return entry;
 }
-const HOLD_STRIKE = requireRegistryEntry('theta-hold-strike@1.0.0-research');
-const DEFINED_RISK = requireRegistryEntry('theta-defined-risk@1.0.0-research');
+const HOLD_STRIKE = requireRegistryEntry('theta-hold-strike@1.0.1-research');
+const DEFINED_RISK = requireRegistryEntry('theta-defined-risk@1.0.1-research');
 
 export type BranchState =
   | 'PRODUCTION_CANONICAL_REFERENCE_ONLY'

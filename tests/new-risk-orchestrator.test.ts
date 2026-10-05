@@ -354,6 +354,38 @@ itMockedProviderRealCodePath('candidate-specific cleared event policy prevents a
   assert.match(result.receipt.entryThesisReceipt?.immutableHash ?? '', /^[a-f0-9]{64}$/);
 });
 
+itMockedProviderRealCodePath('Paper bootstrap can select a fresh executable candidate without fabricating empirical utility', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    ownershipInputs: {
+      ...baseRequest().ownershipInputs,
+      historicalRecoveryMedianDays: null,
+      historicalRecoveryP95Days: null,
+      severeDrawdownEpisodeCount: null,
+      earningsDistanceDays: null,
+      exDividendDistanceDays: null,
+      knownEventDistanceDays: null,
+    },
+    regimeInputs: {...baseRequest().regimeInputs,earningsDistanceDays:null,corporateActionPending:null,macroRiskFlag:null},
+    candidates: [candidate('C1', {
+      severeDrawdownProbability: null,
+      paperEventNear: false,
+      preSlippageExpectedUtility: null,
+    })],
+    paperEntryBootstrap: assessPaperEntryBootstrap({
+      enabled:true,runtimeMode:'MASTER_THETA_PAPER',brokerEnvironment:'PAPER',accountStatus:'ACTIVE',
+      reconciliationQuality:'GOOD',localOnlyIntentCount:0,externalOrUnknownOrderCount:0,
+      marketOpen:true,calendarSessionConfirmed:true,followerExecutionEnabled:false,liveMoneyAuthorized:false,
+    }),
+  }));
+  assert.equal(result.receipt.selectedCandidateId, 'C1');
+  assert.ok(result.receipt.reasonCodes.includes('EMPIRICAL_EV_UNAVAILABLE'));
+  assert.equal(result.receipt.executionAuthorized, false);
+  assert.equal(result.candidateEconomics?.[0]?.evNet, null);
+  assert.equal(result.shadowOpportunities[0]?.executionQualityAcceptable, true);
+  assert.ok(result.shadowOpportunities[0]?.reasons.some((reason) =>
+    reason.code === 'PAPER_BOOTSTRAP_UTILITY_UNCALIBRATED_NO_ADDITIONAL_SLIPPAGE'));
+});
+
 itMockedProviderRealCodePath('an actionable candidate without deterministic directional-tolerance facts fails closed', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     ownershipInputs: {

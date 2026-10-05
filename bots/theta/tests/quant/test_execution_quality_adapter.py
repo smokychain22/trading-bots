@@ -14,7 +14,8 @@ sys.path.insert(0, str(_QUANT_DIR))
 from features.feature_contract import FeatureResultState, FeatureTruthClass  # noqa: E402
 from features.execution_quality_adapter import execution_quality_assessment_to_result  # noqa: E402
 from models.execution_quality import (  # noqa: E402
-    ExecutionQualityInputs, ExecutionQualityPolicy, PositionIntent, assess_execution_quality,
+    ExecutionQualityInputs, ExecutionQualityPolicy, PositionIntent, UtilityEvidenceState,
+    assess_execution_quality,
 )
 
 
@@ -31,6 +32,7 @@ def _inputs(**overrides) -> ExecutionQualityInputs:
     defaults = dict(
         position_intent=PositionIntent.BUY_TO_OPEN, bid=0.55, ask=0.60, quote_size=50,
         quote_age_seconds=1.0, limit_price=0.58, pre_slippage_expected_utility=10.0,
+        utility_evidence_state=UtilityEvidenceState.EMPIRICAL_ESTIMATE,
     )
     defaults.update(overrides)
     return ExecutionQualityInputs(**defaults)

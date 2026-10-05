@@ -3,10 +3,12 @@ import { z } from 'zod';
 // Versioned request/response contract for
 // bots/theta/quant/models/execution_quality.py.
 
-export const executionQualityContractVersion = 'theta-execution-quality-runtime-v2' as const;
+export const executionQualityContractVersion = 'theta-execution-quality-runtime-v3' as const;
 
 export const executionPositionIntent = z.enum(['SELL_TO_OPEN', 'BUY_TO_CLOSE', 'SELL_TO_CLOSE', 'BUY_TO_OPEN']);
 export type ExecutionPositionIntent = z.infer<typeof executionPositionIntent>;
+export const executionUtilityEvidenceState = z.enum(['EMPIRICAL_ESTIMATE', 'PAPER_BOOTSTRAP_UNCALIBRATED', 'UNAVAILABLE']);
+export type ExecutionUtilityEvidenceState = z.infer<typeof executionUtilityEvidenceState>;
 
 const reasonSchema = z.object({
   code: z.string().min(1),
@@ -21,6 +23,7 @@ export const executionQualityResponseSchema = z.object({
   timestamp: z.string().datetime({ offset: true }),
   policyVersion: z.string().min(1),
   positionIntent: executionPositionIntent,
+  utilityEvidenceState: executionUtilityEvidenceState,
   spreadPct: z.number().finite().nullable(),
   fillProbability: z.number().min(0).max(1).nullable(),
   expectedSlippagePerShare: z.number().finite().nullable(),

@@ -17,7 +17,7 @@ test('all five canonical branches are registered and execution remains disabled'
   const branches = [...canonicalThetaStrategyRegistry.values()].map((config) => config.branch);
   assert.deepEqual(new Set(branches), new Set(['THETA_CONVENTIONAL', 'THETA_HOLD_STRIKE', 'THETA_RECOVERY', 'THETA_CC', 'THETA_DEFINED_RISK']));
   assert.equal([...canonicalThetaStrategyRegistry.values()].every((config) => config.executionEnabled === false), true);
-  assert.equal(canonicalThetaStrategyRegistry.has('theta-conventional@1.0.2-research'), true);
+  assert.equal(canonicalThetaStrategyRegistry.has('theta-conventional@1.0.3-research'), true);
 });
 
 test('resolved versions are immutable and have stable configuration hashes', () => {
@@ -32,10 +32,10 @@ test('resolved versions are immutable and have stable configuration hashes', () 
 test('shadow context uses a new immutable version when the conventional strategy payload changes', () => {
   const strategy = canonicalThetaStrategyRegistry.get(masterShadowContextVersions.strategy);
   assert.ok(strategy);
-  assert.equal(masterShadowContextVersions.strategy, 'theta-conventional@1.0.2-research');
+  assert.equal(masterShadowContextVersions.strategy, 'theta-conventional@1.0.3-research');
   assert.equal(strategy.softFeatureFamilies.includes('UNUSUAL_ACTIVITY'), false);
   assert.equal(createHash('sha256').update(canonicalJson(strategy)).digest('hex'),
-    'bfac19bdacd5e5d4c54ba3022e8baeac838afa005f632f5264121987d812c0d8');
+    'fe1faf750c8f82cb2e4d3608e31d21b2374e3230836b653fc1ce490b335bb997');
 });
 
 test('duplicate strategy versions are rejected', () => {

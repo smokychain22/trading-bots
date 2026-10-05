@@ -73,41 +73,41 @@
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "observation sink failure cannot mask a committed result or original database failure",
             "state": "PASS",
-            "durationMs": 8.552,
+            "durationMs": 4.5031,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "checked-out event preserves safe SQLSTATE and operation timing without private error text",
             "state": "PASS",
-            "durationMs": 1.6049,
+            "durationMs": 0.6753,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "every acquired client is observed and released on success and query failure",
             "state": "PASS",
-            "durationMs": 0.91,
+            "durationMs": 0.4286,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "rollback failure still releases and discards the checked-out client",
             "state": "PASS",
-            "durationMs": 0.6582,
+            "durationMs": 0.8168,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "ambiguous COMMIT requires identity reconciliation, never replays the write",
             "state": "PASS",
-            "durationMs": 0.7361,
+            "durationMs": 0.9824,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -153,34 +153,34 @@
             "file": "tests/environment.test.ts",
             "name": "Production worker cannot silently inherit legacy or generic database authority",
             "state": "PASS",
-            "durationMs": 2.4477,
+            "durationMs": 1.8057,
             "line": 1
           },
           {
             "file": "tests/environment.test.ts",
             "name": "Aiven runtime authority fails closed without a configured Aiven target",
             "state": "PASS",
-            "durationMs": 2.0011,
+            "durationMs": 2.953,
             "line": 1
           },
           {
             "file": "tests/environment.test.ts",
             "name": "parses dotenv quotes and lets the explicit file override stale process values",
             "state": "PASS",
-            "durationMs": 6.4068,
+            "durationMs": 11.4993,
             "line": 1
           },
           {
             "file": "tests/environment.test.ts",
             "name": "a configuration error message never contains the secret value that triggered it",
             "state": "PASS",
-            "durationMs": 0.5767,
+            "durationMs": 0.7513,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -234,34 +234,34 @@
             "file": "tests/postgres-owner-inventory.test.ts",
             "name": "pool inventory classifies every construction without inventing a fleet connection bound",
             "state": "PASS",
-            "durationMs": 3863.0219,
+            "durationMs": 4603.8279,
             "line": 1
           },
           {
             "file": "tests/owned-pool-client.test.ts",
             "name": "owned pool acquisition failure closes the pool and preserves the exact cause",
             "state": "PASS",
-            "durationMs": 3.0438,
+            "durationMs": 5.459,
             "line": 1
           },
           {
             "file": "tests/owned-pool-client.test.ts",
             "name": "all seven ephemeral preflight/import/migration acquisitions use the failure-safe owner boundary",
             "state": "PASS",
-            "durationMs": 2.0588,
+            "durationMs": 16.8063,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-pool.test.ts",
             "name": "temporary pool containment is idempotent and preserves owned connection policy",
             "state": "PASS",
-            "durationMs": 9.4111,
+            "durationMs": 4.8183,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -313,83 +313,83 @@
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "every acquired client is observed and released on success and query failure",
             "state": "PASS",
-            "durationMs": 0.91,
+            "durationMs": 0.4286,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "separate pool-wait timeout releases a client that arrives after the caller timed out",
             "state": "PASS",
-            "durationMs": 44.5015,
+            "durationMs": 39.6013,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "slow valid query time remains checkout duration and is never acquisition failure",
             "state": "PASS",
-            "durationMs": 0.7851,
+            "durationMs": 0.7302,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "transaction rolls back a pre-commit failure without retrying the write",
             "state": "PASS",
-            "durationMs": 0.9003,
+            "durationMs": 1.2272,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "rollback failure still releases and discards the checked-out client",
             "state": "PASS",
-            "durationMs": 0.6582,
+            "durationMs": 0.8168,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "ambiguous COMMIT requires identity reconciliation, never replays the write",
             "state": "PASS",
-            "durationMs": 0.7361,
+            "durationMs": 0.9824,
             "line": 1
           },
           {
             "file": "tests/postgres-pool-acquisition.test.ts",
             "name": "bounded work equal to pool capacity completes without pending waiters",
             "state": "PASS",
-            "durationMs": 52.8163,
+            "durationMs": 77.9411,
             "line": 1
           },
           {
             "file": "tests/postgres-pool-acquisition.test.ts",
             "name": "old six-on-two soak pattern deterministically creates its own queue timeout",
             "state": "PASS",
-            "durationMs": 66.872,
+            "durationMs": 75.6134,
             "line": 1
           },
           {
             "file": "tests/postgres-execution-commit-reconciliation.test.ts",
             "name": "action-plan enqueue reconciles a lost COMMIT response without replaying the insert",
             "state": "PASS",
-            "durationMs": 21.8274,
+            "durationMs": 24.3343,
             "line": 1
           },
           {
             "file": "tests/postgres-execution-commit-reconciliation.test.ts",
             "name": "action-plan enqueue keeps absent and conflicting ambiguous commits distinct",
             "state": "PASS",
-            "durationMs": 10.4006,
+            "durationMs": 7.4736,
             "line": 1
           },
           {
             "file": "tests/postgres-execution-commit-reconciliation.test.ts",
             "name": "atomic management publication reconciles the decision and complete plan group after lost COMMIT",
             "state": "PASS",
-            "durationMs": 8.0741,
+            "durationMs": 6.3789,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Executed disposable PostgreSQL evidence. Deployed current-worker behavior remains separately unproven.",
       "DISPOSABLE_DB_EVIDENCE": {
@@ -446,48 +446,48 @@
             "file": "tests/operator-status-read-batch.test.ts",
             "name": "overlapping status readers share one bounded batch without caching completed truth",
             "state": "PASS",
-            "durationMs": 20.7451,
+            "durationMs": 12.8914,
             "line": 1
           },
           {
             "file": "tests/operator-status-read-batch.test.ts",
             "name": "failed batch releases single-flight ownership and never reuses a partial result",
             "state": "PASS",
-            "durationMs": 1.1557,
+            "durationMs": 1.3065,
             "line": 1
           },
           {
             "file": "tests/operator-status-read-batch.test.ts",
             "name": "distinct database identities never share an operator result",
             "state": "PASS",
-            "durationMs": 0.4361,
+            "durationMs": 0.5248,
             "line": 1
           },
           {
             "file": "tests/operator-status-read-batch.test.ts",
             "name": "Production operator status and max-one helpers use bounded reads",
             "state": "PASS",
-            "durationMs": 1.4415,
+            "durationMs": 4.6496,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-pool.test.ts",
             "name": "temporary pool containment is idempotent and preserves owned connection policy",
             "state": "PASS",
-            "durationMs": 9.4111,
+            "durationMs": 4.8183,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-pool.test.ts",
             "name": "every request-owned raw pool installs containment before its first operation",
             "state": "PASS",
-            "durationMs": 3.8195,
+            "durationMs": 14.2588,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -545,69 +545,69 @@
             "file": "tests/no-submit-decision-authority.test.ts",
             "name": "incomplete enumeration cannot certify a global WAIT",
             "state": "PASS",
-            "durationMs": 0.2791,
+            "durationMs": 0.2435,
             "line": 1
           },
           {
             "file": "tests/no-submit-decision-authority.test.ts",
             "name": "a required provider failure or SYSTEM_HOLD cannot be certified by complete enumeration",
             "state": "PASS",
-            "durationMs": 1.1603,
+            "durationMs": 1.4252,
             "line": 1
           },
           {
             "file": "tests/no-submit-decision-authority.test.ts",
             "name": "backfilled or persisted local evidence never becomes broker authority",
             "state": "PASS",
-            "durationMs": 0.3827,
+            "durationMs": 0.2683,
             "line": 1
           },
           {
             "file": "tests/production-shadow-runtime.test.ts",
             "name": "corporate-action database failures propagate rather than becoming provider gaps or WAIT",
             "state": "PASS",
-            "durationMs": 1.6852,
+            "durationMs": 2.1858,
             "line": 1
           },
           {
             "file": "tests/production-shadow-runtime.test.ts",
             "name": "required provider failure invalidates scan authority even when inner enumeration earned WAIT",
             "state": "PASS",
-            "durationMs": 0.4247,
+            "durationMs": 0.7127,
             "line": 1
           },
           {
             "file": "tests/local-evidence-spool.test.ts",
             "name": "backfill is idempotent, verifies ambiguous writes, and unlocks no broker mutation itself",
             "state": "PASS",
-            "durationMs": 34.3303,
+            "durationMs": 44.5906,
             "line": 1
           },
           {
             "file": "tests/database-independent-shadow-observation.test.ts",
             "name": "database-independent observation runs real-path dependencies but can never authorize mutation",
             "state": "PASS",
-            "durationMs": 10.8068,
+            "durationMs": 8.03,
             "line": 1
           },
           {
             "file": "tests/database-independent-shadow-observation.test.ts",
             "name": "a stalled canonical cycle becomes typed partial evidence within the configured deadline",
             "state": "PASS",
-            "durationMs": 6.5805,
+            "durationMs": 7.4815,
             "line": 1
           },
           {
             "file": "tests/database-independent-shadow-observation.test.ts",
             "name": "database-independent observation refreshes the exact selected contract with a GET-only quote",
             "state": "PASS",
-            "durationMs": 2.7871,
+            "durationMs": 3.2362,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -659,48 +659,48 @@
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "a recovered cycle marks only stale RUNNING rows failed before starting a new cycle",
             "state": "PASS",
-            "durationMs": 0.5271,
+            "durationMs": 0.482,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "runId is unique per cycle",
             "state": "PASS",
-            "durationMs": 1444.4653,
+            "durationMs": 1363.7103,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "an account fetch failure is recorded as a blocker, never silently ignored, and the cycle still completes coherently",
             "state": "PASS",
-            "durationMs": 17.1744,
+            "durationMs": 13.9361,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "a stale required observation (account fetched long before the decision moment) becomes SYSTEM_HOLD_STALE_ACCOUNT, never a strategy WAIT/PASS",
             "state": "PASS",
-            "durationMs": 22.7418,
+            "durationMs": 14.4076,
             "line": 1
           },
           {
             "file": "tests/database-health-circuit.test.ts",
             "name": "database circuit requires consecutive fresh probes and a new cycle boundary",
             "state": "PASS",
-            "durationMs": 0.7989,
+            "durationMs": 0.9457,
             "line": 1
           },
           {
             "file": "tests/database-health-circuit.test.ts",
             "name": "a non-retryable failure discards earlier recovery successes in the offline model",
             "state": "PASS",
-            "durationMs": 0.8955,
+            "durationMs": 1.0346,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Executed disposable PostgreSQL evidence. Deployed current-worker behavior remains separately unproven.",
       "DISPOSABLE_DB_EVIDENCE": {
@@ -763,69 +763,69 @@
             "file": "tests/phase2-market-intelligence-registry.test.ts",
             "name": "Phase-2 provider authority is complete and has one Alpaca Paper option-price authority",
             "state": "PASS",
-            "durationMs": 3.9769,
+            "durationMs": 4.4009,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "a full cycle with real-shaped mocked Alpaca data reaches a decision receipt via the real Python pipeline",
             "state": "PASS",
-            "durationMs": 1224.7412,
+            "durationMs": 779.9559,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "confirmed Optionomics context families are fetched on bounded cadence and attached to one immutable cycle",
             "state": "PASS",
-            "durationMs": 1154.193,
+            "durationMs": 688.2465,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "an Optionomics provider failure is recorded honestly (REAL_PROVIDER_ERROR) and never blocks the rest of the cycle",
             "state": "PASS",
-            "durationMs": 702.961,
+            "durationMs": 535.9447,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "positions and open orders are fetched every cycle; a real empty account (no positions, no open orders) is honestly REAL_PROVIDER/GOOD, never a fetch failure",
             "state": "PASS",
-            "durationMs": 1239.54,
+            "durationMs": 652.1368,
             "line": 1
           },
           {
             "file": "tests/alpaca-command5a-observation-source.test.ts",
             "name": "Alpaca source fetches exact leg and stock reference with GET-only research authority",
             "state": "PASS",
-            "durationMs": 70.4719,
+            "durationMs": 74.4383,
             "line": 1
           },
           {
             "file": "tests/alpaca-command5a-observation-source.test.ts",
             "name": "missing exact contract stays MISSING and never falls back to another quote",
             "state": "PASS",
-            "durationMs": 2.4454,
+            "durationMs": 2.1881,
             "line": 1
           },
           {
             "file": "tests/provider-readiness.test.ts",
             "name": "process-environment auth differential uses only Paper GETs and returns statuses without bodies or credentials",
             "state": "PASS",
-            "durationMs": 59.4744,
+            "durationMs": 67.5204,
             "line": 1
           },
           {
             "file": "tests/provider-readiness.test.ts",
             "name": "capability discovery rejects routes absent from the documentation",
             "state": "PASS",
-            "durationMs": 0.6387,
+            "durationMs": 1.7884,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -909,167 +909,167 @@
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 401 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 3.2041,
+            "durationMs": 3.3283,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "Optionomics HTTP 401 retains failure and status instead of empty evidence",
             "state": "PASS",
-            "durationMs": 2.5538,
+            "durationMs": 2.6749,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 403 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 2.8015,
+            "durationMs": 1.7127,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "Optionomics HTTP 403 retains failure and status instead of empty evidence",
             "state": "PASS",
-            "durationMs": 0.6818,
+            "durationMs": 0.5627,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 404 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 3.1347,
+            "durationMs": 1.5438,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "Optionomics HTTP 404 retains failure and status instead of empty evidence",
             "state": "PASS",
-            "durationMs": 0.6116,
+            "durationMs": 0.5791,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 408 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 6.3894,
+            "durationMs": 1.4744,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "Optionomics HTTP 408 retains failure and status instead of empty evidence",
             "state": "PASS",
-            "durationMs": 0.4082,
+            "durationMs": 0.512,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 429 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 7.9037,
+            "durationMs": 1.9375,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "Optionomics HTTP 429 retains failure and status instead of empty evidence",
             "state": "PASS",
-            "durationMs": 0.9271,
+            "durationMs": 1.0388,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 500 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 3.727,
+            "durationMs": 1.445,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "Optionomics HTTP 500 retains failure and status instead of empty evidence",
             "state": "PASS",
-            "durationMs": 0.3778,
+            "durationMs": 0.4946,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 502 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 1.068,
+            "durationMs": 1.2914,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "Optionomics HTTP 502 retains failure and status instead of empty evidence",
             "state": "PASS",
-            "durationMs": 0.4909,
+            "durationMs": 0.5513,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 503 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 0.9458,
+            "durationMs": 1.231,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "Optionomics HTTP 503 retains failure and status instead of empty evidence",
             "state": "PASS",
-            "durationMs": 0.3592,
+            "durationMs": 0.4708,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 504 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 1.0346,
+            "durationMs": 2.0413,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "Optionomics HTTP 504 retains failure and status instead of empty evidence",
             "state": "PASS",
-            "durationMs": 0.5507,
+            "durationMs": 0.6529,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "malformed, partial and timed-out later pages cannot certify completed contract or quote enumeration",
             "state": "PASS",
-            "durationMs": 77.4505,
+            "durationMs": 71.1865,
             "line": 1
           },
           {
             "file": "tests/provider-network-failure.test.ts",
             "name": "Alpaca and Optionomics preserve sanitized transport classes through real adapters",
             "state": "PASS",
-            "durationMs": 8.9294,
+            "durationMs": 13.0567,
             "line": 1
           },
           {
             "file": "tests/provider-network-failure.test.ts",
             "name": "Alpaca body reset retains network failure rather than malformed JSON",
             "state": "PASS",
-            "durationMs": 0.9065,
+            "durationMs": 0.9399,
             "line": 1
           },
           {
             "file": "tests/optionomics-provider.test.ts",
             "name": "large Retry-After defers without sleeping, retrying early, or overflowing the timer",
             "state": "PASS",
-            "durationMs": 46.9656,
+            "durationMs": 52.6678,
             "line": 1
           },
           {
             "file": "tests/optionomics-provider.test.ts",
             "name": "timeout remains active while a successful response body is still streaming",
             "state": "PASS",
-            "durationMs": 16.357,
+            "durationMs": 10.2293,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -1115,111 +1115,111 @@
             "file": "tests/alpaca-provider.test.ts",
             "name": "option contract pagination remains complete across boundary sizes through 10,000 contracts",
             "state": "PASS",
-            "durationMs": 249.4474,
+            "durationMs": 289.4164,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 0 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 47.37,
+            "durationMs": 49.3359,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 1 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 1.6722,
+            "durationMs": 2.0755,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 99 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 2.5354,
+            "durationMs": 2.4214,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 100 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 2.1168,
+            "durationMs": 2.1183,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 101 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 1.5054,
+            "durationMs": 1.9746,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 999 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 14.6172,
+            "durationMs": 17.093,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 1000 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 14.9102,
+            "durationMs": 10.6674,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 1001 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 9.4145,
+            "durationMs": 8.2828,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 1090 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 14.7903,
+            "durationMs": 9.755,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 1511 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 23.2771,
+            "durationMs": 22.8906,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 2000 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 17.9692,
+            "durationMs": 23.3917,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 2601 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 19.5643,
+            "durationMs": 18.0658,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 5000 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 62.8356,
+            "durationMs": 66.3893,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "snapshot pagination preserves 10000 exact identities including later pages",
             "state": "PASS",
-            "durationMs": 134.704,
+            "durationMs": 127.792,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -1267,111 +1267,111 @@
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "non-finite or nonpositive pagination bounds fail before requesting any provider page",
             "state": "PASS",
-            "durationMs": 6.924,
+            "durationMs": 6.8878,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "identical reordered contract/snapshot pages deduplicate and conflicting evidence fails typed",
             "state": "PASS",
-            "durationMs": 2.7584,
+            "durationMs": 3.9964,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "empty terminal page and omitted optional terminal token are valid without fabricating extra rows",
             "state": "PASS",
-            "durationMs": 1.9972,
+            "durationMs": 1.9864,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "malformed, partial and timed-out later pages cannot certify completed contract or quote enumeration",
             "state": "PASS",
-            "durationMs": 77.4505,
+            "durationMs": 71.1865,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 401 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 3.2041,
+            "durationMs": 3.3283,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 403 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 2.8015,
+            "durationMs": 1.7127,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 404 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 3.1347,
+            "durationMs": 1.5438,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 408 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 6.3894,
+            "durationMs": 1.4744,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 429 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 7.9037,
+            "durationMs": 1.9375,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 500 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 3.727,
+            "durationMs": 1.445,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 502 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 1.068,
+            "durationMs": 1.2914,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 503 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 0.9458,
+            "durationMs": 1.231,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "HTTP 504 after a valid first page cannot become complete or empty",
             "state": "PASS",
-            "durationMs": 1.0346,
+            "durationMs": 2.0413,
             "line": 1
           },
           {
             "file": "tests/alpaca-provider.test.ts",
             "name": "snapshot pagination rejects repeated tokens and deduplicates identical exact-contract quotes",
             "state": "PASS",
-            "durationMs": 2.0266,
+            "durationMs": 2.0013,
             "line": 1
           },
           {
             "file": "tests/alpaca-provider.test.ts",
             "name": "open order pagination failures never return a falsely complete partial set",
             "state": "PASS",
-            "durationMs": 21.9464,
+            "durationMs": 11.0809,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -1425,48 +1425,48 @@
             "file": "tests/option-chain-ingestion.test.ts",
             "name": "Alpaca bid/ask is NEVER substituted by an Optionomics quote, even when Optionomics has one",
             "state": "PASS",
-            "durationMs": 0.9165,
+            "durationMs": 0.8712,
             "line": 1
           },
           {
             "file": "tests/option-chain-ingestion.test.ts",
             "name": "requestedFeed is preserved as the contract feed, INDICATIVE never silently reported as OPRA",
             "state": "PASS",
-            "durationMs": 0.9616,
+            "durationMs": 0.8051,
             "line": 1
           },
           {
             "file": "tests/option-chain-ingestion.test.ts",
             "name": "a fresh IEX trade supplies moneyness without becoming option execution authority",
             "state": "PASS",
-            "durationMs": 0.8047,
+            "durationMs": 0.8729,
             "line": 1
           },
           {
             "file": "tests/trusted-option-quote.test.ts",
             "name": "qualifies proven Optionomics two-sided evidence for research only, never execution",
             "state": "PASS",
-            "durationMs": 1.2839,
+            "durationMs": 1.7282,
             "line": 1
           },
           {
             "file": "tests/trusted-option-quote.test.ts",
             "name": "Alpaca indicative is accepted only as a master Paper reference",
             "state": "PASS",
-            "durationMs": 0.2601,
+            "durationMs": 0.3662,
             "line": 1
           },
           {
             "file": "tests/alpaca-execution-quote-source.test.ts",
             "name": "pre-submit quote refuses ambiguous identity and incomplete provider pages",
             "state": "PASS",
-            "durationMs": 3.221,
+            "durationMs": 5.008,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -1542,69 +1542,69 @@
             "file": "tests/earnings-event-evidence.test.ts",
             "name": "known earnings distance preserves trading-session units and positive-only authority",
             "state": "PASS",
-            "durationMs": 2.9216,
+            "durationMs": 3.9532,
             "line": 1
           },
           {
             "file": "tests/earnings-event-evidence.test.ts",
             "name": "missing and invalid provider values stay distinct",
             "state": "PASS",
-            "durationMs": 0.8463,
+            "durationMs": 0.409,
             "line": 1
           },
           {
             "file": "tests/earnings-event-evidence.test.ts",
             "name": "absence of a metrics observation is not negative earnings assurance",
             "state": "PASS",
-            "durationMs": 0.4399,
+            "durationMs": 0.2863,
             "line": 1
           },
           {
             "file": "tests/alpaca-corporate-action-evidence.test.ts",
             "name": "corporate action families preserve dated positive evidence without gaining negative assurance",
             "state": "PASS",
-            "durationMs": 6.6366,
+            "durationMs": 16.2991,
             "line": 1
           },
           {
             "file": "tests/alpaca-corporate-action-evidence.test.ts",
             "name": "unsupported corporate action with missing or invalid effective dates cannot look harmless",
             "state": "PASS",
-            "durationMs": 2.8432,
+            "durationMs": 3.9194,
             "line": 1
           },
           {
             "file": "tests/alpaca-corporate-action-evidence.test.ts",
             "name": "a sparse later response cannot erase a persisted positive action in the decision window",
             "state": "PASS",
-            "durationMs": 2.0645,
+            "durationMs": 2.317,
             "line": 1
           },
           {
             "file": "tests/macro-event-policy.test.ts",
             "name": "complete bounded coverage produces a versioned known false, never an assumed false",
             "state": "PASS",
-            "durationMs": 2.0036,
+            "durationMs": 2.4283,
             "line": 1
           },
           {
             "file": "tests/macro-event-policy.test.ts",
             "name": "a timestamp-valid scheduled Fed event inside the horizon produces known true",
             "state": "PASS",
-            "durationMs": 0.5721,
+            "durationMs": 1.9181,
             "line": 1
           },
           {
             "file": "tests/macro-event-policy.test.ts",
             "name": "incomplete coverage and missing schedule time remain unknown",
             "state": "PASS",
-            "durationMs": 0.3333,
+            "durationMs": 0.5369,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -1660,69 +1660,69 @@
             "file": "tests/earnings-event-evidence.test.ts",
             "name": "absence of a metrics observation is not negative earnings assurance",
             "state": "PASS",
-            "durationMs": 0.4399,
+            "durationMs": 0.2863,
             "line": 1
           },
           {
             "file": "tests/earnings-event-evidence.test.ts",
             "name": "known earnings distance preserves trading-session units and positive-only authority",
             "state": "PASS",
-            "durationMs": 2.9216,
+            "durationMs": 3.9532,
             "line": 1
           },
           {
             "file": "tests/alpaca-corporate-action-evidence.test.ts",
             "name": "a sparse later response cannot erase a persisted positive action in the decision window",
             "state": "PASS",
-            "durationMs": 2.0645,
+            "durationMs": 2.317,
             "line": 1
           },
           {
             "file": "tests/alpaca-corporate-action-evidence.test.ts",
             "name": "persisted positive lookup fails closed on bad input, corrupt row, or storage error",
             "state": "PASS",
-            "durationMs": 0.7765,
+            "durationMs": 1.295,
             "line": 1
           },
           {
             "file": "tests/paper-entry-safety-policy.test.ts",
             "name": "corporate-action policy never maps a successful empty read to qualified absence",
             "state": "PASS",
-            "durationMs": 0.7463,
+            "durationMs": 0.8128,
             "line": 1
           },
           {
             "file": "tests/paper-entry-safety-policy.test.ts",
             "name": "corporate-action policy blocks positives, partial coverage, provider errors, adjusted contracts, and incomplete fallback",
             "state": "PASS",
-            "durationMs": 0.522,
+            "durationMs": 0.5367,
             "line": 1
           },
           {
             "file": "tests/paper-entry-safety-policy.test.ts",
             "name": "unknown earnings coverage and unknown instrument class remain blocked",
             "state": "PASS",
-            "durationMs": 0.4202,
+            "durationMs": 0.5235,
             "line": 1
           },
           {
             "file": "tests/macro-event-policy.test.ts",
             "name": "complete bounded coverage produces a versioned known false, never an assumed false",
             "state": "PASS",
-            "durationMs": 2.0036,
+            "durationMs": 2.4283,
             "line": 1
           },
           {
             "file": "tests/macro-event-policy.test.ts",
             "name": "incomplete coverage and missing schedule time remain unknown",
             "state": "PASS",
-            "durationMs": 0.3333,
+            "durationMs": 0.5369,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -1784,76 +1784,76 @@
             "file": "tests/pit-feature-materializer.test.ts",
             "name": "future bars cannot alter a point-in-time feature snapshot",
             "state": "PASS",
-            "durationMs": 19.5969,
+            "durationMs": 22.064,
             "line": 1
           },
           {
             "file": "tests/pit-feature-materializer.test.ts",
             "name": "a bar observed before T0 but retrieved after T0 is rejected as future evidence",
             "state": "PASS",
-            "durationMs": 1.131,
+            "durationMs": 1.2769,
             "line": 1
           },
           {
             "file": "tests/pit-feature-materializer.test.ts",
             "name": "retrieval cannot precede the provider observation",
             "state": "PASS",
-            "durationMs": 0.8225,
+            "durationMs": 0.5381,
             "line": 1
           },
           {
             "file": "tests/optionomics-feature-engine.test.ts",
             "name": "feature availability includes the latest contributing context and flow receipt",
             "state": "PASS",
-            "durationMs": 91.203,
+            "durationMs": 104.7715,
             "line": 1
           },
           {
             "file": "tests/optionomics-raw-observation-time.test.ts",
             "name": "raw Optionomics as-of is retrieval time, never the later decision time",
             "state": "PASS",
-            "durationMs": 6.7002,
+            "durationMs": 5.0387,
             "line": 1
           },
           {
             "file": "tests/optionomics-raw-observation-time.test.ts",
             "name": "future or malformed provider time is quarantined, never rewritten as valid evidence",
             "state": "PASS",
-            "durationMs": 0.8867,
+            "durationMs": 0.9635,
             "line": 1
           },
           {
             "file": "tests/finalist-quote-refresh.test.ts",
             "name": "refresh receipt preserves stage timing and rejects future-observed evidence",
             "state": "PASS",
-            "durationMs": 2.5954,
+            "durationMs": 1.8632,
             "line": 1
           },
           {
             "file": "tests/alpaca-corporate-action-evidence.test.ts",
             "name": "event receipt time is after response acquisition and never backdated to request start",
             "state": "PASS",
-            "durationMs": 1.4899,
+            "durationMs": 2.0849,
             "line": 1
           },
           {
             "file": "tests/point-in-time-evidence.test.ts",
             "name": "candidate evidence is deterministic and rejects future labels anywhere in feature payload",
             "state": "PASS",
-            "durationMs": 33.4625,
+            "durationMs": 38.6082,
             "line": 1
           },
           {
             "file": "tests/point-in-time-evidence.test.ts",
             "name": "nested generic outcome and result keys are excluded from point-in-time features",
             "state": "PASS",
-            "durationMs": 0.654,
+            "durationMs": 1.763,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -1915,69 +1915,69 @@
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "identical reordered contract/snapshot pages deduplicate and conflicting evidence fails typed",
             "state": "PASS",
-            "durationMs": 2.7584,
+            "durationMs": 3.9964,
             "line": 1
           },
           {
             "file": "tests/phase2-provider-matrix.test.ts",
             "name": "bars cannot inflate independent history through repeated observations or token loops",
             "state": "PASS",
-            "durationMs": 4.0854,
+            "durationMs": 5.5542,
             "line": 1
           },
           {
             "file": "tests/optionomics-provider.test.ts",
             "name": "duplicate Optionomics contracts cannot amplify context or silently choose a conflicting revision",
             "state": "PASS",
-            "durationMs": 6.278,
+            "durationMs": 9.6676,
             "line": 1
           },
           {
             "file": "tests/optionomics-feature-engine.test.ts",
             "name": "feature availability includes the latest contributing context and flow receipt",
             "state": "PASS",
-            "durationMs": 91.203,
+            "durationMs": 104.7715,
             "line": 1
           },
           {
             "file": "tests/alpaca-corporate-action-evidence.test.ts",
             "name": "corporate action page duplicates cannot inflate evidence or hide conflicting revisions",
             "state": "PASS",
-            "durationMs": 3.4581,
+            "durationMs": 4.0973,
             "line": 1
           },
           {
             "file": "tests/canonical-strategy-frontier.test.ts",
             "name": "duplicate copies of one exact broker contract cannot manufacture a second Q alternative",
             "state": "PASS",
-            "durationMs": 4.5688,
+            "durationMs": 5.1922,
             "line": 1
           },
           {
             "file": "tests/canonical-strategy-frontier.test.ts",
             "name": "conflicting observations for one Q contract fail the Q branch closed without becoming WAIT",
             "state": "PASS",
-            "durationMs": 4.3101,
+            "durationMs": 4.2211,
             "line": 1
           },
           {
             "file": "tests/canonical-strategy-frontier.test.ts",
             "name": "duplicate D contracts cannot inflate bounded spread pair enumeration",
             "state": "PASS",
-            "durationMs": 6.0278,
+            "durationMs": 5.2626,
             "line": 1
           },
           {
             "file": "tests/copy-engine-contract.test.ts",
             "name": "stable copy identities make duplicate events and webhook replays no-ops",
             "state": "PASS",
-            "durationMs": 0.6017,
+            "durationMs": 0.8952,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -2029,62 +2029,62 @@
             "file": "tests/option-contract.test.ts",
             "name": "provider units remain dollars per share and decimal ratios without percent or cents rescaling",
             "state": "PASS",
-            "durationMs": 0.855,
+            "durationMs": 0.8916,
             "line": 1
           },
           {
             "file": "tests/option-contract.test.ts",
             "name": "multiplier is carried through unchanged, never assumed to be 100",
             "state": "PASS",
-            "durationMs": 0.7281,
+            "durationMs": 0.4028,
             "line": 1
           },
           {
             "file": "tests/option-contract.test.ts",
             "name": "DTE is computed from asOfDate to expiration, not assumed",
             "state": "PASS",
-            "durationMs": 0.4263,
+            "durationMs": 0.43,
             "line": 1
           },
           {
             "file": "tests/transaction-cost-analysis.test.ts",
             "name": "seller TCA uses direction-aware implementation shortfall and multiplier",
             "state": "PASS",
-            "durationMs": 5.2113,
+            "durationMs": 5.0266,
             "line": 1
           },
           {
             "file": "tests/transaction-cost-analysis.test.ts",
             "name": "buy-to-close reverses the adverse direction",
             "state": "PASS",
-            "durationMs": 0.4356,
+            "durationMs": 0.4587,
             "line": 1
           },
           {
             "file": "tests/transaction-cost-analysis.test.ts",
             "name": "no fill preserves unknown execution fields rather than zero",
             "state": "PASS",
-            "durationMs": 0.3144,
+            "durationMs": 0.3858,
             "line": 1
           },
           {
             "file": "tests/alpaca-learning-calendar.test.ts",
             "name": "New York session conversion preserves DST and standard-time exchange clocks",
             "state": "PASS",
-            "durationMs": 34.8138,
+            "durationMs": 44.2065,
             "line": 1
           },
           {
             "file": "tests/alpaca-learning-calendar.test.ts",
             "name": "incomplete Alpaca calendar rows stay excluded instead of gaining invented hours",
             "state": "PASS",
-            "durationMs": 2.6757,
+            "durationMs": 3.5868,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -2134,7 +2134,7 @@
         "sourceHashes": {
           "src/customer/operator-control.ts": "7c3d4e4278fe3a7a17e7428cb3220189857259b10c6540ed97ced6ca1ae8aa0f",
           "src/customer/operator-readiness.ts": "e850ebd067fe19d4a047c440776ccbd84859da92a2096b983a083ce39b2f56f5",
-          "src/research/master-shadow-context.ts": "d08950b1bc72027c2781f16e820f10dc1fd54d33424fa07288cc184bc25807fd",
+          "src/research/master-shadow-context.ts": "0006f87214c6251ba583bd15a53a69b6a761b66bcbf2f35850bacbe0f46070fb",
           "src/research/production-shadow-runtime.ts": "dc22e648449d2b0c933b7a428f62d92a24027c6ca3301144bbc29a6601b7e170",
           "src/theta/alpaca-provider.ts": "8cda07e1dfa2766ce7bb5c7c614bb8bb3d787e8f9332da83e348f1f95e2d1d4d",
           "src/theta/database-independent-shadow-observation.ts": "7418e15bd819ad5da0589bc2ae82e8516848368cad25694ebbcbc021d0a7fb64",
@@ -2152,90 +2152,90 @@
             "file": "tests/provider-boundary-fuzz.test.ts",
             "name": "provider boundary fuzz never turns malformed or absent values into executable defaults",
             "state": "PASS",
-            "durationMs": 16.8176,
+            "durationMs": 27.7929,
             "line": 1
           },
           {
             "file": "tests/provider-boundary-fuzz.test.ts",
             "name": "unknown activity and Greeks stay null and never acquire fabricated provenance",
             "state": "PASS",
-            "durationMs": 0.6004,
+            "durationMs": 0.6407,
             "line": 1
           },
           {
             "file": "tests/master-shadow-context.test.ts",
             "name": "actual persistence-context path reads normalized broker evidence before acquiring a transaction",
             "state": "PASS",
-            "durationMs": 67.0749,
+            "durationMs": 58.5755,
             "line": 1
           },
           {
             "file": "tests/production-shadow-runtime.test.ts",
             "name": "unreached Q and sizing persist as null and survive the operator loader, observed zero remains zero",
             "state": "PASS",
-            "durationMs": 4.858,
+            "durationMs": 5.1021,
             "line": 1
           },
           {
             "file": "tests/optionomics-provider.test.ts",
             "name": "malformed numeric values remain UNKNOWN while decimal zero and negative Greeks survive",
             "state": "PASS",
-            "durationMs": 10.452,
+            "durationMs": 15.9606,
             "line": 1
           },
           {
             "file": "tests/optionomics-provider.test.ts",
             "name": "200 option with OI = 0 is a real zero, never conflated with UNKNOWN",
             "state": "PASS",
-            "durationMs": 1.1257,
+            "durationMs": 1.1659,
             "line": 1
           },
           {
             "file": "tests/optionomics-provider.test.ts",
             "name": "200 option with OI absent is UNKNOWN (null), never coerced to zero",
             "state": "PASS",
-            "durationMs": 1.173,
+            "durationMs": 1.0959,
             "line": 1
           },
           {
             "file": "tests/operator-control.test.ts",
             "name": "persisted missing or contradictory execution controls fail closed and always release the read client",
             "state": "PASS",
-            "durationMs": 10.9172,
+            "durationMs": 8.5377,
             "line": 1
           },
           {
             "file": "tests/operator-control.test.ts",
             "name": "idempotent control replay cannot bypass persisted-state validation",
             "state": "PASS",
-            "durationMs": 2.991,
+            "durationMs": 2.7211,
             "line": 1
           },
           {
             "file": "tests/database-independent-shadow-observation.test.ts",
             "name": "database-independent observation runs real-path dependencies but can never authorize mutation",
             "state": "PASS",
-            "durationMs": 10.8068,
+            "durationMs": 8.03,
             "line": 1
           },
           {
             "file": "tests/database-independent-shadow-observation.test.ts",
             "name": "a stalled canonical cycle becomes typed partial evidence within the configured deadline",
             "state": "PASS",
-            "durationMs": 6.5805,
+            "durationMs": 7.4815,
             "line": 1
           },
           {
             "file": "tests/database-independent-shadow-observation.test.ts",
             "name": "database-independent observation refreshes the exact selected contract with a GET-only quote",
             "state": "PASS",
-            "durationMs": 2.7871,
+            "durationMs": 3.2362,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -2287,13 +2287,13 @@
             "file": "tests/phase2-performance.test.ts",
             "name": "provider performance probe executes all bounded adapter feature and local persistence stages",
             "state": "PASS",
-            "durationMs": 36051.8847,
+            "durationMs": 37308.5108,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -2364,7 +2364,7 @@
           "tests/finalist-quote-refresh.test.ts": "507fdefa3bf56765d92588edc8f37ed422bab7e3e54884826f40b6c5e8fd7f1f",
           "tests/local-research-archive-health.test.ts": "3c321a702fbedc8cd49e8d1d298e2470aa414fd3a387eef434a6edfbafae9b43",
           "tests/macro-event-policy.test.ts": "085ac51a0de65a8698709c228669e79ca470f7090cb0f4baa37d872702fcaa0c",
-          "tests/new-risk-orchestrator.test.ts": "b1770ba024032bd6d555ba75881c396a3345574cf81faa206687b1cf288c4175",
+          "tests/new-risk-orchestrator.test.ts": "8e4ca7fda30c579ad76c287c4b6b0738d2a8ed48e66d3e1c24e7e77469b8cb01",
           "tests/no-submit-decision-authority.test.ts": "681d0d635eae5abc7094ffc0d8d6e49cf38bea90615ccf9aed8f8402509fccf3",
           "tests/option-chain-ingestion.test.ts": "b51a93f63c299c936c6a480764d51e69138319ef3e61f0c468a7c965d572bfe5",
           "tests/ownership-contract.test.ts": "c14d0525162e08b710ff6e8a293808b3077975fdc6208ced9aa6be4d630c632d",
@@ -2381,174 +2381,174 @@
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "checked-out client error is handled and broken client is discarded",
             "state": "PASS",
-            "durationMs": 0.8484,
+            "durationMs": 0.3995,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "Postgres classifier distinguishes temporary availability from permanent SQL and auth faults",
             "state": "PASS",
-            "durationMs": 0.7227,
+            "durationMs": 0.3681,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "a 57P03 failure is not represented as WAIT or a fabricated AEGIS veto",
             "state": "PASS",
-            "durationMs": 0.4801,
+            "durationMs": 0.4843,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "query timeout retries reads once while transfer quota and read-only failures do not loop",
             "state": "PASS",
-            "durationMs": 15.7098,
+            "durationMs": 8.6828,
             "line": 1
           },
           {
             "file": "tests/alpaca-provider.test.ts",
             "name": "Alpaca reads are abortable and release their deadline after a successful response",
             "state": "PASS",
-            "durationMs": 1.293,
+            "durationMs": 1.11,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-once-config.test.ts",
             "name": "default shadow acquisition requests enough calendar history for MA200 and records lineage",
             "state": "PASS",
-            "durationMs": 3.058,
+            "durationMs": 4.1431,
             "line": 1
           },
           {
             "file": "tests/ownership-contract.test.ts",
             "name": "any UNKNOWN component forces ownability to UNKNOWN, never a fabricated number",
             "state": "PASS",
-            "durationMs": 2.304,
+            "durationMs": 4.1538,
             "line": 1
           },
           {
             "file": "tests/strategy-account-policy-compatibility.test.ts",
             "name": "missing account evidence remains unknown and broker zero remains distinct from policy incompatibility",
             "state": "PASS",
-            "durationMs": 0.5545,
+            "durationMs": 0.3848,
             "line": 1
           },
           {
             "file": "tests/strategy-account-policy-compatibility.test.ts",
             "name": "one SPY CSP minimum is explicitly account-policy incompatible while market applicability remains true",
             "state": "PASS",
-            "durationMs": 2.5349,
+            "durationMs": 2.8572,
             "line": 1
           },
           {
             "file": "tests/aegis-stress-baseline-maturity.test.ts",
             "name": "BASELINE_ACCUMULATING when below any single policy minimum -- never silently treated as sufficient",
             "state": "PASS",
-            "durationMs": 0.4261,
+            "durationMs": 0.5154,
             "line": 1
           },
           {
             "file": "tests/runtime-postgres-pool.test.ts",
             "name": "checked-out Postgres disconnect is handled before it can become an uncaught exception",
             "state": "PASS",
-            "durationMs": 0.5283,
+            "durationMs": 0.6972,
             "line": 1
           },
           {
             "file": "tests/option-chain-ingestion.test.ts",
             "name": "a fresh IEX trade supplies moneyness without becoming option execution authority",
             "state": "PASS",
-            "durationMs": 0.8047,
+            "durationMs": 0.8729,
             "line": 1
           },
           {
             "file": "tests/finalist-quote-refresh.test.ts",
             "name": "refresh receipt preserves stage timing and rejects future-observed evidence",
             "state": "PASS",
-            "durationMs": 2.5954,
+            "durationMs": 1.8632,
             "line": 1
           },
           {
             "file": "tests/aegis-alpaca-iv-stress.test.ts",
             "name": "same session, other feed, DTE, and moneyness cannot enter the baseline",
             "state": "PASS",
-            "durationMs": 2.7976,
+            "durationMs": 3.042,
             "line": 1
           },
           {
             "file": "tests/runtime-request-lease.test.ts",
             "name": "primary worker lease outlives the bounded server request",
             "state": "PASS",
-            "durationMs": 3.3534,
+            "durationMs": 3.7816,
             "line": 1
           },
           {
             "file": "tests/new-risk-orchestrator.test.ts",
             "name": "candidate spread detector evidence replaces the global UNKNOWN without weakening other AEGIS inputs",
             "state": "PASS",
-            "durationMs": 1349.6689,
+            "durationMs": 1170.4218,
             "line": 1
           },
           {
             "file": "tests/macro-event-policy.test.ts",
             "name": "incomplete coverage and missing schedule time remain unknown",
             "state": "PASS",
-            "durationMs": 0.3333,
+            "durationMs": 0.5369,
             "line": 1
           },
           {
             "file": "tests/alpaca-corporate-action-evidence.test.ts",
             "name": "positive split evidence is mapped and first-observed, while absence stays unqualified",
             "state": "PASS",
-            "durationMs": 66.6818,
+            "durationMs": 76.4475,
             "line": 1
           },
           {
             "file": "tests/canonical-strategy-frontier.test.ts",
             "name": "missing research-only H candidates do not turn a complete Q WAIT into SYSTEM_HOLD",
             "state": "PASS",
-            "durationMs": 3.9042,
+            "durationMs": 2.4309,
             "line": 1
           },
           {
             "file": "tests/canonical-strategy-frontier.test.ts",
             "name": "Paper-facing selection follows the economic Q winner rather than structural or lexical order",
             "state": "PASS",
-            "durationMs": 2.5014,
+            "durationMs": 3.7863,
             "line": 1
           },
           {
             "file": "tests/no-submit-decision-authority.test.ts",
             "name": "incomplete enumeration cannot certify a global WAIT",
             "state": "PASS",
-            "durationMs": 0.2791,
+            "durationMs": 0.2435,
             "line": 1
           },
           {
             "file": "tests/trusted-option-quote.test.ts",
             "name": "qualifies proven Optionomics two-sided evidence for research only, never execution",
             "state": "PASS",
-            "durationMs": 1.2839,
+            "durationMs": 1.7282,
             "line": 1
           },
           {
             "file": "tests/local-research-archive-health.test.ts",
             "name": "quota exhaustion persists a cooldown and preserves local archive inventory",
             "state": "PASS",
-            "durationMs": 45.6604,
+            "durationMs": 38.6949,
             "line": 2
           },
           {
             "file": "tests/runtime-schema-compatibility.test.ts",
             "name": "schema 064 is a typed fail-closed state before lease or cycle work",
             "state": "PASS",
-            "durationMs": 4.7788,
+            "durationMs": 5.035,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     },
@@ -2616,27 +2616,27 @@
             "file": "tests/executed-requirement-evidence.test.ts",
             "name": "closure requires the exact executed file and case with bound source and test hashes",
             "state": "PASS",
-            "durationMs": 3.9805,
+            "durationMs": 5.3345,
             "line": 1
           },
           {
             "file": "tests/executed-requirement-evidence.test.ts",
             "name": "a failing companion prevents a selected pass from laundering the suite failure",
             "state": "PASS",
-            "durationMs": 0.3443,
+            "durationMs": 0.4083,
             "line": 1
           },
           {
             "file": "tests/executed-requirement-evidence.test.ts",
             "name": "source evidence normalizes checkout newlines without normalizing semantic content",
             "state": "PASS",
-            "durationMs": 0.7244,
+            "durationMs": 0.7186,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ba046c6c41d9a80fa4416489a7318b98c905408bb747fae724e01a390339a9e3"
+        "artifactHash": "c0467b41e2f13acbd1a6e944f806ecc0c7a3134708b14e3bd289c1f576feaad9"
       },
       "RUNTIME_EVIDENCE": "Source engineering only. No claim of current-worker deployment, account entitlement, fleet bound, empirical validation or broker authority."
     }

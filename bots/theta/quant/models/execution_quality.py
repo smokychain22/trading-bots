@@ -34,6 +34,12 @@ class PositionIntent(str, Enum):
         return self in {PositionIntent.BUY_TO_CLOSE, PositionIntent.BUY_TO_OPEN}
 
 
+class UtilityEvidenceState(str, Enum):
+    EMPIRICAL_ESTIMATE = "EMPIRICAL_ESTIMATE"
+    PAPER_BOOTSTRAP_UNCALIBRATED = "PAPER_BOOTSTRAP_UNCALIBRATED"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
 @dataclass(frozen=True)
 class ExecutionQualityPolicy:
     policy_version: str
@@ -52,6 +58,7 @@ class ExecutionQualityInputs:
     quote_age_seconds: Optional[float]
     limit_price: float
     pre_slippage_expected_utility: Optional[float]
+    utility_evidence_state: UtilityEvidenceState
 
 
 @dataclass(frozen=True)
@@ -116,6 +123,19 @@ def assess_execution_quality(
     )
 
     if inputs.pre_slippage_expected_utility is None:
+        if (
+            inputs.utility_evidence_state is UtilityEvidenceState.PAPER_BOOTSTRAP_UNCALIBRATED
+            and expected_slippage == 0
+        ):
+            reasons.append(ReasonCode(
+                "PAPER_BOOTSTRAP_UTILITY_UNCALIBRATED_NO_ADDITIONAL_SLIPPAGE",
+                0,
+                "Empirical utility remains unavailable. The fresh executable BBO requires no additional "
+                "price concession, so quote executability may pass without fabricating expected utility.",
+            ))
+            return ExecutionQualityAssessment(
+                spread_pct, fill_probability, expected_slippage, True, "SUBMIT", reasons
+            )
         reasons.append(ReasonCode("PRE_SLIPPAGE_UTILITY_UNKNOWN", -1, "Cannot confirm after-cost utility remains positive."))
         return ExecutionQualityAssessment(spread_pct, fill_probability, expected_slippage, None, "UNKNOWN", reasons)
 

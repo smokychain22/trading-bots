@@ -19,10 +19,11 @@ from models.execution_quality import (  # noqa: E402
     ExecutionQualityInputs,
     ExecutionQualityPolicy,
     PositionIntent,
+    UtilityEvidenceState,
     assess_execution_quality,
 )
 
-CONTRACT_VERSION = "theta-execution-quality-runtime-v2"
+CONTRACT_VERSION = "theta-execution-quality-runtime-v3"
 
 
 def _required(data: dict[str, Any], name: str) -> Any:
@@ -42,7 +43,7 @@ def _policy(data: dict[str, Any]) -> ExecutionQualityPolicy:
 
 
 def _inputs(data: dict[str, Any]) -> ExecutionQualityInputs:
-    return ExecutionQualityInputs(
+    inputs = ExecutionQualityInputs(
         position_intent=PositionIntent(_required(data, "positionIntent")),
         bid=_required(data, "bid"),
         ask=_required(data, "ask"),
@@ -50,7 +51,13 @@ def _inputs(data: dict[str, Any]) -> ExecutionQualityInputs:
         quote_age_seconds=_required(data, "quoteAgeSeconds"),
         limit_price=_required(data, "limitPrice"),
         pre_slippage_expected_utility=_required(data, "preSlippageExpectedUtility"),
+        utility_evidence_state=UtilityEvidenceState(_required(data, "utilityEvidenceState")),
     )
+    if inputs.pre_slippage_expected_utility is None and inputs.utility_evidence_state is UtilityEvidenceState.EMPIRICAL_ESTIMATE:
+        raise ValueError("EMPIRICAL_ESTIMATE requires preSlippageExpectedUtility")
+    if inputs.pre_slippage_expected_utility is not None and inputs.utility_evidence_state is not UtilityEvidenceState.EMPIRICAL_ESTIMATE:
+        raise ValueError("non-empirical utility evidence state requires preSlippageExpectedUtility=null")
+    return inputs
 
 
 def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
@@ -72,6 +79,7 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
         "timestamp": timestamp,
         "policyVersion": policy.policy_version,
         "positionIntent": inputs.position_intent.value,
+        "utilityEvidenceState": inputs.utility_evidence_state.value,
         "spreadPct": assessment.spread_pct,
         "fillProbability": assessment.fill_probability,
         "expectedSlippagePerShare": assessment.expected_slippage_per_share,
