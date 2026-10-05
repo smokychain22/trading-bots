@@ -20,6 +20,7 @@ $qualificationSessionFile = Join-Path $stateRoot 'last-optionomics-qualification
 $alpacaQualificationSessionFile = Join-Path $stateRoot 'last-alpaca-indicative-qualification-session'
 $storageAuditDateFile = Join-Path $stateRoot 'last-storage-audit-date'
 $storageAuditFailureFile = Join-Path $stateRoot 'storage-audit-failure.json'
+$canaryActivationAttemptFile = Join-Path $stateRoot 'last-first-canary-activation-attempt'
 if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INSTALLED' }
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 if (!(Test-Path -LiteralPath $productionEnvFile)) { throw 'THETA_PRODUCTION_ENV_NOT_PROVISIONED' }
@@ -381,6 +382,43 @@ try {
       $completeScan = @($report.jobResults | Where-Object {
         $_.jobType -eq 'OPPORTUNITY_SCAN' -and $_.status -eq 'SUCCEEDED'
       }).Count -gt 0
+      # Owner Paper authorization is already durable. After a real complete
+      # open-session scan, ask the canonical authorization store to arm only
+      # the one-contract first-canary lane. The endpoint independently
+      # rechecks broker reconciliation, calendar, schema, quote readiness,
+      # environment locks, prior orders, and active intents. This supervisor
+      # never receives an order mutation surface. A blocked activation remains
+      # locked and may be reconsidered only after a different complete scan.
+      $firstCanaryActivationState = if ($report.executionGate -eq 'ACTIVE') { 'ALREADY_ACTIVE' } else { 'NOT_ATTEMPTED' }
+      $firstCanaryActivationBlockers = @()
+      $firstCanaryActivationScanId = if ($completeScan) { [string]$report.correlationId } else { $null }
+      $lastCanaryActivationScanId = if (Test-Path -LiteralPath $canaryActivationAttemptFile) {
+        (Get-Content -Raw -LiteralPath $canaryActivationAttemptFile).Trim()
+      } else { '' }
+      if ($completeScan -and $report.reconciliation.marketOpen -eq $true -and
+        $report.executionGate -eq 'LOCKED' -and $firstCanaryActivationScanId -and
+        $lastCanaryActivationScanId -ne $firstCanaryActivationScanId) {
+        $currentOperation = 'FIRST_PAPER_CANARY_ACTIVATE'
+        $operationStartedAt = [DateTimeOffset]::UtcNow
+        $canaryHeaders = $headers.Clone()
+        $canaryHeaders['X-Theta-Operation'] = 'first-paper-canary-activate'
+        $canaryHeaders['X-Theta-Confirmation'] = 'ACTIVATE_ONE_MASTER_THETA_PAPER_CANARY'
+        $canaryActivationHttpStatus = 0
+        $canaryActivation = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $canaryHeaders `
+          -TimeoutSec 180 -SkipHttpErrorCheck -StatusCodeVariable canaryActivationHttpStatus
+        Set-Content -LiteralPath $canaryActivationAttemptFile -Value $firstCanaryActivationScanId -Encoding ascii
+        if ($canaryActivationHttpStatus -eq 200 -and $canaryActivation.activated -eq $true -and
+          $canaryActivation.executionGate -eq 'ACTIVE') {
+          $firstCanaryActivationState = 'ACTIVATED_FOR_NEXT_CANONICAL_CYCLE'
+        } elseif ($canaryActivationHttpStatus -eq 409 -and $canaryActivation.activated -ne $true) {
+          $firstCanaryActivationState = 'BLOCKED_BY_CANONICAL_ACTIVATION_GATES'
+          $firstCanaryActivationBlockers = @($canaryActivation.blockers | Where-Object {
+            $_ -is [string] -and $_ -match '^[A-Z0-9_:.-]+$'
+          })
+        } else {
+          throw "THETA_FIRST_CANARY_ACTIVATION_FAILED:$canaryActivationHttpStatus"
+        }
+      }
       if ($completeScan -and $lastExportedSession -ne $marketSessionDate) {
         Set-Content -LiteralPath $pendingExportSessionFile -Value $marketSessionDate -Encoding ascii
       }
@@ -711,7 +749,10 @@ try {
         command5aExpiredClaims=$command5aExpiredClaims;command5aRetryStalledJobs=$command5aRetryStalledJobs;
         command5aOldestOverdueSeconds=$command5aOldestOverdueSeconds;command5aSourceCursor=$command5aSourceCursor;
         localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
-        localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
+        localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash;
+        firstCanaryActivationState=$firstCanaryActivationState;
+        firstCanaryActivationBlockers=$firstCanaryActivationBlockers;
+        firstCanaryActivationScanId=$firstCanaryActivationScanId} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
       $delaySeconds = 5
     } catch {

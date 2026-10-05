@@ -102,6 +102,23 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.doesNotMatch(source, /\$report\.(providerAccountRefHash|positions|rawPayload)/);
 });
 
+test('Windows supervisor requests canonical first-canary activation once per complete open-session scan', async () => {
+  const source = await readFile('tools/windows/theta-local-worker.ps1', 'utf8');
+  assert.match(source, /last-first-canary-activation-attempt/);
+  assert.match(source, /\$completeScan -and \$report\.reconciliation\.marketOpen -eq \$true/);
+  assert.match(source, /\$report\.executionGate -eq 'LOCKED'/);
+  assert.match(source, /\$lastCanaryActivationScanId -ne \$firstCanaryActivationScanId/);
+  assert.match(source, /'X-Theta-Operation'\] = 'first-paper-canary-activate'/);
+  assert.match(source, /'X-Theta-Confirmation'\] = 'ACTIVATE_ONE_MASTER_THETA_PAPER_CANARY'/);
+  assert.match(source, /-SkipHttpErrorCheck -StatusCodeVariable canaryActivationHttpStatus/);
+  assert.match(source, /ACTIVATED_FOR_NEXT_CANONICAL_CYCLE/);
+  assert.match(source, /BLOCKED_BY_CANONICAL_ACTIVATION_GATES/);
+  assert.match(source, /firstCanaryActivationBlockers=\$firstCanaryActivationBlockers/);
+  assert.match(source, /firstCanaryActivationScanId=\$firstCanaryActivationScanId/);
+  assert.doesNotMatch(source, /Invoke-RestMethod[^\r\n]+\/v2\/orders/i);
+  assert.doesNotMatch(source, /createOrder|submitOrder/);
+});
+
 test('Windows installer does not silently queue evidence capture on laptop battery',async()=>{
   const source=await readFile('tools/windows/install-theta-local-worker.ps1','utf8');
   assert.match(source,/-AllowStartIfOnBatteries/);
