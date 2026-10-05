@@ -346,10 +346,20 @@ try {
       } finally { $ErrorActionPreference = $previousErrorActionPreference }
       $marketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
         [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
-      $lastAlpacaQualificationSession = if (Test-Path -LiteralPath $alpacaQualificationSessionFile) {
-        (Get-Content -Raw -LiteralPath $alpacaQualificationSessionFile).Trim()
-      } else { '' }
-      if ($report.reconciliation.marketOpen -eq $true -and $lastAlpacaQualificationSession -ne $marketSessionDate) {
+      # Activation accepts Alpaca quote authority for one hour. Refresh it at
+      # 45 minutes so a once-per-session sentinel cannot leave an otherwise
+      # valid complete scan structurally blocked later in the same session.
+      # Legacy date-only sentinels do not parse as a fresh timestamp and are
+      # therefore upgraded by the next successful qualification.
+      $alpacaQualificationFresh = $false
+      if (Test-Path -LiteralPath $alpacaQualificationSessionFile) {
+        $alpacaQualificationText = (Get-Content -Raw -LiteralPath $alpacaQualificationSessionFile).Trim()
+        $alpacaQualificationAt = [DateTimeOffset]::MinValue
+        if ([DateTimeOffset]::TryParse($alpacaQualificationText, [ref]$alpacaQualificationAt)) {
+          $alpacaQualificationFresh = $alpacaQualificationAt.ToUniversalTime() -gt [DateTimeOffset]::UtcNow.AddMinutes(-45)
+        }
+      }
+      if ($report.reconciliation.marketOpen -eq $true -and !$alpacaQualificationFresh) {
         $currentOperation = 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION'
         $operationStartedAt = [DateTimeOffset]::UtcNow
         $alpacaQualificationHeaders = $headers.Clone()
@@ -357,7 +367,8 @@ try {
         $alpacaQualification = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $alpacaQualificationHeaders -TimeoutSec 180
         if ($null -ne $alpacaQualification -and $alpacaQualification.qualified -eq $true -and
           $alpacaQualification.marketOpen -eq $true) {
-          Set-Content -LiteralPath $alpacaQualificationSessionFile -Value $marketSessionDate -Encoding ascii
+          Set-Content -LiteralPath $alpacaQualificationSessionFile `
+            -Value ([DateTimeOffset]::UtcNow.ToString('o')) -Encoding ascii
         }
       }
       $lastQualificationSession = if (Test-Path -LiteralPath $qualificationSessionFile) {

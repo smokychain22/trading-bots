@@ -29,6 +29,9 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /last-empirical-dataset-identity/);
   assert.match(source, /last-alpaca-indicative-qualification-session/);
   assert.match(source, /alpaca-indicative-quote-qualification/);
+  assert.match(source, /alpacaQualificationFresh/);
+  assert.match(source, /AddMinutes\(-45\)/);
+  assert.match(source, /\[DateTimeOffset\]::TryParse\(\$alpacaQualificationText/);
   assert.match(source, /\.qualified -eq \$true/);
   assert.match(source, /AUTO-DESCRIPTIVE-\$\(\$runtime\.buildSha\.Substring\(0,12\)\)/);
   assert.match(source, /RESEARCH_RESULT_IDENTITY_INVALID/);
