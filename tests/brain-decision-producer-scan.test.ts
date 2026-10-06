@@ -41,6 +41,7 @@ const thetaClass: Readonly<Record<string, ProducerClass>> = {
   'profitability-brain-reality.ts': 'DISPLAY',
   'roll-incremental-utility.ts': 'SUBORDINATE_CALCULATOR',
   'runtime-behavior-diagnostic.ts': 'DISPLAY',
+  'sovereign-strategy-assessment.ts': 'SUBORDINATE_CALCULATOR',
   'strategy-decision-envelope.ts': 'SUBORDINATE_CALCULATOR',
   'strategy-route-receipt.ts': 'SUBORDINATE_CALCULATOR',
   't0-replay-bundle.ts': 'SUBORDINATE_CALCULATOR',

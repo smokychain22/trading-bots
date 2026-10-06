@@ -78,7 +78,8 @@ class AegisNumericBoundaryTests(unittest.TestCase):
             self.assertIsNone(trace['sourceObservedAt'])
             self.assertIsNone(trace['quantityCapacity'])
             for name, value in trace['inputs'].items():
-                self.assertEqual(value, request['inputs'].get(name, 'REQUIRED'))
+                expected = request['inputs'].get(name, 'CASH_SECURED_PUT' if name == 'riskStructure' else 'REQUIRED')
+                self.assertEqual(value, expected)
         underlying = next(row for row in response['families'] if row['family'] == 'UNDERLYING')['inputEvidence']
         self.assertEqual(underlying['softThreshold'], request['policy']['maxTickerConcentrationPct'])
         self.assertEqual(underlying['hardThreshold'], request['policy']['maxTickerConcentrationPct'] * request['policy']['hardCapMultiplier'])
