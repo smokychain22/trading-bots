@@ -69,6 +69,26 @@ test('open: a naked short while the long leg is unfilled is an emergency, a full
   });
 });
 
+test('registration sweep: a D open becomes a managed position once the broker fills any leg (a naked short is caught at once); no fill is no position; replay registers nothing new', { skip: !url }, async () => {
+  await withWorld(async (ctx) => {
+    const chainId = randomUUID();
+    await ctx.positions.ensureDefinedRiskChain({ chainId, botInstanceId: ctx.world.botInstanceId, underlyingId: ctx.world.underlyingId, openedAt: NOW });
+    const intent = mlegIntent(ctx.world, chainId, false, 1);
+    await ctx.orders.insertIntent(intent);
+    await moveTo(ctx.orders, intent.orderIntentId, ['SUBMITTING', 'SUBMITTED']);
+    assert.ok(!(await ctx.positions.registerFilledOpens(at(1))).includes(intent.orderIntentId), 'a working order with no fill is pending exposure, not a position');
+    await moveTo(ctx.orders, intent.orderIntentId, ['PARTIAL'], 'SUBMITTED');
+    await ctx.orders.recordBrokerSnapshot(intent.orderIntentId, brokerParent(intent, 'p-sweep', { filled: 1, avg: 2.0 }, { filled: 0, avg: null }, 'partially_filled'));
+    assert.ok((await ctx.positions.registerFilledOpens(at(2))).includes(intent.orderIntentId));
+    assert.equal((await ctx.positions.get(intent.orderIntentId)).state, 'DIVERGED_EMERGENCY', 'the sweep refreshes at once: a filled short without its long is an emergency now');
+    assert.ok(await ctx.positions.hasEmergency(), 'and it blocks new risk');
+    assert.ok(!(await ctx.positions.registerFilledOpens(at(3))).includes(intent.orderIntentId), 'idempotent');
+    await moveTo(ctx.orders, intent.orderIntentId, ['FILLED'], 'PARTIAL');
+    await ctx.orders.recordBrokerSnapshot(intent.orderIntentId, brokerParent(intent, 'p-sweep', { filled: 1, avg: 2.0 }, { filled: 1, avg: 0.9 }, 'filled'));
+    assert.equal((await ctx.positions.refresh(intent.orderIntentId, at(4))).state, 'OPEN');
+  });
+});
+
 test('close: partial two-leg close is CLOSE_PENDING, both legs closed is CLOSED, and after-fee P&L stays UNKNOWN until a fee is recorded (never zero)', { skip: !url }, async () => {
   await withWorld(async (ctx) => {
     const { chainId, intent } = await openSpread(ctx);

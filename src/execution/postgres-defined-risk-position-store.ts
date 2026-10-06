@@ -74,6 +74,28 @@ export class PostgresDefinedRiskPositionStore {
     });
   }
 
+  /**
+   * Registration sweep: every native D open parent on a DEFINED_RISK chain that the broker has filled on at least one leg becomes a tracked
+   * position (then refreshed from durable truth). A parent with no fill yet is pending exposure, not a position: the entry duplicate guard
+   * already holds it. Idempotent: an already registered parent is never touched. Returns the newly registered parent ids.
+   */
+  async registerFilledOpens(observedAt: string): Promise<readonly string[]> {
+    const rows = await withRuntimePostgresReadRetry(this.pool, (client) => client.query(`SELECT oi.order_intent_id::text FROM trade.order_intent oi
+        JOIN trade.economic_chain c ON c.chain_id=oi.chain_id
+      WHERE oi.order_class='mleg' AND oi.theta_action='OPEN_DEFINED_RISK' AND c.chain_kind='DEFINED_RISK'
+        AND NOT EXISTS(SELECT 1 FROM trade.defined_risk_position p WHERE p.order_intent_id=oi.order_intent_id)
+        AND EXISTS(SELECT 1 FROM trade.broker_order_leg_state s WHERE s.order_intent_id=oi.order_intent_id AND s.filled_quantity>0)
+      ORDER BY oi.order_intent_id`));
+    const registered: string[] = [];
+    for (const row of rows.value.rows as Row[]) {
+      const orderIntentId = String(row.order_intent_id);
+      await this.register(orderIntentId);
+      await this.refresh(orderIntentId, observedAt);
+      registered.push(orderIntentId);
+    }
+    return registered;
+  }
+
   /** the current durable snapshot of one spread */
   async get(orderIntentId: string): Promise<DefinedRiskPositionSnapshot> { return this.load(this.pool, orderIntentId); }
 

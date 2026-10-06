@@ -35,6 +35,8 @@ const calendarDays = (from: string, to: string): number => Math.round((Date.pars
 export async function runDefinedRiskManagementForRuntime(input: DefinedRiskRuntimeInput): Promise<readonly DefinedRiskScanResult[]> {
   const now = input.now ?? ((): string => new Date().toISOString());
   const positions = new PostgresDefinedRiskPositionStore(input.pool);
+  // a filled D open becomes a managed position before the scan reads the active set (otherwise a live spread would never be managed)
+  await positions.registerFilledOpens(input.reconciliation.observedAt);
   const active = await positions.activePositions();
   if (active.length === 0) return [];
   const recorder = new PostgresDefinedRiskDecisionRecorder(input.pool);
