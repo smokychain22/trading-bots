@@ -14,6 +14,7 @@ import { buildEntryThesisReceipt } from '../src/theta/entry-thesis-receipt.js';
 import { loadManagementEntryThesis } from '../src/theta/management-entry-thesis.js';
 import { buildManagementActionFrontier } from '../src/theta/management-action-frontier.js';
 import { buildT0ReplayBundle, replayFromT0Bundle } from '../src/theta/t0-replay-bundle.js';
+import { buildHoldStrikeProductionDecision } from '../src/theta/hold-strike-production-decision.js';
 
 const NOW = '2026-09-14T15:00:00.000Z';
 const UUID = {
@@ -45,11 +46,17 @@ const dAuthorization = buildStrategyPaperAuthorityReceipt({ strategy:'THETA_DEFI
   decisionPlanBound:true,reconciliationCertified:true,managementCoverageCertified:true,restartRecoveryCertified:true,
   wholeChainAccountingCertified:true,strategyCanaryAccepted:false,liveAuthorization:false,observedAt:NOW,evidenceIds:['phase4-d-tests'] });
 
+const dLegContractEvidence=[
+  {optionContractId:'20000000-0000-4000-8000-000000000001',providerContractId:'alpaca-short',deliverableIdentity:'STANDARD:SPY:100'},
+  {optionContractId:'20000000-0000-4000-8000-000000000002',providerContractId:'alpaca-long',deliverableIdentity:'STANDARD:SPY:100'},
+] as const;
+
 test('native D command is one mleg parent and never sends naked parent symbol or side fields', () => {
   const command = buildDefinedRiskPaperCommand({ plan: dPlan(), authorization: dAuthorization,
     executionAccountId: UUID.account, decisionId: UUID.decision, chainId: UUID.chain, underlyingId: UUID.underlying,
     canonicalQuantity: 1, paperEvidenceQuantity: 1, paperEvidenceRiskCap: 1, limitCreditPerShare: 1.1,
-    now: NOW, decisionExpiresAt: '2026-09-14T15:00:30.000Z', maximumQuoteAgeSeconds: 30, attempt: 1 });
+    now: NOW, decisionExpiresAt: '2026-09-14T15:00:30.000Z', maximumQuoteAgeSeconds: 30, attempt: 1,
+    legContractEvidence:dLegContractEvidence });
   assert.equal(command.request.order_class, 'mleg');
   assert.equal(command.request.legs?.length, 2);
   assert.equal(command.request.limit_price, '-1.10');
@@ -65,7 +72,8 @@ test('D pre-submit rejects a stale leg, crossed leg, wrong geometry, and invalid
   const base = { plan: dPlan(), authorization: dAuthorization, executionAccountId: UUID.account,
     decisionId: UUID.decision, chainId: UUID.chain, underlyingId: UUID.underlying, canonicalQuantity: 1,
     paperEvidenceQuantity: 1, paperEvidenceRiskCap: 1, limitCreditPerShare: 1.1, now: NOW,
-    decisionExpiresAt: '2026-09-14T15:00:30.000Z', maximumQuoteAgeSeconds: 30, attempt: 1 } as const;
+    decisionExpiresAt: '2026-09-14T15:00:30.000Z', maximumQuoteAgeSeconds: 30, attempt: 1,
+    legContractEvidence:dLegContractEvidence } as const;
   assert.throws(() => buildDefinedRiskPaperCommand({ ...base, plan: { ...dPlan(), legs: [
     { ...dPlan().legs[0], quoteTimestamp: '2026-09-14T14:58:00.000Z' }, dPlan().legs[1]] } }), /QUOTE_NOT_EXECUTABLE/);
   assert.throws(() => buildDefinedRiskPaperCommand({ ...base, limitCreditPerShare: 1.21 }), /LIMIT_CREDIT_INVALID/);
@@ -153,8 +161,6 @@ const hFrontierInput = () => ({ snapshotId:'h-snap',timestamp:NOW,strategyVersio
     winningAction:'OPEN_FULL',selectedCandidateId:hContract.optionSymbol,quantity:1,technicalCertification:'CERTIFIED',
     paperAuthorization:'PAPER_EXPERIMENTAL_AUTHORIZED',strategyPaperAuthority:hStrategyPaperAuthority} } as const);
 
-const hFrontier = () => buildCanonicalStrategyFrontier(hFrontierInput());
-
 const entryPolicy = buildPaperEntrySafetyPolicyReceipt({ decisionAsOf:'2026-09-14T15:00:01.000Z',
   companyEvent:{policyVersion:'theta-company-event-paper-policy-v1',authority:'PAPER_BOOTSTRAP_NOT_COMPLETE_COMPANY_COVERAGE',
     action:'CLEAR',state:'KNOWN_AFTER_EXPIRY_CLEAR',decisionAsOf:'2026-09-14T15:00:01.000Z',validThrough:'2026-09-30',
@@ -167,7 +173,12 @@ const entryPolicy = buildPaperEntrySafetyPolicyReceipt({ decisionAsOf:'2026-09-1
     positiveRelevance:'EXPIRED_NOT_RELEVANT',missingPrerequisites:[],evidenceIds:[],reason:'TEST'} });
 
 test('one canonical frontier can select H from an explicit certified receipt and build an H plan without relabeling it Q', () => {
-  const frontier = hFrontier();
+  const raw=hFrontierInput();
+  const structural=buildCanonicalStrategyFrontier({...raw,paperEntryDecision:undefined});
+  const produced=buildHoldStrikeProductionDecision({structuralFrontier:structural,
+    thetaQDecision:{winningAction:'PASS'},authority:hStrategyPaperAuthority});
+  assert.ok(produced);
+  const frontier = buildCanonicalStrategyFrontier({...raw,paperEntryDecision:produced});
   assert.equal(frontier.selectedBranch, 'THETA_HOLD_STRIKE');
   assert.equal(frontier.entrySelectionBasis, 'THETA_H_DECISION_BOUND');
   const identity = testAegisAssessmentIdentity({ runtimeCandidateRef:`THETA_HOLD_STRIKE:${hContract.optionSymbol}`,

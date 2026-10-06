@@ -5,7 +5,8 @@ import { isValidOrderIntentTransition, ORDER_INTENT_TRANSITIONS, type OrderInten
 const states = Object.keys(ORDER_INTENT_TRANSITIONS) as OrderIntentState[];
 
 test('CANCEL_REQUESTED resolves only to broker truth: canceled, a racing fill, a racing partial, or an ambiguous result', () => {
-  assert.deepEqual([...ORDER_INTENT_TRANSITIONS.CANCEL_REQUESTED].sort(), ['CANCELED', 'FILLED', 'PARTIAL', 'UNKNOWN_SUBMISSION']);
+  // RECONCILING is the broker-truth resolution state (e.g. a native multi-leg parent whose legs diverge while a cancel is in flight); it can only resolve to broker truth and can never re-enter SUBMITTING (next test)
+  assert.deepEqual([...ORDER_INTENT_TRANSITIONS.CANCEL_REQUESTED].sort(), ['CANCELED', 'FILLED', 'PARTIAL', 'RECONCILING', 'UNKNOWN_SUBMISSION']);
   for (const forbidden of ['READY', 'SUBMITTING', 'SUBMITTED', 'ACKNOWLEDGED', 'REJECTED', 'PROPOSED', 'EXPIRED'] as OrderIntentState[]) {
     assert.equal(isValidOrderIntentTransition('CANCEL_REQUESTED', forbidden), false, `CANCEL_REQUESTED -> ${forbidden}`);
   }

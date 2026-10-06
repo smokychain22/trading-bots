@@ -47,6 +47,11 @@ export interface BuildDefinedRiskPaperCommandInput {
   readonly now: string;
   readonly maximumQuoteAgeSeconds: number;
   readonly attempt: number;
+  readonly legContractEvidence: readonly [{
+    readonly optionContractId:string; readonly providerContractId:string; readonly deliverableIdentity:string;
+  },{
+    readonly optionContractId:string; readonly providerContractId:string; readonly deliverableIdentity:string;
+  }];
 }
 
 export interface DefinedRiskPaperCommand extends PrepareIntentInput {
@@ -113,6 +118,8 @@ export function buildDefinedRiskPaperCommand(input: BuildDefinedRiskPaperCommand
     { symbol: longLeg.occSymbol, side: 'buy' as const, ratio_qty: 1, position_intent: 'buy_to_open' as const },
   ] as const;
   const packageIdentity = multiLegPackageIdentity(legs);
+  if(input.legContractEvidence.some(item=>!item.optionContractId.trim()||!item.providerContractId.trim()
+    ||!item.deliverableIdentity.trim()))throw new Error('DEFINED_RISK_CONTRACT_EVIDENCE_INVALID');
   const identitySeed = economicIdentitySeed({ candidateId: plan.candidateId, strategyVersion: plan.strategyVersion,
     action: 'OPEN_DEFINED_RISK', chainId: input.chainId });
   const clientOrderId = generateClientOrderId(input.decisionId, identitySeed, input.attempt);
@@ -127,6 +134,13 @@ export function buildDefinedRiskPaperCommand(input: BuildDefinedRiskPaperCommand
     orderIntentId, executionAccountId: input.executionAccountId, request, action: 'OPEN_DEFINED_RISK',
     decisionId: input.decisionId, persistedAt: input.now,
     chainId: input.chainId, optionContractId: null, underlyingId: input.underlyingId,
+    multiLegEvidence:{orderClass:'mleg',creditDebitDirection:'CREDIT',packageIdentity,legs:plan.legs.map((leg,index)=>({
+      legIndex:index+1,optionContractId:input.legContractEvidence[index]?.optionContractId??'',
+      providerContractId:input.legContractEvidence[index]?.providerContractId??'',occSymbol:leg.occSymbol,
+      optionType:leg.optionType,positionIntent:index===0?'sell_to_open' as const:'buy_to_open' as const,
+      ratioQuantity:1,expiration:leg.expiration,strike:leg.strike,multiplier:leg.multiplier,
+      deliverableIdentity:input.legContractEvidence[index]?.deliverableIdentity??'',
+    }))},
     executionEvidence: { quoteSource: 'ALPACA', quoteFeed: 'OPRA', quoteSemantics: 'CONSOLIDATED_NBBO',
       quoteAsOf: new Date(Math.max(...plan.legs.map((leg) => Date.parse(leg.quoteTimestamp)))).toISOString(),
       decisionExpiresAt: input.decisionExpiresAt, quoteContentHash: hash(plan.legs), aegisState: plan.aegisReceipt.state === 'ALLOW_REDUCED'

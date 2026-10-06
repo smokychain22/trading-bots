@@ -118,7 +118,14 @@ test('ambiguous native multi-leg submission reconciles the exact parent and ever
   const coordinator=new PaperOrderCoordinator(broker,store,control({masterEnabled:true,pauseNewOrders:false}));
   await coordinator.prepare({orderIntentId:'88888888-8888-4888-8888-888888888888',executionAccountId:'22222222-2222-4222-8222-222222222222',
     request,action:'OPEN_DEFINED_RISK',decisionId:'33333333-3333-4333-8333-333333333333',persistedAt:gate.now,
-    ...executionLineage,optionContractId:null});
+    ...executionLineage,optionContractId:null,multiLegEvidence:{orderClass:'mleg',creditDebitDirection:'CREDIT',
+      packageIdentity:request.symbol,legs:[
+        {legIndex:1,optionContractId:'10000000-0000-4000-8000-000000000001',providerContractId:'short-contract',
+          occSymbol:'SPY261016P00650000',optionType:'PUT',positionIntent:'sell_to_open',ratioQuantity:1,
+          expiration:'2026-10-16',strike:650,multiplier:100,deliverableIdentity:'STANDARD:SPY:100'},
+        {legIndex:2,optionContractId:'10000000-0000-4000-8000-000000000002',providerContractId:'long-contract',
+          occSymbol:'SPY261016P00645000',optionType:'PUT',positionIntent:'buy_to_open',ratioQuantity:1,
+          expiration:'2026-10-16',strike:645,multiplier:100,deliverableIdentity:'STANDARD:SPY:100'}]}});
   const result=await coordinator.submit('88888888-8888-4888-8888-888888888888',gate);
   assert.equal(result?.id,'broker-d-parent');
   assert.equal(broker.submitCalls,1);
@@ -137,7 +144,14 @@ test('multi-leg reconciliation fails closed on any leg identity drift and native
   const coordinator=new PaperOrderCoordinator(broker,store,control({masterEnabled:true,pauseNewOrders:false}));
   const prepared=await coordinator.prepare({orderIntentId:'99999999-9999-4999-8999-999999999999',
     executionAccountId:'22222222-2222-4222-8222-222222222222',request,action:'OPEN_DEFINED_RISK',
-    decisionId:'33333333-3333-4333-8333-333333333333',persistedAt:gate.now,...executionLineage,optionContractId:null});
+    decisionId:'33333333-3333-4333-8333-333333333333',persistedAt:gate.now,...executionLineage,optionContractId:null,
+    multiLegEvidence:{orderClass:'mleg',creditDebitDirection:'CREDIT',packageIdentity:request.symbol,legs:[
+      {legIndex:1,optionContractId:'10000000-0000-4000-8000-000000000001',providerContractId:'short-contract',
+        occSymbol:'SPY261016P00650000',optionType:'PUT',positionIntent:'sell_to_open',ratioQuantity:1,
+        expiration:'2026-10-16',strike:650,multiplier:100,deliverableIdentity:'STANDARD:SPY:100'},
+      {legIndex:2,optionContractId:'10000000-0000-4000-8000-000000000002',providerContractId:'long-contract',
+        occSymbol:'SPY261016P00645000',optionType:'PUT',positionIntent:'buy_to_open',ratioQuantity:1,
+        expiration:'2026-10-16',strike:645,multiplier:100,deliverableIdentity:'STANDARD:SPY:100'}]}});
   await store.transitionIntent(prepared.orderIntentId,'READY','SUBMITTING');
   broker.lookupResult={id:'broker-d',clientOrderId:request.client_order_id,symbol:request.symbol,qty:1,filledQty:0,
     filledAvgPrice:null,side:'sell',positionIntent:null,status:'accepted',limitPrice:1.1,submittedAt:gate.now,

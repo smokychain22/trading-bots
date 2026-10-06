@@ -23,6 +23,8 @@ import { compareIvStressSignals, type AlpacaContractIvAssessment,
 import type { AegisSpreadStressAssessment, AegisSpreadStressAssessmentMap } from './aegis-spread-stress.js';
 import type { NormalizedOptionContract } from './option-contract.js';
 import type { DataQualityState } from './data-freshness.js';
+import type { StrategyPaperAuthorityReceipt } from './strategy-paper-authority.js';
+import { buildHoldStrikeProductionDecision } from './hold-strike-production-decision.js';
 import {
   fetchOptionomicsContextObservation, fetchOptionomicsMacroEventCoverage, fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
   type AlpacaContractIdentity, type NormalizedOptionomicsChain, type NormalizedOptionomicsContextObservation, type NormalizedOptionomicsEntry,
@@ -305,6 +307,9 @@ export interface ThetaShadowCycleConfig {
   readonly paperEntryBootstrap?: PaperEntryBootstrapAssessment;
   readonly recoveryHistory?: RecoveryHistoryEvidence;
   readonly recoveryInventoryUnderlyings?: readonly string[];
+  /** Governed, independently verified H admission receipt. Its absence is
+   * the normal fail-closed state and can never be inferred from owner intent. */
+  readonly holdStrikePaperAuthority?: StrategyPaperAuthorityReceipt;
 }
 
 export type ShadowCycleProvenance = 'FULL_REAL' | 'HYBRID' | 'SYNTHETIC';
@@ -1954,7 +1959,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     thetaQCandidateEvaluationByOptionSymbol: qEvaluationForFrontier,
     thetaQDecision,
     };
-    return { frontier: buildCanonicalStrategyFrontier(frontierInput), input: frontierInput };
+    const structuralFrontier=buildCanonicalStrategyFrontier(frontierInput);
+    const paperEntryDecision=buildHoldStrikeProductionDecision({structuralFrontier,thetaQDecision,
+      authority:config.holdStrikePaperAuthority});
+    const finalInput:CanonicalStrategyFrontierInput=paperEntryDecision===null?frontierInput:{...frontierInput,paperEntryDecision};
+    return { frontier: paperEntryDecision===null?structuralFrontier:buildCanonicalStrategyFrontier(finalInput), input: finalInput };
   };
   const strategyDecisionFor = (
     routing: NewRiskOrchestrationResult['routing'],

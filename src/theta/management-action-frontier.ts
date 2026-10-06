@@ -1,5 +1,6 @@
 import { hashJson, type JsonValue } from '../market/fusion-snapshot.js';
 import type { ManagementInputState } from './management-input-state.js';
+import { assessHoldStrikeLifecycle } from './hold-strike-lifecycle.js';
 
 export const managementActionFrontierVersion = 'theta-management-action-frontier-v2' as const;
 export const managementPolicyEvidenceVersion = 'theta-management-policy-evidence-v1' as const;
@@ -343,18 +344,22 @@ export function buildManagementActionFrontier(input: ManagementInputState,
   const baseActions = applicableActions.map((action) => evaluateAction(input, action));
   const policy = applyPolicyEvidence(baseActions, input, evidence);
   const passive = policy.actions.find((action) => passiveActions.has(action.action));
-  const structuralSelection = evidence === null ? structuralExpirationSelection(input, policy.actions) : null;
+  const hLifecycle=assessHoldStrikeLifecycle(input);
+  const hSelection=hLifecycle?.mandatory===true
+    ? policy.actions.find(action=>action.action===hLifecycle.action&&action.feasibility==='FEASIBLE')?.action??null:null;
+  const structuralSelection = hSelection??(evidence === null ? structuralExpirationSelection(input, policy.actions) : null);
   const selectedAction = policy.selectedAction ?? structuralSelection ?? (passive?.feasibility === 'FEASIBLE' ? passive.action : null);
   const policySelected = policy.selectedAction !== null || structuralSelection !== null;
   return {
     contractVersion: managementActionFrontierVersion, chainId: input.chainId, lifecycleState: input.lifecycleState,
-    policyVersion: structuralSelection !== null ? 'theta-structural-expiration-v1' : policy.policyVersion,
-    policyEvidenceHash: structuralSelection !== null ? hashJson({ inputContentHash: input.contentHash,
+    policyVersion: hSelection!==null?hLifecycle?.policyVersion??null:structuralSelection !== null ? 'theta-structural-expiration-v1' : policy.policyVersion,
+    policyEvidenceHash: hSelection!==null?hashJson({inputContentHash:input.contentHash,hLifecycle} as unknown as JsonValue):structuralSelection !== null ? hashJson({ inputContentHash: input.contentHash,
       action: structuralSelection, policyVersion: 'theta-structural-expiration-v1' }) : policy.policyEvidenceHash,
     economicModelState: 'EV_MODEL_NOT_EMPIRICALLY_READY', actions:policy.actions, selectedAction,
     secondBestAction: policy.secondBestAction,
     decisionState: policySelected ? 'ACTION_SELECTED' : 'SYSTEM_HOLD_MISSING_EVIDENCE',
     reasonCodes: baseActions.length === 0 ? ['LIFECYCLE_STATE_HAS_NO_MANAGEMENT_FRONTIER']
+      : hSelection!==null?[...(hLifecycle?.reasons??[]),`SELECT_${hSelection}`]
       : structuralSelection !== null ? ['STRUCTURAL_EXPIRATION_NO_ORDER', `SELECT_${structuralSelection}`]
         : policySelected ? policy.reasonCodes : ['EV_MODEL_NOT_EMPIRICALLY_READY',...policy.reasonCodes],
   };

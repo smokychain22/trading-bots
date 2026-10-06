@@ -6,6 +6,7 @@ import { assertValidOrderIntentTransition, isValidOrderIntentTransition } from '
 import { brokerOrderIntentState } from './broker-order-state.js';
 import { thetaActionOpensNewRisk } from './order-construction.js';
 import { parseOccOptionSymbol } from '../theta/account-exposure.js';
+import { reconcileDefinedRiskParent } from './defined-risk-paper-order.js';
 
 export interface PersistedPaperOrderIntent {
   readonly orderIntentId: string;
@@ -19,6 +20,10 @@ export interface PersistedPaperOrderIntent {
   readonly chainId: string;
   readonly optionContractId: string | null;
   readonly underlyingId: string;
+  /** Durable economic identity for a native multi-leg parent. This is kept
+   * outside the broker payload because Alpaca accepts OCC symbols while the
+   * ledger also needs its qualified contract and deliverable identities. */
+  readonly multiLegEvidence?: DurableMultiLegOrderEvidence;
   readonly executionEvidence: {
     readonly quoteSource: string;
     readonly quoteFeed: string | null;
@@ -35,6 +40,27 @@ export interface PersistedPaperOrderIntent {
     readonly empiricalEconomicsReady: boolean;
     readonly expectedAfterCostEv: number|null;
   };
+}
+
+export interface DurableMultiLegOrderLeg {
+  readonly legIndex: number;
+  readonly optionContractId: string;
+  readonly providerContractId: string;
+  readonly occSymbol: string;
+  readonly optionType: 'PUT' | 'CALL';
+  readonly positionIntent: 'buy_to_open' | 'buy_to_close' | 'sell_to_open' | 'sell_to_close';
+  readonly ratioQuantity: number;
+  readonly expiration: string;
+  readonly strike: number;
+  readonly multiplier: number;
+  readonly deliverableIdentity: string;
+}
+
+export interface DurableMultiLegOrderEvidence {
+  readonly orderClass: 'mleg';
+  readonly creditDebitDirection: 'CREDIT' | 'DEBIT';
+  readonly packageIdentity: string;
+  readonly legs: readonly DurableMultiLegOrderLeg[];
 }
 
 export interface ExecutionAttemptRecord {
@@ -54,6 +80,7 @@ export interface PaperOrderStore {
   recordAttempt(attempt: ExecutionAttemptRecord): Promise<void>;
   updateAttempt(orderIntentId: string, attemptNo: number, result: Pick<ExecutionAttemptRecord, 'responseStatus' | 'timeoutFlag' | 'reconcileBeforeRetry'>): Promise<void>;
   unresolvedIntents(): Promise<readonly PersistedPaperOrderIntent[]>;
+  recordBrokerSnapshot(orderIntentId: string, snapshot: BrokerOrderSnapshot): Promise<void>;
 }
 
 export interface PrepareIntentInput extends Omit<PersistedPaperOrderIntent, 'status' | 'persistedAt' | 'brokerOrderId'> {
@@ -80,6 +107,20 @@ function validateAuthorizationEvidence(intent: PersistedPaperOrderIntent | Prepa
       if (occ === null || !Number.isSafeInteger(leg.ratio_qty) || leg.ratio_qty <= 0
         || !leg.position_intent.startsWith(`${leg.side}_`)) throw new Error('MULTI_LEG_REQUEST_INVALID');
     }
+    const durable=intent.multiLegEvidence;
+    if (durable===undefined || durable.orderClass!=='mleg' || durable.packageIdentity!==intent.request.symbol
+      || durable.legs.length!==intent.request.legs.length) throw new Error('MULTI_LEG_DURABLE_EVIDENCE_REQUIRED');
+    for (const [index, requestLeg] of intent.request.legs.entries()) {
+      const leg=durable.legs[index];
+      if (leg===undefined || leg.legIndex!==index+1 || leg.occSymbol!==requestLeg.symbol
+        || leg.positionIntent!==requestLeg.position_intent || leg.ratioQuantity!==requestLeg.ratio_qty
+        || !leg.optionContractId.trim() || !leg.providerContractId.trim() || !leg.deliverableIdentity.trim()
+        || !Number.isFinite(leg.strike) || leg.strike<=0 || !Number.isSafeInteger(leg.multiplier) || leg.multiplier<=0) {
+        throw new Error('MULTI_LEG_DURABLE_EVIDENCE_INVALID');
+      }
+    }
+  } else if (intent.multiLegEvidence!==undefined) {
+    throw new Error('SINGLE_LEG_INTENT_MAY_NOT_CARRY_MULTI_LEG_EVIDENCE');
   }
   const evidence = intent.authorizationEvidence;
   if (!['PAPER_EVIDENCE', 'EMPIRICALLY_PROMOTED_PAPER'].includes(evidence.executionTier)) throw new Error('LIVE_EXECUTION_NOT_AUTHORIZED');
@@ -157,7 +198,7 @@ export class PaperOrderCoordinator {
       const identity=(value:PersistedPaperOrderIntent|PrepareIntentInput)=>hashBrokerPayload({executionAccountId:value.executionAccountId,
         decisionId:value.decisionId,action:value.action,request:value.request,chainId:value.chainId,
         optionContractId:value.optionContractId,underlyingId:value.underlyingId,executionEvidence:value.executionEvidence,
-        authorizationEvidence:value.authorizationEvidence});
+        authorizationEvidence:value.authorizationEvidence,multiLegEvidence:value.multiLegEvidence});
       const same = identity(existing) === identity(input);
       if (!same) throw new Error('ORDER_INTENT_IDEMPOTENCY_COLLISION');
       return existing;
@@ -254,6 +295,24 @@ export class PaperOrderCoordinator {
     const intent = await this.store.getIntent(orderIntentId);
     if (intent === null) throw new Error('Order intent cannot be synchronized before persistence.');
     assertBrokerSnapshotMatches(intent, brokerOrder);
+    await this.store.recordBrokerSnapshot(orderIntentId,brokerOrder);
+    if(intent.request.order_class==='mleg'){
+      const structure=reconcileDefinedRiskParent(brokerOrder);
+      if(structure.requiresReconciliation){
+        if(intent.status==='RECONCILING')return 'RECONCILING';
+        if(isValidOrderIntentTransition(intent.status,'RECONCILING')){
+          await this.store.transitionIntent(orderIntentId,intent.status,'RECONCILING',brokerOrder.id);
+          return 'RECONCILING';
+        }
+        // SUBMITTING must preserve the mandatory UNKNOWN -> RECONCILING edge.
+        if(intent.status==='SUBMITTING'){
+          await this.store.transitionIntent(orderIntentId,'SUBMITTING','UNKNOWN_SUBMISSION',brokerOrder.id);
+          await this.store.transitionIntent(orderIntentId,'UNKNOWN_SUBMISSION','RECONCILING',brokerOrder.id);
+          return 'RECONCILING';
+        }
+        throw new Error('MULTI_LEG_ASYMMETRIC_STATE_RECONCILIATION_REQUIRED');
+      }
+    }
     let brokerState = brokerOrderIntentState(brokerOrder);
     if (brokerState === null) throw new Error('BROKER_ORDER_STATUS_UNKNOWN');
     // CANCEL_REQUESTED has no direct edge to EXPIRED/REJECTED; an unfilled order that ends that way after a cancel request is
@@ -464,6 +523,7 @@ export class PaperOrderCoordinator {
 export class InMemoryPaperOrderStore implements PaperOrderStore {
   readonly intents = new Map<string, PersistedPaperOrderIntent>();
   readonly attempts = new Map<string, ExecutionAttemptRecord>();
+  readonly brokerSnapshots = new Map<string, BrokerOrderSnapshot>();
 
   async insertIntent(intent: PersistedPaperOrderIntent): Promise<void> {
     if (this.intents.has(intent.orderIntentId)) throw new Error('Duplicate order intent.');
@@ -490,5 +550,9 @@ export class InMemoryPaperOrderStore implements PaperOrderStore {
   }
   async unresolvedIntents(): Promise<readonly PersistedPaperOrderIntent[]> {
     return [...this.intents.values()].filter((intent) => ['SUBMITTING', 'UNKNOWN_SUBMISSION', 'RECONCILING'].includes(intent.status));
+  }
+  async recordBrokerSnapshot(orderIntentId:string,snapshot:BrokerOrderSnapshot):Promise<void>{
+    if(!this.intents.has(orderIntentId))throw new Error('Order intent not found.');
+    this.brokerSnapshots.set(orderIntentId,snapshot);
   }
 }
