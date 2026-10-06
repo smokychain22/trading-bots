@@ -106,6 +106,9 @@ test('NO UNBOUNDED LOCAL PATH: drained cycles leave the laptop after the retenti
   const {spool,cleanup}=harness();
   try{
     spool.append(input(0)); spool.append(input(1));
+    // pending envelopes drain in created_at order with a random-id tie-break: the failing cycle must be created in a strictly later
+    // millisecond, or a same-millisecond tie can drain it first and stop the backfill before cycle-1 is durable (flaky in CI)
+    const appendedAt=Date.now(); while(Date.now()<=appendedAt){/* advance one millisecond */}
     spool.append({...input(0),decisionCycleId:'cycle-pending'});
     const durable=new Set<string>();
     const target:LocalEvidenceBackfillTarget={hasEnvelope:async(id)=>durable.has(id),insertEnvelope:async(envelope:LocalEvidenceEnvelope)=>{
