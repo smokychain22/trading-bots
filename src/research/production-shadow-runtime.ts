@@ -337,7 +337,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const recoveryInventoryUnderlyings=recoveryRows.rows.map((row)=>String((row as Record<string,unknown>).symbol));
   // H's governed Paper authority: read from the append-only store for THIS exact release SHA. No row (the default), a different SHA, a tampered or blocked receipt all read as
   // undefined, and the H production decision then returns null (the canonical frontier would reject it anyway).
-  const holdStrikePaperAuthority=await new PostgresStrategyPaperAuthorityStore(input.pool).current('THETA_HOLD_STRIKE',input.releaseIdentity?.sourceSha??null);
+  const authorityStore=new PostgresStrategyPaperAuthorityStore(input.pool);
+  const holdStrikePaperAuthority=await authorityStore.current('THETA_HOLD_STRIKE',input.releaseIdentity?.sourceSha??null);
+  const definedRiskPaperAuthority=await authorityStore.current('THETA_DEFINED_RISK',input.releaseIdentity?.sourceSha??null);
   const approvedBootstrapSymbols=paperInstrumentClassificationManifest.entries
     .filter((entry)=>entry.paperBootstrapApproved).map((entry)=>entry.symbol);
   const discovery=await discoverRealUniverse(input.alpaca,{discoveryVersion:'theta-shadow-universe-v1',maxCandidateAssets:100,
@@ -404,7 +406,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         : {state:'PERSISTENCE_ERROR' as const,assessment:null,reason:'OPTIONOMICS_IV_SCHEMA_065_UNAVAILABLE'};
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
       const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
-      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,holdStrikePaperAuthority,
+      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,holdStrikePaperAuthority,definedRiskPaperAuthority,
         routerPortfolioSource:'CURRENT_BROKER_READS',
         aegisInputsOrigin:'DERIVED_FROM_REAL',
         aegisIvStressEvidence:ivStressRefresh.assessment,

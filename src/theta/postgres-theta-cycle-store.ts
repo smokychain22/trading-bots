@@ -704,7 +704,66 @@ export class PostgresThetaCycleStore {
         [JSON.stringify(reasonRows)],
       );
     }
+    await this.persistSelectedStrategyCandidate(client, fusionSnapshotId, cycle, candidateIds);
     return { candidateSetId, candidateIds };
+  }
+
+  /**
+   * The sovereign frontier can select an H (single put) or D (native two-leg spread) candidate from a governed receipt. Those candidates are not Q-evaluated rows,
+   * so without this the decision would carry a NULL selected candidate and no Paper plan could ever be built for them. The selected candidate (only that one) is
+   * persisted in its OWN branch candidate set, with every leg's exact contract identity; D has no representative contract (option_contract_id NULL) and keeps
+   * both legs in metrics_json. Idempotent on replay (deterministic ids, ON CONFLICT DO NOTHING).
+   */
+  private async persistSelectedStrategyCandidate(client: PoolClient, fusionSnapshotId: string, cycle: ThetaShadowCycleResult,
+    candidateIds: Map<string, string>): Promise<void> {
+    const frontier = cycle.strategyFrontier;
+    const branch = frontier?.selectedBranch;
+    const selectedRef = frontier?.selectedCandidateId ?? null;
+    if (frontier === null || frontier === undefined || selectedRef === null || candidateIds.has(selectedRef)
+      || (branch !== 'THETA_HOLD_STRIKE' && branch !== 'THETA_DEFINED_RISK')) return;
+    const candidate = frontier.branches.flatMap((item) => item.candidates).find((item) => item.candidateId === selectedRef);
+    if (candidate === undefined || candidate.branch !== branch) throw new Error(`SELECTED_STRATEGY_CANDIDATE_MISSING:${selectedRef}`);
+    const expectedLegs = branch === 'THETA_DEFINED_RISK' ? 2 : 1;
+    if (candidate.legs.length !== expectedLegs || candidate.legs.some((leg) => !(leg.strike > 0) || !Number.isInteger(leg.multiplier) || leg.multiplier <= 0
+      || !/^\d{4}-\d{2}-\d{2}$/.test(leg.expiration))) throw new Error(`SELECTED_STRATEGY_CANDIDATE_IDENTITY_INVALID:${selectedRef}`);
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`theta-underlying:${candidate.underlying}`]);
+    let underlying = await client.query<{ underlying_id: string }>(
+      `SELECT underlying_id FROM market.underlying WHERE symbol=$1 ORDER BY active DESC, created_at ASC LIMIT 1`, [candidate.underlying]);
+    if (underlying.rowCount === 0) {
+      underlying = await client.query<{ underlying_id: string }>(`INSERT INTO market.underlying(underlying_id,symbol,asset_type,exchange,currency,active)
+        VALUES($1,$2,'US_EQUITY',NULL,'USD',true) RETURNING underlying_id`, [deterministicRuntimeUuid(`underlying:${candidate.underlying}`), candidate.underlying]);
+    }
+    const underlyingId = underlying.rows[0]?.underlying_id;
+    if (underlyingId === undefined) throw new Error(`UNDERLYING_PERSISTENCE_FAILED:${candidate.underlying}`);
+    const legContracts: Array<{ legIndex: number; positionIntent: string; contractSymbol: string; optionContractId: string }> = [];
+    for (const [index, leg] of candidate.legs.entries()) {
+      const contractSymbol = leg.occSymbol ?? leg.optionSymbol;
+      await client.query(`INSERT INTO market.option_contract(option_contract_id,provider_contract_id,contract_symbol,underlying_id,option_type,strike,expiration_date,multiplier,tradable,status)
+        VALUES($1,$2::text,$2::text,$3,$4::core.option_type,$5,$6::date,$7,$8,'ACTIVE') ON CONFLICT(contract_symbol) DO NOTHING`,
+      [deterministicRuntimeUuid(`option-contract:${contractSymbol}`), contractSymbol, underlyingId, leg.optionType, leg.strike, leg.expiration, leg.multiplier, leg.contractTradable === true]);
+      const stored = await client.query<{ option_contract_id: string; underlying_id: string; option_type: string; strike: string; expiration_date: string; multiplier: string }>(
+        `SELECT option_contract_id::text,underlying_id::text,option_type::text,strike::text,expiration_date::text,multiplier::text FROM market.option_contract WHERE contract_symbol=$1`, [contractSymbol]);
+      const row = stored.rows[0];
+      // an existing contract row with different economics is an identity conflict, never silently reused
+      if (row === undefined || row.underlying_id !== underlyingId || row.option_type !== leg.optionType || Number(row.strike) !== leg.strike
+        || row.expiration_date !== leg.expiration || Number(row.multiplier) !== leg.multiplier) throw new Error(`OPTION_CONTRACT_IDENTITY_CONFLICT:${contractSymbol}`);
+      legContracts.push({ legIndex: index + 1, positionIntent: leg.positionIntent, contractSymbol, optionContractId: row.option_contract_id });
+    }
+    const setPayload = canonicalJson(candidate as unknown as JsonValue);
+    const setHash = createHash('sha256').update(setPayload).digest('hex');
+    const candidateSetId = deterministicRuntimeUuid(`candidate-set:${fusionSnapshotId}:${branch}:${setHash}`);
+    await client.query(`INSERT INTO trade.candidate_set(candidate_set_id,fusion_snapshot_id,branch,candidate_count,generated_at,generator_version,set_hash)
+      VALUES($1,$2,$3::core.strategy_branch,1,$4,$5,$6) ON CONFLICT(fusion_snapshot_id,branch,set_hash) DO NOTHING`,
+    [candidateSetId, fusionSnapshotId, branch, frontier.timestamp, frontier.contractVersion, setHash]);
+    const candidateId = deterministicRuntimeUuid(`candidate:${candidateSetId}:${selectedRef}`);
+    await client.query(`INSERT INTO trade.candidate(candidate_id,candidate_set_id,underlying_id,option_contract_id,structure_code,rank,action_feasible,capital_required,metrics_json)
+      VALUES($1,$2,$3,$4,$5,1,$6,$7,$8::jsonb) ON CONFLICT(candidate_id) DO NOTHING`,
+    [candidateId, candidateSetId, underlyingId, branch === 'THETA_HOLD_STRIKE' ? legContracts[0]?.optionContractId ?? null : null,
+      branch === 'THETA_HOLD_STRIKE' ? 'CSP' : 'PUT_CREDIT_SPREAD', candidate.riskFeasible && candidate.structurallyFeasible,
+      candidate.economics.collateral ?? null,
+      JSON.stringify({ strategyCandidate: { candidateId: selectedRef, branch, action: candidate.action, legs: legContracts }, frontierCandidate: candidate,
+        canonicalSizing: candidate.sizing })]);
+    candidateIds.set(selectedRef, candidateId);
   }
 
   private async persistRoute(client: PoolClient, fusionSnapshotId: string, cycle: ThetaShadowCycleResult): Promise<string | null> {
@@ -760,8 +819,13 @@ export class PostgresThetaCycleStore {
     const selectedFrontierCandidate = selectedCandidateRef === null ? undefined : authority?.branches
       .flatMap((branch) => branch.candidates).find((candidate) => candidate.candidateId === selectedCandidateRef);
     const selectedOptionSymbol=selectedFrontierCandidate?.legs[0]?.optionSymbol;
-    const selectedAssessment = selectedOptionSymbol === undefined ? undefined
-      : cycle.orchestration?.aegisByCandidateId?.[selectedOptionSymbol];
+    // Q is assessed per option symbol; a selected H or D candidate is bound ONLY to its own candidate-bound assessment (keyed by the canonical candidate id).
+    // Using Q's assessment of the same contract would be one strategy borrowing another's risk verdict.
+    const selectedStrategyBranch = selectedFrontierCandidate?.branch === 'THETA_HOLD_STRIKE' || selectedFrontierCandidate?.branch === 'THETA_DEFINED_RISK'
+      ? selectedFrontierCandidate.branch : 'THETA_CONVENTIONAL' as const;
+    const selectedAssessment = selectedOptionSymbol === undefined || selectedCandidateRef === null ? undefined
+      : selectedStrategyBranch === 'THETA_CONVENTIONAL' ? cycle.orchestration?.aegisByCandidateId?.[selectedOptionSymbol]
+        : cycle.strategyAegisByCandidateId?.[selectedCandidateRef];
     const versions = cycle.fusionSnapshot?.snapshot.versions;
     const modelVersions = versions !== null && typeof versions === 'object' && !Array.isArray(versions)
       && versions.modelVersions !== null && typeof versions.modelVersions === 'object' && !Array.isArray(versions.modelVersions)
@@ -772,7 +836,8 @@ export class PostgresThetaCycleStore {
       && selectedAssessment !== undefined && cycle.fusionSnapshot !== null
       ? buildAegisAssessmentIdentity({
           fusionSnapshotId, fusionSnapshotHash: cycle.fusionSnapshot.contentHash,
-          runtimeCandidateRef: selectedCandidateRef, assessmentCandidateId:selectedOptionSymbol,
+          runtimeCandidateRef: selectedCandidateRef, strategyBranch: selectedStrategyBranch,
+          assessmentCandidateId: selectedStrategyBranch === 'THETA_CONVENTIONAL' ? selectedOptionSymbol : selectedCandidateRef,
           persistedCandidateId: selectedCandidateId,
           underlying: selectedFrontierCandidate.underlying,
           optionSymbol: selectedOptionSymbol,

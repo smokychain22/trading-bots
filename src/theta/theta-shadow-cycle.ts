@@ -25,6 +25,7 @@ import type { NormalizedOptionContract } from './option-contract.js';
 import type { DataQualityState } from './data-freshness.js';
 import type { StrategyPaperAuthorityReceipt } from './strategy-paper-authority.js';
 import { buildHoldStrikeProductionDecision } from './hold-strike-production-decision.js';
+import { buildDefinedRiskProductionDecision } from './defined-risk-production-decision.js';
 import {
   fetchOptionomicsContextObservation, fetchOptionomicsMacroEventCoverage, fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
   type AlpacaContractIdentity, type NormalizedOptionomicsChain, type NormalizedOptionomicsContextObservation, type NormalizedOptionomicsEntry,
@@ -310,6 +311,8 @@ export interface ThetaShadowCycleConfig {
   /** Governed, independently verified H admission receipt. Its absence is
    * the normal fail-closed state and can never be inferred from owner intent. */
   readonly holdStrikePaperAuthority?: StrategyPaperAuthorityReceipt;
+  /** Governed D admission receipt; absent is the normal fail-closed state. */
+  readonly definedRiskPaperAuthority?: StrategyPaperAuthorityReceipt;
 }
 
 export type ShadowCycleProvenance = 'FULL_REAL' | 'HYBRID' | 'SYNTHETIC';
@@ -327,6 +330,9 @@ export interface ThetaShadowCycleResult {
   readonly fusionSnapshot: FusionSnapshot | null; // complete immutable evidence required by durable persistence and replay
   readonly snapshotValidForNewRisk: boolean | null;
   readonly orchestration: NewRiskOrchestrationResult | null;
+  /** H and D candidate-bound AEGIS assessments keyed by the canonical candidate id (`THETA_HOLD_STRIKE:<sym>`, `THETA_DEFINED_RISK:<short>:<long>`). A selected
+   * H/D candidate's decision lineage is bound to THESE, never to Q's per-symbol assessment in `orchestration`. Absent on cycles that assessed none. */
+  readonly strategyAegisByCandidateId?: Readonly<Record<string, NonNullable<NewRiskOrchestrationResult['aegisByCandidateId']>[string]>>;
   readonly strategyFrontier: CanonicalStrategyFrontier | null;
   readonly strategyQualityDiagnostics: StrategyQualityShadowDiagnostic | null;
   /** Q-FUNNEL-001: bounded per-stage attribution of the Conventional put funnel. Additive and optional (absent on archived
@@ -1960,8 +1966,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     thetaQDecision,
     };
     const structuralFrontier=buildCanonicalStrategyFrontier(frontierInput);
-    const paperEntryDecision=buildHoldStrikeProductionDecision({structuralFrontier,thetaQDecision,
+    // one sovereign entry nomination per cycle, in a fixed order: Q (its own receipt), then H, then D. The canonical frontier re-verifies whichever is passed.
+    const holdStrikeDecision=buildHoldStrikeProductionDecision({structuralFrontier,thetaQDecision,
       authority:config.holdStrikePaperAuthority});
+    const paperEntryDecision=holdStrikeDecision??buildDefinedRiskProductionDecision({structuralFrontier,thetaQDecision,
+      holdStrikeDecisionProduced:false,authority:config.definedRiskPaperAuthority});
     const finalInput:CanonicalStrategyFrontierInput=paperEntryDecision===null?frontierInput:{...frontierInput,paperEntryDecision};
     return { frontier: paperEntryDecision===null?structuralFrontier:buildCanonicalStrategyFrontier(finalInput), input: finalInput };
   };
@@ -2342,6 +2351,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration,
+    strategyAegisByCandidateId: Object.fromEntries(Object.entries(shadowAegisByCandidateId)
+      .filter(([candidateId]) => candidateId.startsWith('THETA_HOLD_STRIKE:') || candidateId.startsWith('THETA_DEFINED_RISK:'))),
     ...finalStrategyDecision,
     provenance, provenanceDetail: detail,
     blockers: [...blockers, ...shadowAegisFailures.map((failure) => `SHADOW_AEGIS_FAILED:${failure}`)],

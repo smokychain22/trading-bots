@@ -25,12 +25,14 @@ export function testAegisAssessmentIdentity(input: Partial<{
   const optionSymbol = input.optionSymbol ?? 'AAPL261016P00150000';
   const decisionAsOf = input.decisionAsOf ?? '2026-09-14T14:00:00.000Z';
   const newRiskState = input.newRiskState ?? 'ALLOW_FULL';
+  // Q is assessed per option symbol; H and D carry their own candidate-bound assessment keyed by the canonical candidate id (never Q's)
+  const assessmentCandidateId = strategyBranch === 'THETA_CONVENTIONAL' ? optionSymbol : runtimeCandidateRef;
   return buildAegisAssessmentIdentity({
     fusionSnapshotId,
     fusionSnapshotHash,
     runtimeCandidateRef,
     strategyBranch,
-    assessmentCandidateId:optionSymbol,
+    assessmentCandidateId,
     persistedCandidateId,
     underlying,
     optionSymbol,
@@ -38,7 +40,7 @@ export function testAegisAssessmentIdentity(input: Partial<{
     detectorVersions: { aegis: 'aegis-policy-v1', ivStress: 'iv-stress-v1', spreadStress: 'spread-stress-v1' },
     assessment: {
       contractVersion: 'theta-aegis-runtime-v1',
-      decisionId: `${fusionSnapshotHash}:${optionSymbol}`,
+      decisionId: `${fusionSnapshotHash}:${assessmentCandidateId}`,
       snapshotId: fusionSnapshotHash,
       timestamp: decisionAsOf,
       policyVersion: 'aegis-policy-v1',

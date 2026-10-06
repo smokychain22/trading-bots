@@ -82,7 +82,7 @@ const thetaQDecisionSchema = z.object({
 });
 
 const paperEntryDecisionSchema = thetaQDecisionSchema.extend({
-  branch:z.enum(['THETA_CONVENTIONAL','THETA_HOLD_STRIKE']),
+  branch:z.enum(['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_DEFINED_RISK']),
   technicalCertification:z.literal('CERTIFIED'),
   paperAuthorization:z.enum(['PAPER_EXPERIMENTAL_AUTHORIZED','PAPER_CHAMPION']),
   strategyPaperAuthority:strategyPaperAuthorityReceiptSchema,

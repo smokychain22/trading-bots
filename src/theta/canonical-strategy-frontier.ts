@@ -269,7 +269,7 @@ export interface CanonicalStrategyFrontier {
    * decision may cross the Master Paper plan boundary. Optional solely for
    * historical archive compatibility. New frontier receipts always set it.
    */
-  readonly entrySelectionBasis?: 'THETA_Q_DECISION_BOUND' | 'THETA_H_DECISION_BOUND' | 'STRUCTURAL_RESEARCH_ONLY' | 'NO_SELECTION';
+  readonly entrySelectionBasis?: 'THETA_Q_DECISION_BOUND' | 'THETA_H_DECISION_BOUND' | 'THETA_D_DECISION_BOUND' | 'STRUCTURAL_RESEARCH_ONLY' | 'NO_SELECTION';
   readonly paperEntryAuthorityReceiptHash?: string | null;
   readonly primaryAction: CanonicalFrontierAction | 'GLOBAL_WAIT' | 'MANAGEMENT_AUTHORITY' | 'SYSTEM_HOLD';
   readonly selectedQuantity: number;
@@ -371,7 +371,7 @@ export interface CanonicalStrategyFrontierInput {
    * legacy thetaQDecision remains the Production Q input when this is absent. */
   readonly paperEntryDecision?: Pick<NewRiskDecisionReceipt,
     'snapshotId' | 'timestamp' | 'underlying' | 'winningAction' | 'selectedCandidateId' | 'quantity'> & {
-      readonly branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE';
+      readonly branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_DEFINED_RISK';
       readonly technicalCertification: 'CERTIFIED';
       readonly paperAuthorization: 'PAPER_EXPERIMENTAL_AUTHORIZED' | 'PAPER_CHAMPION';
       readonly strategyPaperAuthority: StrategyPaperAuthorityReceipt;
@@ -1321,15 +1321,17 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const qSizedNewRisk = feasible.filter((candidate) =>
     candidate.branch === 'THETA_CONVENTIONAL' && candidate.action === 'OPEN_CSP' && candidate.sizing.quantity > 0);
   const decisionBranch = input.paperEntryDecision?.branch ?? 'THETA_CONVENTIONAL';
-  const decisionReasonPrefix = decisionBranch === 'THETA_CONVENTIONAL' ? 'THETA_Q' : 'THETA_H';
+  const decisionReasonPrefix = decisionBranch === 'THETA_CONVENTIONAL' ? 'THETA_Q' : decisionBranch === 'THETA_HOLD_STRIKE' ? 'THETA_H' : 'THETA_D';
+  // D opens a native two-leg package; Q and H open a single cash-secured put. The action is part of the branch identity, never inferred.
+  const decisionAction = decisionBranch === 'THETA_DEFINED_RISK' ? 'OPEN_DEFINED_RISK' : 'OPEN_CSP';
   const sizedNewRisk = feasible.filter((candidate) => candidate.branch === decisionBranch
-    && candidate.action === 'OPEN_CSP' && candidate.sizing.quantity > 0);
+    && candidate.action === decisionAction && candidate.sizing.quantity > 0);
   // The Python-backed Q receipt owns the economic OPEN/PASS/WAIT choice.
   // Structural Pareto order is research evidence, never a substitute for it.
   const decision = input.paperEntryDecision ?? input.thetaQDecision;
   const decisionAuthorityValid = decisionBranch === 'THETA_CONVENTIONAL'
     || (input.paperEntryDecision !== undefined
-      && verifyStrategyPaperAuthorityReceipt(input.paperEntryDecision.strategyPaperAuthority, 'THETA_HOLD_STRIKE'));
+      && verifyStrategyPaperAuthorityReceipt(input.paperEntryDecision.strategyPaperAuthority, decisionBranch));
   const openDecision = decision !== undefined && [
     'OPEN_FULL', 'OPEN_REDUCED', 'OPEN_ALTERNATE_CONTRACT', 'OPEN_ALTERNATE_EXPIRY', 'OPEN_ALTERNATE_STRUCTURE',
   ].includes(decision.winningAction);
@@ -1345,7 +1347,8 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     : decision === undefined ? qSizedNewRisk[0] ?? null : decisionInvalid ? null : decisionCandidate;
   const entrySelectionBasis = structuralSelection === null ? 'NO_SELECTION' as const
     : decision === undefined ? 'STRUCTURAL_RESEARCH_ONLY' as const
-      : decisionBranch === 'THETA_HOLD_STRIKE' ? 'THETA_H_DECISION_BOUND' as const : 'THETA_Q_DECISION_BOUND' as const;
+      : decisionBranch === 'THETA_HOLD_STRIKE' ? 'THETA_H_DECISION_BOUND' as const
+        : decisionBranch === 'THETA_DEFINED_RISK' ? 'THETA_D_DECISION_BOUND' as const : 'THETA_Q_DECISION_BOUND' as const;
   const selectedQuantity = structuralSelection === null ? 0 : decision === undefined
     ? structuralSelection.sizing.quantity : Math.min(structuralSelection.sizing.quantity, decision.quantity);
   const secondBest = managementAuthorityRequired || decision !== undefined ? null : qSizedNewRisk[1] ?? null;
@@ -1404,7 +1407,7 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     primaryAction: managementAuthorityRequired ? 'MANAGEMENT_AUTHORITY' as const
       : structuralSelection?.action ?? (globalWaitEarned ? 'GLOBAL_WAIT' as const : 'SYSTEM_HOLD' as const),
     selectedQuantity,
-    paperEntryAuthorityReceiptHash: decisionBranch === 'THETA_HOLD_STRIKE' && input.paperEntryDecision !== undefined
+    paperEntryAuthorityReceiptHash: decisionBranch !== 'THETA_CONVENTIONAL' && input.paperEntryDecision !== undefined
       ? input.paperEntryDecision.strategyPaperAuthority.receiptHash : null,
     empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED' as const,
     secondBestCandidateId: secondBest?.candidateId ?? null,

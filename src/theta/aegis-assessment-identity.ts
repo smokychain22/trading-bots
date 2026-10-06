@@ -35,6 +35,24 @@ export type AegisAssessmentIdentity = z.infer<typeof aegisAssessmentIdentitySche
 const hash = (value: unknown): string => createHash('sha256')
   .update(canonicalJson(value as JsonValue), 'utf8').digest('hex');
 
+type IdentityBranch = 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_DEFINED_RISK';
+
+/**
+ * The exact candidate an AEGIS assessment was made FOR, per branch. Q is assessed per option symbol (`THETA_CONVENTIONAL:<symbol>`). H and D receive their own
+ * candidate-bound assessment keyed by the canonical candidate id, which already carries the branch and every leg (`THETA_HOLD_STRIKE:<symbol>`,
+ * `THETA_DEFINED_RISK:<short>:<long>`), so an H/D identity can never be satisfied by Q's assessment of the same contract (no borrowing across strategies).
+ * `optionSymbol` is the (short) leg the order opens first in the package.
+ */
+function candidateIdentityValid(branch: IdentityBranch, runtimeCandidateRef: string, assessmentCandidateId: string, optionSymbol: string): boolean {
+  if (branch === 'THETA_CONVENTIONAL') {
+    return assessmentCandidateId === optionSymbol && runtimeCandidateRef === `${branch}:${assessmentCandidateId}`;
+  }
+  if (assessmentCandidateId !== runtimeCandidateRef) return false;
+  if (branch === 'THETA_HOLD_STRIKE') return runtimeCandidateRef === `${branch}:${optionSymbol}`;
+  const parts = runtimeCandidateRef.split(':');
+  return parts.length === 3 && parts[0] === branch && parts[1] === optionSymbol && (parts[2] ?? '') !== '' && parts[2] !== optionSymbol;
+}
+
 export function buildAegisAssessmentIdentity(input: {
   readonly fusionSnapshotId: string;
   readonly fusionSnapshotHash: string;
@@ -51,8 +69,7 @@ export function buildAegisAssessmentIdentity(input: {
   const assessment = aegisAssessmentResponseSchema.parse(input.assessment);
   if (assessment.snapshotId !== input.fusionSnapshotHash) throw new Error('AEGIS_ASSESSMENT_SNAPSHOT_MISMATCH');
   const strategyBranch = input.strategyBranch ?? 'THETA_CONVENTIONAL';
-  if (input.assessmentCandidateId !== input.optionSymbol
-    || input.runtimeCandidateRef !== `${strategyBranch}:${input.assessmentCandidateId}`)
+  if (!candidateIdentityValid(strategyBranch, input.runtimeCandidateRef, input.assessmentCandidateId, input.optionSymbol))
     throw new Error('AEGIS_ASSESSMENT_CONTRACT_IDENTITY_MISMATCH');
   if (assessment.decisionId !== `${input.fusionSnapshotHash}:${input.assessmentCandidateId}`)
     throw new Error('AEGIS_ASSESSMENT_CANDIDATE_MISMATCH');
@@ -86,8 +103,7 @@ export function verifyAegisAssessmentIdentity(value: unknown): AegisAssessmentId
   if (hash(unsigned) !== identityHash || hash(parsed.data.assessment) !== parsed.data.assessmentHash) return null;
   if (parsed.data.assessment.snapshotId !== parsed.data.fusionSnapshotHash) return null;
   const strategyBranch = parsed.data.strategyBranch ?? 'THETA_CONVENTIONAL';
-  if (parsed.data.assessmentCandidateId !== parsed.data.optionSymbol
-    || parsed.data.runtimeCandidateRef !== `${strategyBranch}:${parsed.data.assessmentCandidateId}`) return null;
+  if (!candidateIdentityValid(strategyBranch, parsed.data.runtimeCandidateRef, parsed.data.assessmentCandidateId, parsed.data.optionSymbol)) return null;
   if (parsed.data.assessment.decisionId !== `${parsed.data.fusionSnapshotHash}:${parsed.data.assessmentCandidateId}`) return null;
   if (Date.parse(parsed.data.assessment.timestamp) !== Date.parse(parsed.data.decisionAsOf)) return null;
   if (parsed.data.assessment.policyVersion !== parsed.data.aegisPolicyVersion

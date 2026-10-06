@@ -29,7 +29,8 @@ function assertNewRiskAegisLineage(row:Record<string,unknown>,plan:ApprovedMaste
     ||planIdentity.persistedCandidateId!==String(row.candidate_id)
     ||planIdentity.underlying!==String(row.underlying_symbol)
     ||planIdentity.optionSymbol!==String(row.contract_symbol)
-    ||planIdentity.assessmentCandidateId!==String(row.contract_symbol)
+    // Q is assessed per contract symbol; H/D are assessed as their own canonical candidate (strategy-bound, never Q's verdict for the same contract)
+    ||planIdentity.assessmentCandidateId!==((planIdentity.strategyBranch??'THETA_CONVENTIONAL')==='THETA_CONVENTIONAL'?String(row.contract_symbol):String(row.runtime_selected_candidate_ref))
     ||planIdentity.newRiskState!==String(row.aegis_action)
     ||plan.optionContractId!==String(row.option_contract_id)){
     throw new Error('ACTION_PLAN_AEGIS_ASSESSMENT_LINEAGE_INVALID');
