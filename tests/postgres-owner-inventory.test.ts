@@ -13,7 +13,8 @@ test('pool inventory classifies every construction without inventing a fleet con
   assert.equal(inventory.serverlessBudget.fleetBoundProven,false);
   assert.deepEqual(inventory.safety,{databaseConnectionsOpened:0,brokerMutations:0});
   const sources=inventory.sites.filter((site:{file:string})=>site.file.startsWith('src/'));
-  assert.equal(sources.length,29,'new sites require reviewed ownership');
+  // 30: + the one-connection execution lane (autonomous-runtime-handler executionPool, reviewed 2026-10-07)
+  assert.equal(sources.length,30,'new sites require reviewed ownership');
   for(const site of sources){
     assert.ok(site.owner.lifetime);assert.ok(site.owner.releaseOwner);assert.ok(site.owner.concurrency);
     if(site.kind==='Pool'&&!site.maximumIsParameterized)assert.ok(site.options.max>=1&&site.options.max<=3);
