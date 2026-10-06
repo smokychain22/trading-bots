@@ -9,9 +9,9 @@ import { deriveAccountExposure } from '../src/theta/account-exposure.js';
 // collateral exceeds the hard per-underlying threshold is LEGITIMATE_DISCRETE_CONTRACT_TOO_LARGE, never a computation defect, and the bot
 // never blindly allocates most of the account to one CSP just because the broker could afford it.
 const NOW = '2026-10-07T14:00:00.000Z';
-const account = (positions: Parameters<typeof deriveAccountExposure>[1] = [], multiplierEvidence: number | undefined = 100) => deriveAccountExposure({ accountStatus: 'ACTIVE',
+const account = (positions: Parameters<typeof deriveAccountExposure>[1] = [], multiplierEvidence: number | null = 100) => deriveAccountExposure({ accountStatus: 'ACTIVE',
   equity: 100_000, cash: 100_000, buyingPower: 400_000, optionsBuyingPower: 100_000, optionsApprovedLevel: 3, optionsTradingLevel: 3, tradingBlocked: false,
-  transfersBlocked: false, maskedAccountId: '****', receivedAt: NOW }, positions, [], multiplierEvidence);
+  transfersBlocked: false, maskedAccountId: '****', receivedAt: NOW }, positions, [], multiplierEvidence ?? undefined);
 const policy = { hardCapMultiplier: P.aegis.hardCapMultiplier, maxTickerConcentrationPct: P.aegis.maximumTickerConcentrationPct,
   maxSectorConcentrationPct: P.aegis.maximumSectorConcentrationPct, maxCorrelationClusterPct: P.aegis.maximumCorrelationClusterPct,
   maxPortfolioCapitalAtRiskPct: P.aegis.maximumPortfolioCapitalAtRiskPct, maxInventoryCapacityPct: P.aegis.maximumInventoryCapacityPct,
@@ -62,7 +62,7 @@ test('Case D: an existing open short put on the same underlying consumes its cap
   // existing exposure whose multiplier is not evidenced is UNKNOWN (fail closed), never silently free capacity
   const unevidenced = assessStrategyAccountPolicyCompatibility({ strategy: 'THETA_CONVENTIONAL', underlying: 'TLT', marketApplicable: true, minimumCapitalRequired: 15_000,
     brokerAllowedQty: 2, exposure: account([{ symbol: 'TLT261113P00150000', quantity: -1, assetClass: 'us_option', side: 'short', marketValue: -200, costBasis: -250,
-      avgEntryPrice: 2.5 } as never], undefined), policy });
+      avgEntryPrice: 2.5 } as never], null), policy });
   assert.equal(unevidenced.state, 'UNKNOWN');
   assert.notEqual(unevidenced.accountFeasible, true);
 });
