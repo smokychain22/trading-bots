@@ -61,7 +61,7 @@ async function setup() {
     shortQuote: { symbol: world.shortSymbol, bid: 1.9, ask: 2.0, observedAt: NOW }, longQuote: { symbol: world.longSymbol, bid: 0.8, ask: 0.9, observedAt: NOW }, spot: 670, dte: 1, marketOpen: true,
     context: { eventState: 'CLEAR', aegisState: 'ALLOW_FULL', executionQuality: 'GOOD' }, aegisState: 'ALLOW_FULL', executionAccountId, ...patch });
   const deps = (load: (position: DefinedRiskPositionSnapshot, at: string) => Promise<DefinedRiskScanInputs>) => ({ positions, orders, coordinator, loadInputs: load,
-    recordDecision: (decision: Parameters<PostgresDefinedRiskDecisionRecorder['record']>[0], position: DefinedRiskPositionSnapshot) => recorder.record(decision, position),
+    recordDecision: (decision: Parameters<PostgresDefinedRiskDecisionRecorder['record']>[0], position: DefinedRiskPositionSnapshot, frontier: Parameters<PostgresDefinedRiskDecisionRecorder['record']>[2]) => recorder.record(decision, position, frontier),
     nextCloseAttempt: (id: string) => recorder.nextCloseAttempt(id), pinBandPct: 0.002, maximumQuoteAgeSeconds: 30, decisionWindowSeconds: 60, mayClose: true, now: () => NOW });
   return { pool, world, orders, positions, broker, coordinator, open, chainId, inputs, deps };
 }
@@ -96,7 +96,7 @@ test('a safety trigger closes the spread through the coordinator exactly once; a
       const restartedRecorder = new PostgresDefinedRiskDecisionRecorder(restartedPool);
       const restarted = await runDefinedRiskManagementScan({ ...ctx.deps(async () => ctx.inputs()), positions: restartedPositions, orders: restartedOrders,
         coordinator: new PaperOrderCoordinator(ctx.broker, restartedOrders, control({ masterEnabled: true, pauseNewOrders: false })),
-        recordDecision: (decision, position) => restartedRecorder.record(decision, position), nextCloseAttempt: (id) => restartedRecorder.nextCloseAttempt(id) });
+        recordDecision: (decision, position, frontier) => restartedRecorder.record(decision, position, frontier), nextCloseAttempt: (id) => restartedRecorder.nextCloseAttempt(id) });
       assert.equal(restarted.find((result) => result.orderIntentId === ctx.open.orderIntentId)?.action, 'HOLD');
       assert.equal(ctx.broker.submitted.length, 1);
     } finally { await restartedPool.end(); }
@@ -129,6 +129,11 @@ test('a missing hedge is an emergency: escalated, persisted, blocks new risk, an
     const emergency = await runDefinedRiskManagementScan(ctx.deps(async () => ctx.inputs({ brokerOpenContracts: { short: 1, long: 0 } })));
     const mine = emergency.find((result) => result.orderIntentId === ctx.open.orderIntentId);
     assert.equal(mine?.action, 'EMERGENCY_UNHEDGED_SHORT');
+    assert.equal(mine?.selectedAction, 'EMERGENCY_RISK_REDUCTION', 'the v3 management frontier, not the producer, makes the final selection');
+    const persisted = (await ctx.pool.query(`SELECT action_code, receipt_json->'managementActionFrontier'->>'contractVersion' AS version,
+        receipt_json->'managementActionFrontier'->>'lifecycleState' AS lifecycle FROM trade.decision
+      WHERE decision_kind='MANAGEMENT' AND receipt_json->>'orderIntentId'=$1 AND action_code='EMERGENCY_RISK_REDUCTION'`, [ctx.open.orderIntentId])).rows[0];
+    assert.deepEqual(persisted, { action_code: 'EMERGENCY_RISK_REDUCTION', version: 'theta-management-action-frontier-v3', lifecycle: 'DEFINED_RISK_OPEN' });
     assert.equal(mine?.escalate, true);
     assert.equal(mine?.closeIntentId, null);
     assert.equal(blocksNewRisk(emergency), true);
@@ -154,7 +159,7 @@ test('an inert scan: with no active spread the runner does nothing at all', { sk
     // only terminal / absent positions remain for this assertion: filter to a fresh empty world by checking no result references an unknown id
     const results = await runDefinedRiskManagementScan({ positions: new ScopedPositions(pool, randomUUID()), orders,
       coordinator: new PaperOrderCoordinator(broker, orders, control({ masterEnabled: true, pauseNewOrders: false })), loadInputs: async () => { throw new Error('MUST_NOT_BE_CALLED'); },
-      recordDecision: (decision, position) => recorder.record(decision, position), nextCloseAttempt: (id) => recorder.nextCloseAttempt(id), pinBandPct: 0.002, maximumQuoteAgeSeconds: 30, decisionWindowSeconds: 60, mayClose: true, now: () => NOW });
+      recordDecision: (decision, position, frontier) => recorder.record(decision, position, frontier), nextCloseAttempt: (id) => recorder.nextCloseAttempt(id), pinBandPct: 0.002, maximumQuoteAgeSeconds: 30, decisionWindowSeconds: 60, mayClose: true, now: () => NOW });
     assert.deepEqual(results, []);
     assert.equal(broker.submitted.length, 0);
   } finally { await pool.end(); }

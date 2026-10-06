@@ -1,6 +1,8 @@
 import type { PaperOrderCoordinator, PaperOrderStore } from './paper-order-coordinator.js';
 import { assessDefinedRiskManagement, type DefinedRiskLegQuoteEvidence, type DefinedRiskManagementDecision, type DefinedRiskManagementInput } from './defined-risk-management.js';
 import { buildDefinedRiskCloseCommand } from './defined-risk-close-command.js';
+import { definedRiskManagementProposal } from './defined-risk-management.js';
+import { buildDefinedRiskManagementActionFrontier, type ManagementActionFrontier } from '../theta/management-action-frontier.js';
 import type { DefinedRiskPositionSnapshot, PostgresDefinedRiskPositionStore } from './postgres-defined-risk-position-store.js';
 
 /** Everything the decision needs from the outside world for ONE spread. Every field that can be unknown IS nullable: nothing is defaulted. */
@@ -23,7 +25,7 @@ export interface DefinedRiskManagementRunnerDeps {
   /** reads broker legs, both exact leg quotes, spot, clock and context. A throw is recorded as UNKNOWN evidence, never skipped silently. */
   readonly loadInputs: (position: DefinedRiskPositionSnapshot, observedAt: string) => Promise<DefinedRiskScanInputs>;
   /** persists the decision (immutable, hash-addressed) and returns the trade.decision id the order intent will reference */
-  readonly recordDecision: (decision: DefinedRiskManagementDecision, position: DefinedRiskPositionSnapshot) => Promise<string>;
+  readonly recordDecision: (decision: DefinedRiskManagementDecision, position: DefinedRiskPositionSnapshot, frontier: ManagementActionFrontier) => Promise<string>;
   /** attempt number for the NEXT close order of this spread: 1 + number of earlier close intents that ended without any fill */
   readonly nextCloseAttempt: (openIntentId: string) => Promise<number>;
   readonly pinBandPct: number;
@@ -37,7 +39,10 @@ export interface DefinedRiskManagementRunnerDeps {
 export interface DefinedRiskScanResult {
   readonly orderIntentId: string;
   readonly state: string;
+  /** what the D producer proposed */
   readonly action: DefinedRiskManagementDecision['action'];
+  /** what the sovereign management frontier (v3) selected; the ONLY action that may reach the coordinator */
+  readonly selectedAction: ManagementActionFrontier['selectedAction'];
   readonly reasons: readonly string[];
   readonly escalate: boolean;
   readonly closeIntentId: string | null;
@@ -71,11 +76,14 @@ export async function runDefinedRiskManagementScan(deps: DefinedRiskManagementRu
       shortSymbol: shortLeg.occSymbol, longSymbol: longLeg.occSymbol, shortStrike: position.shortStrike, longStrike: position.longStrike, observedAt,
       brokerOpenContracts: inputs.brokerOpenContracts, shortQuote: inputs.shortQuote, longQuote: inputs.longQuote, spot: inputs.spot, dte: inputs.dte, marketOpen: inputs.marketOpen,
       closeOrderWorking: refreshed.closeOrderWorking, context: inputs.context, pinBandPct: deps.pinBandPct, maximumQuoteAgeSeconds: deps.maximumQuoteAgeSeconds });
-    const closeBlocked = decision.action === 'CLOSE_FULL' && !deps.mayClose;
+    // D proposes; the ONE management frontier selects; only its selection is executed
+    const frontier = buildDefinedRiskManagementActionFrontier(definedRiskManagementProposal(decision, refreshed));
+    const closeSelected = frontier.selectedAction === 'CLOSE_FULL';
+    const closeBlocked = closeSelected && !deps.mayClose;
     const reasons = [...decision.reasons, ...(inputError ? ['MANAGEMENT_INPUTS_UNAVAILABLE'] : []), ...(closeBlocked ? ['CLOSE_SUBMISSION_NOT_AUTHORIZED_NOW'] : [])];
-    const decisionId = await deps.recordDecision(decision, position);
+    const decisionId = await deps.recordDecision(decision, position, frontier);
     let closeIntentId: string | null = null;
-    if (decision.action === 'CLOSE_FULL' && deps.mayClose && inputs.shortQuote?.bid != null && inputs.longQuote?.bid != null) {
+    if (closeSelected && deps.mayClose && inputs.shortQuote?.bid != null && inputs.longQuote?.bid != null) {
       const attempt = await deps.nextCloseAttempt(position.orderIntentId);
       const expires = new Date(Date.parse(observedAt) + deps.decisionWindowSeconds * 1000).toISOString();
       const command = buildDefinedRiskCloseCommand({ openIntentId: position.orderIntentId, openEvidence: openIntent.multiLegEvidence, chainId: position.chainId, underlyingId: position.underlyingId,
@@ -89,8 +97,8 @@ export async function runDefinedRiskManagementScan(deps: DefinedRiskManagementRu
       if (prepared.status === 'READY') await deps.coordinator.submit(prepared.orderIntentId, gate);
       closeIntentId = prepared.orderIntentId;
     }
-    const emergency = decision.action === 'EMERGENCY_UNHEDGED_SHORT' || decision.action === 'EMERGENCY_UNRESOLVABLE';
-    results.push({ orderIntentId: position.orderIntentId, state: refreshed.state, action: decision.action, reasons, escalate: decision.escalate || inputError || (closeBlocked && decision.reasons.some((reason) => reason.startsWith('D_EXPIRY_'))), closeIntentId, blocksNewRisk: emergency || refreshed.state === 'DIVERGED_EMERGENCY' });
+    const emergency = frontier.selectedAction === 'EMERGENCY_RISK_REDUCTION';
+    results.push({ orderIntentId: position.orderIntentId, state: refreshed.state, action: decision.action, selectedAction: frontier.selectedAction, reasons, escalate: decision.escalate || inputError || (closeBlocked && decision.reasons.some((reason) => reason.startsWith('D_EXPIRY_'))), closeIntentId, blocksNewRisk: emergency || refreshed.state === 'DIVERGED_EMERGENCY' });
   }
   return results;
 }

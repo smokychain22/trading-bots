@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import { definedRiskManagementVersion, type DefinedRiskManagementDecision } from './defined-risk-management.js';
 import type { DefinedRiskPositionSnapshot } from './postgres-defined-risk-position-store.js';
+import type { ManagementActionFrontier } from '../theta/management-action-frontier.js';
 
 const uuidFrom = (seed: string): string => {
   const hex = createHash('sha256').update(seed).digest('hex');
@@ -17,8 +18,11 @@ const uuidFrom = (seed: string): string => {
 export class PostgresDefinedRiskDecisionRecorder {
   constructor(private readonly pool: Pool) {}
 
-  async record(decision: DefinedRiskManagementDecision, position: DefinedRiskPositionSnapshot): Promise<string> {
+  async record(decision: DefinedRiskManagementDecision, position: DefinedRiskPositionSnapshot, frontier: ManagementActionFrontier): Promise<string> {
     if (decision.orderIntentId !== position.orderIntentId) throw new Error('DEFINED_RISK_DECISION_POSITION_MISMATCH');
+    if (frontier.lifecycleState !== 'DEFINED_RISK_OPEN' || frontier.chainId !== position.chainId) throw new Error('DEFINED_RISK_FRONTIER_POSITION_MISMATCH');
+    // the persisted action is the FRONTIER's selection (the sovereign authority), never the producer's proposal on its own
+    const closeSelected = frontier.selectedAction === 'CLOSE_FULL';
     const decisionId = uuidFrom(`theta-defined-risk-management-decision-v1:${decision.contentHash}`);
     return withRuntimePostgresTransaction(this.pool, async (client) => {
       const entry = (await client.query(`SELECT d.fusion_snapshot_id::text AS fusion_snapshot_id FROM trade.order_intent oi
@@ -27,8 +31,9 @@ export class PostgresDefinedRiskDecisionRecorder {
       const inserted = await client.query(`INSERT INTO trade.decision(decision_id,fusion_snapshot_id,candidate_set_id,selected_candidate_id,decision_kind,action_code,quantity,aegis_action,
           strategy_branch,decided_at,status,policy_version,model_versions_json,receipt_json,decision_authority_version)
         VALUES($1,$2,NULL,NULL,'MANAGEMENT',$3,$4,NULL,NULL,$5,$6,$7,'{}'::jsonb,$8::jsonb,$9) ON CONFLICT(decision_id) DO NOTHING RETURNING decision_id`,
-      [decisionId, entry.fusion_snapshot_id, decision.action === 'CLOSE_FULL' ? 'CLOSE_DEFINED_RISK' : decision.action, decision.closeQuantity, decision.observedAt,
-        decision.action === 'CLOSE_FULL' ? 'READY' : 'RECORDED', definedRiskManagementVersion, JSON.stringify({ definedRiskManagement: decision, chainId: position.chainId,
+      [decisionId, entry.fusion_snapshot_id, closeSelected ? 'CLOSE_DEFINED_RISK' : frontier.selectedAction ?? decision.action, closeSelected ? decision.closeQuantity : 0,
+        decision.observedAt, closeSelected ? 'READY' : 'RECORDED', definedRiskManagementVersion, JSON.stringify({ definedRiskManagement: decision, managementActionFrontier: frontier,
+          chainId: position.chainId,
           orderIntentId: position.orderIntentId, evidenceSnapshotSource: 'ENTRY_DECISION_FUSION_SNAPSHOT', managementInputSnapshot: null }), definedRiskManagementVersion]);
       if ((inserted.rowCount ?? 0) > 0) {
         for (const [index, reason] of decision.reasons.entries()) {

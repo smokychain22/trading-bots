@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { classifyDefinedRiskExpiry, type DefinedRiskExpiryState } from './defined-risk-lifecycle.js';
 import type { DefinedRiskExposure, DefinedRiskPositionState } from './defined-risk-position.js';
+import type { DefinedRiskManagementProposal } from '../theta/management-action-frontier.js';
 
 // Management of ONE native spread. This module only DECIDES; it never touches the broker. It is the D branch of the single management authority: a close is proposed here,
 // persisted as a decision, turned into an order intent by the close command builder and submitted ONLY by PaperOrderCoordinator.
@@ -64,6 +65,15 @@ export interface DefinedRiskManagementDecision {
 }
 
 const HARD_AEGIS = new Set(['HARD_VETO', 'EMERGENCY_EXIT_ONLY']);
+
+/** The D producer's output as a proposal to the ONE sovereign management frontier (v3). It never selects anything itself. */
+export function definedRiskManagementProposal(decision: DefinedRiskManagementDecision, position: { readonly state: DefinedRiskPositionState;
+  readonly exposure: DefinedRiskExposure }): DefinedRiskManagementProposal {
+  const proposedAction = decision.action === 'EMERGENCY_UNHEDGED_SHORT' || decision.action === 'EMERGENCY_UNRESOLVABLE' ? 'EMERGENCY_RISK_REDUCTION' : decision.action;
+  return { producerVersion: definedRiskManagementVersion, chainId: decision.chainId, orderIntentId: decision.orderIntentId, positionState: position.state,
+    proposedAction, closeRequired: decision.closeRequired, quotesExecutable: decision.quotesExecutable, closeQuantity: decision.closeQuantity,
+    nakedShortContracts: position.exposure.nakedShortContracts, reasons: decision.reasons, proposalHash: decision.contentHash };
+}
 
 const quoteExecutable = (quote: DefinedRiskLegQuoteEvidence | null, symbol: string, nowMs: number, maxAgeSeconds: number): boolean => {
   if (quote === null || quote.symbol !== symbol || quote.bid === null || quote.ask === null || quote.observedAt === null) return false;

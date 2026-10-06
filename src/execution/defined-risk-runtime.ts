@@ -76,6 +76,6 @@ export async function runDefinedRiskManagementForRuntime(input: DefinedRiskRunti
       context: { eventState: 'UNKNOWN', aegisState: null, executionQuality: executableQuotes ? 'GOOD' : 'UNKNOWN' }, aegisState: null, executionAccountId: input.executionAccountId };
   };
   return runDefinedRiskManagementScan({ positions, orders: input.orders, coordinator: input.coordinator, loadInputs, mayClose,
-    recordDecision: (decision, position) => recorder.record(decision, position), nextCloseAttempt: (id) => recorder.nextCloseAttempt(id),
+    recordDecision: (decision, position, frontier) => recorder.record(decision, position, frontier), nextCloseAttempt: (id) => recorder.nextCloseAttempt(id),
     pinBandPct: definedRiskPinBandPct, maximumQuoteAgeSeconds: definedRiskMaximumQuoteAgeSeconds, decisionWindowSeconds: definedRiskDecisionWindowSeconds, now });
 }

@@ -3,12 +3,20 @@ import type { ManagementInputState } from './management-input-state.js';
 import { assessHoldStrikeLifecycle } from './hold-strike-lifecycle.js';
 
 export const managementActionFrontierVersion = 'theta-management-action-frontier-v2' as const;
+/**
+ * Versioned management-authority revision v3 (docs/architecture/THETA_MANAGEMENT_FRONTIER_V3_DEFINED_RISK.md): adds the DEFINED_RISK_OPEN
+ * lifecycle state and the EMERGENCY_RISK_REDUCTION action so a native spread is decided by THIS authority, not by a parallel one. Wheel
+ * frontiers (CSP_OPEN / STOCK_HELD / RECOVERY_WAIT / CC_OPEN) are unchanged and keep the v2 contract byte for byte.
+ */
+export const managementActionFrontierVersionV3 = 'theta-management-action-frontier-v3' as const;
 export const managementPolicyEvidenceVersion = 'theta-management-policy-evidence-v1' as const;
 
 export type ManagementFrontierAction =
   | 'HOLD' | 'CLOSE_FULL' | 'ROLL' | 'LET_EXPIRE' | 'ACCEPT_ASSIGNMENT' | 'REDEPLOY'
   | 'RECOVERY_WAIT' | 'SELL_STOCK' | 'SELL_CC'
-  | 'HOLD_CC' | 'CLOSE_CC' | 'ROLL_CC' | 'ALLOW_CALL_AWAY';
+  | 'HOLD_CC' | 'CLOSE_CC' | 'ROLL_CC' | 'ALLOW_CALL_AWAY'
+  /** v3, DEFINED_RISK_OPEN only: risk must come down because the approved structure no longer exists (unhedged short, contradictory legs) */
+  | 'EMERGENCY_RISK_REDUCTION';
 
 export interface ManagementActionEconomics {
   readonly action: ManagementFrontierAction;
@@ -101,9 +109,9 @@ export interface ManagementPolicyEvidence {
 }
 
 export interface ManagementActionFrontier {
-  readonly contractVersion: typeof managementActionFrontierVersion;
+  readonly contractVersion: typeof managementActionFrontierVersion | typeof managementActionFrontierVersionV3;
   readonly chainId: string;
-  readonly lifecycleState: ManagementInputState['lifecycleState'];
+  readonly lifecycleState: ManagementInputState['lifecycleState'] | 'DEFINED_RISK_OPEN';
   readonly policyVersion: string | null;
   readonly policyEvidenceHash: string | null;
   readonly economicModelState: 'EV_MODEL_NOT_EMPIRICALLY_READY';
@@ -326,6 +334,80 @@ function structuralExpirationSelection(input: ManagementInputState,
     ? (itm ? 'ACCEPT_ASSIGNMENT' : 'LET_EXPIRE')
     : input.lifecycleState === 'CC_OPEN' && itm ? 'ALLOW_CALL_AWAY' : 'HOLD_CC';
   return actions.find((action) => action.action === desired && action.feasibility === 'FEASIBLE')?.action ?? null;
+}
+
+/**
+ * What the D producer (src/execution/defined-risk-management.ts) proposes for ONE native spread. It is evidence, not a decision: the
+ * frontier below selects. Every field comes from durable parent + leg truth and fresh quotes of BOTH exact legs.
+ */
+export interface DefinedRiskManagementProposal {
+  readonly producerVersion: string;
+  readonly chainId: string;
+  readonly orderIntentId: string;
+  readonly positionState: string;
+  readonly proposedAction: 'HOLD' | 'CLOSE_FULL' | 'EMERGENCY_RISK_REDUCTION' | 'WAIT_FOR_BROKER_TRUTH' | 'NO_ACTION_TERMINAL';
+  /** a safety trigger demands a close of the whole package */
+  readonly closeRequired: boolean;
+  /** both exact legs freshly and executably quoted */
+  readonly quotesExecutable: boolean;
+  /** hedged spreads a package close would cover */
+  readonly closeQuantity: number;
+  /** contracts of short put with no long behind them (broker truth) */
+  readonly nakedShortContracts: number;
+  readonly reasons: readonly string[];
+  readonly proposalHash: string;
+}
+
+const DEFINED_RISK_ACTIONS: readonly ManagementFrontierAction[] = ['HOLD', 'CLOSE_FULL', 'EMERGENCY_RISK_REDUCTION'];
+
+/**
+ * v3 frontier for a DEFINED_RISK_OPEN spread. The same sovereign authority as the Wheel frontier: the producer proposes, this function
+ * enumerates HOLD / CLOSE_FULL / EMERGENCY_RISK_REDUCTION with their feasibility and selects exactly one (or none, loudly), and only the
+ * selected action may reach PaperOrderCoordinator. Rules, in order:
+ *  - a terminal spread has no frontier action; unknown broker truth is a SYSTEM_HOLD (never a pass, never an order);
+ *  - an emergency (unhedged short / contradictory legs) selects EMERGENCY_RISK_REDUCTION, which is ESCALATION-ONLY in this revision: no
+ *    improvised single-leg order is generated, new risk is blocked, and the emergency is persisted for the operator;
+ *  - a required close selects CLOSE_FULL only when BOTH legs are executably quoted and there is a hedged package to close (one native
+ *    two-leg order, never one leg); otherwise HOLD with the mandatory close recorded as not feasible;
+ *  - otherwise HOLD.
+ * No profit target or stop number is invented: those are owner policy needing empirical evidence (TRD section 40).
+ */
+export function buildDefinedRiskManagementActionFrontier(proposal: DefinedRiskManagementProposal): ManagementActionFrontier {
+  const emergency = proposal.proposedAction === 'EMERGENCY_RISK_REDUCTION';
+  const terminal = proposal.proposedAction === 'NO_ACTION_TERMINAL';
+  const unknownTruth = proposal.proposedAction === 'WAIT_FOR_BROKER_TRUTH';
+  const closeFeasible = !emergency && !unknownTruth && proposal.closeRequired && proposal.quotesExecutable && proposal.closeQuantity > 0;
+  const economics = (action: ManagementFrontierAction): ManagementActionEconomics => {
+    const blockers: string[] = [];
+    if (terminal) blockers.push('DEFINED_RISK_TERMINAL');
+    if (action === 'CLOSE_FULL') {
+      if (emergency) blockers.push('APPROVED_STRUCTURE_ABSENT_PACKAGE_CLOSE_INVALID');
+      if (unknownTruth) blockers.push('BROKER_LEG_TRUTH_UNKNOWN');
+      if (!proposal.quotesExecutable) blockers.push('BOTH_LEG_QUOTES_NOT_EXECUTABLE');
+      if (proposal.closeQuantity <= 0) blockers.push('NO_HEDGED_PACKAGE_TO_CLOSE');
+      if (!proposal.closeRequired) blockers.push('NO_CLOSE_TRIGGER');
+    }
+    if (action === 'EMERGENCY_RISK_REDUCTION' && !emergency) blockers.push('NO_DEFINED_RISK_EMERGENCY');
+    const feasibility = terminal ? 'INFEASIBLE' : action === 'HOLD' ? (emergency ? 'INFEASIBLE' : 'FEASIBLE')
+      : action === 'CLOSE_FULL' ? (closeFeasible ? 'FEASIBLE' : 'INFEASIBLE') : (emergency ? 'FEASIBLE' : 'INFEASIBLE');
+    return { action, requiredOptionPositionIntents: action === 'CLOSE_FULL' ? ['BUY_TO_CLOSE', 'SELL_TO_CLOSE'] : action === 'EMERGENCY_RISK_REDUCTION' ? ['BUY_TO_CLOSE'] : [],
+      feasibility, expectedFutureValue: null, certainEconomicPnl: null, downsideTailEstimate: null, incrementalCapitalDays: null, executionCostRisk: null,
+      opportunityCost: null, assignmentInventoryConsequence: null, uncertainty: null, utility: null, executionEvidence: null,
+      reasons: action === 'EMERGENCY_RISK_REDUCTION' && emergency ? ['ESCALATION_ONLY_NO_AUTOMATED_ORDER', ...proposal.reasons]
+        : action === 'HOLD' && emergency ? ['HOLD_IS_NOT_A_VALID_ANSWER_TO_AN_UNHEDGED_SHORT'] : [],
+      blockers: feasibility === 'FEASIBLE' ? [] : blockers };
+  };
+  const actions = DEFINED_RISK_ACTIONS.map(economics);
+  const selectedAction: ManagementFrontierAction | null = terminal ? null : emergency ? 'EMERGENCY_RISK_REDUCTION' : closeFeasible ? 'CLOSE_FULL' : 'HOLD';
+  const reasonCodes = terminal ? ['DEFINED_RISK_TERMINAL_NO_FRONTIER_ACTION']
+    : unknownTruth ? ['SYSTEM_HOLD_BROKER_LEG_TRUTH_UNKNOWN', ...proposal.reasons]
+      : [`SELECT_${selectedAction}`, ...proposal.reasons,
+        ...(proposal.closeRequired && !closeFeasible && !emergency ? ['D_MANDATORY_CLOSE_FULL_NOT_FEASIBLE'] : [])];
+  return { contractVersion: managementActionFrontierVersionV3, chainId: proposal.chainId, lifecycleState: 'DEFINED_RISK_OPEN',
+    policyVersion: proposal.producerVersion, policyEvidenceHash: hashJson(proposal as unknown as JsonValue),
+    economicModelState: 'EV_MODEL_NOT_EMPIRICALLY_READY', actions, selectedAction,
+    secondBestAction: selectedAction === 'HOLD' ? null : terminal ? null : 'HOLD',
+    decisionState: terminal || unknownTruth ? 'SYSTEM_HOLD_MISSING_EVIDENCE' : 'ACTION_SELECTED', reasonCodes };
 }
 
 /**

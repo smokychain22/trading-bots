@@ -954,3 +954,7 @@ Claude commit `a8143cc` was reviewed and rejected. Summing per-share premium acr
 - Container workers report `EXTERNAL_CONTAINER_PRIMARY` and `CONTAINER_RESTART_POLICY`; Windows workers retain the existing identity by default.
 - The external always-on deployment package is buildable but the current machine's Docker engine is unavailable. No external host or second mutation owner was created.
 - Claude commit `321b29b` was reviewed and not ported because it creates a parallel Hold-Strike applicability evaluator beside the existing Python baseline and canonical frontier. Its useful completeness concerns are covered by the integrated readiness receipt without adding a second decision authority.
+
+# 2026-10-07: Management-authority revision v3 (defined-risk spreads)
+
+Owner-authorized versioned revision. Native D spreads are decided by the one sovereign management frontier (`theta-management-action-frontier-v3`, lifecycle `DEFINED_RISK_OPEN`, actions `HOLD`/`CLOSE_FULL`/`EMERGENCY_RISK_REDUCTION`); the D policy is a producer only. Wheel frontiers stay on v2 unchanged. Emergency risk reduction is escalation-only in v3. Full record: `docs/architecture/THETA_MANAGEMENT_FRONTIER_V3_DEFINED_RISK.md`.

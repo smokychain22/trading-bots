@@ -15,7 +15,9 @@ const ACTIONS:readonly ResearchAction[]=['WAIT','HOLD','CLOSE_FULL','ROLL','LET_
   'RECOVERY_WAIT','SELL_STOCK','SELL_CC','HOLD_CC','CLOSE_CC','ROLL_CC','ALLOW_CALL_AWAY'];
 
 export function mapManagementFrontierActions(managementFrontier:ManagementActionFrontier):readonly ActionEconomics[]{
-  const byAction=new Map<ResearchAction,ManagementActionEconomics>(managementFrontier.actions.map((action)=>[action.action,action]));
+  // the v3 D-only EMERGENCY_RISK_REDUCTION has no research-action counterpart: it is never a modeled choice, so it is not mapped
+  const byAction=new Map<ResearchAction,ManagementActionEconomics>(managementFrontier.actions.flatMap((action)=>
+    action.action==='EMERGENCY_RISK_REDUCTION'?[]:[[action.action,action] as [ResearchAction,ManagementActionEconomics]]));
   return ACTIONS.map((action)=>{
     const source=byAction.get(action);
     if(source===undefined)return {action,feasible:false,infeasibleReason:'NOT_APPLICABLE_TO_LIFECYCLE',afterCostEv:null,
