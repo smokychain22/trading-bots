@@ -27,7 +27,7 @@ import { planNoLongerCurrent, PostgresMasterPaperActionPlanStore } from '../exec
 import { AlpacaExecutionQuoteSource } from '../execution/alpaca-execution-quote-source.js';
 import { PostgresPaperOrderStore } from '../execution/postgres-paper-order-store.js';
 import { MutationFenceLostError, PaperOrderCoordinator, type MutationFence } from '../execution/paper-order-coordinator.js';
-import { allFences, requestWindowFence } from '../execution/mutation-fence.js';
+import { allFences, requestMutationWindowMs, requestWindowFence } from '../execution/mutation-fence.js';
 import { MasterPaperExecutionOrchestrator } from '../execution/master-paper-execution-orchestrator.js';
 import {
   MasterPaperActionHandoff, classifyMasterPaperActionExecution, paperBootstrapPreSubmitQuoteAgePolicy,
@@ -711,8 +711,10 @@ export async function runAutonomousRuntimeCycle(
           return degraded('MASTER_PAPER_SUBMISSION_NOT_AUTHORIZED',retryAt);
         if(master.executionAccountId===null)return degraded('MASTER_EXECUTION_ACCOUNT_NOT_CREATED',retryAt);
         const planStore=new PostgresMasterPaperActionPlanStore(pool);
-        const plan=await planStore.claimNext(master.executionAccountId,workerInstance,new Date().toISOString(),
-          {allowNewRisk:newRiskRuntimeEnabled});
+        const claimAtMs=Date.now();
+        const plan=await planStore.claimNext(master.executionAccountId,workerInstance,new Date(claimAtMs).toISOString(),
+          {allowNewRisk:newRiskRuntimeEnabled,claimLatency:{requestElapsedMs:claimAtMs-requestStartedAtMs,
+            mutationWindowRemainingMs:requestMutationWindowMs-(claimAtMs-requestStartedAtMs)}});
         if(plan===null)return skipped(pauseNewOrders?'NO_APPROVED_MANAGEMENT_ACTION_PLAN':'NO_APPROVED_MASTER_ACTION_PLAN');
         {
           // Re-verify the sealed economic payload immediately before the handoff can reach the coordinator.

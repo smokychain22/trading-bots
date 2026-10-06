@@ -294,7 +294,9 @@ export class PostgresMasterPaperActionPlanStore {
   }
 
   async claimNext(executionAccountId:string,workerId:string,now:string,
-    options:{readonly allowNewRisk:boolean}={allowNewRisk:true}):Promise<ApprovedMasterPaperActionPlan|null>{
+    options:{readonly allowNewRisk:boolean;
+      /** latency evidence persisted on the CLAIMED event (e.g. request elapsed / mutation window remaining); never decision input */
+      readonly claimLatency?:Readonly<Record<string,number>>}={allowNewRisk:true}):Promise<ApprovedMasterPaperActionPlan|null>{
     const claimed=await withRuntimePostgresTransaction(this.pool,async(client)=>{
       // an expiry keeps the leaf reason that stopped the plan earlier (handoff not reached, fence lost, gate): DECISION_EXPIRED alone
       // hides why an ACTION_READY plan never reached the broker
@@ -356,7 +358,8 @@ export class PostgresMasterPaperActionPlanStore {
       [row.action_plan_id,workerId,now,claimExpiresAt]);
       if(updated.rowCount!==1)throw new Error('ACTION_PLAN_CLAIM_RACE');
       await client.query(`INSERT INTO trade.master_paper_action_plan_event(action_plan_event_id,action_plan_id,state,event_time,detail_json)
-        VALUES($1,$2,'CLAIMED',$3,$4::jsonb)`,[randomUUID(),row.action_plan_id,now,JSON.stringify({workerId})]);
+        VALUES($1,$2,'CLAIMED',$3,$4::jsonb)`,[randomUUID(),row.action_plan_id,now,
+        JSON.stringify({workerId,...(options.claimLatency===undefined?{}:{latency:options.claimLatency})})]);
       return {plan,actionPlanId:String(row.action_plan_id),claimExpiresAt};
     },{verifyCommitted:async(pool,outcome)=>{
       if(outcome.actionPlanId===null)return true;
