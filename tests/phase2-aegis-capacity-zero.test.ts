@@ -3,6 +3,7 @@ import test from 'node:test';
 import { buildCanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
 import { classifySizingZero } from '../src/theta/runtime-behavior-diagnostic.js';
 import { buildGlobalWaitEvidenceFromFrontier } from '../src/theta/decision-evidence.js';
+import { assertNoFutureLabels } from '../src/research/point-in-time-evidence.js';
 import { normalizeOptionContract } from '../src/theta/option-contract.js';
 import { parseStrategyRoutingResponse, type StrategyFamily } from '../src/theta/strategy-router-contract.js';
 
@@ -62,8 +63,10 @@ test('baseline: ample capital sizes a positive quantity with AEGIS ALLOW_FULL', 
   assert.equal(candidate.moneyManagementReceipt?.sizingReference.quantity, candidate.sizing.quantity);
   assert.equal(candidate.moneyManagementReceipt?.sizingReference.bindingConstraint, candidate.sizing.bindingConstraint);
   assert.equal(candidate.moneyManagementReceipt?.accountPolicyReference, null);
-  assert.equal(candidate.moneyManagementReceipt?.result.finalQuantity, candidate.sizing.quantity);
-  assert.equal(candidate.moneyManagementReceipt?.result.executionAuthorityGranted, false);
+  assert.equal(candidate.moneyManagementReceipt?.currentDecision.finalQuantity, candidate.sizing.quantity);
+  assert.equal(candidate.moneyManagementReceipt?.currentDecision.executionAuthorityGranted, false);
+  assert.doesNotThrow(() => assertNoFutureLabels(candidate.moneyManagementReceipt,
+    'strategyFrontiers[0].frontier.branches[0].candidates[0].moneyManagementReceipt'));
   assert.ok(frontier.branches.flatMap((branch) => branch.candidates)
     .every((item) => item.moneyManagementReceipt?.provenance === 'CANONICAL_REFERENCES_NO_RECOMPUTATION'));
 });

@@ -167,7 +167,9 @@ export interface CanonicalFrontierCandidate {
       readonly quantity: number;
       readonly bindingConstraint: string;
     };
-    readonly result: {
+    /** Present-time decision facts only. The name deliberately avoids the
+     * research schema's reserved future-label keys such as result/outcome. */
+    readonly currentDecision: {
       readonly brokerFeasible: boolean | null;
       readonly accountPolicyFeasible: boolean | null;
       readonly finalQuantity: number;
@@ -1252,7 +1254,7 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
         bindingReasonsSource: 'canonicalFrontierInput.aegisBindingReasonsByCandidateId' as const },
       sizingReference: { field: 'sizing' as const, quantity: candidate.sizing.quantity,
         bindingConstraint: candidate.sizing.bindingConstraint },
-      result: { brokerFeasible: candidate.accountPolicyCompatibility?.brokerFeasible ?? null,
+      currentDecision: { brokerFeasible: candidate.accountPolicyCompatibility?.brokerFeasible ?? null,
         accountPolicyFeasible: candidate.accountPolicyCompatibility?.accountFeasible ?? null,
         finalQuantity: candidate.sizing.quantity, bindingConstraint: candidate.sizing.bindingConstraint,
         executionAuthorityGranted: false as const },
