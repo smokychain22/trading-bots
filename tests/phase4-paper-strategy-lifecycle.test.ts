@@ -243,3 +243,25 @@ test('H thesis identity survives management loading and prohibits Q roll inherit
     hardBlockers:[],economicModelState:'EV_MODEL_NOT_EMPIRICALLY_READY' } as const;
   assert.equal(buildManagementActionFrontier(state).actions.some((action) => action.action === 'ROLL'), false);
 });
+
+test('a SELECTED H candidate never borrows Q AEGIS: the Q per-symbol identity or no identity fails closed; its own bound identity is READY', () => {
+  const raw = hFrontierInput();
+  const produced = buildHoldStrikeProductionDecision({ structuralFrontier: buildCanonicalStrategyFrontier({ ...raw, paperEntryDecision: undefined }),
+    thetaQDecision: { winningAction: 'PASS' }, authority: hStrategyPaperAuthority });
+  assert.ok(produced, 'no vacuous pass');
+  const frontier = buildCanonicalStrategyFrontier({ ...raw, paperEntryDecision: produced });
+  const assemble = (aegisAssessmentIdentity: ReturnType<typeof testAegisAssessmentIdentity> | null) => assembleMasterPaperEvidencePlan({ frontier,
+    executionAccountId: UUID.account, decisionId: UUID.decision, persistedCandidateId: UUID.candidate, optionContractId: UUID.contract, underlyingId: UUID.underlying,
+    accountStatus: 'ACTIVE', optionsApprovedLevel: 3, optionsTradingLevel: 3, aegisState: 'ALLOW_FULL', aegisInputOrigin: 'DERIVED_FROM_REAL', aegisAssessmentIdentity,
+    entrySafetyPolicy: entryPolicy, openPositionSymbols: [], openOrderSymbols: [], paperEvidenceRiskCap: 1, firstCanaryCompleted: false, modeledRoundTripCostPerContract: 1.7,
+    strategyPaperAuthority: hStrategyPaperAuthority, now: '2026-09-14T15:00:01.000Z', decisionExpiresAt: '2026-09-14T15:00:30.000Z' });
+  const qIdentity = testAegisAssessmentIdentity({ runtimeCandidateRef: `THETA_CONVENTIONAL:${hContract.optionSymbol}`, persistedCandidateId: UUID.candidate,
+    optionSymbol: hContract.optionSymbol, decisionAsOf: NOW });
+  assert.ok(assemble(qIdentity).blockers.includes('AEGIS_ASSESSMENT_LINEAGE_INVALID'), 'Q verdict for the same contract is never H evidence');
+  assert.ok(assemble(null).blockers.includes('AEGIS_ASSESSMENT_LINEAGE_INVALID'), 'missing required AEGIS fails closed');
+  const own = testAegisAssessmentIdentity({ runtimeCandidateRef: `THETA_HOLD_STRIKE:${hContract.optionSymbol}`, strategyBranch: 'THETA_HOLD_STRIKE',
+    persistedCandidateId: UUID.candidate, optionSymbol: hContract.optionSymbol, decisionAsOf: NOW });
+  const ready = assemble(own);
+  assert.equal(ready.state, 'READY', JSON.stringify(ready.blockers));
+  if (ready.state === 'READY') assert.equal(ready.plan.strategyBranch, 'THETA_HOLD_STRIKE', 'H identity survives into the plan');
+});

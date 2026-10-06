@@ -405,7 +405,8 @@ test('a candidate AEGIS was never asked about is NOT_REACHED, distinct from AEGI
     assert.equal(result.globalWaitEarned, false);
     assert.equal(result.selectedQuantity, 0);
   }
-  assert.ok(notReached.globalWaitReasons.includes('CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_NOT_REACHED_UPSTREAM'));
+  assert.ok(notReached.globalWaitReasons.includes('CANDIDATE_AEGIS_NOT_EVALUATED_UPSTREAM'), 'never asked is NOT_EVALUATED, not missing evidence');
+  assert.ok(!notReached.globalWaitReasons.some((reason) => reason.startsWith('CANDIDATE_SIZING_EVIDENCE_UNKNOWN:')));
   assert.ok(unknown.globalWaitReasons.includes('CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_UNKNOWN'));
   assert.ok(!notReached.globalWaitReasons.includes('CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_UNKNOWN'));
 });
@@ -691,4 +692,25 @@ test('covered-call quantity never exceeds floor(shares/multiplier): 0, 99, 100, 
       if (maxContracts === 0) assert.ok(candidate.hardBlockers.includes('INSUFFICIENT_COVERED_SHARES'), `${shares} shares is blocked`);
     }
   }
+});
+
+// Production 2026-09/10: 234 scans reported CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_UNKNOWN because a cycle with no AEGIS assessment at all
+// (precondition hold / no Q finalist) left every structural Q candidate with a null state. Never asked is NOT_EVALUATED, not a risk failure.
+test('UNKNOWN taxonomy: a candidate AEGIS never assessed is NOT_EVALUATED (no AEGIS failure, no required-evidence WAIT reason), and still cannot be sized or selected', async () => {
+  const { classifySizingZero } = await import('../src/theta/runtime-behavior-diagnostic.js');
+  const noAssessmentAtAll = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']), aegisNewRiskStateByCandidateId: {} });
+  const candidate = noAssessmentAtAll.branches.flatMap((branch) => branch.candidates).find((item) => item.branch === 'THETA_CONVENTIONAL');
+  assert.ok(candidate, 'fixture produces a Q candidate');
+  assert.equal(candidate.sizing.quantity, 0, 'fail closed: no assessment, no size');
+  assert.equal(candidate.sizing.bindingConstraint, 'AEGIS_NOT_REACHED_UPSTREAM');
+  assert.equal(classifySizingZero(candidate), 'AEGIS_NOT_REACHED', 'diagnostic: not evaluated, never AEGIS_REQUIRED_UNKNOWN');
+  assert.ok(!noAssessmentAtAll.globalWaitReasons.some((reason) => reason.includes('AEGIS_UNKNOWN')));
+  assert.equal(noAssessmentAtAll.selectedCandidateId, null);
+  assert.equal(noAssessmentAtAll.globalWaitEarned, false, 'an unevaluated candidate can never earn a GLOBAL_WAIT either');
+  // an assessment that was asked for and came back unknown remains a REQUIRED unknown
+  const askedUnknown = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+    aegisNewRiskStateByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': null } });
+  const askedCandidate = askedUnknown.branches.flatMap((branch) => branch.candidates).find((item) => item.branch === 'THETA_CONVENTIONAL');
+  assert.ok(askedCandidate);
+  assert.equal(classifySizingZero(askedCandidate), 'AEGIS_REQUIRED_UNKNOWN');
 });

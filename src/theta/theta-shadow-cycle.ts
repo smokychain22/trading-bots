@@ -1943,7 +1943,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     riskCapacityQtyByCandidateId: conventionalRisk.riskCapacityQtyByCandidateId,
     accountPolicyCompatibilityByCandidateId,
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
-    aegisNewRiskStateByCandidateId: exactAegisStateByCandidateId,
+    // No AEGIS assessment exists at all (a precondition hold, no candidates, or orchestration returned before any finalist): every
+    // candidate is NOT_EVALUATED upstream, never "AEGIS_UNKNOWN" -- the hold's own reason, not a fake risk-evidence gap, explains it.
+    aegisNewRiskStateByCandidateId: exactAegisStateByCandidateId ?? (aegis === null ? {} : undefined),
     aegisBindingReasonsByCandidateId: exactAegisReasonsByCandidateId,
     unmanagedBrokerPositionCount: positions.filter((position) => position.assetClass === 'us_option').length,
     unevaluatedUnderlyingCount: Math.max(0, ranked.length - 1),

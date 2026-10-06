@@ -205,3 +205,10 @@ test('runtime reads the persisted D leg identity strictly: wrong structure, miss
   assert.ok(assembleDefinedRiskPaperEvidencePlan(assemblyInput({ persistedLegs: persistedDefinedRiskLegs('PUT_CREDIT_SPREAD', { legs: [legs[0]] }) }))
     .blockers.includes('PERSISTED_LEG_CONTRACT_IDENTITY_MISSING'));
 });
+
+test('a SELECTED D candidate without its own required AEGIS fails closed; with its own bound AEGIS it is valid', () => {
+  assert.ok(assembleDefinedRiskPaperEvidencePlan(assemblyInput({ aegisState: null })).blockers.includes('AEGIS_SELECTION_LINEAGE_MISSING'));
+  assert.ok(assembleDefinedRiskPaperEvidencePlan(assemblyInput({ aegisAssessmentIdentity: null })).blockers.includes('AEGIS_ASSESSMENT_LINEAGE_INVALID'));
+  assert.ok(assembleDefinedRiskPaperEvidencePlan(assemblyInput({ aegisInputOrigin: null })).blockers.includes('AEGIS_REAL_INPUT_LINEAGE_MISSING'));
+  assert.equal(assembleDefinedRiskPaperEvidencePlan(assemblyInput()).state, 'READY', 'own candidate-bound AEGIS identity: valid');
+});

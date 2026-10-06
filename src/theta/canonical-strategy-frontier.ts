@@ -602,7 +602,8 @@ function structuralSizing(
       && !Object.hasOwn(input.aegisNewRiskStateByCandidateId, candidateId);
     return result(0, exactReasons[0] ?? (candidateAegisState === null
       ? (aegisNotReached ? 'AEGIS_NOT_REACHED_UPSTREAM' : 'AEGIS_UNKNOWN') : `AEGIS_${candidateAegisState}`),
-      exactReasons.length>0?exactReasons:['AEGIS_DOES_NOT_PERMIT_NEW_RISK']);
+      // never asked is NOT_EVALUATED, never "AEGIS refused": only an assessment that exists can deny new risk
+      exactReasons.length>0?exactReasons:[aegisNotReached?'AEGIS_NOT_EVALUATED_UPSTREAM':'AEGIS_DOES_NOT_PERMIT_NEW_RISK']);
   }
   if (riskCapacityState !== null && riskCapacityState.state !== 'KNOWN') {
     return result(0, riskCapacityState.state === 'INVALID' ? 'AEGIS_RISK_CAPACITY_INVALID' : 'AEGIS_RISK_CAPACITY_UNKNOWN',
@@ -1430,8 +1431,12 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
           ...(managementAuthorityRequired ? ['EXISTING_POSITION_DELEGATED_TO_MANAGEMENT_AUTHORITY'] : []),
           ...(managementIncomplete ? ['OPEN_POSITION_MANAGEMENT_NOT_ATTACHED'] : []),
           ...(universeIncomplete ? [`UNDERLYINGS_NOT_EVALUATED:${input.unevaluatedUnderlyingCount}`] : []),
+          // A candidate AEGIS was never asked about (upstream Q/shortlist did not forward it) is NOT_EVALUATED: it still cannot earn a
+          // GLOBAL_WAIT (fail closed), but it is never reported as missing REQUIRED risk evidence. Only an assessment that was required and
+          // came back unknown is CANDIDATE_SIZING_EVIDENCE_UNKNOWN.
           ...[...new Set(sizingEvidenceUnknown.map((candidate) => candidate.sizing.bindingConstraint))]
-            .map((constraint) => `CANDIDATE_SIZING_EVIDENCE_UNKNOWN:${constraint}`)],
+            .map((constraint) => constraint === 'AEGIS_NOT_REACHED_UPSTREAM' ? 'CANDIDATE_AEGIS_NOT_EVALUATED_UPSTREAM'
+              : `CANDIDATE_SIZING_EVIDENCE_UNKNOWN:${constraint}`)],
     empiricalEconomicsReady: false as const, executionAuthorized: false as const, optionomicsContext: input.optionomicsContext,
   };
   const adaptiveShadowDecision = buildAdaptiveShadowDecisionReceipt({
