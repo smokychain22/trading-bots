@@ -1,7 +1,7 @@
 {
   "version": "theta-phase6-executed-evidence-v1",
-  "observedAt": "2026-10-06T14:06:00.885Z",
-  "checkoutHead": "324e53dc60a3252a2319e4b198cc5b3a9bf0a210",
+  "observedAt": "2026-10-06T18:27:10.410Z",
+  "checkoutHead": "ccaf9d218ecb06ed9e281ceb769759cd4b00b6df",
   "identityAuthority": "PER_FILE_HASHES_INCLUDE_UNCOMMITTED_CHANGES",
   "command": "node --import tsx tools/theta-phase3-executed-evidence.ts --phase=6",
   "executionSucceeded": true,
@@ -33,21 +33,21 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/reproducibility-bundle.test.ts",
           "name": "offline CLI persists exact model, prediction and resolved join and verifies after a second process restart",
           "state": "PASS",
-          "durationMs": 711.7481,
+          "durationMs": 691.8121,
           "line": 1
         },
         {
           "file": "tests/empirical-policy-promotion.test.ts",
           "name": "complete evidence can become review-ready but never self-promotes or authorizes execution",
           "state": "PASS",
-          "durationMs": 13.4325,
+          "durationMs": 13.1948,
           "line": 1
         }
       ]
@@ -68,7 +68,7 @@
         "src/research/canonical-export-adapters.ts": "7ed8198511ae71e38089bc03d60bd894cbbc5c95c03df41f070af7e67b675903",
         "src/research/false-inactivity-taxonomy.ts": "29f70e78687d7e72759e7fb1c84a287d84db6d8d0ceb6d13421c2e4aff483f99",
         "src/research/wait-regret-dataset.ts": "8f2f79e1ee4e834db9c9bc1da42111887b17d2a63cab4c0e6e3c38106514ac9d",
-        "src/theta/canonical-strategy-frontier.ts": "1a9f093e30028ce50045540952a16c87ec8c786a59ac6b204930564c43967960",
+        "src/theta/canonical-strategy-frontier.ts": "087e474b983bf75721ddbc3c15f5d01e7b30b293e343efb00aa44c077451c066",
         "src/theta/postgres-cycle-evidence-storage.ts": "d8719a39238b96aac4a74e39fddec3f98d3e1a445a73445cac661b4d680e6f93",
         "tests/canonical-export-adapters.test.ts": "ee665a62bc25e3619906662ede5e4f368a78da9095cfd7a7dd0f74f85c648ad7",
         "tests/phase6-python-research.test.ts": "ca16638d7ba9391959279436b8e2cb91697946e2402d9d3d83dfd5cccb1ab3be",
@@ -79,28 +79,28 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/wait-regret-dataset.test.ts",
           "name": "hard reason cannot be overridden and event sizing provider failures never become favorable-path regret",
           "state": "PASS",
-          "durationMs": 0.3862,
+          "durationMs": 0.6507,
           "line": 1
         },
         {
           "file": "tests/wait-regret-dataset.test.ts",
           "name": "modeled and observed counterfactual regret have separate denominators",
           "state": "PASS",
-          "durationMs": 0.302,
+          "durationMs": 0.5402,
           "line": 1
         },
         {
           "file": "tests/canonical-export-adapters.test.ts",
           "name": "a WAIT cycle (no branch contains the selected id) reports every alternative unchosen, never forces one",
           "state": "PASS",
-          "durationMs": 0.4411,
+          "durationMs": 0.4928,
           "line": 1
         }
       ]
@@ -130,28 +130,28 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/canonical-export-adapters.test.ts",
           "name": "CORE CLAIM: decision-candidate adapter marks exactly the frontier-selected candidate SELECTED, all others REJECTED",
           "state": "PASS",
-          "durationMs": 3.0904,
+          "durationMs": 5.5094,
           "line": 1
         },
         {
           "file": "tests/canonical-export-adapters.test.ts",
           "name": "no candidate row ever carries a realized-outcome field -- structurally impossible per entry-unit-separation",
           "state": "PASS",
-          "durationMs": 0.6125,
+          "durationMs": 0.6501,
           "line": 1
         },
         {
           "file": "tests/production-persistence-adapters.test.ts",
           "name": "CORE CLAIM: a real 14-action ActionEconomics[] adapts into ManagementActionValueRow[] with the taken action factual, others counterfactual",
           "state": "PASS",
-          "durationMs": 1.8465,
+          "durationMs": 1.2391,
           "line": 1
         }
       ]
@@ -178,7 +178,7 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         }
       ]
@@ -208,28 +208,28 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/real-data-arrival-harness.test.ts",
           "name": "selection without fills and terminal whole-chain evidence never becomes a factual resolved outcome",
           "state": "PASS",
-          "durationMs": 0.4043,
+          "durationMs": 0.2773,
           "line": 1
         },
         {
           "file": "tests/real-data-arrival-harness.test.ts",
           "name": "a selected shadow-only subject remains NOT_IDENTIFIABLE",
           "state": "PASS",
-          "durationMs": 0.3478,
+          "durationMs": 0.2064,
           "line": 1
         },
         {
           "file": "tests/contract-path-label-maturation.test.ts",
           "name": "market marks mature MAE/MFE without pretending they are fills or realized PnL",
           "state": "PASS",
-          "durationMs": 30.4378,
+          "durationMs": 34.9813,
           "line": 1
         }
       ]
@@ -258,21 +258,21 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/theta-entry-model-readiness.test.ts",
           "name": "paired OOS executes target-appropriate loss and cannot authorize promotion",
           "state": "PASS",
-          "durationMs": 1.0941,
+          "durationMs": 1.4601,
           "line": 1
         },
         {
           "file": "tests/theta-entry-model-readiness.test.ts",
           "name": "caller-supplied OOS flag cannot certify held-out support or promotion",
           "state": "PASS",
-          "durationMs": 0.4025,
+          "durationMs": 0.5241,
           "line": 1
         }
       ]
@@ -301,21 +301,21 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/theta-entry-model-readiness.test.ts",
           "name": "zero raw rows is DATASET_NOT_READY",
           "state": "PASS",
-          "durationMs": 2.0562,
+          "durationMs": 2.6498,
           "line": 1
         },
         {
           "file": "tests/theta-entry-model-readiness.test.ts",
           "name": "ADVERSARIAL: never optimizes/promotes on accuracy/AUC/win-rate alone -- EvaluationMetrics has no such field",
           "state": "PASS",
-          "durationMs": 0.3692,
+          "durationMs": 0.3309,
           "line": 1
         }
       ]
@@ -343,21 +343,21 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/calibration-evaluation-contract.test.ts",
           "name": "ADVERSARIAL: calibration must never be evaluated on the same rows used to fit the calibrator",
           "state": "PASS",
-          "durationMs": 0.9579,
+          "durationMs": 1.0191,
           "line": 1
         },
         {
           "file": "tests/calibration-evaluation-contract.test.ts",
           "name": "invalid probabilities, binary labels, N and forged bin summaries cannot certify calibration",
           "state": "PASS",
-          "durationMs": 2.1174,
+          "durationMs": 1.3849,
           "line": 1
         }
       ]
@@ -388,14 +388,14 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/theta-entry-model-readiness.test.ts",
           "name": "paired OOS rejects future features, fit overlap, malformed values and missing policy",
           "state": "PASS",
-          "durationMs": 1.3588,
+          "durationMs": 1.6288,
           "line": 1
         }
       ]
@@ -422,7 +422,7 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         }
       ]
@@ -451,7 +451,7 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         }
       ]
@@ -481,14 +481,14 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/point-in-time-evidence.test.ts",
           "name": "dataset window rejects malformed or timezone-free timestamps and future volatility labels",
           "state": "PASS",
-          "durationMs": 2.7518,
+          "durationMs": 2.3299,
           "line": 1
         }
       ]
@@ -514,21 +514,21 @@
           "file": "tests/shadow-feature-contribution.test.ts",
           "name": "CORE CLAIM: shadow rank never overwrites currentProductionRank -- both are preserved independently",
           "state": "PASS",
-          "durationMs": 2.4729,
+          "durationMs": 3.2606,
           "line": 1
         },
         {
           "file": "tests/shadow-feature-contribution.test.ts",
           "name": "every computed score is labeled BOOTSTRAP_NON_EMPIRICAL, never presented as validated",
           "state": "PASS",
-          "durationMs": 0.3769,
+          "durationMs": 0.4777,
           "line": 1
         },
         {
           "file": "tests/shadow-feature-contribution.test.ts",
           "name": "unqualified, stale, future, zero-weight and duplicate feature inputs cannot invent contributions",
           "state": "PASS",
-          "durationMs": 9.3846,
+          "durationMs": 1.7486,
           "line": 1
         }
       ]
@@ -556,28 +556,28 @@
           "file": "tests/phase6-python-research.test.ts",
           "name": "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls",
           "state": "PASS",
-          "durationMs": 15731.3794,
+          "durationMs": 14125.6803,
           "line": 1
         },
         {
           "file": "tests/r8-performance-analytics.test.ts",
           "name": "R8 performance reports complete after-cost episode economics without replacing missing values with zero",
           "state": "PASS",
-          "durationMs": 5.9521,
+          "durationMs": 5.9492,
           "line": 1
         },
         {
           "file": "tests/r8-performance-analytics.test.ts",
           "name": "explicit zero independent N cannot borrow raw sample confidence",
           "state": "PASS",
-          "durationMs": 0.5393,
+          "durationMs": 0.5685,
           "line": 1
         },
         {
           "file": "tests/r8-performance-analytics.test.ts",
           "name": "an empty evidence set reports UNKNOWN metrics rather than fabricated zeroes",
           "state": "PASS",
-          "durationMs": 0.4601,
+          "durationMs": 0.5392,
           "line": 1
         }
       ]
@@ -608,42 +608,42 @@
           "file": "tests/executed-requirement-evidence.test.ts",
           "name": "closure requires the exact executed file and case with bound source and test hashes",
           "state": "PASS",
-          "durationMs": 4.2719,
+          "durationMs": 8.2676,
           "line": 1
         },
         {
           "file": "tests/executed-requirement-evidence.test.ts",
           "name": "a failing companion prevents a selected pass from laundering the suite failure",
           "state": "PASS",
-          "durationMs": 0.433,
+          "durationMs": 0.4684,
           "line": 1
         },
         {
           "file": "tests/promotion-evidence-assembler.test.ts",
           "name": "caller declarations can complete metadata but cannot certify executed empirical evidence",
           "state": "PASS",
-          "durationMs": 4.942,
+          "durationMs": 2.9428,
           "line": 1
         },
         {
           "file": "tests/empirical-policy-promotion.test.ts",
           "name": "explicit promotion binds the complete reviewed receipt and rejects malformed approval metadata",
           "state": "PASS",
-          "durationMs": 28.275,
+          "durationMs": 31.6659,
           "line": 1
         },
         {
           "file": "tests/empirical-policy-promotion.test.ts",
           "name": "management promotion pins input and gives each evaluator an isolated reviewed artifact",
           "state": "PASS",
-          "durationMs": 2.0755,
+          "durationMs": 1.8164,
           "line": 1
         },
         {
           "file": "tests/research-completion-registry.test.ts",
           "name": "historical registry declarations cannot certify current engineering or empirical readiness",
           "state": "PASS",
-          "durationMs": 4.3434,
+          "durationMs": 1.6536,
           "line": 1
         }
       ]
@@ -657,5 +657,5 @@
   "providerRequests": 0,
   "brokerMutations": 0,
   "scope": "REVIEWED_SOURCE_ENGINEERING_NOT_L7_OR_EMPIRICAL",
-  "artifactHash": "9250cdd933026921f846c29e774aabc81974d1b3e25482ea2d9d961d061c6c3f"
+  "artifactHash": "e65d7ef1e9ee56e0977d57f1d718d54201527788cc1e030fa2c7c91cee42b234"
 }
