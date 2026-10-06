@@ -153,8 +153,10 @@ const rawOrderSchema = z.object({
   submitted_at: providerInstantSchema.nullable().optional(),
   replaced_by: providerIdentitySchema.nullable().optional(),
   replaces: providerIdentitySchema.nullable().optional(),
-  order_class: z.enum(['mleg']).nullable().optional(),
-  legs: z.array(rawOrderLegSchema).optional(),
+  // Alpaca represents a plain single-leg order as order_class "" (or "simple") with legs null; only mleg carries a package. Any other class
+  // (bracket / oco / oto) is not a THETA order shape and still fails closed.
+  order_class: z.enum(['', 'simple', 'mleg']).nullable().optional(),
+  legs: z.array(rawOrderLegSchema).nullable().optional(),
 }).passthrough();
 
 const finiteNumber = (value: string | number): number => {
@@ -190,7 +192,7 @@ export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
   if (limitPrice !== null && (isMultiLeg ? limitPrice === 0 : limitPrice <= 0)) {
     throw new Error('Alpaca returned an invalid limit price.');
   }
-  const legs: BrokerOrderLegSnapshot[] | undefined = order.legs?.map((leg) => {
+  const legs: BrokerOrderLegSnapshot[] | undefined = (order.legs ?? undefined)?.map((leg) => {
     const legQty = finiteNumber(leg.qty);
     const legFilledQty = finiteNumber(leg.filled_qty);
     const ratioQty = finiteNumber(leg.ratio_qty ?? 1);
@@ -227,7 +229,7 @@ export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
     submittedAt: order.submitted_at ?? null,
     replacedBy: order.replaced_by ?? null,
     replaces: order.replaces ?? null,
-    orderClass: order.order_class ?? null,
+    orderClass: isMultiLeg ? 'mleg' : null,
     ...(legs === undefined ? {} : { legs }),
   };
 };
