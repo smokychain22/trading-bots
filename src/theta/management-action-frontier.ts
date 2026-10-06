@@ -350,6 +350,10 @@ export function buildManagementActionFrontier(input: ManagementInputState,
   const structuralSelection = hSelection??(evidence === null ? structuralExpirationSelection(input, policy.actions) : null);
   const selectedAction = policy.selectedAction ?? structuralSelection ?? (passive?.feasibility === 'FEASIBLE' ? passive.action : null);
   const policySelected = policy.selectedAction !== null || structuralSelection !== null;
+  // H's management deadline is PERSISTED with the frontier (reason codes are stored), never memory-only: a restarted worker reads the last deadline and, because management
+  // runs first in every cycle, evaluates the chain immediately. A mandatory H action that is not feasible (for example no executable quote) is recorded as such, loudly.
+  const holdStrikeReasons: readonly string[] = hLifecycle===null?[]:[`H_REVIEW_DEADLINE:${hLifecycle.reviewDeadline}`,
+    ...(hLifecycle.mandatory&&hSelection===null?[`H_MANDATORY_${hLifecycle.action}_NOT_FEASIBLE`]:[])];
   return {
     contractVersion: managementActionFrontierVersion, chainId: input.chainId, lifecycleState: input.lifecycleState,
     policyVersion: hSelection!==null?hLifecycle?.policyVersion??null:structuralSelection !== null ? 'theta-structural-expiration-v1' : policy.policyVersion,
@@ -358,9 +362,9 @@ export function buildManagementActionFrontier(input: ManagementInputState,
     economicModelState: 'EV_MODEL_NOT_EMPIRICALLY_READY', actions:policy.actions, selectedAction,
     secondBestAction: policy.secondBestAction,
     decisionState: policySelected ? 'ACTION_SELECTED' : 'SYSTEM_HOLD_MISSING_EVIDENCE',
-    reasonCodes: baseActions.length === 0 ? ['LIFECYCLE_STATE_HAS_NO_MANAGEMENT_FRONTIER']
+    reasonCodes: [...(baseActions.length === 0 ? ['LIFECYCLE_STATE_HAS_NO_MANAGEMENT_FRONTIER']
       : hSelection!==null?[...(hLifecycle?.reasons??[]),`SELECT_${hSelection}`]
       : structuralSelection !== null ? ['STRUCTURAL_EXPIRATION_NO_ORDER', `SELECT_${structuralSelection}`]
-        : policySelected ? policy.reasonCodes : ['EV_MODEL_NOT_EMPIRICALLY_READY',...policy.reasonCodes],
+        : policySelected ? policy.reasonCodes : ['EV_MODEL_NOT_EMPIRICALLY_READY',...policy.reasonCodes]), ...holdStrikeReasons],
   };
 }

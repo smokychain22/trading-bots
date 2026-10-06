@@ -33,9 +33,11 @@ const LEGAL: Readonly<Record<OrderIntentState, readonly OrderIntentState[]>> = {
   READY: ['SUBMITTING', 'EXPIRED'],
   SUBMITTING: ['SUBMITTED', 'ACKNOWLEDGED', 'PARTIAL', 'FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED', 'UNKNOWN_SUBMISSION', 'REJECTED'],
   SUBMITTED: ['ACKNOWLEDGED', 'PARTIAL', 'FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED', 'REJECTED', 'UNKNOWN_SUBMISSION'],
-  ACKNOWLEDGED: ['PARTIAL', 'FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED', 'REJECTED'],
-  PARTIAL: ['FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED'],
-  CANCEL_REQUESTED: ['CANCELED', 'FILLED', 'PARTIAL', 'UNKNOWN_SUBMISSION'],
+  // Phase 4B: a native multi-leg parent can be acknowledged and then show per-leg broker truth that DIVERGES (one leg filled, the other not). That is an unresolved broker
+  // inconsistency, so the only legal landing is RECONCILING (which can resolve only to broker truth and can never re-enter SUBMITTING); it is never rounded into PARTIAL/FILLED.
+  ACKNOWLEDGED: ['PARTIAL', 'FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED', 'REJECTED', 'RECONCILING'],
+  PARTIAL: ['FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED', 'RECONCILING'],
+  CANCEL_REQUESTED: ['CANCELED', 'FILLED', 'PARTIAL', 'UNKNOWN_SUBMISSION', 'RECONCILING'],
   FILLED: [], CANCELED: [], REJECTED: [], EXPIRED: [],
   UNKNOWN_SUBMISSION: ['RECONCILING'],
   // PROPOSED is a documented design edge (a NEW attempt once an intent is proven never to have reached the broker). No production code

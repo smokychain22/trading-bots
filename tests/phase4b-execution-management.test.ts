@@ -6,6 +6,7 @@ import { control } from './phase3-exec-fixtures.js';
 import type { BrokerMutationAuthorization } from '../src/execution/execution-control.js';
 import type { BrokerOrderRequest, BrokerOrderSnapshot, PaperBrokerAdapter } from '../src/execution/broker.js';
 import { assessHoldStrikeLifecycle } from '../src/theta/hold-strike-lifecycle.js';
+import { buildManagementActionFrontier } from '../src/theta/management-action-frontier.js';
 import { reconcileManagedOptionLifecycle } from '../src/execution/broker-lifecycle-evidence.js';
 import { buildDefinedRiskClosePlan, classifyDefinedRiskExpiry, computeDefinedRiskWholeChainAccounting } from '../src/execution/defined-risk-lifecycle.js';
 import type { ManagementInputState } from '../src/theta/management-input-state.js';
@@ -56,6 +57,19 @@ test('H has a bounded review deadline, forces a two-sided close near expiry, and
   assert.equal(assessment?.mandatory,true);
   assert.equal(assessment?.rollAllowed,false);
   assert.ok(Date.parse(assessment?.reviewDeadline??'')>Date.parse(NOW));
+});
+
+test('H review deadline is PERSISTED with the frontier, H never offers a roll, and a mandatory close that is not executable is recorded loudly (not a silent hold)',()=>{
+  const healthy=buildManagementActionFrontier(hState({market:{...hState().market,dte:4}}));
+  assert.ok(healthy.reasonCodes.some(code=>/^H_REVIEW_DEADLINE:\d{4}-/.test(code)),'the deadline travels in the stored reason codes, not in memory');
+  assert.equal(healthy.actions.some(action=>action.action==='ROLL'),false,'H policy forbids roll');
+  const nearExpiry=buildManagementActionFrontier(hState());
+  assert.ok(nearExpiry.reasonCodes.some(code=>code.startsWith('H_REVIEW_DEADLINE:')));
+  const blind=buildManagementActionFrontier(hState({market:{...hState().market,optionBid:null,optionAsk:null,quoteQuality:'MISSING'}}));
+  assert.ok(blind.reasonCodes.some(code=>code==='H_MANDATORY_CLOSE_FULL_NOT_FEASIBLE'),'unexecutable mandatory close is typed, never a quiet HOLD');
+  assert.ok(blind.reasonCodes.some(code=>code.startsWith('H_REVIEW_DEADLINE:')));
+  const qChain=buildManagementActionFrontier(hState({strategyOrigin:'THETA_CONVENTIONAL'}));
+  assert.equal(qChain.reasonCodes.some(code=>code.startsWith('H_')),false,'Q chains carry no H deadline semantics');
 });
 
 test('H assignment is decided only by the single broker-confirmed lifecycle authority: a vanished contract or ITM mark is never assignment',()=>{

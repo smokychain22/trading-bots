@@ -203,6 +203,9 @@ export class PaperOrderCoordinator {
       if (!same) throw new Error('ORDER_INTENT_IDEMPOTENCY_COLLISION');
       return existing;
     }
+    // A native multi-leg parent whose durable leg evidence can never pass the pre-submit checks must not be persisted READY (it would hold the chain's in-flight guard until it
+    // expires, and an unknown multiplier / identity is never defaulted). Single-leg intents keep their existing validate-at-submit behaviour.
+    if (input.request.order_class === 'mleg') validateAuthorizationEvidence(input);
     const intent: PersistedPaperOrderIntent = { ...input, status: 'READY', brokerOrderId: null };
     await this.store.insertIntent(intent);
     return intent;

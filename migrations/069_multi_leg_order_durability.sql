@@ -135,6 +135,23 @@ CREATE TABLE IF NOT EXISTS trade.defined_risk_position (
 CREATE INDEX IF NOT EXISTS ix_defined_risk_position_active ON trade.defined_risk_position(state)
   WHERE state IN ('PENDING_OPEN','ASYMMETRIC_OPEN','OPEN','CLOSE_PENDING','DIVERGED_EMERGENCY');
 
+-- Governed strategy Paper authority. Append-only, bound to the exact release SHA. Nothing in the runtime writes here; only the explicit governed tool does.
+-- Absence of a row IS the fail-closed default (H and D stay unauthorized until a receipt is recorded for the running SHA).
+CREATE TABLE IF NOT EXISTS ops.theta_strategy_paper_authority (
+  strategy_paper_authority_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  strategy text NOT NULL CHECK(strategy IN ('THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_DEFINED_RISK')),
+  receipt_json jsonb NOT NULL,
+  receipt_hash char(64) NOT NULL CHECK(receipt_hash ~ '^[0-9a-f]{64}$'),
+  source_sha char(40) NOT NULL CHECK(source_sha ~ '^[0-9a-f]{40}$'),
+  recorded_by_ref_hash char(64) NOT NULL CHECK(recorded_by_ref_hash ~ '^[0-9a-f]{64}$'),
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  CHECK(receipt_json->>'strategy'=strategy AND receipt_json->>'receiptHash'=receipt_hash AND (receipt_json->>'liveAuthorization')='false'),
+  UNIQUE(strategy,receipt_hash,source_sha)
+);
+CREATE INDEX IF NOT EXISTS ix_theta_strategy_paper_authority_latest ON ops.theta_strategy_paper_authority(strategy,source_sha,recorded_at DESC);
+DROP TRIGGER IF EXISTS reject_immutable_mutation ON ops.theta_strategy_paper_authority;
+CREATE TRIGGER reject_immutable_mutation BEFORE UPDATE OR DELETE ON ops.theta_strategy_paper_authority FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation();
+
 INSERT INTO core.schema_migration(version,checksum)
 VALUES('069_multi_leg_order_durability',repeat('0',64)) ON CONFLICT DO NOTHING;
 
