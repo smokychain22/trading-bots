@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  deriveAccountExposure,
+  deriveAccountExposure as deriveAccountExposureRaw,
   deriveCandidateCapacityAssessment,
   deriveCandidateInclusiveAegisInputs,
   deriveRecoveryInventoryValue,
@@ -9,6 +9,13 @@ import {
   parseOccOptionSymbol,
 } from '../src/theta/account-exposure.js';
 import type { AlpacaOpenOrderSnapshot, AlpacaPositionSnapshot, MasterAccountSnapshot } from '../src/theta/alpaca-provider.js';
+
+const deriveAccountExposure = (
+  accountInput: Parameters<typeof deriveAccountExposureRaw>[0],
+  positions: Parameters<typeof deriveAccountExposureRaw>[1],
+  orders: Parameters<typeof deriveAccountExposureRaw>[2],
+  multiplier = 100,
+) => deriveAccountExposureRaw(accountInput, positions, orders, multiplier);
 
 const NOW = '2026-09-10T15:00:00.000Z';
 
@@ -27,7 +34,7 @@ const position = (overrides: Partial<AlpacaPositionSnapshot> = {}): AlpacaPositi
 
 const openOrder = (overrides: Partial<AlpacaOpenOrderSnapshot> = {}): AlpacaOpenOrderSnapshot => ({
   orderId: 'order-1', clientOrderId: null, symbol: 'SPY', side: 'sell', quantity: 1, status: 'new',
-  positionIntent: null, limitPrice: null, submittedAt: NOW, receivedAt: NOW,
+  positionIntent: null, filledQuantity: 0, limitPrice: null, submittedAt: NOW, receivedAt: NOW,
   ...overrides,
 });
 
@@ -344,4 +351,63 @@ test('recovery capacity uses only lifecycle-linked assigned inventory, not every
   }, deriveRecoveryInventoryValue(exposure, ['AAPL']));
   assert.equal(result.inventoryCapacityUsedPct, 0.3);
   assert.equal(result.recoveryCapacityUsedPct, 0.1);
+});
+
+test('partial fills reserve only the remaining quantity because the filled position already owns its collateral', () => {
+  const symbol = 'SPY261009P00500000';
+  const filledPosition = position({ assetClass: 'us_option', symbol, quantity: -1, side: 'short' });
+  const partiallyFilledOrder = openOrder({
+    symbol, positionIntent: 'sell_to_open', quantity: 3, filledQuantity: 1, limitPrice: 2,
+  });
+  const exposure = deriveAccountExposure(account({ equity: 200_000 }), [filledPosition], [partiallyFilledOrder]);
+  assert.equal(exposure.cspCollateralRequired, 50_000);
+  assert.equal(exposure.pendingOpeningCapitalAtRisk, 100_000);
+  assert.equal(exposure.pendingAssignmentCollateral, 100_000);
+  assert.equal(exposure.exposureByUnderlying.SPY, 150_000);
+});
+
+test('fully filled or inconsistent open-order fill evidence cannot double reserve capital', () => {
+  const symbol = 'SPY261009P00500000';
+  const fullyFilled = deriveAccountExposure(account(), [], [openOrder({
+    symbol, positionIntent: 'sell_to_open', quantity: 1, filledQuantity: 1,
+  })]);
+  assert.equal(fullyFilled.pendingOpeningCapitalAtRisk, 0);
+  assert.equal(fullyFilled.pendingAssignmentCollateral, 0);
+  const malformed = deriveAccountExposure(account(), [], [openOrder({
+    symbol, positionIntent: 'sell_to_open', quantity: 1, filledQuantity: 2,
+  })]);
+  assert.equal(malformed.pendingOpeningCapitalAtRisk, null);
+  assert.deepEqual(malformed.unclassifiedOpenOrderIds, ['order-1']);
+  const missingFromProvider = deriveAccountExposure(account(), [], [openOrder({
+    symbol, positionIntent: 'sell_to_open', quantity: 1, filledQuantity: null,
+  })]);
+  assert.equal(missingFromProvider.pendingOpeningCapitalAtRisk, null);
+});
+
+test('option exposure without verified multiplier evidence fails closed instead of assuming 100', () => {
+  const positionRow = position({ assetClass: 'us_option', symbol: 'SPY261009P00500000', quantity: -1, side: 'short' });
+  const unknown = deriveAccountExposureRaw(account(), [positionRow], []);
+  assert.equal(unknown.cspCollateralRequired, null);
+  assert.ok(unknown.unclassifiedPositionSymbols.includes(positionRow.symbol));
+});
+
+test('explicit nonstandard multiplier is used exactly once for position and pending-order collateral', () => {
+  const positions = [position({ assetClass: 'us_option', symbol: 'XYZ261009P00050000', quantity: -1, side: 'short' })];
+  const orders = [openOrder({ symbol: 'XYZ261009P00045000', positionIntent: 'sell_to_open', quantity: 2 })];
+  const exposure = deriveAccountExposureRaw(account({ equity: 100_000 }), positions, orders, 10);
+  assert.equal(exposure.cspCollateralRequired, 500);
+  assert.equal(exposure.pendingOpeningCapitalAtRisk, 900);
+  assert.equal(exposure.pendingAssignmentCollateral, 900);
+  assert.equal(exposure.exposureByUnderlying.XYZ, 1_400);
+});
+
+test('per-contract multiplier evidence reconstructs a mixed restart book without a global multiplier guess', () => {
+  const standard = 'SPY261009P00500000';
+  const adjusted = 'XYZ261009P00050000';
+  const exposure = deriveAccountExposureRaw(account({ equity: 100_000 }), [
+    position({ assetClass: 'us_option', symbol: standard, quantity: -1, side: 'short' }),
+    position({ assetClass: 'us_option', symbol: adjusted, quantity: -2, side: 'short' }),
+  ], [], { [standard]: 100, [adjusted]: 10 });
+  assert.equal(exposure.cspCollateralRequired, 50_000 + 1_000);
+  assert.deepEqual(exposure.unclassifiedPositionSymbols, []);
 });

@@ -61,7 +61,10 @@ export interface ClassifiedOptionPosition {
   readonly side: 'SHORT' | 'LONG';
   readonly marketValue: number | null;
   readonly unrealizedPl: number | null;
+  readonly multiplier: number;
 }
+
+export type OptionMultiplierEvidence = number | Readonly<Record<string, number>>;
 
 export interface DerivedAccountExposure {
   readonly equity: number | null;
@@ -111,6 +114,15 @@ export interface CandidateInclusiveAegisInputs {
   readonly inventoryCapacityUsedPct: number | null;
   readonly assignmentCapacityUsedPct: number | null;
   readonly recoveryCapacityUsedPct: number | null;
+  /** Per-field lineage. A flat or single-risk-group identity is an explicit
+   * conservative proxy for sector/correlation, never observed taxonomy or a
+   * fitted correlation estimate. */
+  readonly provenance: Readonly<Record<
+    'tickerConcentrationPct' | 'sectorConcentrationPct' | 'correlationClusterExposurePct'
+    | 'portfolioCapitalAtRiskPct' | 'inventoryCapacityUsedPct' | 'assignmentCapacityUsedPct'
+    | 'recoveryCapacityUsedPct',
+    'DERIVED_FROM_BROKER_ACCOUNT' | 'CONSERVATIVE_SINGLE_RISK_GROUP_PROXY' | 'UNKNOWN'
+  >>;
   readonly evidenceState: 'KNOWN_DERIVED_FROM_REAL' | 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE';
   readonly derivationVersion: 'theta-candidate-inclusive-capacity-v1';
   readonly unknownReasons: readonly string[];
@@ -150,22 +162,24 @@ const requiredMultiplier = (multiplier: number): number => multiplier;
 /**
  * Derives real account exposure from an already-fetched MasterAccountSnapshot
  * and AlpacaPositionSnapshot[]/AlpacaOpenOrderSnapshot[] -- pure arithmetic,
- * no network I/O, no probability model. `multiplier` defaults to the
- * standard 100 but is a parameter, never silently assumed when a contract's
- * real multiplier metadata says otherwise (see CLAUDE.md's non-negotiable
- * "do not assume multiplier=100" rule) -- callers with per-contract
- * multiplier metadata should call this per distinct multiplier group and
- * combine results; this module does not have contract-metadata access
- * (AlpacaPositionSnapshot carries no multiplier field), so 100 is the
- * honest default for the standard-equity-option case only.
+ * no network I/O, no probability model. Option exposure requires an explicit
+ * multiplier because AlpacaPositionSnapshot does not carry deliverable or
+ * multiplier metadata. Omitting it is valid for an account with no option
+ * positions/orders. If option exposure exists, omission fails closed as
+ * unclassified evidence instead of silently assuming a standard contract.
  */
 export function deriveAccountExposure(
   account: MasterAccountSnapshot | null,
   positions: readonly AlpacaPositionSnapshot[],
   openOrders: readonly AlpacaOpenOrderSnapshot[],
-  multiplier = 100,
+  multiplierEvidence?: OptionMultiplierEvidence,
 ): DerivedAccountExposure {
-  if (!Number.isFinite(multiplier) || multiplier <= 0) throw new Error('ACCOUNT_EXPOSURE_MULTIPLIER_INVALID');
+  if (typeof multiplierEvidence === 'number' && (!Number.isFinite(multiplierEvidence) || multiplierEvidence <= 0))
+    throw new Error('ACCOUNT_EXPOSURE_MULTIPLIER_INVALID');
+  const multiplierFor = (symbol: string): number | null => {
+    const value = typeof multiplierEvidence === 'number' ? multiplierEvidence : multiplierEvidence?.[symbol];
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+  };
   const equity = account?.equity ?? null;
   const cash = account?.cash ?? null;
   const buyingPower = account?.buyingPower ?? null;
@@ -183,6 +197,12 @@ export function deriveAccountExposure(
 
   for (const position of positions) {
     if (position.assetClass === 'us_option') {
+      const positionMultiplier = multiplierFor(position.symbol);
+      if (positionMultiplier === null) {
+        unclassifiedPositionSymbols.push(position.symbol);
+        optionQuantityUnknown = true;
+        continue;
+      }
       const parsed = parseOccOptionSymbol(position.symbol);
       if (parsed === null) {
         unparsedOptionSymbols.push(position.symbol);
@@ -195,7 +215,8 @@ export function deriveAccountExposure(
         continue;
       }
       const side: ClassifiedOptionPosition['side'] = position.side === 'short' || quantity < 0 ? 'SHORT' : 'LONG';
-      optionPositions.push({ symbol: position.symbol, parsed, quantity, side, marketValue: position.marketValue, unrealizedPl: position.unrealizedPl });
+      optionPositions.push({ symbol: position.symbol, parsed, quantity, side, marketValue: position.marketValue,
+        unrealizedPl: position.unrealizedPl, multiplier: positionMultiplier });
     } else if (position.assetClass === 'us_equity') {
       if (position.marketValue === null || !Number.isFinite(position.marketValue) || position.marketValue < 0
         || position.side === 'short') {
@@ -217,13 +238,13 @@ export function deriveAccountExposure(
   for (const op of optionPositions) {
     if (op.side === 'SHORT' && op.parsed.optionType === 'PUT') {
       shortPutCount += 1;
-      const collateral = op.parsed.strike * requiredMultiplier(multiplier) * Math.abs(op.quantity);
+      const collateral = op.parsed.strike * requiredMultiplier(op.multiplier) * Math.abs(op.quantity);
       if (cspCollateralRequired !== null) cspCollateralRequired += collateral;
       collateralByUnderlying.set(op.parsed.underlying, (collateralByUnderlying.get(op.parsed.underlying) ?? 0) + collateral);
     } else if (op.side === 'SHORT' && op.parsed.optionType === 'CALL') {
       shortCallCount += 1;
       shortCallSharesByUnderlying.set(op.parsed.underlying,
-        (shortCallSharesByUnderlying.get(op.parsed.underlying) ?? 0) + Math.abs(op.quantity) * multiplier);
+        (shortCallSharesByUnderlying.get(op.parsed.underlying) ?? 0) + Math.abs(op.quantity) * op.multiplier);
     } else if (op.side === 'LONG' && op.parsed.optionType === 'PUT') {
       longPutCount += 1;
     } else if (op.side === 'LONG' && op.parsed.optionType === 'CALL') {
@@ -258,8 +279,26 @@ export function deriveAccountExposure(
       unclassifiedOpenOrderIds.push(order.orderId);
       continue;
     }
+    // Alpaca `qty` is the original order quantity. Reserve only the still-open
+    // remainder after a partial fill, because the filled portion is already
+    // represented by broker positions. Production provider rows always carry
+    // filledQuantity. `undefined` supports older immutable/manual snapshots.
+    const filledQuantity = order.filledQuantity === undefined ? 0 : order.filledQuantity;
+    if (filledQuantity === null || !Number.isFinite(filledQuantity) || filledQuantity < 0
+      || filledQuantity > order.quantity) {
+      unclassifiedOpenOrderIds.push(order.orderId);
+      continue;
+    }
+    const remainingQuantity = order.quantity - filledQuantity;
+    if (remainingQuantity === 0) continue;
     const parsed = parseOccOptionSymbol(order.symbol);
-    if (parsed !== null && !Number.isSafeInteger(order.quantity)) {
+    const orderMultiplier = parsed === null ? null : multiplierFor(order.symbol);
+    if (parsed !== null && orderMultiplier === null) {
+      unclassifiedOpenOrderIds.push(order.orderId);
+      continue;
+    }
+    if (parsed !== null && (!Number.isSafeInteger(order.quantity) || !Number.isSafeInteger(filledQuantity)
+      || !Number.isSafeInteger(remainingQuantity))) {
       unclassifiedOpenOrderIds.push(order.orderId);
       continue;
     }
@@ -270,7 +309,7 @@ export function deriveAccountExposure(
         unclassifiedOpenOrderIds.push(order.orderId);
         continue;
       }
-      const collateral = parsed.strike * requiredMultiplier(multiplier) * order.quantity;
+      const collateral = parsed.strike * requiredMultiplier(orderMultiplier as number) * remainingQuantity;
       if (!Number.isFinite(collateral)) { unclassifiedOpenOrderIds.push(order.orderId); continue; }
       pendingOpeningCapitalAtRisk += collateral;
       pendingAssignmentCollateral += collateral;
@@ -283,7 +322,7 @@ export function deriveAccountExposure(
         unclassifiedOpenOrderIds.push(order.orderId);
         continue;
       }
-      const capital = order.limitPrice * order.quantity * (parsed === null ? 1 : requiredMultiplier(multiplier));
+      const capital = order.limitPrice * remainingQuantity * (parsed === null ? 1 : requiredMultiplier(orderMultiplier as number));
       if (!Number.isFinite(capital)) { unclassifiedOpenOrderIds.push(order.orderId); continue; }
       const underlying = parsed?.underlying ?? order.symbol;
       pendingOpeningCapitalAtRisk += capital;
@@ -367,7 +406,10 @@ export function deriveCommittedShortCallContracts(
     if (order.positionIntent === 'buy_to_close' || order.positionIntent === 'buy_to_open' || order.positionIntent === 'sell_to_close') continue;
     if (parsed === null || order.positionIntent === null) return null; // cannot prove it is not a short call
     if (order.quantity === null || !Number.isSafeInteger(order.quantity) || order.quantity <= 0) return null;
-    committed += order.quantity; // sell_to_open call
+    const filledQuantity = order.filledQuantity === undefined ? 0 : order.filledQuantity;
+    if (filledQuantity === null || !Number.isSafeInteger(filledQuantity) || filledQuantity < 0
+      || filledQuantity > order.quantity) return null;
+    committed += order.quantity - filledQuantity; // filled contracts are already represented by positions
   }
   return committed;
 }
@@ -428,6 +470,11 @@ export function deriveCandidateInclusiveAegisInputs(
       tickerConcentrationPct: null, sectorConcentrationPct: null, correlationClusterExposurePct: null,
       portfolioCapitalAtRiskPct: null, inventoryCapacityUsedPct: null, assignmentCapacityUsedPct: null,
       recoveryCapacityUsedPct: null, evidenceState: 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE',
+      provenance: {
+        tickerConcentrationPct: 'UNKNOWN', sectorConcentrationPct: 'UNKNOWN', correlationClusterExposurePct: 'UNKNOWN',
+        portfolioCapitalAtRiskPct: 'UNKNOWN', inventoryCapacityUsedPct: 'UNKNOWN', assignmentCapacityUsedPct: 'UNKNOWN',
+        recoveryCapacityUsedPct: 'UNKNOWN',
+      },
       derivationVersion: 'theta-candidate-inclusive-capacity-v1', unknownReasons,
     };
   }
@@ -456,6 +503,13 @@ export function deriveCandidateInclusiveAegisInputs(
     assignmentCapacityUsedPct: ((exposure.cspCollateralRequired as number)
       + (exposure.pendingAssignmentCollateral as number) + candidateCapital) / denominator,
     recoveryCapacityUsedPct: (recoveryInventoryValue as number) / denominator,
+    provenance: {
+      tickerConcentrationPct: 'DERIVED_FROM_BROKER_ACCOUNT',
+      sectorConcentrationPct: soleRiskGroup === null ? 'UNKNOWN' : 'CONSERVATIVE_SINGLE_RISK_GROUP_PROXY',
+      correlationClusterExposurePct: soleRiskGroup === null ? 'UNKNOWN' : 'CONSERVATIVE_SINGLE_RISK_GROUP_PROXY',
+      portfolioCapitalAtRiskPct: 'DERIVED_FROM_BROKER_ACCOUNT', inventoryCapacityUsedPct: 'DERIVED_FROM_BROKER_ACCOUNT',
+      assignmentCapacityUsedPct: 'DERIVED_FROM_BROKER_ACCOUNT', recoveryCapacityUsedPct: 'DERIVED_FROM_BROKER_ACCOUNT',
+    },
     evidenceState: unknownReasons.length === 0 ? 'KNOWN_DERIVED_FROM_REAL' : 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE',
     derivationVersion: 'theta-candidate-inclusive-capacity-v1', unknownReasons,
   };

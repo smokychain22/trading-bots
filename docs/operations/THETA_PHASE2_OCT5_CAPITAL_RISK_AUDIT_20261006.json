@@ -1,0 +1,1097 @@
+{
+  "version": "theta-phase2-oct5-capital-risk-audit-v1",
+  "generatedAt": "2026-10-06T07:31:41.850Z",
+  "archive": {
+    "path": "C:\\Users\\hp\\Documents\\GitHub\\trading-bots\\.theta-local-worker\\research-spool\\theta-research.sqlite",
+    "batchCount": 6,
+    "declaredRows": 10158,
+    "candidateRows": 10146,
+    "payloadHashes": [
+      {
+        "batchId": "82f9be86-5c8f-4ec0-8854-3db0bf729fae",
+        "payloadHash": "c0025b6f93e67b80f033570d5fdd590eafe9493723610a1e1eba47619d4ae55f"
+      },
+      {
+        "batchId": "8fa51287-0ce1-4bfd-b0ae-d3ddc7bb7cbe",
+        "payloadHash": "03c3e4323ae4d2fc945cdd38885bc02c355c7d24baf9dba68ef4c757b0509f58"
+      },
+      {
+        "batchId": "236f3992-25f8-4eaa-a535-d331870417a0",
+        "payloadHash": "7f912280e4d53b10e58070a7e3ba6eb456009d76b0125e4926ea9ab0baa1f9a3"
+      },
+      {
+        "batchId": "032316ff-71c6-4a5d-aa9a-2f4c13690fe3",
+        "payloadHash": "c9779aff257a6f24fd2bba952942544048c25982922e90f48cad4e7ac5c14e0e"
+      },
+      {
+        "batchId": "b50c9a34-36ef-4ad4-b989-82ab74aab1bc",
+        "payloadHash": "72e3c30fd75aa0e723f7a01c84609acfb29adf259261e4b58c6fd6cc128513b7"
+      },
+      {
+        "batchId": "430e2e55-1bd2-41a1-84b8-1f9b14ccb9cd",
+        "payloadHash": "87771137e67997eabd6592fe93420b1f6be27d47173ed616fc238e39be6d111b"
+      }
+    ]
+  },
+  "policy": {
+    "source": "paperBootstrapRuntimePolicy",
+    "hardCapMultiplier": 1.5,
+    "maxTickerConcentrationPct": 0.15,
+    "maxSectorConcentrationPct": 0.3,
+    "maxCorrelationClusterPct": 0.3,
+    "maxPortfolioCapitalAtRiskPct": 0.5,
+    "maxInventoryCapacityPct": 0.5,
+    "maxAssignmentCapacityPct": 0.5,
+    "maxRecoveryCapacityPct": 0.3,
+    "ownershipFloor": 0.3
+  },
+  "oldGenericAccountPolicyIncompatibility": {
+    "observationCount": 2067,
+    "uniqueCandidateCount": 1642,
+    "observationSummary": {
+      "totalCandidates": 2067,
+      "byUnderlying": {
+        "IWM": 850,
+        "NVDA": 136,
+        "SPY": 1081
+      },
+      "byRiskProfile": {
+        "CASH_SECURED_SHORT_PUT": 2067
+      },
+      "allBindingPolicies": {
+        "ASSIGNMENT_CAPACITY": 462,
+        "BROKER_CAPACITY": 1,
+        "CORRELATION_CLUSTER": 1053,
+        "PORTFOLIO_CAPITAL_AT_RISK": 462,
+        "SECTOR_CONCENTRATION": 1053,
+        "TICKER_CONCENTRATION": 2066
+      },
+      "uniqueBindingPolicies": {
+        "BROKER_CAPACITY": 1,
+        "TICKER_CONCENTRATION": 1013
+      },
+      "cofailBindingSets": {
+        "BROKER_CAPACITY": 1,
+        "TICKER_CONCENTRATION": 1013,
+        "TICKER_CONCENTRATION+SECTOR_CONCENTRATION+CORRELATION_CLUSTER": 591,
+        "TICKER_CONCENTRATION+SECTOR_CONCENTRATION+CORRELATION_CLUSTER+PORTFOLIO_CAPITAL_AT_RISK+ASSIGNMENT_CAPACITY": 462
+      },
+      "firstBindingPolicies": {
+        "BROKER_CAPACITY": 1,
+        "TICKER_CONCENTRATION": 2066
+      }
+    },
+    "uniqueCandidateSummary": {
+      "totalCandidates": 1642,
+      "byUnderlying": {
+        "IWM": 425,
+        "NVDA": 136,
+        "SPY": 1081
+      },
+      "byRiskProfile": {
+        "CASH_SECURED_SHORT_PUT": 1642
+      },
+      "allBindingPolicies": {
+        "ASSIGNMENT_CAPACITY": 462,
+        "BROKER_CAPACITY": 1,
+        "CORRELATION_CLUSTER": 1053,
+        "PORTFOLIO_CAPITAL_AT_RISK": 462,
+        "SECTOR_CONCENTRATION": 1053,
+        "TICKER_CONCENTRATION": 1641
+      },
+      "uniqueBindingPolicies": {
+        "BROKER_CAPACITY": 1,
+        "TICKER_CONCENTRATION": 588
+      },
+      "cofailBindingSets": {
+        "BROKER_CAPACITY": 1,
+        "TICKER_CONCENTRATION": 588,
+        "TICKER_CONCENTRATION+SECTOR_CONCENTRATION+CORRELATION_CLUSTER": 591,
+        "TICKER_CONCENTRATION+SECTOR_CONCENTRATION+CORRELATION_CLUSTER+PORTFOLIO_CAPITAL_AT_RISK+ASSIGNMENT_CAPACITY": 462
+      },
+      "firstBindingPolicies": {
+        "BROKER_CAPACITY": 1,
+        "TICKER_CONCENTRATION": 1641
+      }
+    },
+    "explanation": "Observation counts preserve repeated cycle evidence. Unique counts use the latest observation per candidateId."
+  },
+  "representatives": {
+    "SPY": {
+      "evidenceClass": "REAL_PERSISTED",
+      "derivedPolicyClass": "DERIVED_FROM_REAL_PERSISTED",
+      "frontierId": "b50c9a34-36ef-4ad4-b989-82ab74aab1bc",
+      "fusionSnapshotId": "aa3750ea-4ba9-488a-953e-85506a1292be",
+      "candidateId": "THETA_CONVENTIONAL:SPY261130P00765000",
+      "contract": "SPY261130P00765000",
+      "strike": 765,
+      "expiry": "2026-11-30",
+      "delta": -0.3753,
+      "multiplier": 100,
+      "account": {
+        "equity": 99999.96,
+        "cash": 99999.96,
+        "optionsBuyingPower": 99999.96,
+        "observedAt": "2026-10-05T14:25:40.776Z"
+      },
+      "capital": {
+        "collateral": 76500,
+        "maximumLoss": 75356,
+        "minimumExecutableQuantity": 1
+      },
+      "accountCompatibility": {
+        "strategy": "THETA_CONVENTIONAL",
+        "riskProfile": "CASH_SECURED_SHORT_PUT",
+        "underlying": "SPY",
+        "marketApplicable": true,
+        "minimumExecutableQuantity": 1,
+        "minimumCapitalRequired": 76500,
+        "equity": 99999.96,
+        "brokerFeasible": true,
+        "ownershipRequired": true,
+        "capitalRiskEvidence": {
+          "unit": "USD",
+          "brokerBuyingPower": 99999.96,
+          "securedCollateral": 76500,
+          "definedMaxLoss": null,
+          "portfolioCapitalAtRiskIncrement": 76500,
+          "assignmentCollateralIncrement": 76500,
+          "inventoryValueIncrement": null,
+          "concentrationExposureIncrement": 76500,
+          "capitalBasis": "SECURED_COLLATERAL",
+          "provenance": {
+            "brokerBuyingPower": "OBSERVED",
+            "securedCollateral": "DERIVED",
+            "definedMaxLoss": "NOT_APPLICABLE",
+            "portfolioCapitalAtRiskIncrement": "DERIVED",
+            "assignmentCollateralIncrement": "DERIVED",
+            "inventoryValueIncrement": "NOT_APPLICABLE",
+            "concentrationExposureIncrement": "DERIVED"
+          }
+        },
+        "scope": "CANDIDATE_STRATEGY_RISK_STRUCTURE",
+        "assessmentVersion": "theta-strategy-account-policy-compatibility-v2",
+        "executionAuthorityGranted": false,
+        "policyLimitPct": 0.15,
+        "hardVetoLimitPct": 0.22499999999999998,
+        "state": "STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE",
+        "accountFeasible": false,
+        "minimumTickerConcentrationPct": 0.7650003060001224,
+        "policyAssessments": [
+          {
+            "dimension": "TICKER_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "HARD_LIMIT_REACHED",
+            "valuePct": 0.7650003060001224,
+            "softLimitPct": 0.15,
+            "hardLimitPct": 0.22499999999999998,
+            "provenance": "DERIVED",
+            "reason": "VALUE_AT_OR_ABOVE_HARD_LIMIT"
+          },
+          {
+            "dimension": "SECTOR_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "HARD_LIMIT_REACHED",
+            "valuePct": 0.7650003060001224,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_AT_OR_ABOVE_HARD_LIMIT"
+          },
+          {
+            "dimension": "CORRELATION_CLUSTER",
+            "applicability": "APPLICABLE",
+            "state": "HARD_LIMIT_REACHED",
+            "valuePct": 0.7650003060001224,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_AT_OR_ABOVE_HARD_LIMIT"
+          },
+          {
+            "dimension": "PORTFOLIO_CAPITAL_AT_RISK",
+            "applicability": "APPLICABLE",
+            "state": "HARD_LIMIT_REACHED",
+            "valuePct": 0.7650003060001224,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_AT_OR_ABOVE_HARD_LIMIT"
+          },
+          {
+            "dimension": "INVENTORY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          },
+          {
+            "dimension": "ASSIGNMENT_CAPACITY",
+            "applicability": "APPLICABLE",
+            "state": "HARD_LIMIT_REACHED",
+            "valuePct": 0.7650003060001224,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_AT_OR_ABOVE_HARD_LIMIT"
+          },
+          {
+            "dimension": "RECOVERY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          }
+        ],
+        "bindingPolicies": [
+          "TICKER_CONCENTRATION",
+          "SECTOR_CONCENTRATION",
+          "CORRELATION_CLUSTER",
+          "PORTFOLIO_CAPITAL_AT_RISK",
+          "ASSIGNMENT_CAPACITY"
+        ],
+        "reasons": [
+          "MINIMUM_EXECUTABLE_UNIT_EXCEEDS_HARD_RISK_POLICY"
+        ]
+      },
+      "ownership": {
+        "score": null,
+        "threshold": 0.3,
+        "state": "NOT_PERSISTED_IN_FRONTIER_CANDIDATE",
+        "entryBasis": "PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED",
+        "reasonCodes": [
+          "EVENT_DISTANCE_UNKNOWN",
+          "RECOVERY_HISTORY_UNKNOWN",
+          "SEVERE_DRAWDOWN_MODEL_NOT_PROMOTED"
+        ],
+        "routeReasons": [
+          "OWNERSHIP_UNKNOWN_RESEARCH_ONLY"
+        ]
+      },
+      "aegis": {
+        "state": null,
+        "bindingReasons": [
+          "AEGIS_DOES_NOT_PERMIT_NEW_RISK"
+        ]
+      },
+      "sizing": {
+        "finalQuantity": 0,
+        "bindingConstraint": "AEGIS_NOT_REACHED_UPSTREAM"
+      },
+      "hardBlockers": [],
+      "unknownEvidence": [
+        "AEGIS_STATE_UNKNOWN"
+      ]
+    },
+    "TLT": {
+      "evidenceClass": "REAL_PERSISTED",
+      "derivedPolicyClass": "DERIVED_FROM_REAL_PERSISTED",
+      "frontierId": "82f9be86-5c8f-4ec0-8854-3db0bf729fae",
+      "fusionSnapshotId": "9980daa3-17c9-4e12-b07d-23190459fb65",
+      "candidateId": "THETA_CONVENTIONAL:TLT261106P00073000",
+      "contract": "TLT261106P00073000",
+      "strike": 73,
+      "expiry": "2026-11-06",
+      "delta": -0.142,
+      "multiplier": 100,
+      "account": {
+        "equity": 99999.96,
+        "cash": 99999.96,
+        "optionsBuyingPower": 99999.96,
+        "observedAt": "2026-10-05T14:25:40.641Z"
+      },
+      "capital": {
+        "collateral": 7300,
+        "maximumLoss": 7268.000000000001,
+        "minimumExecutableQuantity": 1
+      },
+      "accountCompatibility": {
+        "strategy": "THETA_CONVENTIONAL",
+        "riskProfile": "CASH_SECURED_SHORT_PUT",
+        "underlying": "TLT",
+        "marketApplicable": true,
+        "minimumExecutableQuantity": 1,
+        "minimumCapitalRequired": 7300,
+        "equity": 99999.96,
+        "brokerFeasible": true,
+        "ownershipRequired": true,
+        "capitalRiskEvidence": {
+          "unit": "USD",
+          "brokerBuyingPower": 99999.96,
+          "securedCollateral": 7300,
+          "definedMaxLoss": null,
+          "portfolioCapitalAtRiskIncrement": 7300,
+          "assignmentCollateralIncrement": 7300,
+          "inventoryValueIncrement": null,
+          "concentrationExposureIncrement": 7300,
+          "capitalBasis": "SECURED_COLLATERAL",
+          "provenance": {
+            "brokerBuyingPower": "OBSERVED",
+            "securedCollateral": "DERIVED",
+            "definedMaxLoss": "NOT_APPLICABLE",
+            "portfolioCapitalAtRiskIncrement": "DERIVED",
+            "assignmentCollateralIncrement": "DERIVED",
+            "inventoryValueIncrement": "NOT_APPLICABLE",
+            "concentrationExposureIncrement": "DERIVED"
+          }
+        },
+        "scope": "CANDIDATE_STRATEGY_RISK_STRUCTURE",
+        "assessmentVersion": "theta-strategy-account-policy-compatibility-v2",
+        "executionAuthorityGranted": false,
+        "policyLimitPct": 0.15,
+        "hardVetoLimitPct": 0.22499999999999998,
+        "state": "ACCOUNT_FEASIBLE",
+        "accountFeasible": true,
+        "minimumTickerConcentrationPct": 0.07300002920001168,
+        "policyAssessments": [
+          {
+            "dimension": "TICKER_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.15,
+            "hardLimitPct": 0.22499999999999998,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "SECTOR_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "CORRELATION_CLUSTER",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "PORTFOLIO_CAPITAL_AT_RISK",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "INVENTORY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          },
+          {
+            "dimension": "ASSIGNMENT_CAPACITY",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "RECOVERY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          }
+        ],
+        "bindingPolicies": [],
+        "reasons": [
+          "MINIMUM_EXECUTABLE_UNIT_WITHIN_POLICY"
+        ]
+      },
+      "ownership": {
+        "score": null,
+        "threshold": 0.3,
+        "state": "NOT_PERSISTED_IN_FRONTIER_CANDIDATE",
+        "entryBasis": "PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED",
+        "reasonCodes": [
+          "EVENT_DISTANCE_UNKNOWN",
+          "RECOVERY_HISTORY_UNKNOWN",
+          "SEVERE_DRAWDOWN_MODEL_NOT_PROMOTED"
+        ],
+        "routeReasons": [
+          "OWNERSHIP_UNKNOWN_RESEARCH_ONLY"
+        ]
+      },
+      "aegis": {
+        "state": "HOLD_ONLY",
+        "bindingReasons": [
+          "LIQUIDITY:SPREAD_WIDENING_UNKNOWN",
+          "SYSTEM:SYSTEM_STRESS_STATE_UNKNOWN"
+        ]
+      },
+      "sizing": {
+        "finalQuantity": 0,
+        "bindingConstraint": "LIQUIDITY:SPREAD_WIDENING_UNKNOWN"
+      },
+      "hardBlockers": [],
+      "unknownEvidence": [
+        "AEGIS_REQUIRED_INPUT_UNKNOWN"
+      ]
+    },
+    "XLE": {
+      "evidenceClass": "REAL_PERSISTED",
+      "derivedPolicyClass": "DERIVED_FROM_REAL_PERSISTED",
+      "frontierId": "032316ff-71c6-4a5d-aa9a-2f4c13690fe3",
+      "fusionSnapshotId": "a9097386-b0dc-483b-8793-0f16d4686bd2",
+      "candidateId": "THETA_CONVENTIONAL:XLE261030P00058000",
+      "contract": "XLE261030P00058000",
+      "strike": 58,
+      "expiry": "2026-10-30",
+      "delta": -0.1112,
+      "multiplier": 100,
+      "account": {
+        "equity": 99999.96,
+        "cash": 99999.96,
+        "optionsBuyingPower": 99999.96,
+        "observedAt": "2026-10-05T14:25:40.336Z"
+      },
+      "capital": {
+        "collateral": 5800,
+        "maximumLoss": 5776,
+        "minimumExecutableQuantity": 1
+      },
+      "accountCompatibility": {
+        "strategy": "THETA_CONVENTIONAL",
+        "riskProfile": "CASH_SECURED_SHORT_PUT",
+        "underlying": "XLE",
+        "marketApplicable": true,
+        "minimumExecutableQuantity": 1,
+        "minimumCapitalRequired": 5800,
+        "equity": 99999.96,
+        "brokerFeasible": true,
+        "ownershipRequired": true,
+        "capitalRiskEvidence": {
+          "unit": "USD",
+          "brokerBuyingPower": 99999.96,
+          "securedCollateral": 5800,
+          "definedMaxLoss": null,
+          "portfolioCapitalAtRiskIncrement": 5800,
+          "assignmentCollateralIncrement": 5800,
+          "inventoryValueIncrement": null,
+          "concentrationExposureIncrement": 5800,
+          "capitalBasis": "SECURED_COLLATERAL",
+          "provenance": {
+            "brokerBuyingPower": "OBSERVED",
+            "securedCollateral": "DERIVED",
+            "definedMaxLoss": "NOT_APPLICABLE",
+            "portfolioCapitalAtRiskIncrement": "DERIVED",
+            "assignmentCollateralIncrement": "DERIVED",
+            "inventoryValueIncrement": "NOT_APPLICABLE",
+            "concentrationExposureIncrement": "DERIVED"
+          }
+        },
+        "scope": "CANDIDATE_STRATEGY_RISK_STRUCTURE",
+        "assessmentVersion": "theta-strategy-account-policy-compatibility-v2",
+        "executionAuthorityGranted": false,
+        "policyLimitPct": 0.15,
+        "hardVetoLimitPct": 0.22499999999999998,
+        "state": "ACCOUNT_FEASIBLE",
+        "accountFeasible": true,
+        "minimumTickerConcentrationPct": 0.05800002320000928,
+        "policyAssessments": [
+          {
+            "dimension": "TICKER_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.15,
+            "hardLimitPct": 0.22499999999999998,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "SECTOR_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "CORRELATION_CLUSTER",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "PORTFOLIO_CAPITAL_AT_RISK",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "INVENTORY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          },
+          {
+            "dimension": "ASSIGNMENT_CAPACITY",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "RECOVERY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          }
+        ],
+        "bindingPolicies": [],
+        "reasons": [
+          "MINIMUM_EXECUTABLE_UNIT_WITHIN_POLICY"
+        ]
+      },
+      "ownership": {
+        "score": null,
+        "threshold": 0.3,
+        "state": "NOT_PERSISTED_IN_FRONTIER_CANDIDATE",
+        "entryBasis": "PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED",
+        "reasonCodes": [
+          "EVENT_DISTANCE_UNKNOWN",
+          "RECOVERY_HISTORY_UNKNOWN",
+          "SEVERE_DRAWDOWN_MODEL_NOT_PROMOTED"
+        ],
+        "routeReasons": [
+          "OWNERSHIP_UNKNOWN_RESEARCH_ONLY"
+        ]
+      },
+      "aegis": {
+        "state": "HOLD_ONLY",
+        "bindingReasons": [
+          "LIQUIDITY:SPREAD_WIDENING_UNKNOWN",
+          "SYSTEM:SYSTEM_STRESS_STATE_UNKNOWN"
+        ]
+      },
+      "sizing": {
+        "finalQuantity": 0,
+        "bindingConstraint": "LIQUIDITY:SPREAD_WIDENING_UNKNOWN"
+      },
+      "hardBlockers": [],
+      "unknownEvidence": [
+        "AEGIS_REQUIRED_INPUT_UNKNOWN"
+      ]
+    }
+  },
+  "aegisReachedRepresentatives": {
+    "SPY": {
+      "evidenceClass": "REAL_PERSISTED",
+      "derivedPolicyClass": "DERIVED_FROM_REAL_PERSISTED",
+      "frontierId": "b50c9a34-36ef-4ad4-b989-82ab74aab1bc",
+      "fusionSnapshotId": "aa3750ea-4ba9-488a-953e-85506a1292be",
+      "candidateId": "THETA_CONVENTIONAL:SPY261106P00730000",
+      "contract": "SPY261106P00730000",
+      "strike": 730,
+      "expiry": "2026-11-06",
+      "delta": -0.1253,
+      "multiplier": 100,
+      "account": {
+        "equity": 99999.96,
+        "optionsBuyingPower": 99999.96,
+        "observedAt": "2026-10-05T14:25:40.776Z"
+      },
+      "capital": {
+        "collateral": 73000,
+        "maximumLoss": 72737,
+        "minimumExecutableQuantity": 1
+      },
+      "accountCompatibility": {
+        "strategy": "THETA_CONVENTIONAL",
+        "riskProfile": "CASH_SECURED_SHORT_PUT",
+        "underlying": "SPY",
+        "marketApplicable": true,
+        "minimumExecutableQuantity": 1,
+        "minimumCapitalRequired": 73000,
+        "equity": 99999.96,
+        "brokerFeasible": true,
+        "ownershipRequired": true,
+        "capitalRiskEvidence": {
+          "unit": "USD",
+          "brokerBuyingPower": 99999.96,
+          "securedCollateral": 73000,
+          "definedMaxLoss": null,
+          "portfolioCapitalAtRiskIncrement": 73000,
+          "assignmentCollateralIncrement": 73000,
+          "inventoryValueIncrement": null,
+          "concentrationExposureIncrement": 73000,
+          "capitalBasis": "SECURED_COLLATERAL",
+          "provenance": {
+            "brokerBuyingPower": "OBSERVED",
+            "securedCollateral": "DERIVED",
+            "definedMaxLoss": "NOT_APPLICABLE",
+            "portfolioCapitalAtRiskIncrement": "DERIVED",
+            "assignmentCollateralIncrement": "DERIVED",
+            "inventoryValueIncrement": "NOT_APPLICABLE",
+            "concentrationExposureIncrement": "DERIVED"
+          }
+        },
+        "scope": "CANDIDATE_STRATEGY_RISK_STRUCTURE",
+        "assessmentVersion": "theta-strategy-account-policy-compatibility-v2",
+        "executionAuthorityGranted": false,
+        "policyLimitPct": 0.15,
+        "hardVetoLimitPct": 0.22499999999999998,
+        "state": "STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE",
+        "accountFeasible": false,
+        "minimumTickerConcentrationPct": 0.7300002920001167,
+        "policyAssessments": [
+          {
+            "dimension": "TICKER_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "HARD_LIMIT_REACHED",
+            "valuePct": 0.7300002920001167,
+            "softLimitPct": 0.15,
+            "hardLimitPct": 0.22499999999999998,
+            "provenance": "DERIVED",
+            "reason": "VALUE_AT_OR_ABOVE_HARD_LIMIT"
+          },
+          {
+            "dimension": "SECTOR_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "HARD_LIMIT_REACHED",
+            "valuePct": 0.7300002920001167,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_AT_OR_ABOVE_HARD_LIMIT"
+          },
+          {
+            "dimension": "CORRELATION_CLUSTER",
+            "applicability": "APPLICABLE",
+            "state": "HARD_LIMIT_REACHED",
+            "valuePct": 0.7300002920001167,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_AT_OR_ABOVE_HARD_LIMIT"
+          },
+          {
+            "dimension": "PORTFOLIO_CAPITAL_AT_RISK",
+            "applicability": "APPLICABLE",
+            "state": "SOFT_LIMIT_REACHED",
+            "valuePct": 0.7300002920001167,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_AT_OR_ABOVE_SOFT_AND_BELOW_HARD_LIMIT"
+          },
+          {
+            "dimension": "INVENTORY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          },
+          {
+            "dimension": "ASSIGNMENT_CAPACITY",
+            "applicability": "APPLICABLE",
+            "state": "SOFT_LIMIT_REACHED",
+            "valuePct": 0.7300002920001167,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_AT_OR_ABOVE_SOFT_AND_BELOW_HARD_LIMIT"
+          },
+          {
+            "dimension": "RECOVERY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          }
+        ],
+        "bindingPolicies": [
+          "TICKER_CONCENTRATION",
+          "SECTOR_CONCENTRATION",
+          "CORRELATION_CLUSTER"
+        ],
+        "reasons": [
+          "MINIMUM_EXECUTABLE_UNIT_EXCEEDS_HARD_RISK_POLICY"
+        ]
+      },
+      "aegis": {
+        "state": "HARD_VETO",
+        "bindingReasons": [
+          "UNDERLYING:UNDERLYING_SEVERELY_EXCEEDED",
+          "SECTOR:SECTOR_SEVERELY_EXCEEDED",
+          "CORRELATION:CORRELATION_SEVERELY_EXCEEDED"
+        ]
+      },
+      "sizing": {
+        "finalQuantity": 0,
+        "bindingConstraint": "UNDERLYING:UNDERLYING_SEVERELY_EXCEEDED"
+      },
+      "hardBlockers": [
+        "AEGIS_HARD_VETO"
+      ],
+      "unknownEvidence": []
+    },
+    "TLT": {
+      "evidenceClass": "REAL_PERSISTED",
+      "derivedPolicyClass": "DERIVED_FROM_REAL_PERSISTED",
+      "frontierId": "82f9be86-5c8f-4ec0-8854-3db0bf729fae",
+      "fusionSnapshotId": "9980daa3-17c9-4e12-b07d-23190459fb65",
+      "candidateId": "THETA_CONVENTIONAL:TLT261106P00073000",
+      "contract": "TLT261106P00073000",
+      "strike": 73,
+      "expiry": "2026-11-06",
+      "delta": -0.142,
+      "multiplier": 100,
+      "account": {
+        "equity": 99999.96,
+        "optionsBuyingPower": 99999.96,
+        "observedAt": "2026-10-05T14:25:40.641Z"
+      },
+      "capital": {
+        "collateral": 7300,
+        "maximumLoss": 7268.000000000001,
+        "minimumExecutableQuantity": 1
+      },
+      "accountCompatibility": {
+        "strategy": "THETA_CONVENTIONAL",
+        "riskProfile": "CASH_SECURED_SHORT_PUT",
+        "underlying": "TLT",
+        "marketApplicable": true,
+        "minimumExecutableQuantity": 1,
+        "minimumCapitalRequired": 7300,
+        "equity": 99999.96,
+        "brokerFeasible": true,
+        "ownershipRequired": true,
+        "capitalRiskEvidence": {
+          "unit": "USD",
+          "brokerBuyingPower": 99999.96,
+          "securedCollateral": 7300,
+          "definedMaxLoss": null,
+          "portfolioCapitalAtRiskIncrement": 7300,
+          "assignmentCollateralIncrement": 7300,
+          "inventoryValueIncrement": null,
+          "concentrationExposureIncrement": 7300,
+          "capitalBasis": "SECURED_COLLATERAL",
+          "provenance": {
+            "brokerBuyingPower": "OBSERVED",
+            "securedCollateral": "DERIVED",
+            "definedMaxLoss": "NOT_APPLICABLE",
+            "portfolioCapitalAtRiskIncrement": "DERIVED",
+            "assignmentCollateralIncrement": "DERIVED",
+            "inventoryValueIncrement": "NOT_APPLICABLE",
+            "concentrationExposureIncrement": "DERIVED"
+          }
+        },
+        "scope": "CANDIDATE_STRATEGY_RISK_STRUCTURE",
+        "assessmentVersion": "theta-strategy-account-policy-compatibility-v2",
+        "executionAuthorityGranted": false,
+        "policyLimitPct": 0.15,
+        "hardVetoLimitPct": 0.22499999999999998,
+        "state": "ACCOUNT_FEASIBLE",
+        "accountFeasible": true,
+        "minimumTickerConcentrationPct": 0.07300002920001168,
+        "policyAssessments": [
+          {
+            "dimension": "TICKER_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.15,
+            "hardLimitPct": 0.22499999999999998,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "SECTOR_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "CORRELATION_CLUSTER",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "PORTFOLIO_CAPITAL_AT_RISK",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "INVENTORY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          },
+          {
+            "dimension": "ASSIGNMENT_CAPACITY",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.07300002920001168,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "RECOVERY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          }
+        ],
+        "bindingPolicies": [],
+        "reasons": [
+          "MINIMUM_EXECUTABLE_UNIT_WITHIN_POLICY"
+        ]
+      },
+      "aegis": {
+        "state": "HOLD_ONLY",
+        "bindingReasons": [
+          "LIQUIDITY:SPREAD_WIDENING_UNKNOWN",
+          "SYSTEM:SYSTEM_STRESS_STATE_UNKNOWN"
+        ]
+      },
+      "sizing": {
+        "finalQuantity": 0,
+        "bindingConstraint": "LIQUIDITY:SPREAD_WIDENING_UNKNOWN"
+      },
+      "hardBlockers": [],
+      "unknownEvidence": [
+        "AEGIS_REQUIRED_INPUT_UNKNOWN"
+      ]
+    },
+    "XLE": {
+      "evidenceClass": "REAL_PERSISTED",
+      "derivedPolicyClass": "DERIVED_FROM_REAL_PERSISTED",
+      "frontierId": "032316ff-71c6-4a5d-aa9a-2f4c13690fe3",
+      "fusionSnapshotId": "a9097386-b0dc-483b-8793-0f16d4686bd2",
+      "candidateId": "THETA_CONVENTIONAL:XLE261030P00058000",
+      "contract": "XLE261030P00058000",
+      "strike": 58,
+      "expiry": "2026-10-30",
+      "delta": -0.1112,
+      "multiplier": 100,
+      "account": {
+        "equity": 99999.96,
+        "optionsBuyingPower": 99999.96,
+        "observedAt": "2026-10-05T14:25:40.336Z"
+      },
+      "capital": {
+        "collateral": 5800,
+        "maximumLoss": 5776,
+        "minimumExecutableQuantity": 1
+      },
+      "accountCompatibility": {
+        "strategy": "THETA_CONVENTIONAL",
+        "riskProfile": "CASH_SECURED_SHORT_PUT",
+        "underlying": "XLE",
+        "marketApplicable": true,
+        "minimumExecutableQuantity": 1,
+        "minimumCapitalRequired": 5800,
+        "equity": 99999.96,
+        "brokerFeasible": true,
+        "ownershipRequired": true,
+        "capitalRiskEvidence": {
+          "unit": "USD",
+          "brokerBuyingPower": 99999.96,
+          "securedCollateral": 5800,
+          "definedMaxLoss": null,
+          "portfolioCapitalAtRiskIncrement": 5800,
+          "assignmentCollateralIncrement": 5800,
+          "inventoryValueIncrement": null,
+          "concentrationExposureIncrement": 5800,
+          "capitalBasis": "SECURED_COLLATERAL",
+          "provenance": {
+            "brokerBuyingPower": "OBSERVED",
+            "securedCollateral": "DERIVED",
+            "definedMaxLoss": "NOT_APPLICABLE",
+            "portfolioCapitalAtRiskIncrement": "DERIVED",
+            "assignmentCollateralIncrement": "DERIVED",
+            "inventoryValueIncrement": "NOT_APPLICABLE",
+            "concentrationExposureIncrement": "DERIVED"
+          }
+        },
+        "scope": "CANDIDATE_STRATEGY_RISK_STRUCTURE",
+        "assessmentVersion": "theta-strategy-account-policy-compatibility-v2",
+        "executionAuthorityGranted": false,
+        "policyLimitPct": 0.15,
+        "hardVetoLimitPct": 0.22499999999999998,
+        "state": "ACCOUNT_FEASIBLE",
+        "accountFeasible": true,
+        "minimumTickerConcentrationPct": 0.05800002320000928,
+        "policyAssessments": [
+          {
+            "dimension": "TICKER_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.15,
+            "hardLimitPct": 0.22499999999999998,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "SECTOR_CONCENTRATION",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "CORRELATION_CLUSTER",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "CONSERVATIVE_PROXY",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "PORTFOLIO_CAPITAL_AT_RISK",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "INVENTORY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          },
+          {
+            "dimension": "ASSIGNMENT_CAPACITY",
+            "applicability": "APPLICABLE",
+            "state": "WITHIN_LIMIT",
+            "valuePct": 0.05800002320000928,
+            "softLimitPct": 0.5,
+            "hardLimitPct": 0.75,
+            "provenance": "DERIVED",
+            "reason": "VALUE_BELOW_SOFT_LIMIT"
+          },
+          {
+            "dimension": "RECOVERY_CAPACITY",
+            "applicability": "NOT_APPLICABLE",
+            "state": "NOT_APPLICABLE",
+            "valuePct": null,
+            "softLimitPct": 0.3,
+            "hardLimitPct": 0.44999999999999996,
+            "provenance": "NOT_APPLICABLE",
+            "reason": "POLICY_DIMENSION_NOT_APPLICABLE_TO_RISK_PROFILE"
+          }
+        ],
+        "bindingPolicies": [],
+        "reasons": [
+          "MINIMUM_EXECUTABLE_UNIT_WITHIN_POLICY"
+        ]
+      },
+      "aegis": {
+        "state": "HOLD_ONLY",
+        "bindingReasons": [
+          "LIQUIDITY:SPREAD_WIDENING_UNKNOWN",
+          "SYSTEM:SYSTEM_STRESS_STATE_UNKNOWN"
+        ]
+      },
+      "sizing": {
+        "finalQuantity": 0,
+        "bindingConstraint": "LIQUIDITY:SPREAD_WIDENING_UNKNOWN"
+      },
+      "hardBlockers": [],
+      "unknownEvidence": [
+        "AEGIS_REQUIRED_INPUT_UNKNOWN"
+      ]
+    }
+  },
+  "verdicts": {
+    "SPY": "CSP minimum-unit account and AEGIS concentration vetoes are arithmetically supported by persisted evidence.",
+    "TLT": "Persisted account policy is feasible. Ownership score was not persisted. The reached candidate stopped at AEGIS HOLD_ONLY on missing spread/system stress evidence.",
+    "XLE": "Persisted account policy is feasible. Ownership score was not persisted. The reached candidate stopped at AEGIS HOLD_ONLY on missing spread/system stress evidence.",
+    "ownershipClaim": "The archive does not support a numeric TLT or XLE ownership-rejection claim. Missing ownership was explicitly allowed by the uncalibrated Paper bootstrap."
+  },
+  "reportHash": "77f137ce7f18d5768f47440898c43a67d59496b46d26685bbfb9ad271ec44cda"
+}

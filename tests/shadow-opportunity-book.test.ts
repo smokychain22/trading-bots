@@ -73,3 +73,19 @@ test('countByOutcome tallies every recorded entry, including PASS/WAIT/rejection
   assert.equal(counts.AEGIS_REJECTED, 1);
   assert.equal(counts.REJECTED, 0);
 });
+
+test('immutable shadow evidence remains readable across account-policy v1 and v2 receipts', () => {
+  const compatibility = (assessmentVersion: 'theta-strategy-account-policy-compatibility-v1' | 'theta-strategy-account-policy-compatibility-v2') => ({
+    state: 'ACCOUNT_FEASIBLE', strategy: 'THETA_CONVENTIONAL', underlying: 'AAPL',
+    marketApplicable: true, accountFeasible: true, minimumExecutableQuantity: 1,
+    minimumCapitalRequired: 20_000, equity: 100_000,
+    minimumTickerConcentrationPct: 0.2, policyLimitPct: 0.15, hardVetoLimitPct: 0.225,
+    bindingPolicies: [], reasons: [], assessmentVersion,
+  });
+  assert.equal(parseShadowOpportunityEntry(baseEntry({
+    strategyAccountPolicyCompatibility: compatibility('theta-strategy-account-policy-compatibility-v1'),
+  })).strategyAccountPolicyCompatibility?.assessmentVersion, 'theta-strategy-account-policy-compatibility-v1');
+  assert.equal(parseShadowOpportunityEntry(baseEntry({
+    strategyAccountPolicyCompatibility: compatibility('theta-strategy-account-policy-compatibility-v2'),
+  })).strategyAccountPolicyCompatibility?.assessmentVersion, 'theta-strategy-account-policy-compatibility-v2');
+});

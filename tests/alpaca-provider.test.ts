@@ -9,6 +9,7 @@ import {
   fetchLatestStockQuote,
   fetchLatestStockTrade,
   fetchOpenOrders,
+  fetchOptionContract,
   fetchOptionContracts,
   fetchOptionSnapshots,
   fetchPositions,
@@ -238,12 +239,13 @@ test('fetchOpenOrders requests status=open and parses real-shaped orders', async
   const fetchImpl = (async (input: RequestInfo | URL) => {
     requestedUrl = input instanceof URL ? input.toString() : String(input);
     return jsonResponse(200, [{ id: 'order-1', client_order_id: 'client-1', symbol: 'SPY261009P00500000', side: 'sell',
-      position_intent: 'sell_to_open', qty: '1', limit_price: '2.50', status: 'new', submitted_at: NOW }]);
+      position_intent: 'sell_to_open', qty: '1', filled_qty: '0', limit_price: '2.50', status: 'new', submitted_at: NOW }]);
   }) as typeof fetch;
   const result = await fetchOpenOrders(baseConfig(fetchImpl), NOW);
   assert.ok(requestedUrl.includes('status=open'));
   assert.equal(result[0]?.orderId, 'order-1');
   assert.equal(result[0]?.positionIntent, 'sell_to_open');
+  assert.equal(result[0]?.filledQuantity, 0);
   assert.equal(result[0]?.limitPrice, 2.5);
 });
 
@@ -359,6 +361,36 @@ test('fetchOptionContracts preserves a missing multiplier as UNKNOWN', async () 
   })) as typeof fetch;
   const result = await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 10, maxPages: 5 });
   assert.equal(result.items[0]?.multiplier, null);
+});
+
+test('fetchOptionContract resolves exact restart identity and multiplier without bounded-list omission', async () => {
+  let requested = '';
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    requested = String(input);
+    return jsonResponse(200, {
+      symbol: 'ADJ261009P00500000', type: 'put', strike_price: '500', expiration_date: '2026-10-09',
+      size: '250', tradable: true, root_symbol: 'ADJ', underlying_symbol: 'ADJ', style: 'american',
+      deliverables: [{ type: 'equity', symbol: 'ADJ', amount: '250', allocation_percentage: '100' }],
+    });
+  }) as typeof fetch;
+  const result = await fetchOptionContract(baseConfig(fetchImpl), 'ADJ261009P00500000');
+  assert.equal(new URL(requested).pathname, '/v2/options/contracts/ADJ261009P00500000');
+  assert.equal(result.multiplier, 250);
+  assert.deepEqual(result.deliverables,
+    [{ type: 'equity', symbol: 'ADJ', amount: 250, allocationPercentage: 100 }]);
+});
+
+test('fetchOptionContract rejects mismatched identity and malformed type instead of lending metadata', async () => {
+  const mismatch = (async () => jsonResponse(200, {
+    symbol: 'OTHER261009P00500000', type: 'put', strike_price: '500', expiration_date: '2026-10-09', size: '100',
+  })) as typeof fetch;
+  await assert.rejects(() => fetchOptionContract(baseConfig(mismatch), 'SPY261009P00500000'),
+    (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  const malformedType = (async () => jsonResponse(200, {
+    symbol: 'SPY261009P00500000', type: 'future', strike_price: '500', expiration_date: '2026-10-09', size: '100',
+  })) as typeof fetch;
+  await assert.rejects(() => fetchOptionContract(baseConfig(malformedType), 'SPY261009P00500000'),
+    (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
 });
 
 test('management contract fetch requests deliverables and preserves their exact coverage', async () => {

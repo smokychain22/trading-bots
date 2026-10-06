@@ -14,6 +14,7 @@ import { assessAegisSpreadStress, paperBootstrapAegisSpreadStressPolicy,
   type AegisSpreadStressAssessment } from '../src/theta/aegis-spread-stress.js';
 import { assessAlpacaContractIvStress, paperBootstrapAlpacaContractIvPolicy } from '../src/theta/aegis-alpaca-iv-stress.js';
 import { paperBootstrapStressColdStartPolicy } from '../src/research/aegis-stress-baseline-maturity.js';
+import { paperBootstrapRuntimePolicy } from '../src/theta/paper-bootstrap-runtime-policy.js';
 
 // Proves runThetaShadowCycle -- the real end-to-end composition of
 // UniversePolicy -> Alpaca provider (mocked fetch, obviously-synthetic
@@ -301,6 +302,22 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
     entry.provider === 'ALPACA' && entry.operationAlias === 'alpaca.get_stock_bars'
       && entry.contractVersion === 'theta-underlying-technical-features-v1' && entry.state === 'GOOD'));
   assert.ok(result.orchestration?.thetaQ !== null || result.orchestration?.receipt.winningAction === 'PASS');
+  const persistedConventional = result.strategyFrontier?.branches
+    .find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates[0];
+  assert.ok(persistedConventional !== undefined);
+  assert.equal(persistedConventional.entryEligibility?.ownershipFloor,
+    paperBootstrapRuntimePolicy.ownership.thetaQAcceptabilityFloor);
+  const persistedWithCandidateOwnership = result.strategyFrontier?.branches
+    .find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates
+    .find((candidate) => candidate.entryEligibility?.ownershipComponents !== undefined);
+  assert.ok(persistedWithCandidateOwnership !== undefined,
+    JSON.stringify({ frontierIds: result.strategyFrontier?.branches
+      .find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates.map((candidate) => candidate.candidateId),
+    thetaQIds: result.orchestration?.thetaQ?.candidates.map((candidate) => candidate.candidateId),
+    ownershipIds: Object.keys(result.orchestration?.ownershipByCandidateId ?? {}) }));
+  assert.equal(persistedWithCandidateOwnership.entryEligibility?.ownershipComponents?.length, 5);
+  assert.equal(typeof persistedWithCandidateOwnership.entryEligibility?.ownershipPolicyVersion, 'string');
+  assert.equal(typeof persistedWithCandidateOwnership.entryEligibility?.ownershipObservedAt, 'string');
   const portfolio = result.fusionSnapshot?.snapshot.portfolioExposure as Record<string, unknown>;
   assert.equal((portfolio.correlationObservation as Record<string, unknown>).state, 'NOT_APPLICABLE');
   assert.equal(result.orchestration?.regime?.eventState, null);

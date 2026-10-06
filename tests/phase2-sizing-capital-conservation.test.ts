@@ -34,7 +34,7 @@ test('capital conservation: positions, pending orders and stock are each counted
   ];
   const orders = [order({ orderId: 'a', symbol: 'XYZ261016P00045000', quantity: 2 }),
     order({ orderId: 'b', positionIntent: 'buy_to_close', side: 'buy', symbol: 'XYZ261016P00050000' })];
-  const e = deriveAccountExposure(account(100_000), positions, orders);
+  const e = deriveAccountExposure(account(100_000), positions, orders, 100);
   assert.equal(e.cspCollateralRequired, 5_000);
   assert.equal(e.stockInventoryValue, 6_000);
   assert.equal(e.pendingOpeningCapitalAtRisk, 9_000, 'buy_to_close reserves nothing; sell_to_open 2 x 4500 once');
@@ -85,8 +85,8 @@ test('broker buying power is never treated as usable capital: usable new-risk ca
 
 test('a pending sell-to-open reserves capital exactly like a filled position, and repeated retries cannot over-allocate', () => {
   const E = 100_000, unit = 10_000;
-  const asPending = deriveAccountExposure(account(E), [], [order({ symbol: 'XYZ261016P00100000', quantity: 1 })]);
-  const asFilled = deriveAccountExposure(account(E), [position({ symbol: 'XYZ261016P00100000', assetClass: 'us_option', quantity: -1, side: 'short', marketValue: -100 })], []);
+  const asPending = deriveAccountExposure(account(E), [], [order({ symbol: 'XYZ261016P00100000', quantity: 1 })], 100);
+  const asFilled = deriveAccountExposure(account(E), [position({ symbol: 'XYZ261016P00100000', assetClass: 'us_option', quantity: -1, side: 'short', marketValue: -100 })], [], 100);
   const capPending = capacityFor(asPending, [order({ symbol: 'XYZ261016P00100000', quantity: 1 })], 'XYZ', unit);
   const capFilled = capacityFor(asFilled, [], 'XYZ', unit);
   assert.equal(capPending.quantityCap, capFilled.quantityCap, 'pending and filled reserve the same capital (no free pending capacity, no double count)');
@@ -100,7 +100,7 @@ test('a pending sell-to-open reserves capital exactly like a filled position, an
   const hardUsd = E * policy.maxTickerConcentrationPct * policy.hardCapMultiplier;
   const quantities: number[] = [];
   for (let cycle = 0; cycle < 8; cycle++) {
-    const exposure = deriveAccountExposure(account(E, E - reserved), [], pending);
+    const exposure = deriveAccountExposure(account(E, E - reserved), [], pending, 100);
     const bp = E - reserved;
     const broker = Math.floor(bp / unit);
     const cap = capacityFor(exposure, pending, 'XYZ', unit, broker);
@@ -118,15 +118,15 @@ test('a pending sell-to-open reserves capital exactly like a filled position, an
 
 test('stale or mismatched pending-order evidence is UNKNOWN, never silently free capacity', () => {
   const orders = [order({ symbol: 'XYZ261016P00100000', quantity: 3 })];
-  const e = deriveAccountExposure(account(100_000), [], orders);
+  const e = deriveAccountExposure(account(100_000), [], orders, 100);
   const stale = deriveCandidateInclusiveAegisInputs(e, [], { underlying: 'XYZ', securedCollateralPerContract: 1_000, quantity: 1 }, 0);
   assert.equal(stale.evidenceState, 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE');
   assert.ok(stale.unknownReasons.includes('PENDING_ORDER_SNAPSHOT_MISMATCH'));
   assert.equal(stale.tickerConcentrationPct, null, 'unknown stays null, not 0');
-  const unclassified = deriveAccountExposure(account(100_000), [], [order({ positionIntent: null })]);
+  const unclassified = deriveAccountExposure(account(100_000), [], [order({ positionIntent: null })], 100);
   assert.equal(unclassified.pendingOpeningCapitalAtRisk, null);
   assert.equal(unclassified.portfolioCapitalAtRiskPct === null || unclassified.pendingAssignmentCollateral === null, true);
-  const shortCall = deriveAccountExposure(account(100_000), [], [order({ symbol: 'XYZ261016C00100000' })]);
+  const shortCall = deriveAccountExposure(account(100_000), [], [order({ symbol: 'XYZ261016C00100000' })], 100);
   assert.equal(shortCall.pendingAssignmentCollateral, null, 'an uncovered-or-covered short call order is not assumed zero risk');
 });
 
@@ -134,7 +134,7 @@ test('equity down, reserved capital up, pending exposure up and collateral up ne
   const unit = 10_000;
   const q = (equity: number, reserved: number, u = unit) => {
     const pending = reserved === 0 ? [] : [order({ symbol: 'XYZ261016P00100000', quantity: reserved / 10_000 })];
-    return capacityFor(deriveAccountExposure(account(equity), [], pending), pending, 'XYZ', u).quantityCap;
+    return capacityFor(deriveAccountExposure(account(equity), [], pending, 100), pending, 'XYZ', u).quantityCap;
   };
   let prev = Infinity;
   for (const equity of [1_000_000, 500_000, 250_000, 100_000, 50_000, 25_000, 10_000, 5_000]) { const v = q(equity, 0); assert.ok(v <= prev, `equity ${equity}`); prev = v; }

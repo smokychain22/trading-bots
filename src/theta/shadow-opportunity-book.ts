@@ -66,7 +66,13 @@ export const shadowOpportunityEntrySchema = z.object({
     equity: z.number().finite().positive().nullable(), minimumTickerConcentrationPct: z.number().finite().nonnegative().nullable(),
     policyLimitPct: z.number().finite().positive().nullable(), hardVetoLimitPct: z.number().finite().positive().nullable(),
     bindingPolicies: z.array(z.string().min(1)), reasons: z.array(z.string().min(1)),
-    assessmentVersion: z.literal('theta-strategy-account-policy-compatibility-v1'),
+    // Historical shadow rows carry v1. Production emits v2 after the
+    // strategy-specific capital and policy-dimension split. Both versions
+    // remain readable so immutable evidence does not need rewriting.
+    assessmentVersion: z.enum([
+      'theta-strategy-account-policy-compatibility-v1',
+      'theta-strategy-account-policy-compatibility-v2',
+    ]),
   }).nullable().optional(),
 
   outcome: opportunityOutcome,

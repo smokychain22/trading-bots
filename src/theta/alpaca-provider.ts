@@ -248,6 +248,9 @@ export interface AlpacaOpenOrderSnapshot {
   readonly side: string | null;
   readonly positionIntent: 'buy_to_open' | 'buy_to_close' | 'sell_to_open' | 'sell_to_close' | null;
   readonly quantity: number | null;
+  /** Broker-reported cumulative filled quantity. Production reads always set
+   * this field, including zero. Optional only for archived/manual callers. */
+  readonly filledQuantity?: number | null;
   readonly limitPrice: number | null;
   readonly status: string | null;
   readonly submittedAt: string | null;
@@ -289,6 +292,7 @@ export async function fetchOpenOrders(config: AlpacaProviderConfig, receivedAt: 
           ? positionIntent : null;
       })(),
       quantity: asNumberOrNull(raw.qty),
+      filledQuantity: asNumberOrNull(raw.filled_qty),
       limitPrice: asNumberOrNull(raw.limit_price),
       status: nonEmptyString(raw.status),
       submittedAt: nonEmptyString(raw.submitted_at),
@@ -463,6 +467,79 @@ export interface PaginatedResult<T> {
   readonly pagesFetched: number;
 }
 
+function normalizeOptionContract(
+  value: unknown,
+  optionType: 'put' | 'call',
+  endpoint: string,
+  requireDeliverableShape: boolean,
+): AlpacaOptionContractListing {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, `${endpoint} returned an invalid contract row.`);
+  }
+  const contract = value as Record<string, unknown>;
+  const symbol = asStringOrNull(contract.symbol);
+  const strikePrice = asNumberOrNull(contract.strike_price);
+  const expirationDate = asStringOrNull(contract.expiration_date);
+  if (!symbol || strikePrice === null || strikePrice <= 0 || !validDateOnly(expirationDate)) {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, `${endpoint} returned an invalid contract identity.`);
+  }
+  const deliverables = contract.deliverables;
+  if (requireDeliverableShape && deliverables !== null && deliverables !== undefined && !Array.isArray(deliverables)) {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, `${endpoint} returned malformed deliverables.`);
+  }
+  const parsedDeliverables = Array.isArray(deliverables) ? deliverables.map((item: unknown) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, `${endpoint} returned malformed deliverables.`);
+    }
+    const row = item as Record<string, unknown>;
+    const type = asStringOrNull(row.type);
+    const deliverableSymbol = asStringOrNull(row.symbol);
+    const amount = asNumberOrNull(row.amount);
+    if (type === null || deliverableSymbol === null || amount === null || amount <= 0) {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, `${endpoint} returned malformed deliverables.`);
+    }
+    return { type, symbol: deliverableSymbol, amount,
+      allocationPercentage: asNumberOrNull(row.allocation_percentage) };
+  }) : null;
+  return {
+    symbol,
+    strikePrice,
+    expirationDate,
+    optionType: optionType === 'put' ? 'PUT' : 'CALL',
+    multiplier: asNumberOrNull(contract.size),
+    tradable: typeof contract.tradable === 'boolean' ? contract.tradable : null,
+    rootSymbol: asStringOrNull(contract.root_symbol),
+    underlyingSymbol: asStringOrNull(contract.underlying_symbol),
+    exerciseStyle: asStringOrNull(contract.style),
+    deliverables: parsedDeliverables,
+  };
+}
+
+/** Exact broker contract identity lookup used for restart reconstruction. */
+export async function fetchOptionContract(
+  config: AlpacaProviderConfig,
+  symbolOrId: string,
+): Promise<AlpacaOptionContractListing> {
+  const identity = symbolOrId.trim();
+  if (identity.length === 0) throw new AlpacaProviderError('INVALID_REQUEST', null, 'ALPACA_OPTION_CONTRACT_IDENTITY_REQUIRED');
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const endpoint = '/v2/options/contracts/{symbol_or_id}';
+  const url = new URL(`/v2/options/contracts/${encodeURIComponent(identity)}`, config.tradingApiBase);
+  const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs, config.readRetry);
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, `${endpoint} returned an invalid contract.`);
+  }
+  const rawType = asStringOrNull((body as Record<string, unknown>).type)?.toLowerCase();
+  if (rawType !== 'put' && rawType !== 'call') {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, `${endpoint} returned an invalid option type.`);
+  }
+  const normalized = normalizeOptionContract(body, rawType, endpoint, true);
+  if (normalized.symbol !== identity) {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, `${endpoint} returned a mismatched contract identity.`);
+  }
+  return normalized;
+}
+
 export async function fetchOptionContracts(config: AlpacaProviderConfig, params: FetchOptionContractsParams): Promise<PaginatedResult<AlpacaOptionContractListing>> {
   assertPaginationBounds(params.maxPages, params.limit);
   const fetchImpl = config.fetchImpl ?? fetch;
@@ -497,47 +574,8 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
       throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts repeated or emptied its page token.');
     }
     for (const c of page.option_contracts as unknown[]) {
-      if (c === null || typeof c !== 'object' || Array.isArray(c)) {
-        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract row.');
-      }
-      const contract = c as Record<string, unknown>;
-      const symbol = asStringOrNull(contract.symbol);
-      const strikePrice = asNumberOrNull(contract.strike_price);
-      const expirationDate = asStringOrNull(contract.expiration_date);
-      if (!symbol || strikePrice === null || strikePrice <= 0 || !validDateOnly(expirationDate)) {
-        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract identity.');
-      }
-      const deliverables = contract.deliverables;
-      if (params.showDeliverables === true && deliverables !== null && deliverables !== undefined
-        && !Array.isArray(deliverables)) {
-        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned malformed deliverables.');
-      }
-      const parsedDeliverables = Array.isArray(deliverables) ? deliverables.map((value: unknown) => {
-        if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-          throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned malformed deliverables.');
-        }
-        const row = value as Record<string, unknown>;
-        const type = asStringOrNull(row.type);
-        const deliverableSymbol = asStringOrNull(row.symbol);
-        const amount = asNumberOrNull(row.amount);
-        if (type === null || deliverableSymbol === null || amount === null || amount <= 0) {
-          throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned malformed deliverables.');
-        }
-        return { type, symbol: deliverableSymbol, amount,
-          allocationPercentage: asNumberOrNull(row.allocation_percentage) };
-      }) : null;
-      const normalized:AlpacaOptionContractListing={
-        symbol,
-        strikePrice,
-        expirationDate,
-        optionType: params.optionType === 'put' ? 'PUT' : 'CALL',
-        multiplier: asNumberOrNull(contract.size),
-        tradable: typeof contract.tradable === 'boolean' ? contract.tradable : null,
-        rootSymbol: asStringOrNull(contract.root_symbol),
-        underlyingSymbol: asStringOrNull(contract.underlying_symbol),
-        exerciseStyle: asStringOrNull(contract.style),
-        deliverables: parsedDeliverables,
-      };
+      const normalized = normalizeOptionContract(c, params.optionType, '/v2/options/contracts', params.showDeliverables === true);
+      const symbol = normalized.symbol;
       const signature=JSON.stringify(normalized);
       const previous=seenContracts.get(symbol);
       if(previous!==undefined&&previous!==signature)throw new AlpacaProviderError('MALFORMED_RESPONSE',200,

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { deriveBrokerRouterPortfolio } from './broker-router-portfolio.js';
 import {
   AlpacaProviderError,
-  fetchMarketCalendar, fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
+  fetchMarketCalendar, fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContract, fetchOptionContracts, fetchOptionSnapshots,
   fetchPositions, fetchStockBars, fetchLatestStockQuote, fetchLatestStockTrade, type AlpacaCalendarSession, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
   type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
@@ -33,10 +33,12 @@ import {
   deriveAccountExposure,
   deriveCommittedShortCallContracts,
   deriveCandidateCapacityAssessment,
+  deriveCandidateInclusiveAegisInputs,
   mergeDerivedExposureIntoAegisInputs,
   type CandidateCapacityPolicy,
   type DerivedAccountExposure,
   deriveRecoveryInventoryValue,
+  parseOccOptionSymbol,
 } from './account-exposure.js';
 import { assessAegisGapStress, deriveCandidateMarketQuality, deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState } from './aegis-derivation.js';
 import { buildCanonicalStrategyFrontier, canonicalOpeningCostPolicyFromUnknown, type CanonicalStrategyFrontier,
@@ -1573,7 +1575,32 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // account is a valid, common, real-zero-exposure state); whether any of
   // it is safe to MERGE into aegisInputs below depends on the underlying
   // fetches' quality, checked separately.
-  const derivedExposure: DerivedAccountExposure = deriveAccountExposure(account, positions, openOrders);
+  // Broker position/order rows do not include option deliverable multipliers.
+  // Resolve every exact OCC symbol from Alpaca contract truth before restart
+  // reconstruction. Missing metadata stays absent from the map and therefore
+  // makes option exposure UNKNOWN in deriveAccountExposure.
+  const optionMultiplierEvidence: Record<string, number> = {};
+  const optionExposureSymbols = [...new Set([
+    ...positions.filter((position) => position.assetClass === 'us_option').map((position) => position.symbol),
+    ...openOrders.map((order) => order.symbol).filter((symbol): symbol is string => symbol !== null && parseOccOptionSymbol(symbol) !== null),
+  ])];
+  for (const symbol of optionExposureSymbols) {
+    let listing = contractItems.find((contract) => contract.symbol === symbol);
+    if (listing === undefined || listing.multiplier === null) {
+      const parsed = parseOccOptionSymbol(symbol);
+      if (parsed !== null) {
+        try {
+          listing = await fetchOptionContract(config.alpaca, symbol);
+        } catch (error) {
+          blockers.push(`ACCOUNT_OPTION_CONTRACT_METADATA_PROVIDER_ERROR:${symbol}:${error instanceof Error ? error.message : 'unknown'}`);
+        }
+      }
+    }
+    if (listing !== undefined && listing.multiplier !== null && Number.isFinite(listing.multiplier) && listing.multiplier > 0) {
+      optionMultiplierEvidence[symbol] = listing.multiplier;
+    } else blockers.push(`ACCOUNT_OPTION_MULTIPLIER_UNKNOWN:${symbol}`);
+  }
+  const derivedExposure: DerivedAccountExposure = deriveAccountExposure(account, positions, openOrders, optionMultiplierEvidence);
   const recoveryInventoryValue = deriveRecoveryInventoryValue(derivedExposure, config.recoveryInventoryUnderlyings);
   const exposureDerivationTrustworthy = accountEvidence.quality === 'GOOD' && positionsEvidence.quality === 'GOOD' && openOrdersEvidence.quality === 'GOOD';
 
@@ -1792,12 +1819,27 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
     thetaQDecision?: NewRiskOrchestrationResult['receipt'],
     thetaQCandidateEvaluation?: NewRiskOrchestrationResult['thetaQCandidateEvaluation'],
+    ownershipByCandidateId?: NewRiskOrchestrationResult['ownershipByCandidateId'],
   ): { readonly frontier: CanonicalStrategyFrontier; readonly input: CanonicalStrategyFrontierInput } => {
     const conventionalRisk = conventionalFrontierRiskLookups(candidatesWithCapacity.map((candidate) => ({
       optionSymbol: candidate.contract.optionSymbol, brokerAllowedQty: candidate.brokerAllowedQty,
       riskCapacityQtyCap: candidate.riskCapacityQtyCap,
     })), aegisByCandidateId);
     const mergedBySymbol = new Map(mergedContractsForSnapshot.map((entry) => [entry.optionSymbol, entry] as const));
+    const accountPolicyCompatibilityByCandidateId = candidateCapacityPolicy === null || !exposureDerivationTrustworthy
+      ? undefined : Object.fromEntries(mergedContractsForSnapshot.filter((contract) => contract.optionType === 'PUT').map((contract) => {
+        const collateral = contract.strike * contract.multiplier;
+        const minimumUnitAegisInputs = deriveCandidateInclusiveAegisInputs(derivedExposure, openOrders, {
+          underlying: contract.underlying, securedCollateralPerContract: collateral, quantity: 1,
+        }, recoveryInventoryValue);
+        const compatibility = assessStrategyAccountPolicyCompatibility({
+          strategy: 'THETA_CONVENTIONAL', riskProfile: 'CASH_SECURED_SHORT_PUT', underlying: contract.underlying,
+          marketApplicable: true, minimumCapitalRequired: collateral, securedCollateralRequired: collateral,
+          brokerAllowedQty: wholeContractsAffordable(account?.optionsBuyingPower ?? null, collateral),
+          exposure: derivedExposure, policy: candidateCapacityPolicy, candidateInclusiveAegisInputs: minimumUnitAegisInputs,
+        });
+        return [`THETA_CONVENTIONAL:${contract.optionSymbol}`, compatibility] as const;
+      }));
     const qEvaluationForFrontier = thetaQCandidateEvaluation === undefined ? undefined
       : completeConventionalFrontierEvaluationCoverage(
         mergedContractsForSnapshot,
@@ -1808,13 +1850,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
           // SIZE-ZERO-LABEL-01: prove account-policy incompatibility for non-finalists from account + policy alone (no AEGIS call).
           const contract = mergedBySymbol.get(optionSymbol);
           if (contract === undefined || !exposureDerivationTrustworthy || candidateCapacityPolicy === null) return null;
-          const collateral = contract.strike * contract.multiplier;
-          const availableBuyingPower = account?.optionsBuyingPower ?? null;
-          const compatibility = assessStrategyAccountPolicyCompatibility({
-            strategy: 'THETA_CONVENTIONAL', underlying: contract.underlying, marketApplicable: true,
-            minimumCapitalRequired: collateral, brokerAllowedQty: wholeContractsAffordable(availableBuyingPower, collateral),
-            exposure: derivedExposure, policy: candidateCapacityPolicy,
-          });
+          const compatibility = accountPolicyCompatibilityByCandidateId?.[`THETA_CONVENTIONAL:${optionSymbol}`];
+          if (compatibility === undefined) return null;
           return compatibility.state === 'STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE' || compatibility.state === 'ACCOUNT_INFEASIBLE_BROKER_CAPACITY'
             ? { state: compatibility.state, bindingPolicies: [...compatibility.bindingPolicies] } : null;
         },
@@ -1835,6 +1872,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     maxAdverseGap60d: maxAdverseGap,
     brokerAllowedQtyByCandidateId: conventionalRisk.brokerAllowedQtyByCandidateId,
     riskCapacityQtyByCandidateId: conventionalRisk.riskCapacityQtyByCandidateId,
+    accountPolicyCompatibilityByCandidateId,
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
     aegisNewRiskStateByCandidateId: conventionalRisk.aegisNewRiskStateByCandidateId,
     aegisBindingReasonsByCandidateId: conventionalRisk.aegisBindingReasonsByCandidateId,
@@ -1846,6 +1884,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     optionomicsContext: optionomicsDerivedContext,
     entryEligibilityByOptionSymbol: Object.fromEntries((thetaQ?.candidates ?? []).map((candidate) => [candidate.candidateId, {
       basis: candidate.eligibilityBasis,
+      ownershipScore: candidate.ownershipScore,
+      ownershipFloor: paperBootstrapRuntimePolicy.ownership.thetaQAcceptabilityFloor,
+      ownershipComponents: ownershipByCandidateId?.[candidate.candidateId]?.components,
+      ownershipPolicyVersion: ownershipByCandidateId?.[candidate.candidateId]?.policyVersion,
+      ownershipObservedAt: ownershipByCandidateId?.[candidate.candidateId]?.timestamp,
       paperBootstrapPolicyVersion: candidate.paperBootstrapPolicyVersion,
       paperBootstrapAllowedUnknownComponents: candidate.paperBootstrapAllowedUnknownComponents,
       paperBootstrapReasonCodes: candidate.paperBootstrapReasonCodes,
@@ -1863,9 +1906,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
     thetaQDecision?: NewRiskOrchestrationResult['receipt'],
     thetaQCandidateEvaluation?: NewRiskOrchestrationResult['thetaQCandidateEvaluation'],
+    ownershipByCandidateId?: NewRiskOrchestrationResult['ownershipByCandidateId'],
   ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics' | 'canonicalFrontierInput' | 'methodInputProvenance' | 'qEntryFunnel'> => {
     const { frontier: strategyFrontier, input: canonicalFrontierInput } = strategyFrontierFor(
-      routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision, thetaQCandidateEvaluation);
+      routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision,
+      thetaQCandidateEvaluation, ownershipByCandidateId);
     const executedMethodIds = deriveRealCurrentWorkerEvidence({ strategyFrontier, orchestration: { routing, thetaQ } });
     const methodInputProvenance = classifyMethodInputProvenance({
       executedMethodIds, routerPortfolioOrigin,
@@ -2077,9 +2122,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     );
     const quantityAuthorities = separateCandidateQuantityAuthorities(candidate.brokerAllowedQty, capacity);
     const strategyAccountPolicyCompatibility = assessStrategyAccountPolicyCompatibility({
-      strategy: 'THETA_CONVENTIONAL', underlying: candidate.contract.underlying, marketApplicable: true,
-      minimumCapitalRequired: candidate.contract.strike * candidate.contract.multiplier,
+      strategy: 'THETA_CONVENTIONAL', riskProfile: 'CASH_SECURED_SHORT_PUT', underlying: candidate.contract.underlying,
+      marketApplicable: true, minimumCapitalRequired: candidate.contract.strike * candidate.contract.multiplier,
+      securedCollateralRequired: candidate.contract.strike * candidate.contract.multiplier,
       brokerAllowedQty: candidate.brokerAllowedQty, exposure: derivedExposure, policy: candidateCapacityPolicy,
+      candidateInclusiveAegisInputs: deriveCandidateInclusiveAegisInputs(derivedExposure, openOrders, {
+        underlying: candidate.contract.underlying,
+        securedCollateralPerContract: candidate.contract.strike * candidate.contract.multiplier, quantity: 1,
+      }, recoveryInventoryValue),
     });
     const derived = capacity.inputsAtQuantityCap;
     // Preserve nulls. They are canonical UNKNOWN inputs and must override
@@ -2158,7 +2208,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration,
     ...strategyDecisionFor(orchestration.routing, orchestration.aegis, orchestration.aegisByCandidateId,
-      runtimeCandidates, orchestration.thetaQ, orchestration.receipt, orchestration.thetaQCandidateEvaluation),
+      runtimeCandidates, orchestration.thetaQ, orchestration.receipt, orchestration.thetaQCandidateEvaluation,
+      orchestration.ownershipByCandidateId),
     provenance, provenanceDetail: detail, blockers,
   };
 }

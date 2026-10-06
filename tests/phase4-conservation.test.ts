@@ -55,7 +55,7 @@ const shuffled = <T>(items: readonly T[], next: () => number): T[] => {
   for (let index = copy.length - 1; index > 0; index -= 1) { const j = Math.floor(next() * (index + 1)); [copy[index], copy[j]] = [copy[j] as T, copy[index] as T]; }
   return copy;
 };
-const exposureOf = (book: Book): DerivedAccountExposure => deriveAccountExposure(account(book.equity), book.positions, book.orders);
+const exposureOf = (book: Book): DerivedAccountExposure => deriveAccountExposure(account(book.equity), book.positions, book.orders, 100);
 const near = (a: number | null, b: number | null, message: string): void => {
   assert.ok(a !== null && b !== null && Math.abs(a - b) < 1e-6, `${message}: ${a} vs ${b}`);
 };
@@ -79,7 +79,7 @@ test('CAPITAL: exposure equals an independent oracle (positions, stock and pendi
     near(exposure.stockInventoryValue, stock, `run ${run} stock`);
     near(exposure.pendingOpeningCapitalAtRisk, pending, `run ${run} pending`);
     for (const [root, value] of perUnderlying) near(exposure.exposureByUnderlying[root] ?? 0, value, `run ${run} ${root}`);
-    const reordered = deriveAccountExposure(account(book.equity), shuffled(book.positions, next), shuffled(book.orders, next));
+    const reordered = deriveAccountExposure(account(book.equity), shuffled(book.positions, next), shuffled(book.orders, next), 100);
     near(reordered.cspCollateralRequired, exposure.cspCollateralRequired, `run ${run} order independence csp`);
     near(reordered.pendingOpeningCapitalAtRisk, exposure.pendingOpeningCapitalAtRisk, `run ${run} order independence pending`);
     near(reordered.portfolioCapitalAtRiskPct, exposure.portfolioCapitalAtRiskPct, `run ${run} order independence pct`);

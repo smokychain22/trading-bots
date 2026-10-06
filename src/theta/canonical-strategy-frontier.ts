@@ -10,6 +10,7 @@ import { coveredCallContractCapacity, securedContractCapacity, wholeContractsAff
 import { buildCapitalBudgetEvidence, type CapitalBudgetAccountEvidence, type CapitalBudgetEvidence } from './capital-budget-evidence.js';
 import type { NewRiskDecisionReceipt } from './decision-assembly.js';
 import type { ThetaQCandidateEvaluationEntry } from './new-risk-orchestrator.js';
+import type { StrategyAccountPolicyCompatibility } from './strategy-account-policy-compatibility.js';
 import {
   buildDefinedRiskLockedPlan, classifyAlpacaMultiLegSupport, type DefinedRiskLockedPlanResult,
 } from '../research/defined-risk-locked-plan.js';
@@ -125,7 +126,45 @@ export interface CanonicalFrontierCandidate {
   } | null;
   readonly economics: CanonicalFrontierEconomics;
   readonly assignmentCapacityQty: number | null;
+  /** Candidate, strategy, and risk-structure scoped account-policy receipt.
+   * It is explanatory evidence and never account-wide execution authority. */
+  readonly accountPolicyCompatibility?: StrategyAccountPolicyCompatibility;
   readonly aegisState: CanonicalStrategyFrontierInput['aegisNewRiskState'];
+  /** Structured handoff for a CSP candidate that AEGIS permits only through a
+   * bounded-risk structure. This never authorizes the defined-risk branch. */
+  readonly definedRiskOnlyEvidence?: {
+    readonly authority: 'AEGIS';
+    readonly candidateId: string;
+    readonly cspRejected: true;
+    readonly bindingReasons: readonly string[];
+    readonly maximumRiskCapacityQty: number | null;
+    readonly executionAuthorityGranted: false;
+  };
+  /** One downstream explainability surface. It references the canonical
+   * policy receipt, AEGIS result and sizing waterfall without recomputing
+   * any of them. */
+  readonly moneyManagementReceipt?: {
+    readonly version: 'theta-candidate-money-management-receipt-v1';
+    readonly candidateId: string;
+    readonly snapshotId: string;
+    readonly strategy: ThetaStrategyBranch;
+    readonly riskStructure: CanonicalFrontierAction;
+    readonly accountPolicy: StrategyAccountPolicyCompatibility | null;
+    readonly accountPolicyState: StrategyAccountPolicyCompatibility['state'] | 'NOT_EVALUATED';
+    readonly aegis: {
+      readonly state: CanonicalStrategyFrontierInput['aegisNewRiskState'];
+      readonly bindingReasons: readonly string[];
+    };
+    readonly sizing: CanonicalFrontierCandidate['sizing'];
+    readonly result: {
+      readonly brokerFeasible: boolean | null;
+      readonly accountPolicyFeasible: boolean | null;
+      readonly finalQuantity: number;
+      readonly bindingConstraint: string;
+      readonly executionAuthorityGranted: false;
+    };
+    readonly provenance: 'CANONICAL_REFERENCES_NO_RECOMPUTATION';
+  };
   readonly hardBlockers: readonly string[];
   readonly softEvidence: readonly string[];
   readonly unknownEvidence: readonly string[];
@@ -158,6 +197,16 @@ export interface CanonicalFrontierCandidate {
   readonly executionAuthorized: false;
   readonly entryEligibility?: {
     readonly basis: 'EMPIRICAL_OWNERSHIP' | 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED' | 'INELIGIBLE';
+    readonly ownershipScore?: number | null;
+    readonly ownershipFloor?: number;
+    readonly ownershipComponents?: readonly {
+      readonly name: 'LiquidityQuality' | 'StructuralQuality' | 'RecoveryQuality' | 'TailQuality' | 'EventAdjustment';
+      readonly value: number | null;
+      readonly status: 'ARCHITECTURAL' | 'TEST';
+      readonly reasons: readonly { readonly code: string; readonly polarity: -1 | 0 | 1; readonly detail: string }[];
+    }[];
+    readonly ownershipPolicyVersion?: string;
+    readonly ownershipObservedAt?: string;
     readonly paperBootstrapPolicyVersion: string | null;
     readonly paperBootstrapAllowedUnknownComponents: readonly string[];
     readonly paperBootstrapReasonCodes: readonly string[];
@@ -280,6 +329,7 @@ export interface CanonicalStrategyFrontierInput {
    * Other branches are capped only when they carry an explicit entry.
    */
   readonly riskCapacityQtyByCandidateId?: Readonly<Record<string, number | null>>;
+  readonly accountPolicyCompatibilityByCandidateId?: Readonly<Record<string, StrategyAccountPolicyCompatibility>>;
   readonly sizingPolicy?: CanonicalSizingPolicy;
   readonly openingCostPolicy?: CanonicalOpeningCostPolicy | null;
   readonly maxAdverseGap60d?: number | null;
@@ -508,7 +558,7 @@ function structuralSizing(
   if (reducedMultiplierInput !== null && reducedMultiplierInput !== undefined && reducedMultiplier === null) {
     return result(0, 'SIZING_POLICY_INVALID', ['REDUCED_MULTIPLIER_INVALID']);
   }
-  if (candidateAegisState === null || ['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) {
+  if (candidateAegisState === null || ['DEFINED_RISK_ONLY', 'HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) {
     const exactReasons=input.aegisBindingReasonsByCandidateId?.[candidateId]?.filter((reason)=>reason.trim().length>0)??[];
     // Per-candidate AEGIS assessments exist but not for this candidate: AEGIS was never asked (upstream Q/shortlist
     // did not forward it). That is NOT_REACHED, distinct from AEGIS being asked and returning UNKNOWN. Both keep
@@ -596,7 +646,17 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
   input: CanonicalStrategyFrontierInput): CanonicalFrontierCandidate {
   const candidateId = `${branch}:${contract.optionSymbol}`;
   const candidateAegisState = aegisStateFor(input, candidateId);
+  const exactAegisReasons = input.aegisBindingReasonsByCandidateId?.[candidateId]?.filter((reason) => reason.trim().length > 0) ?? [];
   const evidence = commonEvidence(contract, input, candidateId);
+  const accountPolicyCompatibility = input.accountPolicyCompatibilityByCandidateId?.[candidateId];
+  if (accountPolicyCompatibility?.state === 'STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE') {
+    evidence.hardBlockers.push(accountPolicyIncompatibilityBlocker,
+      ...accountPolicyCompatibility.bindingPolicies.map((policy) => `${accountPolicyIncompatibilityBlocker}:${policy}`));
+  } else if (accountPolicyCompatibility?.state === 'ACCOUNT_INFEASIBLE_BROKER_CAPACITY') {
+    evidence.hardBlockers.push('BROKER_CAPACITY_ZERO');
+  } else if (accountPolicyCompatibility?.state === 'UNKNOWN') {
+    evidence.unknownEvidence.push('ACCOUNT_POLICY_COMPATIBILITY_UNKNOWN');
+  }
   // RISK-CAP-01: an explicit null means the cycle could not derive the quantity AEGIS was evaluated at (UNKNOWN, never zero).
   if (input.riskCapacityQtyByCandidateId !== undefined && Object.hasOwn(input.riskCapacityQtyByCandidateId, candidateId)
     && input.riskCapacityQtyByCandidateId[candidateId] === null) evidence.unknownEvidence.push('AEGIS_RISK_CAPACITY_UNKNOWN');
@@ -694,7 +754,14 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
       modeledOpeningCosts: openingCosts,
       expectedAfterCostEv: null,
     },
-    assignmentCapacityQty, aegisState: candidateAegisState, ...evidence,
+    assignmentCapacityQty, accountPolicyCompatibility, aegisState: candidateAegisState,
+    ...(candidateAegisState === 'DEFINED_RISK_ONLY' ? { definedRiskOnlyEvidence: {
+      authority: 'AEGIS' as const, candidateId, cspRejected: true as const, bindingReasons: exactAegisReasons,
+      maximumRiskCapacityQty: input.riskCapacityQtyByCandidateId?.[candidateId] ?? null,
+      executionAuthorityGranted: false as const,
+    } } : {}),
+    hardBlockers: [...new Set(evidence.hardBlockers)], softEvidence: [...new Set(evidence.softEvidence)],
+    unknownEvidence: [...new Set(evidence.unknownEvidence)],
     structurallyFeasible: evidence.hardBlockers.length === 0, riskFeasible: evidence.hardBlockers.length === 0,
     sizing: structuralSizing('OPEN_CSP', collateral, assignmentCapacityQty, input, candidateId, candidateAegisState),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
@@ -1159,7 +1226,23 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   // at all) -- a systemic misconfiguration, not a transient per-cycle
   // branch fault, and correctly invalidates the whole frontier rather than
   // being silently isolated away.
-  const branches = branchOrder.map((branch) => buildBranch(branch, input, sharedRoutingResults, sharedStockShares));
+  const branches = branchOrder.map((branch) => {
+    const built = buildBranch(branch, input, sharedRoutingResults, sharedStockShares);
+    return { ...built, candidates: built.candidates.map((candidate) => ({ ...candidate, moneyManagementReceipt: {
+      version: 'theta-candidate-money-management-receipt-v1' as const,
+      candidateId: candidate.candidateId, snapshotId: input.snapshotId, strategy: candidate.branch,
+      riskStructure: candidate.action, accountPolicy: candidate.accountPolicyCompatibility ?? null,
+      accountPolicyState: candidate.accountPolicyCompatibility?.state ?? 'NOT_EVALUATED' as const,
+      aegis: { state: candidate.aegisState,
+        bindingReasons: input.aegisBindingReasonsByCandidateId?.[candidate.candidateId] ?? candidate.sizing.reasons },
+      sizing: candidate.sizing,
+      result: { brokerFeasible: candidate.accountPolicyCompatibility?.brokerFeasible ?? null,
+        accountPolicyFeasible: candidate.accountPolicyCompatibility?.accountFeasible ?? null,
+        finalQuantity: candidate.sizing.quantity, bindingConstraint: candidate.sizing.bindingConstraint,
+        executionAuthorityGranted: false as const },
+      provenance: 'CANONICAL_REFERENCES_NO_RECOMPUTATION' as const,
+    } })), };
+  });
   const applicable = branches.filter((branch) => branch.applicable);
   // A branch that was applicable but whose construction failed was
   // genuinely CONSIDERED (it remains in `applicable` above, truthfully) but

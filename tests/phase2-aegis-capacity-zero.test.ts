@@ -57,6 +57,12 @@ test('baseline: ample capital sizes a positive quantity with AEGIS ALLOW_FULL', 
   assert.equal(classifySizingZero(candidate), null);
   assert.equal(frontier.selectedQuantity, candidate.sizing.quantity);
   assert.equal(frontier.executionAuthorized, false, 'sizing alone never authorizes execution');
+  assert.equal(candidate.moneyManagementReceipt?.candidateId, candidate.candidateId);
+  assert.equal(candidate.moneyManagementReceipt?.sizing, candidate.sizing, 'receipt references canonical sizing instead of recomputing it');
+  assert.equal(candidate.moneyManagementReceipt?.result.finalQuantity, candidate.sizing.quantity);
+  assert.equal(candidate.moneyManagementReceipt?.result.executionAuthorityGranted, false);
+  assert.ok(frontier.branches.flatMap((branch) => branch.candidates)
+    .every((item) => item.moneyManagementReceipt?.provenance === 'CANONICAL_REFERENCES_NO_RECOMPUTATION'));
 });
 
 test('zero assignment capacity: AEGIS stays ALLOW_FULL, sizing is zero with a capacity constraint, diagnostic is CAPACITY_ZERO not HARD_VETO', () => {
@@ -168,4 +174,20 @@ test('HOLD_ONLY, unknown and DEFINED_RISK_ONLY never size a naked CSP', () => {
   const defined = run({ aegisNewRiskState: 'DEFINED_RISK_ONLY' });
   assert.ok(defined.candidate.hardBlockers.includes('AEGIS_DEFINED_RISK_ONLY'));
   assert.equal(defined.candidate.riskFeasible, false);
+});
+
+test('DEFINED_RISK_ONLY preserves the exact CSP rejection and remaining bounded-risk capacity without authorizing D', () => {
+  const candidateId = 'THETA_CONVENTIONAL:AAPL261016P00190000';
+  const { candidate } = run({
+    aegisNewRiskStateByCandidateId: { [candidateId]: 'DEFINED_RISK_ONLY' },
+    aegisBindingReasonsByCandidateId: { [candidateId]: ['ASSIGNMENT:ASSIGNMENT_SEVERELY_EXCEEDED'] },
+    riskCapacityQtyByCandidateId: { [candidateId]: 2 },
+  });
+  assert.deepEqual(candidate.definedRiskOnlyEvidence, {
+    authority: 'AEGIS', candidateId, cspRejected: true,
+    bindingReasons: ['ASSIGNMENT:ASSIGNMENT_SEVERELY_EXCEEDED'], maximumRiskCapacityQty: 2,
+    executionAuthorityGranted: false,
+  });
+  assert.equal(candidate.executionAuthorized, false);
+  assert.equal(candidate.sizing.quantity, 0);
 });

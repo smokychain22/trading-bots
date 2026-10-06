@@ -715,6 +715,9 @@ export async function runNewRiskOrchestration(
       request.paperEntryBootstrap, candidateOwnership.data, candidate.severeDrawdownProbability,
     ));
   }
+  const ownershipEvidenceByCandidateId = Object.fromEntries(
+    [...ownershipByCandidateId.entries()].sort(([a], [b]) => a.localeCompare(b)),
+  );
 
   const thetaQResult = await invokeAndValidate(
     bridge, 'thetaQ',
@@ -807,7 +810,9 @@ export async function runNewRiskOrchestration(
       candidates: immediateResults, policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
     });
-    return { receipt, ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
+    return { receipt, ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,
+      thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: null, paretoSurvivorIds: null,
+      opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
   }
 
   const paretoResult = await invokeAndValidate(
@@ -821,7 +826,9 @@ export async function runNewRiskOrchestration(
       candidateIds: feasibleForFrontier.map((candidate) => candidate.candidateId),
     }),
   );
-  if (!paretoResult.ok) return systemHoldResult(request, 'PARETO_FRONTIER', paretoResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data });
+  if (!paretoResult.ok) return systemHoldResult(request, 'PARETO_FRONTIER', paretoResult.detail, {
+    ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId, thetaQ: thetaQResult.data,
+  });
   const survivorIds = new Set(survivingCandidateIds(paretoResult.data));
 
   const survivors = feasibleForFrontier.filter((c) => survivorIds.has(c.candidateId));
@@ -845,11 +852,16 @@ export async function runNewRiskOrchestration(
     );
     if (!candidateAegis.ok) {
       return systemHoldResult(request, 'AEGIS', candidateAegis.detail, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, paretoSurvivorIds: [...survivorIds],
+        ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,
+        aegisByCandidateId: Object.fromEntries([...aegisByCandidateId.entries()].sort(([a], [b]) => a.localeCompare(b))),
+        thetaQ: thetaQResult.data, thetaQCandidateEvaluation, paretoSurvivorIds: [...survivorIds],
       });
     }
     aegisByCandidateId.set(candidate.candidateId, candidateAegis.data);
   }
+  const aegisEvidenceByCandidateId = Object.fromEntries(
+    [...aegisByCandidateId.entries()].sort(([a], [b]) => a.localeCompare(b)),
+  );
   const representativeAegis = survivors.length === 0 ? null
     : aegisByCandidateId.get(survivors[0]?.candidateId ?? '') ?? null;
   for (const c of feasibleForFrontier) {
@@ -907,7 +919,9 @@ export async function runNewRiskOrchestration(
   );
   if (!opportunityResult.ok) {
     return systemHoldResult(request, 'OPPORTUNITY_FRONTIER', opportunityResult.detail, {
-      ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: representativeAegis, paretoSurvivorIds: [...survivorIds],
+      ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,
+      aegisByCandidateId: aegisEvidenceByCandidateId, thetaQ: thetaQResult.data,
+      thetaQCandidateEvaluation, aegis: representativeAegis, paretoSurvivorIds: [...survivorIds],
     });
   }
 
@@ -921,13 +935,16 @@ export async function runNewRiskOrchestration(
     const candidateAegis = aegisByCandidateId.get(candidate.candidateId);
     if (entry === undefined) {
       return systemHoldResult(request, 'OPPORTUNITY_FRONTIER', 'OPPORTUNITY_RESPONSE_CANDIDATE_SET_MISMATCH', {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation,
+        ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,
+        aegisByCandidateId: aegisEvidenceByCandidateId, thetaQ: thetaQResult.data, thetaQCandidateEvaluation,
         aegis: representativeAegis, paretoSurvivorIds: [...survivorIds],
       });
     }
     if (candidateAegis === undefined) {
       return systemHoldResult(request, 'AEGIS', `Candidate-specific AEGIS result missing for ${candidate.candidateId}.`, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: representativeAegis,
+        ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,
+        aegisByCandidateId: aegisEvidenceByCandidateId, thetaQ: thetaQResult.data,
+        thetaQCandidateEvaluation, aegis: representativeAegis,
         paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
@@ -963,13 +980,18 @@ export async function runNewRiskOrchestration(
     );
     if (!sizingResult.ok) {
       return systemHoldResult(request, 'SIZING', sizingResult.detail, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+        ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,
+        aegisByCandidateId: aegisEvidenceByCandidateId, thetaQ: thetaQResult.data,
+        thetaQCandidateEvaluation, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds],
+        opportunityBook: opportunityResult.data,
       });
     }
 
     if (candidate.contract.bid === null) {
       return systemHoldResult(request, 'EXECUTION_QUALITY', 'OPEN candidate has no executable Alpaca bid.', {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: candidateAegis,
+        ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,
+        aegisByCandidateId: aegisEvidenceByCandidateId, thetaQ: thetaQResult.data,
+        thetaQCandidateEvaluation, aegis: candidateAegis,
         paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
@@ -998,7 +1020,10 @@ export async function runNewRiskOrchestration(
     );
     if (!executionQualityResult.ok) {
       return systemHoldResult(request, 'EXECUTION_QUALITY', executionQualityResult.detail, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+        ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,
+        aegisByCandidateId: aegisEvidenceByCandidateId, thetaQ: thetaQResult.data,
+        thetaQCandidateEvaluation, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds],
+        opportunityBook: opportunityResult.data,
       });
     }
 
@@ -1033,10 +1058,10 @@ export async function runNewRiskOrchestration(
 
   return {
     receipt, ownership: ownershipResult.data,
-    ownershipByCandidateId: Object.fromEntries([...ownershipByCandidateId.entries()].sort(([a],[b])=>a.localeCompare(b))),
+    ownershipByCandidateId: ownershipEvidenceByCandidateId,
     regime: regimeResult.data, routing: routerResult.data,
     thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: representativeAegis,
-    aegisByCandidateId: Object.fromEntries([...aegisByCandidateId.entries()].sort(([a], [b]) => a.localeCompare(b))),
+    aegisByCandidateId: aegisEvidenceByCandidateId,
     paretoSurvivorIds: [...survivorIds],
     opportunityBook: opportunityResult.data, shadowOpportunities: book.all(),
     candidateEconomics: feasibleForFrontier.map((c) => ({
