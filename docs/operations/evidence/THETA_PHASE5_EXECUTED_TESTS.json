@@ -103,7 +103,7 @@
       "blockers": [],
       "sourceHashes": {
         "src/theta/account-exposure.ts": "ee95d27f128e1d15dc150d25f1cdfde941a0646dce94de3c0717c696d53057e8",
-        "src/theta/canonical-strategy-frontier.ts": "6682d47d8f8fd8db7fca38adf75e000fb1fad4de3242314c360e2e09e60b3737",
+        "src/theta/canonical-strategy-frontier.ts": "1a9f093e30028ce50045540952a16c87ec8c786a59ac6b204930564c43967960",
         "src/theta/capital-budget-evidence.ts": "df187fa320f6f1f4c8ef4b39e28dc62b0658bbd1277fb22d6f3174e262fba917",
         "src/theta/theta-shadow-cycle.ts": "389111f0bf8833dc438a220682d911d74b290ff08fdf7d5d1a66aede607baec9",
         "tests/account-exposure.test.ts": "774d5e6128ca3dc9558421d6c5f698cdc398b2d217503cae6b59a6d65dc9ea03",
@@ -158,7 +158,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "6682d47d8f8fd8db7fca38adf75e000fb1fad4de3242314c360e2e09e60b3737",
+        "src/theta/canonical-strategy-frontier.ts": "1a9f093e30028ce50045540952a16c87ec8c786a59ac6b204930564c43967960",
         "src/theta/postgres-cycle-evidence-storage.ts": "d8719a39238b96aac4a74e39fddec3f98d3e1a445a73445cac661b4d680e6f93",
         "src/theta/sizing-contract.ts": "0bd79b8af0c2dc77ca2aebd55241f226c46f657974c9d33d0f3c3e92b1c02065",
         "tests/phase4-aegis-sizing-capacity.test.ts": "3306c30a1e2a69ce23f8c0eb870e4c51351ec3859ac69ba8c877910065ebb030",
@@ -317,10 +317,10 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/execution/paper-order-coordinator.ts": "0373dec67e1f83abb1dd800801613aac3651598a8cd1ab0132a198caaebc846f",
+        "src/execution/paper-order-coordinator.ts": "f01f016e40bb5b6302eb76c76490afcb6ef7d690f2ee6bc511a14e45dd84a774",
         "src/theta/autonomous-runtime.ts": "2bbb115f3a27905f85b5432d7285dc0414f38c4f74df2395df7e6f81baaf2199",
         "src/theta/order-intent-state.ts": "b140d15b0d5a56ac93182d09537c1fe9a7cab124ef0f29da3c5fec890b312941",
-        "tests/paper-order-coordinator.test.ts": "6029da30153d14205ac702adefb2aacba1de5af6a0c742799adf01ac792f6129"
+        "tests/paper-order-coordinator.test.ts": "36c1b4cf3bb560b44c037136768280c7ef46da6b4af70d7f9b6ab97f72dccee6"
       },
       "executedTests": [
         {
@@ -358,9 +358,9 @@
       "blockers": [],
       "sourceHashes": {
         "src/execution/master-paper-execution-orchestrator.ts": "b70fddee6b9a7cfa06c470ef397a18ae2b10b5ef9cdfd5852ebea1a0c5107cb4",
-        "src/execution/paper-order-coordinator.ts": "0373dec67e1f83abb1dd800801613aac3651598a8cd1ab0132a198caaebc846f",
+        "src/execution/paper-order-coordinator.ts": "f01f016e40bb5b6302eb76c76490afcb6ef7d690f2ee6bc511a14e45dd84a774",
         "tests/master-paper-execution-orchestrator.test.ts": "1548298d3e1281154229cac04547dccf02a79458694f228c4721bd8bd5542fe3",
-        "tests/paper-order-coordinator.test.ts": "6029da30153d14205ac702adefb2aacba1de5af6a0c742799adf01ac792f6129"
+        "tests/paper-order-coordinator.test.ts": "36c1b4cf3bb560b44c037136768280c7ef46da6b4af70d7f9b6ab97f72dccee6"
       },
       "executedTests": [
         {
@@ -443,10 +443,10 @@
       "blockers": [],
       "sourceHashes": {
         "src/execution/execution-option-quote.ts": "849ef1b3bf0bbd6c52e4ee630758c1b5f5538baafa1ef047d33e2c41958d8c8f",
-        "src/execution/master-paper-action-handoff.ts": "41e3778ae0b28603f7614f78df1edb3bc31c31af483e1232184fb3cfbe10516e",
-        "src/execution/paper-order-coordinator.ts": "0373dec67e1f83abb1dd800801613aac3651598a8cd1ab0132a198caaebc846f",
+        "src/execution/master-paper-action-handoff.ts": "37d02c8377d66f8dfa183ea2759569c11e2732a27a20e5c527f474db69ee2555",
+        "src/execution/paper-order-coordinator.ts": "f01f016e40bb5b6302eb76c76490afcb6ef7d690f2ee6bc511a14e45dd84a774",
         "tests/master-paper-action-handoff.test.ts": "8a443813f46de95977771762dc84007f6e4675c42e6a77d1cad7f0666a56af2c",
-        "tests/paper-order-coordinator.test.ts": "6029da30153d14205ac702adefb2aacba1de5af6a0c742799adf01ac792f6129"
+        "tests/paper-order-coordinator.test.ts": "36c1b4cf3bb560b44c037136768280c7ef46da6b4af70d7f9b6ab97f72dccee6"
       },
       "executedTests": [
         {
@@ -718,5 +718,5 @@
   "providerRequests": 0,
   "brokerMutations": 0,
   "scope": "REVIEWED_SOURCE_ENGINEERING_NOT_L7_OR_EMPIRICAL",
-  "artifactHash": "a086f050c1b80102bbdf58f9c73ab2bc43334e03f6980a1601a77cdb520f77c4"
+  "artifactHash": "eea716c1d8797a2f46eb56d462fab65d4bd08481154f85beb92beb048d63ca39"
 }

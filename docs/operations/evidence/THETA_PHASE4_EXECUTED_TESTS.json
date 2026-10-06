@@ -17,7 +17,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "6682d47d8f8fd8db7fca38adf75e000fb1fad4de3242314c360e2e09e60b3737",
+        "src/theta/canonical-strategy-frontier.ts": "1a9f093e30028ce50045540952a16c87ec8c786a59ac6b204930564c43967960",
         "src/theta/common-horizon-economics.ts": "d30697bbb28e3310404e51e54edab443043ad26ed4a140cc8e13d3e51d67e9c1",
         "tests/phase3-strategy-economics-formulas.test.ts": "9b253dbaf63d2380ce1b3d6a3100c2b1c61fa4c1f0f4ecaccf4fe44039d6f31a"
       },
@@ -56,7 +56,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "6682d47d8f8fd8db7fca38adf75e000fb1fad4de3242314c360e2e09e60b3737",
+        "src/theta/canonical-strategy-frontier.ts": "1a9f093e30028ce50045540952a16c87ec8c786a59ac6b204930564c43967960",
         "tests/canonical-strategy-frontier.test.ts": "68a75e65acebd6c6a9558b0f7bb336c5d14f4ea2de6d2dc097ebca15eec28c26"
       },
       "executedTests": [
@@ -87,7 +87,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "6682d47d8f8fd8db7fca38adf75e000fb1fad4de3242314c360e2e09e60b3737",
+        "src/theta/canonical-strategy-frontier.ts": "1a9f093e30028ce50045540952a16c87ec8c786a59ac6b204930564c43967960",
         "tests/canonical-strategy-frontier.test.ts": "68a75e65acebd6c6a9558b0f7bb336c5d14f4ea2de6d2dc097ebca15eec28c26",
         "tests/phase3-strategy-economics-formulas.test.ts": "9b253dbaf63d2380ce1b3d6a3100c2b1c61fa4c1f0f4ecaccf4fe44039d6f31a"
       },
@@ -147,7 +147,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/management-input-state.ts": "a9f7a76fbb7364838790b9477d4382ff1839db4a628f01acdff88eff0a7fe8ea",
+        "src/theta/management-input-state.ts": "4dc6a47342c4f50aa82d4df3ab4251647aa54102aabdf47677cbb2f3bde1a033",
         "src/theta/paper-bootstrap-management-policy.ts": "9900447875199b8f1f82e8a7595daefc2992abe1fd1869cba6c2440d99ca0031",
         "src/theta/postgres-whole-chain-components-repository.ts": "7e98f8fd5bcd829481d0e9ee5cd838b8142c3cb82d6d7cc7814afb5b48fde817",
         "src/theta/recovery-state.ts": "2913cb7b9548554e7fc0418e535bc39ddb45d4e7ead6b93a195e9149c5c9d329",
@@ -419,7 +419,7 @@
       "blockers": [],
       "sourceHashes": {
         "src/theta/loss-state-vector.ts": "5e36d3cdb92c335ee8ddb14538b9739684fe2e44a5f1487876d2a6e69bf266cd",
-        "src/theta/management-action-frontier.ts": "7bdbf3bee6ca01bc1b245c1f60d15dd953435861d84900a6925b472d08288484",
+        "src/theta/management-action-frontier.ts": "d965e97fa46cef174d87d77a50937109bcab1f3d67ca2626c32f558c1d18905c",
         "src/theta/paper-bootstrap-management-policy.ts": "9900447875199b8f1f82e8a7595daefc2992abe1fd1869cba6c2440d99ca0031",
         "tests/management-action-frontier.test.ts": "e8564ceea7ee3ccc5dcbee6d120173e2ec1956d87b2199e8e88dac8b4ca35911"
       },
@@ -472,8 +472,8 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/management-entry-thesis.ts": "27f3494dc17c255177fd344cad10fe8afbcf059740241f056b904cde3f38b71f",
-        "src/theta/management-input-state.ts": "a9f7a76fbb7364838790b9477d4382ff1839db4a628f01acdff88eff0a7fe8ea",
+        "src/theta/management-entry-thesis.ts": "a3abf5ed36ec341168c8618a601fdff46d25a1956b0ec30dd5c541ed427ee6d7",
+        "src/theta/management-input-state.ts": "4dc6a47342c4f50aa82d4df3ab4251647aa54102aabdf47677cbb2f3bde1a033",
         "src/theta/postgres-theta-cycle-store.ts": "bfbde4770715fb2a5cc332f2d89a4092bbbfc465c7850af1c051a55ee32a60d0",
         "src/theta/thesis-invalidation.ts": "950954403ae3704472255a0be138449ec5940fc929bcc2d675701c1a1eb22a81",
         "tests/entry-thesis-receipt.test.ts": "94a07767422e667754ce60b7e7af82825129fb40b7d79785efeba6daab54b3a4"
@@ -567,7 +567,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/management-action-frontier.ts": "7bdbf3bee6ca01bc1b245c1f60d15dd953435861d84900a6925b472d08288484",
+        "src/theta/management-action-frontier.ts": "d965e97fa46cef174d87d77a50937109bcab1f3d67ca2626c32f558c1d18905c",
         "src/theta/whole-chain-economics.ts": "46b5ffee6257957f801833d5b2164098305f399455368c14066bdcf2875349f6",
         "tests/broker-lifecycle-evidence.test.ts": "a33b551db0ad6cef6254583c4fd7c69bd659a1e222380f6b99ee3bb19494ef4f"
       },
@@ -625,5 +625,5 @@
   "providerRequests": 0,
   "brokerMutations": 0,
   "scope": "REVIEWED_SOURCE_ENGINEERING_NOT_L7_OR_EMPIRICAL",
-  "artifactHash": "ecb848b00c0f532e9f0d4f274809b2654dbc62c924f79b05c937d7131ba127f9"
+  "artifactHash": "9aac2404b1d8272f3bdc102eacf361f7d995c08ce545498cde845c62804191f8"
 }

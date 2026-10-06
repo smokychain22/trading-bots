@@ -104,14 +104,22 @@ test('NAKED_CALL static inventory: order construction and broker submission live
   assert.deepEqual(matching(/\.submitOrder\s*\(/), ['execution/paper-order-coordinator.ts']);
   // POSTing /v2/orders happens only inside the broker adapter.
   assert.deepEqual(matching(/['"`]\/v2\/orders['"`]\s*,\s*\{\s*method:\s*'POST'/), ['execution/broker.ts']);
-  // Literal sell_to_open request bodies are constructed only by the order builder (others only read/describe them).
+  // Literal sell_to_open request bodies are constructed only by the reviewed
+  // single-leg builder and the native, atomic defined-risk builder.
   const stoConstructors = sources.filter((s) => /position_intent\s*:\s*['"]sell_to_open['"]|[A-Z_]+_(?:CSP|CC)(?:_OPEN)?\s*:\s*'sell_to_open'|OPEN_C[SC]P?\s*:\s*'sell_to_open'/.test(s.text)).map((s) => s.file).sort();
-  assert.deepEqual(stoConstructors, ['execution/order-construction.ts']);
+  assert.deepEqual(stoConstructors, ['execution/defined-risk-paper-order.ts', 'execution/order-construction.ts']);
   // The builder itself must keep its action/instrument agreement and coverage checks.
   const builder = sources.find((s) => s.file === 'execution/order-construction.ts')?.text ?? '';
   assert.match(builder, /Covered-call actions require an OCC call contract symbol/);
   assert.match(builder, /CSP actions require an OCC put contract symbol/);
   assert.match(builder, /Covered-call order requires confirmed share coverage/);
+  // The second reviewed constructor cannot degrade to a naked leg. It accepts
+  // only the typed two-put locked plan and emits one native mleg parent.
+  const definedRiskBuilder = sources.find((s) => s.file === 'execution/defined-risk-paper-order.ts')?.text ?? '';
+  assert.match(definedRiskBuilder, /readonly plan: DefinedRiskLockedPlan/);
+  assert.match(definedRiskBuilder, /order_class: 'mleg', legs/);
+  assert.match(definedRiskBuilder, /DEFINED_RISK_STRUCTURE_INVALID/);
+  assert.match(definedRiskBuilder, /DEFINED_RISK_AUTHORITY_INCOMPLETE/);
   // The coordinator keeps its defense-in-depth refusal.
   const coordinatorText = sources.find((s) => s.file === 'execution/paper-order-coordinator.ts')?.text ?? '';
   assert.match(coordinatorText, /SHORT_CALL_REQUIRES_COVERED_CALL_ACTION/);
