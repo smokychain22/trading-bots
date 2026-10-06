@@ -6,6 +6,8 @@ import type { BrokerOrderLegSnapshot, BrokerOrderSnapshot } from '../../src/exec
 export const NOW = '2026-10-06T15:00:00.000Z';
 // provider order ids are globally unique in the schema, so a re-run against the same disposable database must not reuse a literal id
 const RUN = randomUUID().slice(0, 8);
+// a unique 6-letter OCC root per world keeps contract symbols globally unique AND syntactically valid OCC symbols (the coordinator parses them)
+const randomRoot = (): string => Array.from({ length: 6 }, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join('');
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
 
 export interface DefinedRiskWorld {
@@ -19,7 +21,8 @@ export async function seedDefinedRiskWorld(pool: Pool): Promise<DefinedRiskWorld
   const workspaceId = randomUUID(), providerId = randomUUID(), accountId = randomUUID(), botInstanceId = randomUUID();
   const strategyId = randomUUID(), featureId = randomUUID(), riskId = randomUUID(), executionId = randomUUID(), costId = randomUUID();
   await pool.query(`INSERT INTO market.underlying(underlying_id,symbol,asset_type) VALUES($1,$2,'EQUITY')`, [underlyingId, `M${underlyingId.slice(0, 8)}`]);
-  const shortSymbol = `MS${shortContract.replaceAll('-', '').slice(0, 12)}`, longSymbol = `ML${longContract.replaceAll('-', '').slice(0, 12)}`;
+  const root = randomRoot();
+  const shortSymbol = `${root}261016P00650000`, longSymbol = `${root}261016P00645000`;
   await pool.query(`INSERT INTO market.option_contract(option_contract_id,contract_symbol,underlying_id,option_type,strike,expiration_date,multiplier,tradable,status)
     VALUES($1,$2,$5,'PUT',650,'2026-10-16',100,true,'ACTIVE'),($3,$4,$5,'PUT',645,'2026-10-16',100,true,'ACTIVE')`, [shortContract, shortSymbol, longContract, longSymbol, underlyingId]);
   await pool.query(`INSERT INTO iam.workspace(workspace_id,name) VALUES($1,$2)`, [workspaceId, `mleg-${workspaceId}`]);
@@ -55,7 +58,7 @@ export function mlegIntent(world: DefinedRiskWorld, chainId: string, closing: bo
 
 export interface LegFill { readonly filled: number; readonly avg: number | null; readonly status?: string }
 export function brokerParent(intent: PersistedPaperOrderIntent, rawBrokerId: string, shortLeg: LegFill, longLeg: LegFill, status: string, qty = intent.request.qty): BrokerOrderSnapshot {
-  const brokerId = `${rawBrokerId}-${RUN}`;
+  const brokerId = `${rawBrokerId}-${RUN}-${intent.orderIntentId.slice(0, 8)}`;
   const evidence = intent.multiLegEvidence as DurableMultiLegOrderEvidence;
   const legs: BrokerOrderLegSnapshot[] = [shortLeg, longLeg].map((fill, index) => {
     const leg = evidence.legs[index] as DurableMultiLegOrderEvidence['legs'][number];

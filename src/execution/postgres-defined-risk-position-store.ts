@@ -29,6 +29,9 @@ export interface DefinedRiskRefreshResult extends DefinedRiskStateAssessment {
   readonly previousState: DefinedRiskPositionState;
   readonly stockChainId: string | null;
   readonly stockShares: number;
+  /** a close/open order for this spread can still change broker state (includes ambiguous / reconciling orders) */
+  readonly closeOrderWorking: boolean;
+  readonly openOrderWorking: boolean;
 }
 
 /**
@@ -71,12 +74,21 @@ export class PostgresDefinedRiskPositionStore {
     });
   }
 
+  /** the current durable snapshot of one spread */
+  async get(orderIntentId: string): Promise<DefinedRiskPositionSnapshot> { return this.load(this.pool, orderIntentId); }
+
   async load(clientOrPool: PoolClient | Pool, orderIntentId: string): Promise<DefinedRiskPositionSnapshot> {
     const row = (await clientOrPool.query(`SELECT order_intent_id::text, chain_id::text, underlying_id::text, quantity, multiplier, to_char(expiration,'YYYY-MM-DD') AS expiration,
       short_strike::float AS short_strike, long_strike::float AS long_strike, state FROM trade.defined_risk_position WHERE order_intent_id=$1`, [orderIntentId])).rows[0] as Row | undefined;
     if (row === undefined) throw new Error('DEFINED_RISK_POSITION_NOT_REGISTERED');
     return { orderIntentId: String(row.order_intent_id), chainId: String(row.chain_id), underlyingId: String(row.underlying_id), quantity: num(row.quantity), multiplier: num(row.multiplier),
       expiration: String(row.expiration), shortStrike: num(row.short_strike), longStrike: num(row.long_strike), state: row.state as DefinedRiskPositionState };
+  }
+
+  /** an unresolved spread emergency (unhedged short, short stock, contradictory broker truth) must stop NEW entries until broker truth heals it */
+  async hasEmergency(): Promise<boolean> {
+    const rows = await withRuntimePostgresReadRetry(this.pool, (client) => client.query(`SELECT EXISTS(SELECT 1 FROM trade.defined_risk_position WHERE state='DIVERGED_EMERGENCY') AS emergency`));
+    return (rows.value.rows[0] as { emergency: boolean }).emergency === true;
   }
 
   /** every spread that still has, or may have, broker exposure: the set the management scan must cover */
@@ -173,7 +185,8 @@ export class PostgresDefinedRiskPositionStore {
         const created = await this.ensureStockChain(client, position, assessment.netStockContracts, observedAt);
         stockChainId = created.chainId; stockShares = created.shares;
       }
-      return { ...assessment, state: nextState, orderIntentId, chainId: position.chainId, previousState, stockChainId, stockShares };
+      return { ...assessment, state: nextState, orderIntentId, chainId: position.chainId, previousState, stockChainId, stockShares,
+        closeOrderWorking: working('CLOSE_DEFINED_RISK'), openOrderWorking: working('OPEN_DEFINED_RISK') };
     });
   }
 

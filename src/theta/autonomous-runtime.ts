@@ -54,6 +54,9 @@ import type { SchedulerCheckpointRecord } from './persistence-repositories.js';
 import { PostgresExecutionEvidenceStore } from '../execution/postgres-execution-evidence-store.js';
 import { persistConfirmedFillTca } from '../execution/confirmed-fill-tca.js';
 import { reconcileFirstCanaryAcceptance } from '../execution/postgres-first-canary-acceptance.js';
+import { PostgresDefinedRiskPositionStore } from '../execution/postgres-defined-risk-position-store.js';
+import { runDefinedRiskManagementForRuntime } from '../execution/defined-risk-runtime.js';
+import { applyDefinedRiskBrokerFacts } from '../execution/defined-risk-broker-facts.js';
 import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
@@ -430,7 +433,9 @@ export async function runAutonomousRuntimeCycle(
     persisted:persistedExecutionControl,operatorNewEntriesPaused:operatorControl.newEntriesPaused,
     operatorEmergencyExecutionLock:operatorControl.emergencyExecutionLock,
   });
-  const pauseNewOrders=executionControl.pauseNewOrders;
+  // A native spread in an unresolved emergency (unhedged short, short stock, contradictory broker truth) stops NEW entries of every strategy until broker truth heals it.
+  const definedRiskEmergency=await new PostgresDefinedRiskPositionStore(pool).hasEmergency();
+  const pauseNewOrders=executionControl.pauseNewOrders||definedRiskEmergency;
   const masterExecutionEnabled=executionControl.masterEnabled;
   const managementPolicyEvidenceProvider=dependencies.managementPolicyEvidenceProvider
     ??createPaperBootstrapManagementPolicyProvider();
@@ -444,7 +449,7 @@ export async function runAutonomousRuntimeCycle(
     managementPolicyProviderReady: managementPolicyEvidenceProvider !== undefined,
     firstCanarySubmissionAvailable,
   });
-  const newRiskRuntimeEnabled = runtimeExecutionGate === 'ACTIVE';
+  const newRiskRuntimeEnabled = runtimeExecutionGate === 'ACTIVE' && !definedRiskEmergency;
   const bucket = minuteBucket(now);
   const scope=dependencies.scope??'FULL';
   const allowedJobTypes=new Set(jobTypesForScope(scope));
@@ -507,6 +512,17 @@ export async function runAutonomousRuntimeCycle(
       }
       if (jobType === 'POSITION_MANAGEMENT_SCAN') {
         if (reconciliation === null) return degraded('BROKER_RECONCILIATION_REQUIRED', retryAt);
+        // Native spreads (D) are managed by their own typed lifecycle, never as single-leg Wheel chains (chain_kind isolation). Inert when none are open. A spread that needs a
+        // human (emergency, or an unknown/unexecutable required close near expiry) degrades this job even if the Wheel chains below are fine.
+        const definedRiskStore=master.executionAccountId===null?null:new PostgresPaperOrderStore(pool,master.executionAccountId);
+        const definedRisk=master.executionAccountId===null||definedRiskStore===null?[]:await runDefinedRiskManagementForRuntime({pool,alpaca:master.alpaca,
+          coordinator:new PaperOrderCoordinator(master.executionBroker,definedRiskStore,{masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders},windowFence),
+          orders:definedRiskStore,executionAccountId:master.executionAccountId,
+          reconciliation:{snapshotId:reconciliation.snapshotId,marketOpen:reconciliation.marketOpen,dataQuality:reconciliation.dataQuality,observedAt:reconciliation.observedAt},
+          managementSubmissionEnabled:executionControl.managementSubmissionEnabled});
+        const definedRiskEscalation=definedRisk.some((item)=>item.escalate);
+        const withDefinedRisk=(result:JobRunResult):JobRunResult=>definedRiskEscalation&&result.status!=='FAILED'&&result.status!=='QUARANTINED'
+          ?degraded('DEFINED_RISK_ESCALATION_REQUIRED',retryAt):result;
         const managementStore = new PostgresManagementInputStore(pool);
         // Candidate BBO must be observed and persisted before the immutable
         // management input freezes its decision timestamp. The candidate
@@ -518,7 +534,7 @@ export async function runAutonomousRuntimeCycle(
           // SELL_STOCK executable evidence: one bounded Alpaca IEX stock quote read per underlying holding shares.
           (symbol)=>fetchLatestStockQuote(master.alpaca,symbol,'iex'),
         );
-        if (states.length === 0) return skipped('NO_OPEN_THETA_CHAINS');
+        if (states.length === 0) return withDefinedRisk(skipped('NO_OPEN_THETA_CHAINS'));
         // Persist research-only profit-preservation and strategy-switching
         // evidence before the production policy boundary is evaluated. This
         // collector has no conversion path to ManagementPolicyEvidence and
@@ -571,16 +587,19 @@ export async function runAutonomousRuntimeCycle(
             firstChainBlocker??=assembly.blockers[0]??'MANAGEMENT_ACTION_PLAN_BLOCKED';continue;
           }
         }
-        if (firstChainBlocker !== null) return degraded(firstChainBlocker, retryAt);
+        if (firstChainBlocker !== null) return withDefinedRisk(degraded(firstChainBlocker, retryAt));
         if (states.some((state) => state.hardBlockers.length > 0)) {
-          return degraded('MANAGEMENT_HARD_BLOCKERS_PRESENT', retryAt);
+          return withDefinedRisk(degraded('MANAGEMENT_HARD_BLOCKERS_PRESENT', retryAt));
         }
-        return degraded('EV_MODEL_NOT_EMPIRICALLY_READY', retryAt);
+        return withDefinedRisk(degraded('EV_MODEL_NOT_EMPIRICALLY_READY', retryAt));
       }
       if (jobType === 'ASSIGNMENT_EXPIRY_RECONCILIATION') {
         if (reconciliation===null) return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
         const lifecycle=await applyConfirmedTerminalLifecycle(pool,master.connectionId,reconciliation.snapshotId,reconciliation.observedAt);
         const fills=await applyConfirmedFillLifecycle(pool,master.connectionId,reconciliation.observedAt);
+        // Native spreads: broker-confirmed assignment / exercise / expiration activities become exact-contract lifecycle events; shares handed over start ONE Wheel recovery chain.
+        const spreadFacts=await applyDefinedRiskBrokerFacts(pool,{connectionId:master.connectionId,observedAt:reconciliation.observedAt});
+        if(spreadFacts.emergencies>0)return degraded('DEFINED_RISK_EMERGENCY_STATE',retryAt);
         const tca=await persistConfirmedFillTca(pool,master.connectionId,reconciliation.observedAt);
         if(tca.failed>0)return degraded('TCA_EVIDENCE_PERSISTENCE_FAILURE',retryAt);
         if(tca.missing>0)return degraded('TCA_EVIDENCE_MISSING',retryAt);
