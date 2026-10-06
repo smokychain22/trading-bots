@@ -243,7 +243,9 @@ SELECT jsonb_build_object(
       if ($LASTEXITCODE -ne 0) { throw "BACKUP_PERIODIC_COPY_VERIFICATION_FAILED:$bucket" }
     }
   }
-  foreach ($bucket in @(@('daily',7),@('weekly',4),@('monthly',3))) {
+  # Local generations are bounded because the laptop is not long-term storage and no remote backup destination is configured yet (REMOTE_ARCHIVE_BACKEND_REQUIRED).
+  # Weekly/monthly copies are hard-link trees; once their daily is pruned they hold a full physical copy, so their counts are capped too.
+  foreach ($bucket in @(@('daily',3),@('weekly',2),@('monthly',2))) {
     $dir = Join-Path $root $bucket[0]
     $good = @(Get-ChildItem -LiteralPath $dir -Directory | Where-Object { $_.Name -notlike '.staging-*' } | Sort-Object Name -Descending)
     if ($good.Count -le [int]$bucket[1]) { continue }
@@ -253,6 +255,17 @@ SELECT jsonb_build_object(
       Remove-Item -LiteralPath $old.FullName -Recurse -Force
       Log "RETAIN_PRUNE bucket=$($bucket[0]) id=$($old.Name)"
     }
+  }
+  # restore-tests holds restore-verification scratch: failed staging trees, preserved incomplete backups and DR-drill asset copies. None of them is a verified backup,
+  # so only the newest incomplete attempt is kept for forensics and the rest is removed; small JSON restore receipts are kept but capped by age.
+  $restoreTests = Join-Path $root 'restore-tests'
+  $residue = @(Get-ChildItem -LiteralPath $restoreTests -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'incomplete-*' } | Sort-Object LastWriteTime -Descending | Select-Object -Skip 1)
+  $residue += @(Get-ChildItem -LiteralPath $restoreTests -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'failed-staging-*' -or $_.Name -like '*-assets' })
+  $residue += @(Get-ChildItem -LiteralPath $restoreTests -File -Filter '*.json' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) })
+  foreach ($old in $residue) {
+    if (-not $old.FullName.StartsWith(($restoreTests.TrimEnd('\') + '\'), [StringComparison]::OrdinalIgnoreCase)) { throw 'RETENTION_PATH_ESCAPE' }
+    Remove-Item -LiteralPath $old.FullName -Recurse -Force
+    Log "RETAIN_PRUNE bucket=restore-tests id=$($old.Name)"
   }
   $trendPath = Join-Path $root 'logs\database-size-trend.jsonl'
   $capacity = [Environment]::GetEnvironmentVariable('AIVEN_DISK_CAPACITY_BYTES')

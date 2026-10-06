@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { localRetention, pruneLocalDirectory } from './local-retention.mjs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -87,7 +88,9 @@ export async function persistLocalDurableEvidence(
   const pointer = { bundleVersion, bundleHash, datasetHash: identity.datasetHash,
     path: relative(root, destination).replaceAll('\\', '/'), persistedAt: receipt.persistedAt };
   await atomicJson(join(root, 'latest.json'), pointer);
-  return { state: 'PERSISTED', ...pointer };
+  // bounded: this is a recovery mirror of the latest export, never an archive; older bundles are removed (the pinned one never is)
+  const pruned = await pruneLocalDirectory(root, { ...localRetention.evidenceBundles, protect: [pointer.path] });
+  return { state: 'PERSISTED', ...pointer, prunedBundles: pruned.length };
 }
 
 async function main() {

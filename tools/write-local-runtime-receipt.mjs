@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { localRetention, pruneLocalDirectory } from './local-retention.mjs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -159,6 +160,8 @@ export async function writeLocalRuntimeReceipt(input, rootPath = '.theta-local-w
   const pointer = { receiptVersion, receiptHash, previousReceiptHash,
     path: relative(root, destination).replaceAll('\\', '/'), observedAt: sanitized.observedAt };
   await atomicJson(join(root, 'latest.json'), pointer);
+  // bounded: sanitized receipts are a short local recovery mirror (Aiven is the authority); session folders older than the cap are removed
+  await pruneLocalDirectory(root, { ...localRetention.receiptSessions, protect: [sanitized.marketSessionDate] });
   return { state: 'PERSISTED', ...pointer };
 }
 

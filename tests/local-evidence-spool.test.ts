@@ -101,3 +101,27 @@ test('spool returns bounded typed history without treating corrupt rows as evide
     assert.throws(()=>spool.listByPayloadType('bad payload type'),/PAYLOADTYPE_INVALID/);
   }finally{cleanup();}
 });
+
+test('NO UNBOUNDED LOCAL PATH: drained cycles leave the laptop after the retention window; pending cycles never do; the outage spool has a byte cap', async ()=>{
+  const {spool,cleanup}=harness();
+  try{
+    spool.append(input(0)); spool.append(input(1));
+    spool.append({...input(0),decisionCycleId:'cycle-pending'});
+    const durable=new Set<string>();
+    const target:LocalEvidenceBackfillTarget={hasEnvelope:async(id)=>durable.has(id),insertEnvelope:async(envelope:LocalEvidenceEnvelope)=>{
+      if(envelope.decisionCycleId==='cycle-pending')throw new Error('DB_DOWN');durable.add(envelope.envelopeId);}};
+    await assert.rejects(()=>spool.backfill(target,SHA),/DB_DOWN/);
+    // inside the window nothing is deleted, and a cycle with a pending envelope is never deleted
+    assert.equal(spool.pruneDurable(7,new Date('2026-09-25T00:00:00.000Z')),0);
+    const removed=spool.pruneDurable(7,new Date('2099-01-01T00:00:00.000Z'));
+    assert.equal(removed,2,'only the fully durable cycle-1 leaves');
+    assert.equal(spool.pending().length,1);
+    assert.equal(spool.pending()[0]?.decisionCycleId,'cycle-pending');
+    assert.equal(spool.verify().valid,true,'whole-cycle deletion keeps the remaining hash chains intact');
+  }finally{cleanup();}
+  const root=mkdtempSync(join(tmpdir(),'theta-spool-cap-'));
+  const tiny=new LocalEvidenceSpool(join(root,'spool.sqlite'),48*1024);
+  try{
+    assert.throws(()=>{for(let i=0;i<400;i+=1)tiny.append({...input(i),payload:{stage:'Q_READY',filler:'x'.repeat(500)}});},/LOCAL_EVIDENCE_SPOOL_CAP_REACHED/);
+  }finally{tiny.close();rmSync(root,{recursive:true,force:true});}
+});

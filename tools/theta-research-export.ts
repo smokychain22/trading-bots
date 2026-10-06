@@ -1,5 +1,6 @@
 import { copyFile, link, mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { localRetention, pruneLocalDirectory } from './local-retention.mjs';
 import { loadEnvironment } from '../src/config/environment.js';
 import { PostgresDatasetExporter, researchExportSafeFailureCode } from '../src/research/postgres-dataset-export.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
@@ -63,6 +64,8 @@ async function main():Promise<void>{
       await copyFile(source,target);
     }
   }
+  // bounded: exports are regenerable from Aiven; keep only the generation 'latest' points at
+  await pruneLocalDirectory(root,{...localRetention.researchExports,protect:[artifact.datasetHash]});
   process.stdout.write(`${JSON.stringify({state:'EXPORTED',datasetHash:artifact.datasetHash,
     sourceWindow:artifact.sourceWindow,rowCounts:artifact.rowCounts,latest:'research_exports/latest',
     readiness:{pointInTimeDataset:readiness.POINT_IN_TIME_DATASET_READY,shadowCapture:readiness.SHADOW_CAPTURE_READY,

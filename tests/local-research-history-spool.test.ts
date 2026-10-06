@@ -147,3 +147,20 @@ test('cycle reads scope subjects before the bound and reject silent truncation',
     assert.equal(spool.verify().checked,4);
   } finally {cleanup();}
 });
+
+test('NO UNBOUNDED LOCAL PATH: the research spool has a hard byte cap and fails closed for NEW research captures when it is reached', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-research-cap-'));
+  try {
+    const spool = new LocalResearchHistorySpool(join(root, 'research.sqlite'), 64 * 1024);
+    try {
+      assert.throws(() => {
+        for (let index = 0; index < 500; index += 1) {
+          spool.append(researchInput({ batchId: `cap-batch-${index}`, snapshotId: `snapshot-${index}`, rowCount: 1, payload: [{ candidateId: `candidate-${index}`, filler: 'x'.repeat(400) }] }));
+        }
+      }, /LOCAL_RESEARCH_SPOOL_CAP_REACHED/);
+      // an existing batch stays readable and verifiable after the cap is hit (nothing already captured is lost)
+      assert.equal(spool.verifyBatch('cap-batch-0'), true);
+    } finally { spool.close(); }
+    assert.throws(() => new LocalResearchHistorySpool(join(root, 'other.sqlite'), 0), /MAX_BYTES_INVALID/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

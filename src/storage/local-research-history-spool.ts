@@ -6,6 +6,15 @@ import { canonicalJson } from '../research/point-in-time-evidence.js';
 
 export const localResearchHistorySpoolVersion = 'multi-bot-local-research-history-spool-v3' as const;
 
+/** default hard cap for the local research spool (512 MiB) */
+export const defaultLocalResearchSpoolMaxBytes = 512 * 1024 * 1024;
+export function localResearchSpoolMaxBytes(environment: NodeJS.ProcessEnv = process.env): number {
+  const raw = environment.THETA_LOCAL_RESEARCH_SPOOL_MAX_BYTES;
+  if (raw === undefined || raw.trim() === '') return defaultLocalResearchSpoolMaxBytes;
+  if (!/^[1-9][0-9]*$/.test(raw.trim())) throw new Error('LOCAL_RESEARCH_SPOOL_MAX_BYTES_INVALID');
+  return Number(raw.trim());
+}
+
 export type LocalResearchFamily =
   | 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE'
   | 'CONTRACT_PATH_OBSERVATION'
@@ -103,7 +112,16 @@ function rowReceipt(row: BatchMetadataRow): LocalResearchBatchReceipt {
 export class LocalResearchHistorySpool {
   private readonly database: DatabaseSync;
 
-  constructor(path = '.theta-local-worker/research-spool/theta-research.sqlite') {
+  /**
+   * The laptop is temporary computation only: this spool has a HARD byte cap. When it is reached, new research captures fail closed with
+   * LOCAL_RESEARCH_SPOOL_CAP_REACHED (research is noncritical; trading, reconciliation and Aiven state never depend on this file).
+   * THETA_LOCAL_RESEARCH_SPOOL_MAX_BYTES overrides the default; it can only be a positive integer.
+   */
+  private readonly maxBytes: number;
+
+  constructor(path = '.theta-local-worker/research-spool/theta-research.sqlite', maxBytes: number = localResearchSpoolMaxBytes()) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('LOCAL_RESEARCH_SPOOL_MAX_BYTES_INVALID');
+    this.maxBytes = maxBytes;
     const databasePath = resolve(path);
     mkdirSync(dirname(databasePath), { recursive: true });
     this.database = new DatabaseSync(databasePath);
@@ -190,6 +208,8 @@ export class LocalResearchHistorySpool {
         || existing.payload_hash !== payloadHash) throw new Error('LOCAL_RESEARCH_BATCH_IDENTITY_CONFLICT');
       return rowReceipt(existing);
     }
+    const size = this.database.prepare('SELECT page_count*page_size AS bytes FROM pragma_page_count(), pragma_page_size()').get() as { bytes: number };
+    if (Number(size.bytes) + payloadJson.length > this.maxBytes) throw new Error('LOCAL_RESEARCH_SPOOL_CAP_REACHED');
     this.database.prepare(`INSERT INTO research_batch(bot_namespace,batch_id,family,source_sha,decision_cycle_id,snapshot_id,
       observed_at,row_count,payload_json,payload_hash,storage_state,archived_manifest_hash,created_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,'PENDING_PARQUET',NULL,?)`).run(input.botNamespace,input.batchId,input.family,input.sourceSha,

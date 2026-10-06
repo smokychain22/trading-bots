@@ -140,10 +140,19 @@ export function brokerMutationAllowedForEvidence(_envelope: LocalEvidenceEnvelop
   return false;
 }
 
+/** the evidence spool bridges a database outage; it is bounded by size and drained cycles are deleted after this many days */
+export const localEvidenceSpoolMaxBytes = 256 * 1024 * 1024;
+export const localEvidenceSpoolRetentionDays = 7;
+
 export class LocalEvidenceSpool {
   private readonly database: DatabaseSync;
 
-  constructor(path = '.theta-local-worker/evidence-spool/theta-evidence.sqlite') {
+  /** hard byte cap of this OUTAGE spool: it exists only to bridge a database outage, never as a store (see pruneDurable) */
+  private readonly maxBytes: number;
+
+  constructor(path = '.theta-local-worker/evidence-spool/theta-evidence.sqlite', maxBytes: number = localEvidenceSpoolMaxBytes) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('LOCAL_EVIDENCE_SPOOL_MAX_BYTES_INVALID');
+    this.maxBytes = maxBytes;
     const databasePath = resolve(path);
     mkdirSync(dirname(databasePath), { recursive: true });
     this.database = new DatabaseSync(databasePath);
@@ -198,6 +207,8 @@ export class LocalEvidenceSpool {
     assertSafePayload(input.payload);
     assertSafePayload(input.providerObservedAt);
     const payloadJson = canonicalJson(input.payload);
+    const size = this.database.prepare('SELECT page_count*page_size AS bytes FROM pragma_page_count(), pragma_page_size()').get() as { bytes: number };
+    if (Number(size.bytes) + payloadJson.length > this.maxBytes) throw new Error('LOCAL_EVIDENCE_SPOOL_CAP_REACHED');
     const payloadHash = sha256(payloadJson);
     const existing = this.getByCycleSequence(input.decisionCycleId,input.sequenceNumber);
     if (existing !== null) {
@@ -303,7 +314,23 @@ export class LocalEvidenceSpool {
       this.updateState(envelope.envelopeId,'BACKFILLED_POSTGRES',null);
       inserted+=1;
     }
-    return {attempted:pending.length,inserted,alreadyPresent,conflicts,remaining:this.pending(1_000).length};
+    const remaining=this.pending(1_000).length;
+    // drained-then-deleted: once a whole decision cycle is durable in PostgreSQL and older than the retention window it leaves the laptop
+    if(remaining===0)this.pruneDurable();
+    return {attempted:pending.length,inserted,alreadyPresent,conflicts,remaining};
+  }
+
+  /**
+   * Deletes every decision cycle whose envelopes are ALL durable in PostgreSQL (persisted or backfilled) and whose newest envelope is older than the retention
+   * window. Whole cycles only, so the per-cycle hash chain of what remains is intact. Pending, conflicting or corrupt envelopes are never deleted here.
+   */
+  pruneDurable(retentionDays = localEvidenceSpoolRetentionDays, now: Date = new Date()): number {
+    if (!Number.isFinite(retentionDays) || retentionDays < 0) throw new Error('LOCAL_EVIDENCE_RETENTION_INVALID');
+    const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
+    const result = this.database.prepare(`DELETE FROM envelope WHERE decision_cycle_id IN (
+      SELECT decision_cycle_id FROM envelope GROUP BY decision_cycle_id
+      HAVING max(created_at) < ? AND sum(CASE WHEN postgres_state IN ('PERSISTED_POSTGRES','BACKFILLED_POSTGRES') THEN 0 ELSE 1 END) = 0)`).run(cutoff);
+    return Number(result.changes);
   }
 
   circuitState(service='POSTGRES'): { readonly state: DatabaseCircuitState; readonly failureCount: number;
