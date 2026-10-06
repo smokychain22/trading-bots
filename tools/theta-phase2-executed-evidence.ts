@@ -44,6 +44,23 @@ for(const row of register.requirements){
   if(!body.executionSucceeded||result.state!=='PASS'){
     row.CLOSURE_STATE=row.CURRENT_STATUS='EVIDENCE_INVALIDATED';
     row.BLOCKER_CLASS='EXECUTED_REQUIREMENT_NOT_PROVEN';
+    continue;
+  }
+  const disposableReference=row.DISPOSABLE_DB_EVIDENCE as {artifactPath?:string;requirementId?:string}|undefined;
+  if(disposableReference?.artifactPath){
+    let disposableCurrent=false;
+    try{
+      const disposable=JSON.parse(readFileSync(disposableReference.artifactPath,'utf8'));
+      const proof=disposable.runs?.find((run:{binding?:{id?:string}})=>run.binding?.id===(disposableReference.requirementId??row.ID));
+      disposableCurrent=proof?.result?.sourceHashes!==undefined&&Object.entries(proof.result.sourceHashes)
+        .every(([file,hash])=>evidenceSourceHash(readFileSync(file,'utf8'))===hash);
+    }catch{
+      disposableCurrent=false;
+    }
+    if(!disposableCurrent){
+      row.CLOSURE_STATE=row.CURRENT_STATUS='EVIDENCE_INVALIDATED';
+      row.BLOCKER_CLASS='DISPOSABLE_DATABASE_EVIDENCE_STALE';
+    }
   }
 }
 register.PHASE2_CODE_SOLVABLE_COMPLETE=register.requirements.filter((row:{CODE_SOLVABLE:boolean;CLOSURE_STATE:string})=>row.CODE_SOLVABLE&&row.CLOSURE_STATE==='CLOSED_ENGINEERING').length;
