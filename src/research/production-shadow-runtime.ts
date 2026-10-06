@@ -16,6 +16,7 @@ import { PostgresPointInTimeEvidenceStore } from './point-in-time-evidence.js';
 import { ensureMasterShadowContext } from './master-shadow-context.js';
 import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './postgres-shadow-virtual-trader.js';
 import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-assembly.js';
+import { assembleDefinedRiskPaperEvidencePlan, type PersistedDefinedRiskLegIdentity } from '../execution/defined-risk-plan-assembly.js';
 import { isAutonomousMasterPaperAccepted } from '../execution/paper-execution-authorization.js';
 import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
 import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, summarizeSizingZero, type RuntimeBehaviorDiagnostic,
@@ -58,6 +59,19 @@ export function observedDecisionCounts(cycle: ThetaShadowCycleResult | null):
 /** Resolve the exact broker contract identity for the selected frontier row.
  * Frontier candidate ids include the strategy namespace and are not valid
  * keys for the persisted per-contract IV assessment map. */
+/** the selected D candidate's persisted leg identity (trade.candidate.metrics_json.strategyCandidate.legs); anything malformed reads as missing */
+export function persistedDefinedRiskLegs(structureCode:unknown,strategyCandidate:unknown):PersistedDefinedRiskLegIdentity[]|null{
+  if(structureCode!=='PUT_CREDIT_SPREAD'||strategyCandidate===null||typeof strategyCandidate!=='object')return null;
+  const legs=(strategyCandidate as {legs?:unknown}).legs;
+  if(!Array.isArray(legs))return null;
+  const parsed=legs.flatMap((leg)=>{
+    const value=leg!==null&&typeof leg==='object'?leg as Record<string,unknown>:{};
+    return typeof value.legIndex==='number'&&typeof value.contractSymbol==='string'&&typeof value.optionContractId==='string'
+      ?[{legIndex:value.legIndex,occSymbol:value.contractSymbol,optionContractId:value.optionContractId}]:[];
+  });
+  return parsed.length===legs.length?parsed:null;
+}
+
 export function selectedExactOptionSymbol(frontier: CanonicalStrategyFrontier | null): string | null {
   if(frontier?.selectedCandidateId===null||frontier===null)return null;
   return frontier.branches.flatMap((branch)=>branch.candidates)
@@ -504,12 +518,17 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         if(entrySafetyPolicy.corporateAction.action==='BLOCK')actionPlansBlocked.push(`${member.symbol}:CORPORATE_ACTION_POLICY_${entrySafetyPolicy.corporateAction.state}`);
       }
     }
-    const alpacaIvVerification=brokerAuthoritySymbols.has(member.symbol)&&selectedOptionSymbol!==null
+    // every leg that would be sent must carry its own persisted Alpaca IV assessment (a D spread: both legs; a missing one stays UNKNOWN, never assumed clear)
+    const ivDecisionAsOf=String(member.cycle.fusionSnapshot.snapshot.decisionTimeUtc);
+    const ivLegSymbols=selectedFrontierCandidate?.action==='OPEN_DEFINED_RISK'
+      ? selectedFrontierCandidate.legs.map((leg)=>leg.optionSymbol):selectedOptionSymbol===null?[]:[selectedOptionSymbol];
+    const alpacaIvVerification=brokerAuthoritySymbols.has(member.symbol)&&ivLegSymbols.length>0
       &&saved.fusionSnapshotId!==null
-      ? await verifyPersistedAlpacaContractIvAssessment({pool:input.pool,
-        fusionSnapshotId:saved.fusionSnapshotId,optionSymbol:selectedOptionSymbol,
-        underlying:member.symbol,decisionAsOf:String(member.cycle.fusionSnapshot.snapshot.decisionTimeUtc)})
-        .catch(()=>({ready:false,reason:'PERSISTED_ALPACA_IV_READ_FAILED',assessment:null}))
+      ? await Promise.all(ivLegSymbols.map((optionSymbol)=>verifyPersistedAlpacaContractIvAssessment({pool:input.pool,
+        fusionSnapshotId:saved.fusionSnapshotId as string,optionSymbol,
+        underlying:member.symbol,decisionAsOf:ivDecisionAsOf})
+        .catch(()=>({ready:false,reason:'PERSISTED_ALPACA_IV_READ_FAILED',assessment:null}))))
+        .then((legs)=>legs.find((leg)=>!leg.ready)??legs[0]??null)
       : null;
     const runtimePlanEnqueueEnabled=input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS;
     const planEvidenceEnabled=runtimePlanEnqueueEnabled||input.readOnlyPreSubmitPreview===true;
@@ -519,7 +538,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       &&alpacaIvVerification?.ready===true
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
       const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
-        c.option_contract_id::text,oc.underlying_id::text,cv.assumptions_json,
+        c.option_contract_id::text,COALESCE(oc.underlying_id,c.underlying_id)::text AS underlying_id,cv.assumptions_json,
+        c.structure_code,c.metrics_json->'strategyCandidate' AS strategy_candidate,
         d.receipt_json->'aegisAssessmentIdentity' AS aegis_assessment_identity
         FROM trade.decision d
         LEFT JOIN trade.candidate c ON c.candidate_id=d.selected_candidate_id
@@ -545,15 +565,13 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const sessionClose=typeof marketSession.nextClose==='string'&&Number.isFinite(Date.parse(marketSession.nextClose))
         ? new Date(marketSession.nextClose).toISOString():null;
       const decisionExpiresAt=sessionClose!==null&&Date.parse(sessionClose)<Date.parse(boundedExpiry)?sessionClose:boundedExpiry;
-      const assembled=assembleMasterPaperEvidencePlan({frontier:member.cycle.strategyFrontier,
-        executionAccountId,decisionId:saved.decisionId,
+      const commonPlanInput={executionAccountId,decisionId:saved.decisionId,
         persistedCandidateId:row?.candidate_id==null?null:String(row.candidate_id),
-        optionContractId:row?.option_contract_id==null?null:String(row.option_contract_id),
         underlyingId:row?.underlying_id==null?null:String(row.underlying_id),
         accountStatus:typeof account.accountStatus==='string'?account.accountStatus:null,
         optionsApprovedLevel:n(account.optionsApprovedLevel),optionsTradingLevel:n(account.optionsTradingLevel),
         aegisState:selectedFrontierCandidate?.aegisState??null,
-        aegisInputOrigin:member.cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL')?'DERIVED_FROM_REAL':null,
+        aegisInputOrigin:member.cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL')?'DERIVED_FROM_REAL' as const:null,
         aegisAssessmentIdentity,
         entrySafetyPolicy,
         openPositionSymbols:positions.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
@@ -562,7 +580,16 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
           &&typeof (value as Record<string,unknown>).symbol==='string'?[String((value as Record<string,unknown>).symbol)]:[]),
         paperEvidenceRiskCap:input.environment.PAPER_EVIDENCE_RISK_CAP,
         firstCanaryCompleted,
-        modeledRoundTripCostPerContract:n(assumptions.totalModeledCostPerContract),now:planNow,decisionExpiresAt});
+        modeledRoundTripCostPerContract:n(assumptions.totalModeledCostPerContract),now:planNow,decisionExpiresAt};
+      const frontier=member.cycle.strategyFrontier;
+      // the frontier's own selected branch picks the ONE assembler; each binds that branch's governed receipt (never another branch's)
+      const assembled=frontier.primaryAction==='OPEN_DEFINED_RISK'
+        ? assembleDefinedRiskPaperEvidencePlan({...commonPlanInput,frontier,
+          persistedLegs:persistedDefinedRiskLegs(row?.structure_code,row?.strategy_candidate),
+          ...(definedRiskPaperAuthority===undefined?{}:{strategyPaperAuthority:definedRiskPaperAuthority})})
+        : assembleMasterPaperEvidencePlan({...commonPlanInput,frontier,
+          optionContractId:row?.option_contract_id==null?null:String(row.option_contract_id),
+          ...(frontier.selectedBranch==='THETA_HOLD_STRIKE'&&holdStrikePaperAuthority!==undefined?{strategyPaperAuthority:holdStrikePaperAuthority}:{})});
       const storageAdmission=admitNewRiskPlan(storageNewRiskGate.gate,actionPlansReady);
       if(assembled.state==='READY'&&!storageAdmission.admitted){
         actionPlansBlocked.push(`${member.symbol}:${storageAdmission.blocker??'STORAGE_NEW_RISK_BLOCKED'}:${storageNewRiskGate.reason}`);

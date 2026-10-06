@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { decideAdaptiveLimit, type AdaptiveLimitDecision, type AdaptiveLimitPolicy } from './adaptive-limit-policy.js';
 import { qualifyExecutionOptionQuote, type ExecutionOptionQuote } from './execution-option-quote.js';
 import { assembleMasterPaperExecutionCommand } from './master-paper-command-assembly.js';
+import { assembleDefinedRiskExecutionCommand } from './defined-risk-paper-order.js';
 import { MasterPaperExecutionOrchestrator, type MasterPaperExecutionCommand,
   type MasterPaperExecutionResult } from './master-paper-execution-orchestrator.js';
 import { thetaActionOpensNewRisk, type ThetaOrderAction } from './order-construction.js';
@@ -18,6 +19,26 @@ export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v4' 
 
 export type MasterPaperDecisionAuthority = 'NEW_RISK' | 'MANAGEMENT';
 
+export interface DefinedRiskPlanLeg {
+  readonly legIndex: 1 | 2;
+  readonly optionContractId: string;
+  readonly providerContractId: string;
+  readonly occSymbol: string;
+  readonly optionType: 'PUT';
+  readonly positionIntent: 'sell_to_open' | 'buy_to_open';
+  readonly ratioQuantity: 1;
+  readonly expiration: string;
+  readonly strike: number;
+  readonly multiplier: number;
+  readonly deliverableIdentity: string;
+}
+export interface DefinedRiskPlanPackage {
+  readonly packageIdentity: string;
+  /** structural net credit per share at decision time (short bid - long ask); the executable limit is re-derived from fresh quotes at handoff */
+  readonly structuralNetCreditPerShare: number;
+  readonly legs: readonly [DefinedRiskPlanLeg, DefinedRiskPlanLeg];
+}
+
 export interface ApprovedMasterPaperActionPlan {
   readonly contractVersion: typeof masterPaperActionPlanVersion;
   readonly actionPlanId: string;
@@ -31,7 +52,9 @@ export interface ApprovedMasterPaperActionPlan {
   readonly decisionId: string;
   readonly candidateId: string;
   readonly strategyVersion: string;
-  readonly strategyBranch?: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_RECOVERY' | 'THETA_CC';
+  readonly strategyBranch?: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_DEFINED_RISK' | 'THETA_RECOVERY' | 'THETA_CC';
+  /** Present exactly when action is OPEN_DEFINED_RISK: the ONE native two-leg package (short first). Contract identity comes from the persisted candidate. */
+  readonly definedRisk?: DefinedRiskPlanPackage;
   /** Required for a non-Q new-risk branch. This binds the plan to the
    * independently hashed owner, technical, risk, broker and lifecycle gates. */
   readonly strategyPaperAuthorityReceiptHash?: string;
@@ -77,13 +100,19 @@ export interface ApprovedMasterPaperActionPlan {
   readonly entrySafetyPolicy?: PaperEntrySafetyPolicyReceipt;
 }
 
+const definedRiskLegSchema=z.object({legIndex:z.union([z.literal(1),z.literal(2)]),optionContractId:z.string().uuid(),providerContractId:z.string().min(1),
+  occSymbol:z.string().min(1).max(64),optionType:z.literal('PUT'),positionIntent:z.enum(['sell_to_open','buy_to_open']),ratioQuantity:z.literal(1),
+  expiration:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),strike:z.number().positive().finite(),multiplier:z.number().int().positive(),deliverableIdentity:z.string().min(1)}).strict();
+
 export const masterPaperActionPlanSchema = z.object({
   contractVersion:z.literal(masterPaperActionPlanVersion),actionPlanId:z.string().uuid(),executionAccountId:z.string().uuid(),
   decisionAuthority:z.enum(['NEW_RISK','MANAGEMENT']),managementInputSnapshotId:z.string().uuid().nullable(),
   managementActionFrontierId:z.string().uuid().nullable(),actionGroupId:z.string().uuid(),legSequence:z.number().int().positive(),
   dependsOnActionPlanId:z.string().uuid().nullable(),
   decisionId:z.string().uuid(),candidateId:z.string().min(1),strategyVersion:z.string().min(1),
-  strategyBranch:z.enum(['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC']).optional(),chainId:z.string().uuid(),
+  strategyBranch:z.enum(['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_DEFINED_RISK','THETA_RECOVERY','THETA_CC']).optional(),chainId:z.string().uuid(),
+  definedRisk:z.object({packageIdentity:z.string().min(1).max(256),structuralNetCreditPerShare:z.number().positive().finite(),
+    legs:z.tuple([definedRiskLegSchema,definedRiskLegSchema])}).strict().optional(),
   strategyPaperAuthorityReceiptHash:z.string().regex(/^[a-f0-9]{64}$/).optional(),
   optionContractId:z.string().uuid().nullable(),underlyingId:z.string().uuid(),underlying:z.string().min(1).max(16),
   optionType:z.enum(['PUT','CALL']).nullable(),symbol:z.string().min(1).max(64),
@@ -94,7 +123,7 @@ export const masterPaperActionPlanSchema = z.object({
   committedShortCallContracts:z.number().int().nonnegative().optional(),
   brokerConfirmedShares:z.number().int().nonnegative().optional(),accountLedgerShares:z.number().int().nonnegative().optional(),freeSellableShares:z.number().int().nonnegative().optional(),
   firstCanaryCompleted:z.boolean().optional(),
-  action:z.enum(['OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK']),
+  action:z.enum(['OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK','OPEN_DEFINED_RISK']),
   economicBoundary:z.number().positive().finite(),economicsRemainPositive:z.boolean(),expectedAfterCostEv:z.number().finite().nullable(),
   empiricalEconomicsReady:z.boolean(),selectedByCanonicalAuthority:z.boolean(),hardValidityPassed:z.boolean(),
   accountVerified:z.boolean(),optionsCapabilityVerified:z.boolean(),noEquivalentExposureConflict:z.boolean(),
@@ -117,6 +146,20 @@ export const masterPaperActionPlanSchema = z.object({
   if(plan.decisionAuthority==='NEW_RISK'&&plan.strategyBranch==='THETA_HOLD_STRIKE'
     &&plan.strategyPaperAuthorityReceiptHash===undefined)
     context.addIssue({code:'custom',message:'H_NEW_RISK_PLAN_REQUIRES_STRATEGY_AUTHORITY'});
+  // D is one native two-leg package: the action, the branch and the typed package come together or not at all (no naked leg, no representative contract)
+  const definedRiskAction=plan.action==='OPEN_DEFINED_RISK';
+  if(definedRiskAction!==(plan.definedRisk!==undefined)||definedRiskAction!==(plan.strategyBranch==='THETA_DEFINED_RISK'))
+    context.addIssue({code:'custom',message:'DEFINED_RISK_PLAN_IDENTITY_INCOHERENT'});
+  if(definedRiskAction&&(plan.decisionAuthority!=='NEW_RISK'||plan.strategyPaperAuthorityReceiptHash===undefined))
+    context.addIssue({code:'custom',message:'D_NEW_RISK_PLAN_REQUIRES_STRATEGY_AUTHORITY'});
+  if(plan.definedRisk!==undefined){
+    const [shortLeg,longLeg]=plan.definedRisk.legs;
+    if(shortLeg.legIndex!==1||longLeg.legIndex!==2||shortLeg.positionIntent!=='sell_to_open'||longLeg.positionIntent!=='buy_to_open'
+      ||shortLeg.expiration!==longLeg.expiration||shortLeg.multiplier!==longLeg.multiplier||!(shortLeg.strike>longLeg.strike)
+      ||shortLeg.occSymbol===longLeg.occSymbol||plan.optionContractId!==null||plan.symbol!==shortLeg.occSymbol||plan.multiplier!==shortLeg.multiplier
+      ||plan.definedRisk.structuralNetCreditPerShare>=shortLeg.strike-longLeg.strike)
+      context.addIssue({code:'custom',message:'DEFINED_RISK_PLAN_GEOMETRY_INVALID'});
+  }
   if(plan.decisionAuthority==='NEW_RISK'&&(plan.actionGroupId!==plan.actionPlanId||plan.legSequence!==1||plan.dependsOnActionPlanId!==null))
     context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MUST_BE_SINGLE_LEG'});
   if(plan.decisionAuthority==='MANAGEMENT'&&(plan.managementInputSnapshotId===null||plan.managementActionFrontierId===null))
@@ -289,6 +332,8 @@ export async function prepareMasterPaperAction(
       return blocked('BLOCKED',['COVERED_CALL_BROKER_SHARES_INSUFFICIENT']);
   }
 
+  if(plan.action==='OPEN_DEFINED_RISK')return prepareDefinedRiskAction(plan,quoteSource,now,marketOpen,quoteAgePolicy,clock,blocked);
+
   const quote=await quoteSource.getCurrentQuote(plan,now);
   const completedAt=clock();
   if (!Number.isFinite(Date.parse(completedAt)) || Date.parse(completedAt)<Date.parse(now))
@@ -337,6 +382,84 @@ export async function prepareMasterPaperAction(
     now:evaluatedAt,decisionExpiresAt:plan.decisionExpiresAt,attempt:plan.pricingAttempt+1});
   return {actionPlanId:plan.actionPlanId,evaluatedAt,state:'READY_TO_SUBMIT',blockers:[],command,quote,
     quoteAgeMs:qualification.quoteAgeMs,pricing,quoteAgePolicyVersion:quoteAgePolicy.policyVersion};
+}
+
+/**
+ * D handoff: each leg is quoted and qualified on its own exact contract identity (a quote for the short leg never prices
+ * the long leg), the parent credit is priced by the same bounded adaptive policy over the package's natural/far credit,
+ * and the ONE native mleg command is assembled. Any leg failing leaves the whole package unsent.
+ */
+async function prepareDefinedRiskAction(
+  plan: ApprovedMasterPaperActionPlan,
+  quoteSource: ExecutionOptionQuoteSource,
+  now: string,
+  marketOpen: boolean,
+  quoteAgePolicy: PreSubmitQuoteAgePolicy,
+  clock: () => string,
+  blocked: (state: Exclude<MasterPaperActionPreparationResult['state'],'READY_TO_SUBMIT'>, blockers: readonly string[],
+    quote?: ExecutionOptionQuote|null, quoteAgeMs?: number|null, pricing?: AdaptiveLimitDecision|null) => MasterPaperActionPreparationResult,
+): Promise<MasterPaperActionPreparationResult> {
+  const definedRisk=plan.definedRisk;
+  if(definedRisk===undefined||plan.strategyPaperAuthorityReceiptHash===undefined)return blocked('BLOCKED',['DEFINED_RISK_PLAN_IDENTITY_INCOHERENT']);
+  if(plan.aegisState!=='ALLOW_FULL'&&plan.aegisState!=='ALLOW_REDUCED')return blocked('BLOCKED',['AEGIS_NOT_APPROVED']);
+  const legPlans=definedRisk.legs.map((leg)=>({...plan,symbol:leg.occSymbol,optionContractId:leg.optionContractId,optionType:leg.optionType,
+    multiplier:leg.multiplier}) as ApprovedMasterPaperActionPlan);
+  const quotes=await Promise.all(legPlans.map((legPlan)=>quoteSource.getCurrentQuote(legPlan,now)));
+  const completedAt=clock();
+  const shortQuote=quotes[0]??null;
+  if(!Number.isFinite(Date.parse(completedAt))||Date.parse(completedAt)<Date.parse(now))return blocked('BLOCKED',['PRE_SUBMIT_CLOCK_INVALID'],shortQuote);
+  const maximumQuoteAgeMs=preSubmitMaximumQuoteAgeMs({policy:quoteAgePolicy,now:completedAt,decisionExpiresAt:plan.decisionExpiresAt});
+  if(maximumQuoteAgeMs===null)return blocked('BLOCKED',['DECISION_EXPIRED_DURING_QUOTE_REFRESH'],shortQuote);
+  if(quotes.some((quote)=>quote===null))return blocked('NO_QUOTE',['DEFINED_RISK_LEG_QUOTE_NOT_YET_QUALIFIED'],shortQuote);
+  const ages:number[]=[];
+  for(const [index,leg] of definedRisk.legs.entries()){
+    const quote=quotes[index] as ExecutionOptionQuote;
+    const parsed=parseOccOptionSymbol(leg.occSymbol);
+    if(parsed===null||parsed.underlying!==plan.underlying||parsed.optionType!==leg.optionType||parsed.expiration!==leg.expiration
+      ||Math.abs(parsed.strike-leg.strike)>1e-9)return blocked('QUOTE_REJECTED',[`DEFINED_RISK_LEG_${leg.legIndex}_IDENTITY_INVALID`],shortQuote);
+    const qualification=qualifyExecutionOptionQuote({quote,expectedContractId:leg.occSymbol,nowUtc:completedAt,
+      maximumAgeMs:maximumQuoteAgeMs,marketOpen,usage:'MASTER_PAPER',allowZeroBid:false,
+      expectedOptionIdentity:{underlying:parsed.underlying,optionSymbol:leg.occSymbol,expiration:parsed.expiration,
+        strike:parsed.strike,optionType:parsed.optionType,multiplier:leg.multiplier}});
+    if(!qualification.qualified)return blocked('QUOTE_REJECTED',qualification.blockers.map((item)=>`DEFINED_RISK_LEG_${leg.legIndex}:${item}`),
+      shortQuote,qualification.quoteAgeMs);
+    if(quote.provider!=='ALPACA')return blocked('QUOTE_REJECTED',['EXECUTION_QUOTE_PROVIDER_NOT_APPROVED'],shortQuote);
+    ages.push(qualification.quoteAgeMs??0);
+  }
+  const [shortLegQuote,longLegQuote]=quotes as [ExecutionOptionQuote,ExecutionOptionQuote];
+  // both legs must carry the SAME provenance class; a mixed OPRA/indicative package has no honest single label
+  const semantics=new Set([shortLegQuote.sourceSemantics,longLegQuote.sourceSemantics]);
+  const feed=semantics.size===1&&semantics.has('CONSOLIDATED_NBBO')?'OPRA' as const
+    :semantics.size===1&&semantics.has('PAPER_INDICATIVE_REFERENCE')?'INDICATIVE' as const:null;
+  if(feed===null)return blocked('QUOTE_REJECTED',['DEFINED_RISK_LEG_QUOTE_PROVENANCE_MIXED_OR_UNPROVEN'],shortQuote);
+  // the package quote: natural credit (sell short at bid, buy long at ask) to far credit (short ask, long bid)
+  const packageQuote={...shortLegQuote,contractId:definedRisk.packageIdentity,providerContractId:definedRisk.packageIdentity,
+    bid:Number((shortLegQuote.bid-longLegQuote.ask).toFixed(8)),ask:Number((shortLegQuote.ask-longLegQuote.bid).toFixed(8)),
+    bidSize:null,askSize:null} as ExecutionOptionQuote;
+  const pricing=decideAdaptiveLimit({side:'SELL',quote:packageQuote,attempt:plan.pricingAttempt,previousLimit:plan.previousLimit,
+    economicBoundary:plan.economicBoundary,economicsRemainPositive:plan.economicsRemainPositive,policy:plan.pricingPolicy});
+  const quoteAgeMs=Math.max(...ages);
+  if((pricing.action!=='PLACE'&&pricing.action!=='REPLACE')||pricing.limitPrice===null)
+    return blocked('PRICE_REJECTED',[`ADAPTIVE_LIMIT_${pricing.reason}`],shortQuote,quoteAgeMs,pricing);
+  let command:MasterPaperExecutionCommand;
+  try{
+    command=assembleDefinedRiskExecutionCommand({executionAccountId:plan.executionAccountId,decisionId:plan.decisionId,
+      candidateId:plan.candidateId,strategyVersion:plan.strategyVersion,chainId:plan.chainId,underlyingId:plan.underlyingId,
+      legs:definedRisk.legs,packageIdentity:definedRisk.packageIdentity,
+      quotes:[{occSymbol:definedRisk.legs[0].occSymbol,bid:shortLegQuote.bid,ask:shortLegQuote.ask,observedAt:shortLegQuote.providerTimestamp as string},
+        {occSymbol:definedRisk.legs[1].occSymbol,bid:longLegQuote.bid,ask:longLegQuote.ask,observedAt:longLegQuote.providerTimestamp as string}],
+      quoteProvenance:{feed},quantity:plan.quantity,limitCreditPerShare:pricing.limitPrice,economicBoundary:plan.economicBoundary,
+      maximumQuoteAgeSeconds:maximumQuoteAgeMs/1000,accountVerified:plan.accountVerified,optionsCapabilityVerified:plan.optionsCapabilityVerified,
+      aegisState:plan.aegisState,executionTier:plan.executionTier as 'PAPER_EVIDENCE'|'EMPIRICALLY_PROMOTED_PAPER',
+      canonicalQuantity:plan.canonicalQuantity,paperEvidenceQuantity:plan.paperEvidenceQuantity,
+      empiricalEconomicsReady:plan.empiricalEconomicsReady,expectedAfterCostEv:plan.expectedAfterCostEv,
+      now:completedAt,decisionExpiresAt:plan.decisionExpiresAt,attempt:plan.pricingAttempt+1});
+  }catch(error){
+    return blocked('PRICE_REJECTED',[error instanceof Error?error.message:'DEFINED_RISK_COMMAND_INVALID'],shortQuote,quoteAgeMs,pricing);
+  }
+  // the recorded reference quote is the SHORT leg's real quote; the package quote above is derived and never stored as a quote
+  return {actionPlanId:plan.actionPlanId,evaluatedAt:completedAt,state:'READY_TO_SUBMIT',blockers:[],command,quote:shortLegQuote,
+    quoteAgeMs,pricing,quoteAgePolicyVersion:quoteAgePolicy.policyVersion};
 }
 
 /**

@@ -28,13 +28,23 @@ function assertNewRiskAegisLineage(row:Record<string,unknown>,plan:ApprovedMaste
     ||plan.decisionId!==String(row.decision_id)
     ||planIdentity.persistedCandidateId!==String(row.candidate_id)
     ||planIdentity.underlying!==String(row.underlying_symbol)
-    ||planIdentity.optionSymbol!==String(row.contract_symbol)
+    ||planIdentity.optionSymbol!==(plan.action==='OPEN_DEFINED_RISK'?plan.symbol:String(row.contract_symbol))
     // Q is assessed per contract symbol; H/D are assessed as their own canonical candidate (strategy-bound, never Q's verdict for the same contract)
     ||planIdentity.assessmentCandidateId!==((planIdentity.strategyBranch??'THETA_CONVENTIONAL')==='THETA_CONVENTIONAL'?String(row.contract_symbol):String(row.runtime_selected_candidate_ref))
     ||planIdentity.newRiskState!==String(row.aegis_action)
-    ||plan.optionContractId!==String(row.option_contract_id)){
+    ||(plan.action==='OPEN_DEFINED_RISK'?plan.optionContractId!==null||row.option_contract_id!==null:plan.optionContractId!==String(row.option_contract_id))){
     throw new Error('ACTION_PLAN_AEGIS_ASSESSMENT_LINEAGE_INVALID');
   }
+}
+
+/** The plan's two legs must be EXACTLY the persisted candidate's legs (order, symbol, contract id): the package can not be re-pointed after the decision. */
+function assertDefinedRiskLegLineage(strategyCandidate:unknown,plan:ApprovedMasterPaperActionPlan):void{
+  const persisted=strategyCandidate!==null&&typeof strategyCandidate==='object'&&Array.isArray((strategyCandidate as {legs?:unknown}).legs)
+    ?(strategyCandidate as {legs:Array<{legIndex?:unknown;contractSymbol?:unknown;optionContractId?:unknown}>}).legs:null;
+  const legs=plan.definedRisk?.legs;
+  if(persisted===null||legs===undefined||persisted.length!==2
+    ||legs.some((leg,index)=>persisted[index]?.legIndex!==leg.legIndex||persisted[index]?.contractSymbol!==leg.occSymbol
+      ||persisted[index]?.optionContractId!==leg.optionContractId))throw new Error('ACTION_PLAN_DEFINED_RISK_LEG_LINEAGE_INVALID');
 }
 
 /**
@@ -86,16 +96,25 @@ export class PostgresMasterPaperActionPlanStore {
         d.receipt_json->'aegisAssessmentIdentity' AS aegis_assessment_identity,
         fs.fusion_snapshot_id::text,fs.content_hash AS fusion_snapshot_hash,fs.decision_time::text,
         c.option_contract_id::text,oc.contract_symbol,u.symbol AS underlying_symbol,
+        c.structure_code,c.underlying_id::text AS candidate_underlying_id,oc.underlying_id::text AS contract_underlying_id,
+        c.metrics_json->'strategyCandidate' AS strategy_candidate,
         ea.account_kind::text AS account_kind,ea.account_ready
         FROM trade.decision d
         JOIN trade.fusion_snapshot fs ON fs.fusion_snapshot_id=d.fusion_snapshot_id
         JOIN trade.candidate c ON c.candidate_id=d.selected_candidate_id
-        JOIN market.option_contract oc ON oc.option_contract_id=c.option_contract_id
-        JOIN market.underlying u ON u.underlying_id=oc.underlying_id
+        -- a native spread has no representative contract (its legs are in strategy_candidate); a single-leg candidate always has one
+        LEFT JOIN market.option_contract oc ON oc.option_contract_id=c.option_contract_id
+        JOIN market.underlying u ON u.underlying_id=c.underlying_id
         JOIN trade.execution_account ea ON ea.execution_account_id=$2
         WHERE d.decision_id=$1 FOR SHARE OF d,ea`,[plan.decisionId,plan.executionAccountId]);
       const row=evidence.rows[0] as Record<string,unknown>|undefined;
       if(row===undefined)throw new Error('ACTION_PLAN_DECISION_OR_ACCOUNT_NOT_FOUND');
+      if(plan.action==='OPEN_DEFINED_RISK'){
+        if(row.structure_code!=='PUT_CREDIT_SPREAD'||row.option_contract_id!==null)throw new Error('ACTION_PLAN_DEFINED_RISK_CANDIDATE_INVALID');
+        assertDefinedRiskLegLineage(row.strategy_candidate,plan);
+      }else if(row.option_contract_id===null||row.contract_symbol===null||row.contract_underlying_id!==row.candidate_underlying_id){
+        throw new Error('ACTION_PLAN_DECISION_OR_ACCOUNT_NOT_FOUND');
+      }
       if(row.account_kind!=='MASTER_API_KEY'||row.account_ready!==true)throw new Error('ACTION_PLAN_MASTER_ACCOUNT_NOT_READY');
       if(plan.decisionAuthority!=='NEW_RISK')throw new Error('MANAGEMENT_PLAN_REQUIRES_ATOMIC_PUBLISH');
       if(row.decision_kind!=='NEW_RISK'||String(row.candidate_id??'')!==plan.candidateId)
@@ -113,11 +132,31 @@ export class PostgresMasterPaperActionPlanStore {
             conflictingIds:equivalent};
         }
       }
+      if(plan.action==='OPEN_DEFINED_RISK'&&plan.definedRisk!==undefined){
+        // D duplicate guard: no second spread while a plan in its window, or a non-terminal order, already involves either leg contract
+        const contracts=plan.definedRisk.legs.map((leg)=>leg.optionContractId).sort();
+        for(const contract of contracts)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`entry:${plan.executionAccountId}:${contract}`]);
+        const inFlight=await client.query(`SELECT p.action_plan_id::text AS id FROM trade.master_paper_action_plan p
+            WHERE p.execution_account_id=$1 AND p.decision_id<>$2 AND p.status IN ('READY','CLAIMED','WAITING_GATE')
+              AND (p.plan_json->>'decisionExpiresAt')::timestamptz>$4
+              AND EXISTS(SELECT 1 FROM jsonb_array_elements(p.plan_json->'definedRisk'->'legs') leg WHERE leg->>'optionContractId'=ANY($3))
+          UNION
+          SELECT oi.order_intent_id::text FROM trade.order_intent oi JOIN trade.order_intent_leg l ON l.order_intent_id=oi.order_intent_id
+            WHERE oi.execution_account_id=$1 AND oi.decision_id<>$2 AND oi.theta_action='OPEN_DEFINED_RISK'
+              AND oi.status::text NOT IN ('FILLED','CANCELED','REJECTED','EXPIRED') AND l.option_contract_id::text=ANY($3)`,
+        [plan.executionAccountId,plan.decisionId,contracts,createdAt]);
+        if((inFlight.rowCount??0)>0)return {inserted:false,disposition:'EQUIVALENT_ENTRY_IN_FLIGHT' as const,
+          conflictingIds:(inFlight.rows as Array<{id:string}>).map((item)=>item.id).sort()};
+      }
       if(chain!==undefined){
         if(chain.underlyingId!==plan.underlyingId)throw new Error('ACTION_PLAN_CHAIN_UNDERLYING_MISMATCH');
-        await client.query(`INSERT INTO trade.economic_chain(chain_id,bot_instance_id,underlying_id,lifecycle_state,opened_at)
-          VALUES($1,$2,$3,'WAIT',$4) ON CONFLICT(chain_id) DO NOTHING`,
-        [plan.chainId,chain.botInstanceId,chain.underlyingId,createdAt]);
+        // a spread lives on a DEFINED_RISK chain (Wheel loaders filter on chain_kind and can never manage it as a single leg)
+        const chainKind=plan.action==='OPEN_DEFINED_RISK'?'DEFINED_RISK':'WHEEL';
+        await client.query(`INSERT INTO trade.economic_chain(chain_id,bot_instance_id,underlying_id,lifecycle_state,opened_at,chain_kind)
+          VALUES($1,$2,$3,'WAIT',$4,$5) ON CONFLICT(chain_id) DO NOTHING`,
+        [plan.chainId,chain.botInstanceId,chain.underlyingId,createdAt,chainKind]);
+        const stored=await client.query(`SELECT chain_kind FROM trade.economic_chain WHERE chain_id=$1`,[plan.chainId]);
+        if(stored.rows[0]?.chain_kind!==chainKind)throw new Error('ACTION_PLAN_CHAIN_KIND_MISMATCH');
       }
       const inserted=await this.insertPlan(client,plan,contentHash,createdAt);
       if(inserted)await this.event(plan.actionPlanId,'READY',createdAt,null,client);

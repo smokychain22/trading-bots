@@ -5,6 +5,10 @@ import { PostgresThetaCycleStore } from '../../src/theta/postgres-theta-cycle-st
 import { verifyAegisAssessmentIdentity } from '../../src/theta/aegis-assessment-identity.js';
 import { riskFamilySchema } from '../../src/theta/aegis-contract.js';
 import type { ThetaShadowCycleResult } from '../../src/theta/theta-shadow-cycle.js';
+import { createHash, randomUUID } from 'node:crypto';
+import { PostgresMasterPaperActionPlanStore } from '../../src/execution/postgres-master-paper-action-plan-store.js';
+import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from '../../src/execution/master-paper-action-handoff.js';
+import { definedRiskOpenPackageIdentity } from '../../src/execution/defined-risk-paper-order.js';
 import type { CanonicalFrontierCandidate, CanonicalStrategyFrontier } from '../../src/theta/canonical-strategy-frontier.js';
 import { buildCycle, persistenceContext, seedWorld } from '../helpers/theta-cycle-fixture.js';
 
@@ -79,5 +83,75 @@ test('an H or D selection persists its own candidate and a strategy-bound AEGIS 
     const saved = await store.persist(persistenceContext(world), cycle);
     const identity = (await pool.query(`SELECT receipt_json->'aegisAssessmentIdentity' AS identity FROM trade.decision WHERE fusion_snapshot_id=$1`, [saved.fusionSnapshotId])).rows[0]?.identity;
     assert.equal(identity ?? null, null);
+  } finally { await pool.end(); }
+});
+
+// Real PostgreSQL: a persisted D selection becomes exactly one enqueued Paper plan on a DEFINED_RISK chain; the package can not be re-pointed at other
+// contracts, a D plan can not ride an H decision, and a second spread touching either leg contract is held back while the first is in flight.
+test('D plan enqueue binds the persisted two-leg identity, a DEFINED_RISK chain and the in-flight duplicate guard', { skip: !url }, async () => {
+  assert.ok(url && ['127.0.0.1', 'localhost'].includes(new URL(url).hostname), 'Disposable local database only');
+  const pool = new pg.Pool({ connectionString: url, max: 4 });
+  try {
+    const world = await seedWorld(pool, '2026-10-08T14:59:00.000Z');
+    const store = new PostgresThetaCycleStore(pool, {});
+    const accountId = randomUUID();
+    await pool.query(`INSERT INTO trade.execution_account(execution_account_id,account_kind,environment,provider_account_ref_hash,provider_account_ref_masked)
+      VALUES($1,'MASTER_API_KEY','PAPER',$2,'test')`, [accountId, createHash('sha256').update(accountId).digest('hex')]);
+    await pool.query('UPDATE trade.execution_account SET account_ready=true WHERE execution_account_id=$1', [accountId]);
+    const salt = Date.now() % 100_000;
+    const persistD = async (minute: number, branch: 'THETA_DEFINED_RISK' | 'THETA_HOLD_STRIKE' = 'THETA_DEFINED_RISK') => {
+      const built = selectStrategy(buildCycle(6, `2026-10-08T15:${String(minute).padStart(2, '0')}:00.000Z`, { sharedKiB: 30 }, salt), branch, true);
+      const cycle = { ...built.cycle, provenanceDetail: [...built.cycle.provenanceDetail, 'aegisInputs=DERIVED_FROM_REAL'] } as ThetaShadowCycleResult;
+      const saved = await store.persist(persistenceContext(world), cycle);
+      const row = (await pool.query(`SELECT d.decision_id::text, d.selected_candidate_id::text AS candidate_id, c.underlying_id::text,
+          c.metrics_json->'strategyCandidate' AS strategy_candidate, d.receipt_json->'aegisAssessmentIdentity' AS identity
+        FROM trade.decision d JOIN trade.candidate c ON c.candidate_id=d.selected_candidate_id WHERE d.fusion_snapshot_id=$1`, [saved.fusionSnapshotId])).rows[0];
+      assert.ok(row);
+      return { row, cycle };
+    };
+    type PlanLeg = { legIndex: 1 | 2; optionContractId: string; occSymbol: string };
+    const planFor = ({ row, cycle }: Awaited<ReturnType<typeof persistD>>, legOverride?: (legs: PlanLeg[]) => PlanLeg[]): ApprovedMasterPaperActionPlan => {
+      const persisted = (row.strategy_candidate as { legs: Array<{ legIndex: 1 | 2; contractSymbol: string; optionContractId: string }> }).legs;
+      const frontier = cycle.strategyFrontier as CanonicalStrategyFrontier;
+      const candidate = frontier.branches.flatMap((b) => b.candidates).find((c) => c.candidateId === frontier.selectedCandidateId) as CanonicalFrontierCandidate;
+      const legs = persisted.map((leg, index) => ({ legIndex: leg.legIndex, optionContractId: leg.optionContractId, providerContractId: leg.contractSymbol,
+        occSymbol: leg.contractSymbol, optionType: 'PUT', positionIntent: index === 0 ? 'sell_to_open' : 'buy_to_open', ratioQuantity: 1,
+        expiration: candidate.legs[index]?.expiration, strike: candidate.legs[index]?.strike, multiplier: 100, deliverableIdentity: 'STANDARD:SPY:100' }));
+      const finalLegs = legOverride === undefined ? legs : legOverride(legs as PlanLeg[]) as typeof legs;
+      const planId = randomUUID();
+      return { contractVersion: masterPaperActionPlanVersion, actionPlanId: planId, decisionAuthority: 'NEW_RISK', managementInputSnapshotId: null, managementActionFrontierId: null,
+        actionGroupId: planId, legSequence: 1, dependsOnActionPlanId: null, executionAccountId: accountId, decisionId: row.decision_id, candidateId: row.candidate_id,
+        strategyVersion: 'strategy-v1', strategyBranch: 'THETA_DEFINED_RISK', strategyPaperAuthorityReceiptHash: 'c'.repeat(64), chainId: randomUUID(), optionContractId: null,
+        underlyingId: row.underlying_id, underlying: 'SPY', optionType: 'PUT', symbol: finalLegs[0]?.occSymbol, quantity: 1, canonicalQuantity: 1, paperEvidenceQuantity: 1,
+        paperEvidenceRiskCap: 1, paperEvidenceCapReason: 'CANONICAL_QUANTITY_LOWER', executionTier: 'PAPER_EVIDENCE', multiplier: 100, action: 'OPEN_DEFINED_RISK',
+        definedRisk: { packageIdentity: definedRiskOpenPackageIdentity(String(finalLegs[0]?.occSymbol), String(finalLegs[1]?.occSymbol)), structuralNetCreditPerShare: 1, legs: finalLegs },
+        economicBoundary: 0.05, economicsRemainPositive: true, expectedAfterCostEv: null, empiricalEconomicsReady: false, selectedByCanonicalAuthority: true, hardValidityPassed: true,
+        accountVerified: true, optionsCapabilityVerified: true, noEquivalentExposureConflict: true, aegisState: 'ALLOW_FULL', aegisAssessmentIdentity: row.identity,
+        killSwitchActive: false, decisionExpiresAt: '2026-10-08T15:30:00.000Z', pricingPolicy: { waitIntervalMs: 5000, maxAttempts: 3, concessionFractions: [0, 0.5, 1], tickSize: 0.01 },
+        pricingAttempt: 0, previousLimit: null } as unknown as ApprovedMasterPaperActionPlan;
+    };
+    const plans = new PostgresMasterPaperActionPlanStore(pool);
+    const first = await persistD(10);
+    const plan = planFor(first);
+    const chain = { botInstanceId: world.botId, underlyingId: plan.underlyingId };
+    // a re-pointed package (the long leg swapped onto another real contract id) is rejected before anything is written
+    await assert.rejects(plans.enqueueWithDisposition(planFor(first, (legs) => [legs[0] as PlanLeg, { ...(legs[1] as PlanLeg), optionContractId: (legs[0] as PlanLeg).optionContractId }]),
+      '2026-10-08T15:10:01.000Z', chain), /ACTION_PLAN_DEFINED_RISK_LEG_LINEAGE_INVALID/);
+    const enqueued = await plans.enqueueWithDisposition(plan, '2026-10-08T15:10:01.000Z', chain);
+    assert.equal(enqueued.disposition, 'ENQUEUED');
+    assert.equal((await pool.query('SELECT chain_kind FROM trade.economic_chain WHERE chain_id=$1', [plan.chainId])).rows[0]?.chain_kind, 'DEFINED_RISK');
+    assert.equal((await plans.enqueueWithDisposition(plan, '2026-10-08T15:10:02.000Z', chain)).disposition, 'REPLAY', 'idempotent replay');
+    // the next scan re-selects the same spread under a NEW decision while the first plan is still in its window: held back, not a second spread
+    const second = await persistD(11);
+    const duplicate = planFor(second);
+    assert.ok(duplicate.definedRisk?.legs.some((leg) => plan.definedRisk?.legs.some((other) => other.optionContractId === leg.optionContractId)),
+      'fixture shares a leg contract (no vacuous pass)');
+    const held = await plans.enqueueWithDisposition(duplicate, '2026-10-08T15:11:01.000Z', { botInstanceId: world.botId, underlyingId: duplicate.underlyingId });
+    assert.equal(held.disposition, 'EQUIVALENT_ENTRY_IN_FLIGHT');
+    assert.deepEqual(held.conflictingIds, [plan.actionPlanId]);
+    // a D plan can never ride an H decision (a single-leg candidate)
+    const hold = await persistD(12, 'THETA_HOLD_STRIKE');
+    await assert.rejects(plans.enqueueWithDisposition({ ...planFor(first), decisionId: hold.row.decision_id, candidateId: hold.row.candidate_id } as ApprovedMasterPaperActionPlan,
+      '2026-10-08T15:12:01.000Z', chain), /ACTION_PLAN_DEFINED_RISK_CANDIDATE_INVALID/);
   } finally { await pool.end(); }
 });
