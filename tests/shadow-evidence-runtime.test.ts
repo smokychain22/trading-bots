@@ -133,3 +133,33 @@ test('closed or unconfirmed sessions cannot create candidate evidence',()=>{
   assert.equal(shadowSessionDecision(null,true),'SESSION_UNCONFIRMED');
   assert.equal(shadowSessionDecision(true,true),'RUN');
 });
+
+// 2026-10-05 Production: every READY plan for the one broker-authorized symbol (TLT) was created 130-150 s into its request because plan
+// assembly waited for the slowest research symbol; the handoff then ran after the 150 s broker-mutation window and the plan died
+// (MUTATION_FENCE_LOST / DECISION_EXPIRED). No Paper order was ever sent. The tradable symbol must be launched first and handled the moment
+// it is evaluated, without waiting for research breadth, while the scan result stays identical.
+test('a broker-authorized (priority) symbol is launched first and handled as soon as it is evaluated, not after slow research breadth', async () => {
+  const events: string[] = [];
+  const launched: string[] = [];
+  const result = await runCrossSymbolShadowScan(boundary([underlying('AAPL'), underlying('MSFT'), underlying('TLT')]), async (item) => {
+    launched.push(item.symbol);
+    await new Promise((resolve) => setTimeout(resolve, item.symbol === 'TLT' ? 5 : 60));
+    events.push(`evaluated:${item.symbol}`);
+    return cycle(item.symbol);
+  }, () => '2026-09-14T14:30:00Z', { symbols: new Set(['TLT']), handle: async (member) => { events.push(`handled:${member.symbol}`); } });
+  assert.equal(launched[0], 'TLT', 'the tradable symbol is first in the provider queue');
+  assert.deepEqual(events.slice(0, 2), ['evaluated:TLT', 'handled:TLT'], 'handled before any research symbol finishes');
+  assert.equal(events.filter((event) => event.startsWith('handled:')).length, 1, 'only priority symbols are handled early');
+  assert.deepEqual(result.results.map((item) => item.symbol), ['AAPL', 'MSFT', 'TLT'], 'the result keeps its deterministic order');
+  assert.equal(result.completeness, 'COMPLETE');
+});
+
+test('a failed priority evaluation is still handed to the handler (so it is accounted for) and does not change scan semantics', async () => {
+  const handled: string[] = [];
+  const result = await runCrossSymbolShadowScan(boundary([underlying('SPY'), underlying('TLT')]), async (item) => {
+    if (item.symbol === 'TLT') throw new Error('PROVIDER_DOWN');
+    return cycle(item.symbol);
+  }, () => '2026-09-14T14:30:00Z', { symbols: new Set(['TLT']), handle: async (member) => { handled.push(`${member.symbol}:${member.status}`); } });
+  assert.deepEqual(handled, ['TLT:FAILED']);
+  assert.ok(result.missingScope.includes('TLT:SCAN_FAILED'));
+});

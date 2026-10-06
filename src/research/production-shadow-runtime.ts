@@ -11,7 +11,7 @@ import { runThetaShadowCycle, type ThetaShadowCycleResult } from '../theta/theta
 import { PostgresStrategyPaperAuthorityStore } from '../theta/postgres-strategy-paper-authority-store.js';
 import type { PythonBridgeConfig } from '../theta/python-bridge.js';
 import { PostgresThetaCycleStore } from '../theta/postgres-theta-cycle-store.js';
-import { buildObservationSchedule, PostgresShadowEvidenceRuntimeStore, runCrossSymbolShadowScan } from './shadow-evidence-runtime.js';
+import { buildObservationSchedule, PostgresShadowEvidenceRuntimeStore, runCrossSymbolShadowScan, type ShadowSymbolScanResult } from './shadow-evidence-runtime.js';
 import { PostgresPointInTimeEvidenceStore } from './point-in-time-evidence.js';
 import { ensureMasterShadowContext } from './master-shadow-context.js';
 import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './postgres-shadow-virtual-trader.js';
@@ -412,33 +412,6 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   // Do not make an authenticated provider call that can only end in 42P01.
   const optionomicsIvSchemaReady=await input.pool.query(`SELECT to_regclass('risk.aegis_iv_stress_assessment') IS NOT NULL AS ready`)
     .then((result)=>result.rows[0]?.ready===true).catch(()=>false);
-  const scan=await runCrossSymbolShadowScan({universeVersion:'theta-shadow-universe-v1',latticeVersion:'lattice-v1-shadow-once',
-    strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:scanUnderlyings,maxUnderlyings:Math.max(1,scanUnderlyings.length),
-    branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
-      const ivStressRefresh=optionomicsIvSchemaReady
-        ? await refreshScanIvStress({pool:input.pool,optionomics,underlying:underlying.symbol,now:input.now})
-        : {state:'PERSISTENCE_ERROR' as const,assessment:null,reason:'OPTIONOMICS_IV_SCHEMA_065_UNAVAILABLE'};
-      const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
-      const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
-      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,holdStrikePaperAuthority,definedRiskPaperAuthority,
-        routerPortfolioSource:'CURRENT_BROKER_READS',
-        aegisInputsOrigin:'DERIVED_FROM_REAL',
-        aegisIvStressEvidence:ivStressRefresh.assessment,
-        aegisSpreadStressAssessor:({contracts,decisionAsOf})=>assessAegisSpreadStressForContracts({
-          pool:input.pool,contracts,decisionAsOf,
-        }),
-        aegisAlpacaIvStressAssessor:({contracts,decisionAsOf})=>assessAlpacaContractIvStressForContracts({
-          pool:input.pool,contracts,decisionAsOf,
-        }),
-        aegisInputs:{
-        tickerConcentrationPct:null,sectorConcentrationPct:null,correlationClusterExposurePct:null,
-        portfolioCapitalAtRiskPct:null,inventoryCapacityUsedPct:null,assignmentCapacityUsedPct:null,
-        recoveryCapacityUsedPct:null,liquidityAcceptable:null,executionQualityAcceptable:null,providerState:null,
-        stressGapDetected:null,stressIvShockDetected:null,
-        stressIvShockApplicability:'REQUIRED',
-        stressSpreadWideningDetected:null,
-      }});
-    },input.now);
   // Research-only breadth challengers retain their own evidence state, but
   // must not become a blocker for the Paper-authorized champion cohort.
   // Optionomics remains in the immutable research snapshot but cannot grant
@@ -463,8 +436,13 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const entrySafetyBySymbol=new Map<string,RuntimeFirstPaperSymbolEvidence['entrySafetyPolicy']>();
   const readOnlyQuoteSource=input.readOnlyPreSubmitPreview===true?new AlpacaExecutionQuoteSource(input.alpaca,input.now):null;
   const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool,dataPlatform.writeGate);
-  for(const member of scan.results){
-    if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
+  const scanStartedAt=input.now();
+  let priorityFailure:unknown;
+  let priorityChain:Promise<void>=Promise.resolve();
+  const processedSymbols=new Set<string>();
+  const processMember=async(member:ShadowSymbolScanResult):Promise<void>=>{
+    processedSymbols.add(member.symbol);
+    if(member.cycle?.fusionSnapshot===null||member.cycle===null) return;
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
     const selectedFrontierCandidate=member.cycle.strategyFrontier?.branches.flatMap((branch)=>branch.candidates)
@@ -637,18 +615,56 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     }else if(!brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null){
       actionPlansBlocked.push(`${member.symbol}:UNIVERSE_BREADTH_CHALLENGER_NO_BROKER_AUTHORITY`);
     }
-    if(saved.candidateSetId===null) continue;
+    if(saved.candidateSetId===null) return;
     const candidates=await input.pool.query(`SELECT c.candidate_id,oc.contract_symbol FROM trade.candidate c
       JOIN market.option_contract oc ON oc.option_contract_id=c.option_contract_id WHERE c.candidate_set_id=$1`,[saved.candidateSetId]);
     const session=member.cycle.fusionSnapshot.snapshot.marketSession;
     const marketClose=session!==null&&typeof session==='object'&&!Array.isArray(session)&&typeof session.nextClose==='string'
       ? session.nextClose:null;
-    if(marketClose===null) continue;
+    if(marketClose===null) return;
     const observationRows=candidates.rows.flatMap((candidate)=>buildObservationSchedule({
       candidateId:String(candidate.candidate_id),contractSymbol:String(candidate.contract_symbol),
-      decisionTime:member.cycle?.startedAt??scan.startedAt,marketClose,
+      decisionTime:member.cycle?.startedAt??scanStartedAt,marketClose,
     }));
     observationsScheduled+=await evidenceStore.scheduleObservations(observationRows);
+  };
+  const scan=await runCrossSymbolShadowScan({universeVersion:'theta-shadow-universe-v1',latticeVersion:'lattice-v1-shadow-once',
+    strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:scanUnderlyings,maxUnderlyings:Math.max(1,scanUnderlyings.length),
+    branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
+      const ivStressRefresh=optionomicsIvSchemaReady
+        ? await refreshScanIvStress({pool:input.pool,optionomics,underlying:underlying.symbol,now:input.now})
+        : {state:'PERSISTENCE_ERROR' as const,assessment:null,reason:'OPTIONOMICS_IV_SCHEMA_065_UNAVAILABLE'};
+      const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
+      const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
+      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,holdStrikePaperAuthority,definedRiskPaperAuthority,
+        routerPortfolioSource:'CURRENT_BROKER_READS',
+        aegisInputsOrigin:'DERIVED_FROM_REAL',
+        aegisIvStressEvidence:ivStressRefresh.assessment,
+        aegisSpreadStressAssessor:({contracts,decisionAsOf})=>assessAegisSpreadStressForContracts({
+          pool:input.pool,contracts,decisionAsOf,
+        }),
+        aegisAlpacaIvStressAssessor:({contracts,decisionAsOf})=>assessAlpacaContractIvStressForContracts({
+          pool:input.pool,contracts,decisionAsOf,
+        }),
+        aegisInputs:{
+        tickerConcentrationPct:null,sectorConcentrationPct:null,correlationClusterExposurePct:null,
+        portfolioCapitalAtRiskPct:null,inventoryCapacityUsedPct:null,assignmentCapacityUsedPct:null,
+        recoveryCapacityUsedPct:null,liquidityAcceptable:null,executionQualityAcceptable:null,providerState:null,
+        stressGapDetected:null,stressIvShockDetected:null,
+        stressIvShockApplicability:'REQUIRED',
+        stressSpreadWideningDetected:null,
+      }});
+    },input.now,{symbols:brokerAuthoritySymbols,handle:async(member)=>{
+      // Broker-authorized symbols are persisted, planned and handed off the moment they are evaluated: the broker mutation window of this
+      // request (requestMutationWindowMs) must not be spent waiting for research-only breadth (2026-10-05: every READY plan was claimed
+      // after the window closed and died as MUTATION_FENCE_LOST / DECISION_EXPIRED; no order was ever sent).
+      // serialized: plan counting / storage admission / the one-handoff-per-request lane assume one symbol at a time
+      priorityChain=priorityChain.then(async()=>{try{await processMember(member);}catch(error){priorityFailure??=error;}});
+      await priorityChain;
+    }});
+  if(priorityFailure!==undefined)throw priorityFailure;
+  for(const member of scan.results){
+    if(!processedSymbols.has(member.symbol))await processMember(member);
   }
   await evidenceStore.saveScan(scan,persisted);
   const strategyFrontiers=scan.results.flatMap((member)=>member.cycle?.strategyFrontier?[member.cycle.strategyFrontier]:[]);

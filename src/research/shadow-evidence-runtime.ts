@@ -57,10 +57,21 @@ const safeErrorCode = (error: unknown): string => error instanceof Error && /^[A
   ? error.message : 'SHADOW_SYMBOL_SCAN_FAILED';
 
 /** Runs every symbol inside a versioned, bounded opportunity set. */
+/**
+ * Optional early processing of the symbols that can actually trade. Their evaluation is LAUNCHED first (provider rate limiters are
+ * FIFO) and `handle` runs the moment each one completes, concurrently with the rest of the breadth, instead of after the slowest
+ * research symbol. The scan result is identical either way; a throw from `handle` fails that symbol's handling, not its evaluation.
+ */
+export interface ShadowScanPriority {
+  readonly symbols: ReadonlySet<string>;
+  readonly handle: (result: ShadowSymbolScanResult) => Promise<void>;
+}
+
 export async function runCrossSymbolShadowScan(
   boundary: ShadowScanBoundary,
   evaluate: (underlying: UnderlyingCandidateInput) => Promise<ThetaShadowCycleResult>,
   now: () => string = () => new Date().toISOString(),
+  priority?: ShadowScanPriority,
 ): Promise<CrossSymbolShadowScanResult> {
   if (!Number.isInteger(boundary.maxUnderlyings) || boundary.maxUnderlyings <= 0) throw new Error('SHADOW_SCAN_BOUND_INVALID');
   if (boundary.branches.length === 0) throw new Error('SHADOW_SCAN_BRANCH_SET_EMPTY');
@@ -75,14 +86,23 @@ export async function runCrossSymbolShadowScan(
   // so evaluate the already-bounded scope concurrently and retain the stable
   // ordinal order in the returned array. Provider adapters still own their
   // endpoint-specific rate-limit and retry policies.
-  const results = await Promise.all(scope.map(async (underlying, index): Promise<ShadowSymbolScanResult> => {
+  const run = async (underlying: UnderlyingCandidateInput, index: number): Promise<ShadowSymbolScanResult> => {
+    let result: ShadowSymbolScanResult;
     try {
       const cycle = await evaluate(underlying);
-      return { symbol: underlying.symbol, ordinal: index + 1, status: 'COMPLETED', cycle, errorCode: null };
+      result = { symbol: underlying.symbol, ordinal: index + 1, status: 'COMPLETED', cycle, errorCode: null };
     } catch (error) {
-      return { symbol: underlying.symbol, ordinal: index + 1, status: 'FAILED', cycle: null, errorCode: safeErrorCode(error) };
+      result = { symbol: underlying.symbol, ordinal: index + 1, status: 'FAILED', cycle: null, errorCode: safeErrorCode(error) };
     }
-  }));
+    if (priority !== undefined && priority.symbols.has(underlying.symbol)) await priority.handle(result);
+    return result;
+  };
+  // Launch order: tradable (priority) symbols first; the returned array keeps the stable alphabetical ordinal order.
+  const launchOrder = scope.map((underlying, index) => ({ underlying, index }))
+    .sort((a, b) => Number(priority?.symbols.has(b.underlying.symbol) ?? false) - Number(priority?.symbols.has(a.underlying.symbol) ?? false));
+  const launched = new Map<number, Promise<ShadowSymbolScanResult>>();
+  for (const { underlying, index } of launchOrder) launched.set(index, run(underlying, index));
+  const results = await Promise.all(scope.map((_underlying, index) => launched.get(index) as Promise<ShadowSymbolScanResult>));
   for (const result of results) {
     if (result.status === 'FAILED') {
       missingScope.push(`${result.symbol}:SCAN_FAILED`);
