@@ -6,7 +6,10 @@ import {
 } from '../src/execution/paper-execution-authorization.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
 
-const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1]??'.env.local';
+// The emergency lock must lock the database the PRODUCTION worker uses (.theta-local-worker/production.env). There is no default: .env.local may
+// point at a non-Production database, and a lock written there would leave Production executing.
+const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1];
+if(environmentFile===undefined||environmentFile.trim()==='')throw new Error('LOCK_REQUIRES_EXPLICIT_ENVIRONMENT_FILE');
 const confirmation=process.argv.find((value)=>value.startsWith('--confirmation='))?.split('=',2)[1]??'';
 const environment=loadEnvironmentFile(environmentFile);
 if(!environment.AIVEN_DATABASE_URL)throw new Error('AIVEN_DATABASE_URL_NOT_CONFIGURED');

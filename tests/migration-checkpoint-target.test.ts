@@ -23,3 +23,12 @@ test('the governed strategy-authority writer needs an explicit target and suppor
   assert.match(tool, /APPLY_REQUIRES_EXPLICIT_ENVIRONMENT_FILE/);
   assert.match(tool, /=== 'process' \? loadEnvironment\(\)/);
 });
+
+// The emergency lock is the one tool an operator reaches for under stress. It must lock the PRODUCTION worker's database, never .env.local.
+test('the emergency Paper execution lock targets the Production worker environment and has no silent default', () => {
+  const tool = readFileSync(new URL('../tools/lock-all-paper-execution.ts', import.meta.url), 'utf8');
+  assert.match(tool, /LOCK_REQUIRES_EXPLICIT_ENVIRONMENT_FILE/);
+  assert.doesNotMatch(tool, /\?\? ?'\.env\.local'/);
+  const scripts = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { scripts: Record<string, string> }).scripts;
+  assert.match(scripts['paper:lock-all-execution'] ?? '', /--environment-file=\.theta-local-worker\/production\.env/);
+});
