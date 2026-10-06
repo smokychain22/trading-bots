@@ -132,5 +132,7 @@ const outputs: Array<[string, unknown]> = [
   ['docs/operations/THETA_WIRING_GRAPH_20261004.json', wiringGraph],
   ['docs/operations/THETA_VALUE_INTEGRITY_20261004.json', valueIntegrity],
 ];
-for (const [file, value] of outputs) writeFileSync(resolve(root, file), `${JSON.stringify(value, null, 2)}\n`);
+// THETA_INTEGRITY_REGISTER_OUT_DIR lets a test write to a throwaway directory instead of rewriting the tracked docs (a test run must never dirty the worktree)
+const outDir = process.env.THETA_INTEGRITY_REGISTER_OUT_DIR;
+for (const [file, value] of outputs) writeFileSync(outDir === undefined ? resolve(root, file) : resolve(outDir, file.split('/').pop() as string), `${JSON.stringify(value, null, 2)}\n`);
 process.stdout.write(`${JSON.stringify({ state: 'PASS', outputs: outputs.map(([file]) => file), capabilities: capabilities.length, values: values.length })}\n`);
