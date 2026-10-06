@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildDefinedRiskLockedPlan, classifyAlpacaMultiLegSupport,
+  alpacaMultiLegPhase4AdapterContract, buildDefinedRiskLockedPlan, classifyAlpacaMultiLegSupport,
 } from '../src/research/defined-risk-locked-plan.js';
 import type { CanonicalFrontierCandidate } from '../src/theta/canonical-strategy-frontier.js';
 import { masterPaperActionPlanSchema } from '../src/execution/master-paper-action-handoff.js';
@@ -112,4 +112,9 @@ test('Alpaca Level 3 account evidence classifies atomic MLeg support without gra
   assert.equal(classifyAlpacaMultiLegSupport({ optionsTradingLevel: 2, optionsApprovedLevel: 3 }),
     'PROVIDER_LIMITED');
   assert.equal(classifyAlpacaMultiLegSupport({ optionsTradingLevel: null, optionsApprovedLevel: null }), 'UNKNOWN');
+  assert.equal(alpacaMultiLegPhase4AdapterContract.providerCapability, 'SUPPORTED_AT_OPTIONS_LEVEL_3');
+  assert.equal(alpacaMultiLegPhase4AdapterContract.orderRepresentation.orderClass, 'mleg');
+  assert.equal(alpacaMultiLegPhase4AdapterContract.lifecycleRequirements.nakedShortFallback, 'FORBIDDEN');
+  assert.equal(alpacaMultiLegPhase4AdapterContract.executionImplemented, false);
+  assert.equal(alpacaMultiLegPhase4AdapterContract.brokerAuthority, false);
 });

@@ -120,6 +120,7 @@ class AegisInputs:
     stress_spread_widening_detected: Optional[bool]
     stress_iv_shock_applicability: str = "REQUIRED"
     stress_spread_widening_applicability: str = "REQUIRED"
+    risk_structure: str = "CASH_SECURED_PUT"
 
 
 @dataclass(frozen=True)
@@ -143,6 +144,20 @@ def _threshold_assessment(
     if value >= soft_cap:
         return RiskFamilyAssessment(family, RiskState.ALLOW_REDUCED, [ReasonCode(f"{family.value}_EXCEEDED", -1, f"value={value} >= cap {soft_cap}")])
     return RiskFamilyAssessment(family, RiskState.ALLOW_FULL, [ReasonCode(f"{family.value}_OK", 1, f"value={value} within cap {soft_cap}")])
+
+
+def _structure_threshold_assessment(
+    family: RiskFamily, value: Optional[float], soft_cap: float, hard_cap_multiplier: float,
+    risk_structure: str,
+) -> RiskFamilyAssessment:
+    if risk_structure == "DEFINED_RISK_VERTICAL" and family in {
+        RiskFamily.INVENTORY, RiskFamily.ASSIGNMENT, RiskFamily.RECOVERY,
+    }:
+        return RiskFamilyAssessment(family, RiskState.ALLOW_FULL, [ReasonCode(
+            f"{family.value}_NOT_APPLICABLE_DEFINED_RISK_VERTICAL", 0,
+            "This risk family does not apply to a fully defined-risk vertical opened as one bounded structure.",
+        )])
+    return _threshold_assessment(family, value, soft_cap, hard_cap_multiplier)
 
 
 def _per_trade(inputs: AegisInputs) -> RiskFamilyAssessment:
@@ -243,15 +258,17 @@ def assess_aegis(policy: AegisPolicy, inputs: AegisInputs) -> AegisAssessment:
     allowed_applicability = {"REQUIRED", "PAPER_COLD_START_NOT_APPLICABLE"}
     if inputs.stress_iv_shock_applicability not in allowed_applicability or inputs.stress_spread_widening_applicability not in allowed_applicability:
         raise ValueError("stress applicability must be REQUIRED or PAPER_COLD_START_NOT_APPLICABLE")
+    if inputs.risk_structure not in {"CASH_SECURED_PUT", "DEFINED_RISK_VERTICAL", "INVENTORY_LIFECYCLE"}:
+        raise ValueError("risk_structure must identify a supported strategy risk structure")
     families = [
         _per_trade(inputs),
         _threshold_assessment(RiskFamily.UNDERLYING, inputs.ticker_concentration_pct, policy.max_ticker_concentration_pct, policy.hard_cap_multiplier),
         _threshold_assessment(RiskFamily.SECTOR, inputs.sector_concentration_pct, policy.max_sector_concentration_pct, policy.hard_cap_multiplier),
         _threshold_assessment(RiskFamily.CORRELATION, inputs.correlation_cluster_exposure_pct, policy.max_correlation_cluster_pct, policy.hard_cap_multiplier),
         _threshold_assessment(RiskFamily.PORTFOLIO, inputs.portfolio_capital_at_risk_pct, policy.max_portfolio_capital_at_risk_pct, policy.hard_cap_multiplier),
-        _threshold_assessment(RiskFamily.INVENTORY, inputs.inventory_capacity_used_pct, policy.max_inventory_capacity_pct, policy.hard_cap_multiplier),
-        _threshold_assessment(RiskFamily.ASSIGNMENT, inputs.assignment_capacity_used_pct, policy.max_assignment_capacity_pct, policy.hard_cap_multiplier),
-        _threshold_assessment(RiskFamily.RECOVERY, inputs.recovery_capacity_used_pct, policy.max_recovery_capacity_pct, policy.hard_cap_multiplier),
+        _structure_threshold_assessment(RiskFamily.INVENTORY, inputs.inventory_capacity_used_pct, policy.max_inventory_capacity_pct, policy.hard_cap_multiplier, inputs.risk_structure),
+        _structure_threshold_assessment(RiskFamily.ASSIGNMENT, inputs.assignment_capacity_used_pct, policy.max_assignment_capacity_pct, policy.hard_cap_multiplier, inputs.risk_structure),
+        _structure_threshold_assessment(RiskFamily.RECOVERY, inputs.recovery_capacity_used_pct, policy.max_recovery_capacity_pct, policy.hard_cap_multiplier, inputs.risk_structure),
         _liquidity(inputs),
         _execution(inputs),
         _provider(policy, inputs),

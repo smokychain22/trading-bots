@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { invokeAndValidate, type PythonBridgeConfig } from './python-bridge.js';
+import { invokeAndValidate, type PythonBridgeConfig, type ValidatedBridgeResult } from './python-bridge.js';
 import { parseOwnershipEvaluationResponse, type OwnershipEvaluationResponse } from './ownership-contract.js';
 import { parseRegimeSnapshotResponse, type RegimeSnapshotResponse } from './regime-contract.js';
 import { parseStrategyRoutingResponse, eligibleFamilies, type StrategyRoutingResponse } from './strategy-router-contract.js';
@@ -17,6 +17,36 @@ import { classifyObservation, type DataQualityState, type FreshnessPolicy } from
 import { assessPaperBootstrapOwnershipEvidence, type PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 import { buildEntryThesisReceipt, type ThesisClaim } from './entry-thesis-receipt.js';
 import type { StrategyAccountPolicyCompatibility } from './strategy-account-policy-compatibility.js';
+
+export interface CandidateAegisRequest {
+  readonly snapshotId: string;
+  readonly timestamp: string;
+  readonly candidateId: string;
+  readonly policy: Readonly<Record<string, unknown>>;
+  readonly inputs: Readonly<Record<string, unknown>>;
+}
+
+/** One candidate-bound AEGIS entrypoint shared by Q and the H/D shadow
+ * finalists. It binds the strategy candidate identity into both request and
+ * response validation. The caller owns branch authority and failure scope. */
+export function assessCandidateAegis(
+  bridge: PythonBridgeConfig,
+  request: CandidateAegisRequest,
+): Promise<ValidatedBridgeResult<AegisAssessmentResponse>> {
+  const decisionId = `${request.snapshotId}:${request.candidateId}`;
+  return invokeAndValidate(
+    bridge, 'aegis',
+    {
+      contractVersion: 'theta-aegis-runtime-v1', decisionId,
+      snapshotId: request.snapshotId, timestamp: request.timestamp,
+      policy: request.policy, inputs: request.inputs,
+    },
+    (payload) => parseAegisAssessmentResponse(payload, {
+      decisionId, snapshotId: request.snapshotId, timestamp: request.timestamp,
+      policyVersion: typeof request.policy.policyVersion === 'string' ? request.policy.policyVersion : undefined,
+    }),
+  );
+}
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
@@ -834,22 +864,10 @@ export async function runNewRiskOrchestration(
   const survivors = feasibleForFrontier.filter((c) => survivorIds.has(c.candidateId));
   const aegisByCandidateId = new Map<string, AegisAssessmentResponse>();
   for (const candidate of survivors) {
-    const candidateAegis = await invokeAndValidate(
-      bridge, 'aegis',
-      {
-        contractVersion: 'theta-aegis-runtime-v1',
-        decisionId: `${request.snapshotId}:${candidate.candidateId}`,
-        snapshotId: request.snapshotId,
-        timestamp: request.timestamp,
-        policy: request.aegisPolicy,
-        inputs: { ...request.aegisInputs, ...candidate.aegisInputOverrides },
-      },
-      (payload) => parseAegisAssessmentResponse(payload, {
-        decisionId: `${request.snapshotId}:${candidate.candidateId}`, snapshotId: request.snapshotId,
-        timestamp: request.timestamp,
-        policyVersion: typeof request.aegisPolicy.policyVersion === 'string' ? request.aegisPolicy.policyVersion : undefined,
-      }),
-    );
+    const candidateAegis = await assessCandidateAegis(bridge, {
+      snapshotId: request.snapshotId, timestamp: request.timestamp, candidateId: candidate.candidateId,
+      policy: request.aegisPolicy, inputs: { ...request.aegisInputs, ...candidate.aegisInputOverrides },
+    });
     if (!candidateAegis.ok) {
       return systemHoldResult(request, 'AEGIS', candidateAegis.detail, {
         ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,

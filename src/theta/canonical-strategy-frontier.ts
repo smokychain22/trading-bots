@@ -14,6 +14,9 @@ import type { StrategyAccountPolicyCompatibility } from './strategy-account-poli
 import {
   buildDefinedRiskLockedPlan, classifyAlpacaMultiLegSupport, type DefinedRiskLockedPlanResult,
 } from '../research/defined-risk-locked-plan.js';
+import {
+  buildSovereignStrategyAssessment, type SovereignStrategyAssessment,
+} from './sovereign-strategy-assessment.js';
 
 export const canonicalStrategyFrontierVersion = 'theta-canonical-strategy-frontier-v1' as const;
 export const canonicalDecisionAuthorityVersion = 'theta-canonical-decision-authority-v1' as const;
@@ -291,6 +294,10 @@ export interface CanonicalStrategyFrontier {
   /** One bounded D finalist receipt. It is research-only and structurally
    * impossible to submit through the single-leg Master Paper handoff. */
   readonly definedRiskLockedPlan: DefinedRiskLockedPlanResult;
+  /** One sovereign explanation surface. Q remains the only Paper-authorized
+   * entry branch. H/D comparison remains structural, shadow and unable to
+   * replace the selected Q contract or create a broker plan. */
+  readonly sovereignStrategyAssessment: SovereignStrategyAssessment;
   readonly contentHash: string;
 }
 
@@ -571,7 +578,10 @@ function structuralSizing(
   if (reducedMultiplierInput !== null && reducedMultiplierInput !== undefined && reducedMultiplier === null) {
     return result(0, 'SIZING_POLICY_INVALID', ['REDUCED_MULTIPLIER_INVALID']);
   }
-  if (candidateAegisState === null || ['DEFINED_RISK_ONLY', 'HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) {
+  const aegisBlocksAction = candidateAegisState === null
+    || ['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)
+    || (candidateAegisState === 'DEFINED_RISK_ONLY' && action !== 'OPEN_DEFINED_RISK');
+  if (aegisBlocksAction) {
     const exactReasons=input.aegisBindingReasonsByCandidateId?.[candidateId]?.filter((reason)=>reason.trim().length>0)??[];
     // Per-candidate AEGIS assessments exist but not for this candidate: AEGIS was never asked (upstream Q/shortlist
     // did not forward it). That is NOT_REACHED, distinct from AEGIS being asked and returning UNKNOWN. Both keep
@@ -610,10 +620,10 @@ function aegisStateFor(input: CanonicalStrategyFrontierInput, candidateId: strin
     Object.hasOwn(input.aegisNewRiskStateByCandidateId, candidateId)) {
     return input.aegisNewRiskStateByCandidateId[candidateId] ?? null;
   }
-  // Once exact Conventional assessments exist, the representative state is
-  // not evidence that every other chain contract was assessed by AEGIS.
-  if (input.aegisNewRiskStateByCandidateId !== undefined && candidateId.startsWith('THETA_CONVENTIONAL:'))
-    return null;
+  // Once any exact candidate assessments exist, the representative state is
+  // not evidence for an unassessed candidate or another risk structure. This
+  // prevents a Q veto or clearance from silently becoming H or D evidence.
+  if (input.aegisNewRiskStateByCandidateId !== undefined) return null;
   return input.aegisNewRiskState;
 }
 
@@ -786,9 +796,19 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
   input: CanonicalStrategyFrontierInput): CanonicalFrontierCandidate {
   const candidateId = `THETA_DEFINED_RISK:${shortPut.optionSymbol}:${longPut.optionSymbol}`;
   const candidateAegisState = aegisStateFor(input, candidateId);
+  const accountPolicyCompatibility = input.accountPolicyCompatibilityByCandidateId?.[candidateId];
   const shortEvidence = commonEvidence(shortPut, input, candidateId);
   const longEvidence = commonEvidence(longPut, input, candidateId);
   const hardBlockers = [...shortEvidence.hardBlockers, ...longEvidence.hardBlockers];
+  const unknownEvidence = [...shortEvidence.unknownEvidence, ...longEvidence.unknownEvidence];
+  if (accountPolicyCompatibility?.state === 'STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE') {
+    hardBlockers.push(...accountPolicyCompatibility.bindingPolicies.map(
+      (policy) => `${accountPolicyIncompatibilityBlocker}:${policy}`));
+  } else if (accountPolicyCompatibility?.state === 'ACCOUNT_INFEASIBLE_BROKER_CAPACITY') {
+    hardBlockers.push('ACCOUNT_INFEASIBLE_BROKER_CAPACITY');
+  } else if (accountPolicyCompatibility?.state === 'UNKNOWN') {
+    unknownEvidence.push('ACCOUNT_POLICY_COMPATIBILITY_UNKNOWN');
+  }
   const width = shortPut.strike - longPut.strike;
   const netCredit = finite(shortPut.bid) && finite(longPut.ask) ? shortPut.bid - longPut.ask : null;
   if (!(width > 0)) hardBlockers.push('INVALID_SPREAD_WIDTH');
@@ -853,9 +873,10 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
       modeledOpeningCosts: openingCosts,
       expectedAfterCostEv: null,
     },
-    assignmentCapacityQty: null, aegisState: candidateAegisState, hardBlockers: [...new Set(hardBlockers)],
+    assignmentCapacityQty: null, accountPolicyCompatibility, aegisState: candidateAegisState,
+    hardBlockers: [...new Set(hardBlockers)],
     softEvidence: [...new Set([...shortEvidence.softEvidence, ...longEvidence.softEvidence])],
-    unknownEvidence: [...new Set([...shortEvidence.unknownEvidence, ...longEvidence.unknownEvidence])],
+    unknownEvidence: [...new Set(unknownEvidence)],
     structurallyFeasible: hardBlockers.length === 0, riskFeasible: hardBlockers.length === 0,
     sizing: structuralSizing('OPEN_DEFINED_RISK', maxLoss, null, input, candidateId, candidateAegisState),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
@@ -1415,6 +1436,17 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
         optionsTradingLevel: input.optionsTradingLevel ?? null,
       }),
     });
-  const complete = { ...partial, adaptiveShadowDecision, definedRiskLockedPlan };
+  const dBrokerSupport = classifyAlpacaMultiLegSupport({
+    optionsApprovedLevel: input.optionsApprovedLevel ?? null,
+    optionsTradingLevel: input.optionsTradingLevel ?? null,
+  });
+  const sovereignStrategyAssessment = buildSovereignStrategyAssessment({
+    branches, primaryAction: partial.primaryAction, selectedCandidateId: partial.selectedCandidateId,
+    selectedQuantity: partial.selectedQuantity, globalWaitEarned: partial.globalWaitEarned,
+    paperEvaluationCoverageState: partial.paperEvaluationCoverage.state,
+    shadowComparison: adaptiveShadowDecision.shadowComparison,
+    dBrokerSupport,
+  });
+  const complete = { ...partial, adaptiveShadowDecision, definedRiskLockedPlan, sovereignStrategyAssessment };
   return { ...complete, contentHash: canonicalStrategyFrontierContentHash(complete) };
 }

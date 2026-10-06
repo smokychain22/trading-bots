@@ -2,13 +2,50 @@ import { createHash } from 'node:crypto';
 import type { CanonicalFrontierCandidate } from '../theta/canonical-strategy-frontier.js';
 
 export const definedRiskLockedPlanVersion = 'theta-defined-risk-locked-plan-v1' as const;
-export const alpacaMultiLegCapabilityVersion = 'alpaca-options-level-3-mleg-docs-2026-09-25' as const;
+export const alpacaMultiLegCapabilityVersion = 'alpaca-options-level-3-mleg-docs-2026-10-06' as const;
 
 export type MultiLegBrokerSupport =
   | 'ATOMIC_MULTI_LEG_SUPPORTED'
   | 'LEG_BY_LEG_ONLY'
   | 'PROVIDER_LIMITED'
   | 'UNKNOWN';
+
+/** Read-only Phase 4 adapter contract derived from Alpaca's current official
+ * options documentation. This describes the missing implementation surface
+ * without adding a mutation-capable broker path in Phase 3. */
+export const alpacaMultiLegPhase4AdapterContract = Object.freeze({
+  capabilityVersion: alpacaMultiLegCapabilityVersion,
+  providerCapability: 'SUPPORTED_AT_OPTIONS_LEVEL_3',
+  accountEntitlementRule: 'EFFECTIVE_OPTIONS_TRADING_LEVEL_GTE_3',
+  orderRepresentation: {
+    orderClass: 'mleg',
+    parentQuantity: 'POSITIVE_INTEGER',
+    type: ['market', 'limit'],
+    legs: {
+      identity: 'EXACT_OCC_SYMBOL',
+      fields: ['symbol', 'side', 'ratio_qty', 'position_intent'],
+      ratioRule: 'POSITIVE_INTEGER_RATIOS_WITH_GCD_1',
+      structureRule: 'ALL_OPTION_LEGS_ONE_ATOMIC_PARENT_NO_EQUITY_LEG',
+    },
+  },
+  lifecycleRequirements: {
+    submission: 'NOT_IMPLEMENTED_PHASE3',
+    parentAndLegIdentity: 'REQUIRED',
+    partialFillReconciliation: 'REQUIRED_FROM_PARENT_AND_LEG_EXECUTION_REPORTS',
+    cancel: 'REQUIRES_IDEMPOTENT_PARENT_ORDER_CANCEL_AND_READBACK',
+    replace: 'REQUIRES_STATUS_GUARD_AND_PARENT_ORDER_READBACK',
+    assignmentExpiry: 'REQUIRES_BROKER_POSITION_ACTIVITY_AND_EXERCISE_EXPIRY_RECONCILIATION',
+    restartRecovery: 'REQUIRES_PARENT_AND_LEG_STATE_REHYDRATION',
+    nakedShortFallback: 'FORBIDDEN',
+  },
+  officialSources: [
+    'https://docs.alpaca.markets/us/docs/options-trading-overview',
+    'https://docs.alpaca.markets/us/v1.4.2/docs/options-level-3-trading',
+    'https://docs.alpaca.markets/us/docs/fix-messages',
+  ],
+  brokerAuthority: false,
+  executionImplemented: false,
+} as const);
 
 /** Classify read-only account evidence. This never grants broker authority. */
 export function classifyAlpacaMultiLegSupport(input: {

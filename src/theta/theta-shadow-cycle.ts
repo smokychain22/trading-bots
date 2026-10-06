@@ -11,7 +11,7 @@ import { mergeOptionChain, type AlpacaOptionContractListing, type AlpacaOptionSn
 import { computeAverageVolume, computeCurrentDrawdown, computeDownsideSemivariance, computeGapFrequency, computeMaxAdverseGap,
   computeMovingAverageRelative, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
 import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UnderlyingDecision, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
-import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
+import { assessCandidateAegis, runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
 import { assessStrategyAccountPolicyCompatibility } from './strategy-account-policy-compatibility.js';
 import { assembleNoCandidateDecision, assembleRuntimePreconditionHold } from './decision-assembly.js';
 import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from './temporal-consistency.js';
@@ -1821,25 +1821,80 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     thetaQCandidateEvaluation?: NewRiskOrchestrationResult['thetaQCandidateEvaluation'],
     ownershipByCandidateId?: NewRiskOrchestrationResult['ownershipByCandidateId'],
   ): { readonly frontier: CanonicalStrategyFrontier; readonly input: CanonicalStrategyFrontierInput } => {
+    const conventionalAegisByCandidateId = aegisByCandidateId === undefined ? undefined
+      : Object.fromEntries(Object.entries(aegisByCandidateId)
+        .filter(([candidateId]) => !candidateId.startsWith('THETA_HOLD_STRIKE:')
+          && !candidateId.startsWith('THETA_DEFINED_RISK:')));
     const conventionalRisk = conventionalFrontierRiskLookups(candidatesWithCapacity.map((candidate) => ({
       optionSymbol: candidate.contract.optionSymbol, brokerAllowedQty: candidate.brokerAllowedQty,
       riskCapacityQtyCap: candidate.riskCapacityQtyCap,
-    })), aegisByCandidateId);
+    })), conventionalAegisByCandidateId);
+    const shadowAegisEntries = Object.entries(aegisByCandidateId ?? {})
+      .filter(([candidateId]) => candidateId.startsWith('THETA_HOLD_STRIKE:') || candidateId.startsWith('THETA_DEFINED_RISK:'));
+    const exactAegisStateByCandidateId = aegisByCandidateId === undefined ? undefined : {
+      ...conventionalRisk.aegisNewRiskStateByCandidateId,
+      ...Object.fromEntries(shadowAegisEntries.map(([candidateId, assessment]) => [candidateId, assessment.newRiskState])),
+    };
+    const exactAegisReasonsByCandidateId = aegisByCandidateId === undefined ? undefined : {
+      ...conventionalRisk.aegisBindingReasonsByCandidateId,
+      ...Object.fromEntries(shadowAegisEntries.map(([candidateId, assessment]) => [candidateId,
+        assessment.families.flatMap((family) => ['ALLOW_FULL', 'ALLOW_REDUCED'].includes(family.state)
+          ? [] : family.reasons.map((reason) => `${family.family}:${reason.code}`))])),
+    };
     const mergedBySymbol = new Map(mergedContractsForSnapshot.map((entry) => [entry.optionSymbol, entry] as const));
-    const accountPolicyCompatibilityByCandidateId = candidateCapacityPolicy === null || !exposureDerivationTrustworthy
-      ? undefined : Object.fromEntries(mergedContractsForSnapshot.filter((contract) => contract.optionType === 'PUT').map((contract) => {
+    const accountPolicyEntries: Array<readonly [string, ReturnType<typeof assessStrategyAccountPolicyCompatibility>]> = [];
+    const shadowBrokerAllowedQtyByCandidateId: Record<string, number> = {};
+    if (candidateCapacityPolicy !== null && exposureDerivationTrustworthy) {
+      for (const contract of mergedContractsForSnapshot.filter((item) => item.optionType === 'PUT')) {
         const collateral = contract.strike * contract.multiplier;
+        const brokerAllowedQty = wholeContractsAffordable(account?.optionsBuyingPower ?? null, collateral);
         const minimumUnitAegisInputs = deriveCandidateInclusiveAegisInputs(derivedExposure, openOrders, {
           underlying: contract.underlying, securedCollateralPerContract: collateral, quantity: 1,
         }, recoveryInventoryValue);
-        const compatibility = assessStrategyAccountPolicyCompatibility({
+        const conventionalCompatibility = assessStrategyAccountPolicyCompatibility({
           strategy: 'THETA_CONVENTIONAL', riskProfile: 'CASH_SECURED_SHORT_PUT', underlying: contract.underlying,
           marketApplicable: true, minimumCapitalRequired: collateral, securedCollateralRequired: collateral,
-          brokerAllowedQty: wholeContractsAffordable(account?.optionsBuyingPower ?? null, collateral),
+          brokerAllowedQty,
           exposure: derivedExposure, policy: candidateCapacityPolicy, candidateInclusiveAegisInputs: minimumUnitAegisInputs,
         });
-        return [`THETA_CONVENTIONAL:${contract.optionSymbol}`, compatibility] as const;
-      }));
+        accountPolicyEntries.push([`THETA_CONVENTIONAL:${contract.optionSymbol}`, conventionalCompatibility]);
+        if (contract.dte >= 2 && contract.dte <= 5) {
+          const holdStrikeId = `THETA_HOLD_STRIKE:${contract.optionSymbol}`;
+          accountPolicyEntries.push([holdStrikeId, assessStrategyAccountPolicyCompatibility({
+            strategy: 'THETA_HOLD_STRIKE', riskProfile: 'SHORT_DTE_CASH_SECURED_PUT', underlying: contract.underlying,
+            marketApplicable: true, minimumCapitalRequired: collateral, securedCollateralRequired: collateral,
+            brokerAllowedQty, exposure: derivedExposure, policy: candidateCapacityPolicy,
+            candidateInclusiveAegisInputs: minimumUnitAegisInputs,
+          })]);
+          if (brokerAllowedQty !== null) shadowBrokerAllowedQtyByCandidateId[holdStrikeId] = brokerAllowedQty;
+        }
+      }
+      const definedRiskPuts = mergedContractsForSnapshot.filter((contract) => contract.optionType === 'PUT'
+        && contract.dte >= 7 && contract.dte <= 60)
+        .toSorted((a, b) => a.expiration.localeCompare(b.expiration) || a.strike - b.strike
+          || a.optionSymbol.localeCompare(b.optionSymbol));
+      let structures = 0;
+      outer: for (const shortPut of definedRiskPuts) for (const longPut of definedRiskPuts) {
+        if (shortPut.expiration !== longPut.expiration || longPut.strike >= shortPut.strike) continue;
+        if (structures >= 1_000) break outer;
+        structures++;
+        const candidateId = `THETA_DEFINED_RISK:${shortPut.optionSymbol}:${longPut.optionSymbol}`;
+        const netCredit = shortPut.bid !== null && longPut.ask !== null ? shortPut.bid - longPut.ask : null;
+        const width = shortPut.strike - longPut.strike;
+        const maxLoss = netCredit !== null && netCredit > 0 && netCredit < width
+          ? (width - netCredit) * shortPut.multiplier : null;
+        const brokerAllowedQty = maxLoss === null ? null
+          : wholeContractsAffordable(account?.optionsBuyingPower ?? null, maxLoss);
+        accountPolicyEntries.push([candidateId, assessStrategyAccountPolicyCompatibility({
+          strategy: 'THETA_DEFINED_RISK', riskProfile: 'DEFINED_RISK_VERTICAL', underlying: shortPut.underlying,
+          marketApplicable: true, minimumCapitalRequired: maxLoss, definedMaxLoss: maxLoss,
+          brokerAllowedQty, exposure: derivedExposure, policy: candidateCapacityPolicy,
+        })]);
+        if (brokerAllowedQty !== null) shadowBrokerAllowedQtyByCandidateId[candidateId] = brokerAllowedQty;
+      }
+    }
+    const accountPolicyCompatibilityByCandidateId = accountPolicyEntries.length === 0
+      ? undefined : Object.fromEntries(accountPolicyEntries);
     const qEvaluationForFrontier = thetaQCandidateEvaluation === undefined ? undefined
       : completeConventionalFrontierEvaluationCoverage(
         mergedContractsForSnapshot,
@@ -1870,12 +1925,15 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     sizingPolicy: config.sizingPolicy,
     openingCostPolicy: canonicalOpeningCostPolicyFromUnknown(config.costAssumptions),
     maxAdverseGap60d: maxAdverseGap,
-    brokerAllowedQtyByCandidateId: conventionalRisk.brokerAllowedQtyByCandidateId,
+    brokerAllowedQtyByCandidateId: {
+      ...conventionalRisk.brokerAllowedQtyByCandidateId,
+      ...shadowBrokerAllowedQtyByCandidateId,
+    },
     riskCapacityQtyByCandidateId: conventionalRisk.riskCapacityQtyByCandidateId,
     accountPolicyCompatibilityByCandidateId,
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
-    aegisNewRiskStateByCandidateId: conventionalRisk.aegisNewRiskStateByCandidateId,
-    aegisBindingReasonsByCandidateId: conventionalRisk.aegisBindingReasonsByCandidateId,
+    aegisNewRiskStateByCandidateId: exactAegisStateByCandidateId,
+    aegisBindingReasonsByCandidateId: exactAegisReasonsByCandidateId,
     unmanagedBrokerPositionCount: positions.filter((position) => position.assetClass === 'us_option').length,
     unevaluatedUnderlyingCount: Math.max(0, ranked.length - 1),
     // The frontier stores normalized/derived feature state only. Immutable
@@ -2203,13 +2261,80 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   traceShadowStage(underlying, 'ORCHESTRATION_COMPLETE', { elapsedMs: Date.now() - orchestrationStartedAt,
     candidates: runtimeCandidates.length });
 
+  // The canonical frontier performs a discovery pass so H and D finalists
+  // can receive their own candidate-bound AEGIS assessment. This pass has no
+  // broker authority and cannot change Q. The final frontier below is the
+  // only persisted selection authority.
+  const discoveryFrontier = strategyFrontierFor(orchestration.routing, orchestration.aegis,
+    orchestration.aegisByCandidateId, runtimeCandidates, orchestration.thetaQ, orchestration.receipt,
+    orchestration.thetaQCandidateEvaluation, orchestration.ownershipByCandidateId).frontier;
+  const shadowAegisByCandidateId = { ...(orchestration.aegisByCandidateId ?? {}) };
+  const shadowAegisFailures: string[] = [];
+  const boolAggregate = (values: readonly (boolean | null | undefined)[]): boolean | null =>
+    values.some((value) => value === true) ? true
+      : values.length > 0 && values.every((value) => value === false) ? false : null;
+  for (const branchName of ['THETA_HOLD_STRIKE', 'THETA_DEFINED_RISK'] as const) {
+    const branch = discoveryFrontier.branches.find((item) => item.branch === branchName);
+    if (branch?.applicable !== true || branch.bestCandidateId === null) continue;
+    const candidate = branch.candidates.find((item) => item.candidateId === branch.bestCandidateId);
+    if (candidate === undefined || candidate.legs.length === 0) continue;
+    const contracts = candidate.legs.flatMap((candidateLeg) => {
+      const contract = mergedContractsForSnapshot.find((item) => item.optionSymbol === candidateLeg.optionSymbol);
+      return contract === undefined ? [] : [contract];
+    });
+    if (contracts.length !== candidate.legs.length) {
+      shadowAegisFailures.push(`${candidate.candidateId}:CONTRACT_EVIDENCE_MISSING`);
+      continue;
+    }
+    const marketQualities = contracts.map((contract) => deriveCandidateMarketQuality(contract, config.maxAcceptableSpreadPct));
+    const stressInputs = contracts.map((contract) => candidateStressAegisOverrides({
+      spread: aegisSpreadStressEvidence[contract.optionSymbol],
+      alpacaIv: aegisAlpacaIvStressEvidence[contract.optionSymbol],
+      alpacaIvProducerConfigured: config.aegisAlpacaIvStressAssessor !== undefined,
+    }));
+    const compatibility = candidate.accountPolicyCompatibility;
+    const policyValue = (dimension: string): number | null =>
+      compatibility?.policyAssessments.find((item) => item.dimension === dimension)?.valuePct ?? null;
+    const spreadApplicability = stressInputs.every((item) => item.stressSpreadWideningApplicability === 'PAPER_COLD_START_NOT_APPLICABLE')
+      ? 'PAPER_COLD_START_NOT_APPLICABLE' : 'REQUIRED';
+    const ivApplicability = stressInputs.every((item) => item.stressIvShockApplicability === 'PAPER_COLD_START_NOT_APPLICABLE')
+      ? 'PAPER_COLD_START_NOT_APPLICABLE' : 'REQUIRED';
+    const assessment = await assessCandidateAegis(config.bridge, {
+      snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, candidateId: candidate.candidateId,
+      policy: config.aegisPolicy,
+      inputs: {
+        ...effectiveAegisInputs,
+        riskStructure: branchName === 'THETA_DEFINED_RISK' ? 'DEFINED_RISK_VERTICAL' : 'CASH_SECURED_PUT',
+        tickerConcentrationPct: policyValue('TICKER_CONCENTRATION'),
+        sectorConcentrationPct: policyValue('SECTOR_CONCENTRATION'),
+        correlationClusterExposurePct: policyValue('CORRELATION_CLUSTER'),
+        portfolioCapitalAtRiskPct: policyValue('PORTFOLIO_CAPITAL_AT_RISK'),
+        inventoryCapacityUsedPct: policyValue('INVENTORY_CAPACITY'),
+        assignmentCapacityUsedPct: policyValue('ASSIGNMENT_CAPACITY'),
+        recoveryCapacityUsedPct: policyValue('RECOVERY_CAPACITY'),
+        liquidityAcceptable: boolAggregate(marketQualities.map((item) => item.liquidityAcceptable)),
+        executionQualityAcceptable: boolAggregate(marketQualities.map((item) => item.executionQualityAcceptable)),
+        stressSpreadWideningDetected: boolAggregate(stressInputs.map((item) =>
+          item.stressSpreadWideningDetected as boolean | null | undefined)),
+        stressSpreadWideningApplicability: spreadApplicability,
+        stressIvShockDetected: boolAggregate(stressInputs.map((item) =>
+          item.stressIvShockDetected as boolean | null | undefined)),
+        stressIvShockApplicability: ivApplicability,
+      },
+    });
+    if (assessment.ok) shadowAegisByCandidateId[candidate.candidateId] = assessment.data;
+    else shadowAegisFailures.push(`${candidate.candidateId}:${assessment.failureCode}`);
+  }
+  const finalStrategyDecision = strategyDecisionFor(orchestration.routing, orchestration.aegis,
+    shadowAegisByCandidateId, runtimeCandidates, orchestration.thetaQ, orchestration.receipt,
+    orchestration.thetaQCandidateEvaluation, orchestration.ownershipByCandidateId);
+
   return {
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration,
-    ...strategyDecisionFor(orchestration.routing, orchestration.aegis, orchestration.aegisByCandidateId,
-      runtimeCandidates, orchestration.thetaQ, orchestration.receipt, orchestration.thetaQCandidateEvaluation,
-      orchestration.ownershipByCandidateId),
-    provenance, provenanceDetail: detail, blockers,
+    ...finalStrategyDecision,
+    provenance, provenanceDetail: detail,
+    blockers: [...blockers, ...shadowAegisFailures.map((failure) => `SHADOW_AEGIS_FAILED:${failure}`)],
   };
 }

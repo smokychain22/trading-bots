@@ -60,6 +60,27 @@ class AllowFullTests(unittest.TestCase):
         assessment = assess_aegis(_policy(), _clean_inputs())
         self.assertEqual(assessment.new_risk_state, RiskState.ALLOW_FULL)
 
+    def test_defined_risk_vertical_does_not_inherit_csp_assignment_or_inventory_unknowns(self):
+        assessment = assess_aegis(_policy(), _clean_inputs(
+            risk_structure="DEFINED_RISK_VERTICAL",
+            inventory_capacity_used_pct=None,
+            assignment_capacity_used_pct=None,
+            recovery_capacity_used_pct=None,
+        ))
+        self.assertEqual(assessment.new_risk_state, RiskState.ALLOW_FULL)
+        for family in ("INVENTORY", "ASSIGNMENT", "RECOVERY"):
+            result = next(item for item in assessment.families if item.family.value == family)
+            self.assertEqual(result.state, RiskState.ALLOW_FULL)
+            self.assertIn("NOT_APPLICABLE_DEFINED_RISK_VERTICAL", result.reasons[0].code)
+
+    def test_cash_secured_put_still_fails_closed_on_assignment_unknown(self):
+        assessment = assess_aegis(_policy(), _clean_inputs(
+            risk_structure="CASH_SECURED_PUT", assignment_capacity_used_pct=None,
+        ))
+        assignment = next(item for item in assessment.families if item.family.value == "ASSIGNMENT")
+        self.assertEqual(assignment.state, RiskState.HOLD_ONLY)
+        self.assertEqual(assessment.new_risk_state, RiskState.HOLD_ONLY)
+
 
 class HardVetoTests(unittest.TestCase):
     def test_hard_veto_blocks_new_risk(self):

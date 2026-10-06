@@ -100,6 +100,21 @@ class AegisContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate_request(request)
 
+    def test_defined_risk_structure_is_bound_into_not_applicable_family_evidence(self):
+        request = _request()
+        request["inputs"] = _inputs(
+            riskStructure="DEFINED_RISK_VERTICAL",
+            inventoryCapacityUsedPct=None,
+            assignmentCapacityUsedPct=None,
+            recoveryCapacityUsedPct=None,
+        )
+        response = evaluate_request(request)
+        self.assertEqual(response["newRiskState"], "ALLOW_FULL")
+        for family_name in ("INVENTORY", "ASSIGNMENT", "RECOVERY"):
+            family = next(item for item in response["families"] if item["family"] == family_name)
+            self.assertEqual(family["inputEvidence"]["inputs"]["riskStructure"], "DEFINED_RISK_VERTICAL")
+            self.assertIn("NOT_APPLICABLE_DEFINED_RISK_VERTICAL", family["reasons"][0]["code"])
+
 
 if __name__ == "__main__":
     unittest.main()

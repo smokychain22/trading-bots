@@ -106,3 +106,93 @@ test('ITEM 44: no branch is ranked by grossPremium/collateral alone as a single 
   assert.ok(typeof q.paretoRank === 'number' && q.paretoRank >= 1);
   assert.ok(typeof d.paretoRank === 'number' && d.paretoRank >= 1);
 });
+
+test('Q HARD_VETO is candidate-bound and does not become an automatic D veto', () => {
+  const shortPut = contract({ optionSymbol: 'AAPL261016P00190000', strike: 190, bid: 2, ask: 2.1 });
+  const longPut = contract({ optionSymbol: 'AAPL261016P00180000', occSymbol: 'AAPL261016P00180000', strike: 180, bid: 0.6, ask: 0.7 });
+  const dId = 'THETA_DEFINED_RISK:AAPL261016P00190000:AAPL261016P00180000';
+  const frontier = buildCanonicalStrategyFrontier({ ...base, contracts: [shortPut, longPut],
+    routing: routing(['THETA_Q', 'THETA_D']),
+    brokerAllowedQtyByCandidateId: { [dId]: 3 },
+    aegisNewRiskStateByCandidateId: {
+      'THETA_CONVENTIONAL:AAPL261016P00190000': 'HARD_VETO',
+      'THETA_CONVENTIONAL:AAPL261016P00180000': 'HARD_VETO',
+      [dId]: 'ALLOW_FULL',
+    },
+  });
+  const q = frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  const d = frontier.branches.find((branch) => branch.branch === 'THETA_DEFINED_RISK')?.candidates
+    .find((candidate) => candidate.candidateId === dId);
+  assert.ok(q && d);
+  assert.ok(q.candidates.every((candidate) => candidate.aegisState === 'HARD_VETO'));
+  assert.equal(d.aegisState, 'ALLOW_FULL');
+  assert.ok(d.sizing.quantity > 0);
+  assert.equal(d.executionAuthorized, false);
+  assert.equal(frontier.selectedBranch, null, 'research D cannot replace the Paper-authorized Q authority');
+  assert.equal(frontier.sovereignStrategyAssessment.authoritativePaperEligibility.branch, 'THETA_CONVENTIONAL');
+  assert.equal(frontier.sovereignStrategyAssessment.authoritativePaperEligibility.shadowAlternativeCanOverride, false);
+});
+
+test('H receives its own candidate-bound AEGIS state and never inherits the Q assessment', () => {
+  const hContract = contract({
+    optionSymbol: 'AAPL260917P00190000', occSymbol: 'AAPL260917P00190000',
+    strike: 190, bid: 0.3, ask: 0.4, expiration: '2026-09-17',
+  });
+  const hId = 'THETA_HOLD_STRIKE:AAPL260917P00190000';
+  const frontier = buildCanonicalStrategyFrontier({
+    ...base,
+    contracts: [hContract],
+    routing: routing(['THETA_H']),
+    aegisNewRiskStateByCandidateId: {
+      'THETA_CONVENTIONAL:AAPL260917P00190000': 'HARD_VETO',
+      [hId]: 'ALLOW_FULL',
+    },
+  });
+  const h = frontier.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')?.candidates
+    .find((candidate) => candidate.candidateId === hId);
+  assert.ok(h);
+  assert.equal(h.aegisState, 'ALLOW_FULL');
+  assert.equal(h.executionAuthorized, false);
+  assert.equal(frontier.selectedBranch, null);
+});
+
+test('DEFINED_RISK_ONLY blocks Q sizing but permits bounded D shadow sizing without granting broker authority', () => {
+  const shortPut = contract({ optionSymbol: 'AAPL261016P00190000', strike: 190, bid: 2, ask: 2.1 });
+  const longPut = contract({ optionSymbol: 'AAPL261016P00180000', occSymbol: 'AAPL261016P00180000', strike: 180, bid: 0.6, ask: 0.7 });
+  const dId = 'THETA_DEFINED_RISK:AAPL261016P00190000:AAPL261016P00180000';
+  const frontier = buildCanonicalStrategyFrontier({ ...base, contracts: [shortPut, longPut],
+    routing: routing(['THETA_Q', 'THETA_D']), brokerAllowedQtyByCandidateId: { [dId]: 2 },
+    aegisNewRiskStateByCandidateId: {
+      'THETA_CONVENTIONAL:AAPL261016P00190000': 'DEFINED_RISK_ONLY',
+      'THETA_CONVENTIONAL:AAPL261016P00180000': 'DEFINED_RISK_ONLY',
+      [dId]: 'DEFINED_RISK_ONLY',
+    },
+  });
+  const q = frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates ?? [];
+  const d = frontier.branches.find((branch) => branch.branch === 'THETA_DEFINED_RISK')?.candidates
+    .find((candidate) => candidate.candidateId === dId);
+  assert.ok(d);
+  assert.ok(q.every((candidate) => candidate.sizing.quantity === 0));
+  assert.ok(d.sizing.quantity > 0);
+  assert.equal(d.executionAuthorized, false);
+  assert.equal(frontier.definedRiskLockedPlan.plan?.brokerAuthority ?? false, false);
+  assert.equal(frontier.sovereignStrategyAssessment.dPaperAdmission.paperAuthorized, false);
+});
+
+test('an unassessed D candidate remains AEGIS unknown instead of inheriting a permissive Q state', () => {
+  const shortPut = contract({ optionSymbol: 'AAPL261016P00190000', strike: 190, bid: 2, ask: 2.1 });
+  const longPut = contract({ optionSymbol: 'AAPL261016P00180000', occSymbol: 'AAPL261016P00180000', strike: 180, bid: 0.6, ask: 0.7 });
+  const frontier = buildCanonicalStrategyFrontier({ ...base, contracts: [shortPut, longPut],
+    routing: routing(['THETA_Q', 'THETA_D']),
+    aegisNewRiskStateByCandidateId: {
+      'THETA_CONVENTIONAL:AAPL261016P00190000': 'ALLOW_FULL',
+      'THETA_CONVENTIONAL:AAPL261016P00180000': 'ALLOW_FULL',
+    },
+  });
+  const d = frontier.branches.find((branch) => branch.branch === 'THETA_DEFINED_RISK')?.candidates[0];
+  assert.ok(d);
+  assert.equal(d.aegisState, null);
+  assert.ok(d.unknownEvidence.includes('AEGIS_STATE_UNKNOWN'));
+  assert.equal(d.sizing.quantity, 0);
+  assert.equal(d.sizing.bindingConstraint, 'AEGIS_NOT_REACHED_UPSTREAM');
+});

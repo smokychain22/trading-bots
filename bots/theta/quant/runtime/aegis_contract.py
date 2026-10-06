@@ -84,6 +84,7 @@ def _inputs(data: dict[str, Any]) -> AegisInputs:
         stress_spread_widening_detected=_required(data, "stressSpreadWideningDetected"),
         stress_iv_shock_applicability=iv_applicability,
         stress_spread_widening_applicability=spread_applicability,
+        risk_structure=data.get("riskStructure", "CASH_SECURED_PUT"),
     )
 
 
@@ -107,11 +108,14 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
     # Source observation times remain unknown unless the upstream receipt
     # supplies them. No probability or contract capacity is inferred here.
     input_data = {**request["inputs"], "stressIvShockApplicability": inputs.stress_iv_shock_applicability,
-                  "stressSpreadWideningApplicability": inputs.stress_spread_widening_applicability}
+                  "stressSpreadWideningApplicability": inputs.stress_spread_widening_applicability,
+                  "riskStructure": inputs.risk_structure}
 
     def family_evidence(family):
         pair = AEGIS_NUMERIC_FAMILY_FIELDS.get(family)
         names = (pair[0],) if pair else AEGIS_STATE_FAMILY_FIELDS[family]
+        if family in {"INVENTORY", "ASSIGNMENT", "RECOVERY"}:
+            names = (*names, "riskStructure")
         threshold = policy_data[pair[1]] if pair else None
         return {
             "version": "theta-aegis-family-input-evidence-v1", "decisionId": decision_id,

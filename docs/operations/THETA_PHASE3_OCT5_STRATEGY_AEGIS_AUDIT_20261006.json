@@ -1,0 +1,73 @@
+{
+  "version": "theta-phase3-oct5-strategy-aegis-audit-v1",
+  "generatedAt": "2026-10-06T09:36:58.067Z",
+  "sourceArchive": {
+    "path": ".theta-local-worker/research-spool/theta-research.sqlite",
+    "mode": "READ_ONLY",
+    "immutability": "ORIGINAL_ROWS_UNCHANGED"
+  },
+  "historicalReplay": {
+    "TLT": {
+      "batchId": "82f9be86-5c8f-4ec0-8854-3db0bf729fae",
+      "observedAt": "2026-10-05T14:25:42.320Z",
+      "Q": { "candidateGenerated": true, "candidateCount": 213, "capitalFeasible": true, "aegisState": "HOLD_ONLY", "paperAuthorized": true, "canonicalEligible": false, "exclusionReasons": ["LIQUIDITY:SPREAD_WIDENING_UNKNOWN", "SYSTEM:SYSTEM_STRESS_STATE_UNKNOWN"] },
+      "H": { "candidateGenerated": true, "candidateCount": 92, "applicable": false, "shadowEligible": false, "paperAuthorized": false, "canonicalEligible": false, "exclusionReasons": ["THETA_H_CONDITIONS_NOT_MET"] },
+      "D": { "candidateGenerated": true, "candidateCount": 1000, "enumerationTruncated": true, "applicable": false, "shadowEligible": false, "paperAuthorized": false, "canonicalEligible": false, "exclusionReasons": ["GATE_NOT_SATISFIED", "DEFINED_RISK_ENUMERATION_BOUND_REACHED"] }
+    },
+    "XLE": {
+      "batchId": "032316ff-71c6-4a5d-aa9a-2f4c13690fe3",
+      "observedAt": "2026-10-05T14:25:43.437Z",
+      "Q": { "candidateGenerated": true, "candidateCount": 161, "capitalFeasible": true, "aegisState": "HOLD_ONLY", "paperAuthorized": true, "canonicalEligible": false, "exclusionReasons": ["LIQUIDITY:SPREAD_WIDENING_UNKNOWN", "SYSTEM:SYSTEM_STRESS_STATE_UNKNOWN"] },
+      "H": { "candidateGenerated": true, "candidateCount": 72, "applicable": false, "shadowEligible": false, "paperAuthorized": false, "canonicalEligible": false, "exclusionReasons": ["THETA_H_CONDITIONS_NOT_MET"] },
+      "D": { "candidateGenerated": true, "candidateCount": 1000, "enumerationTruncated": true, "applicable": false, "shadowEligible": false, "paperAuthorized": false, "canonicalEligible": false, "exclusionReasons": ["GATE_NOT_SATISFIED", "DEFINED_RISK_ENUMERATION_BOUND_REACHED"] }
+    },
+    "SPY": {
+      "batchId": "b50c9a34-36ef-4ad4-b989-82ab74aab1bc",
+      "observedAt": "2026-10-05T14:25:46.031Z",
+      "Q": { "candidateGenerated": true, "candidateCount": 1086, "capitalFeasible": false, "aegisState": null, "paperAuthorized": true, "canonicalEligible": false, "exclusionReasons": ["STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE", "AEGIS_NOT_REACHED_UPSTREAM"] },
+      "H": { "candidateGenerated": true, "candidateCount": 533, "applicable": false, "shadowEligible": false, "paperAuthorized": false, "canonicalEligible": false, "exclusionReasons": ["THETA_H_CONDITIONS_NOT_MET"] },
+      "D": { "candidateGenerated": true, "candidateCount": 1000, "enumerationTruncated": true, "applicable": false, "shadowEligible": false, "paperAuthorized": false, "canonicalEligible": false, "exclusionReasons": ["GATE_NOT_SATISFIED", "DEFINED_RISK_ENUMERATION_BOUND_REACHED"] }
+    }
+  },
+  "unknownInvestigation": {
+    "spreadWidening": {
+      "historicalClassification": "MISSING_PROVIDER_DATA",
+      "confidence": "BOUNDED_BY_ARCHIVE",
+      "reason": "The preserved frontier records prove that the AEGIS input was null, but do not contain the raw quote-history detector receipt needed to distinguish absent historical rows from an older producer failure.",
+      "currentProducerPath": [
+        "Alpaca option BBO",
+        "normalized bid/ask/provider timestamp/received timestamp/feed",
+        "persisted quote ledger",
+        "PIT cohort baseline",
+        "aegisSpreadStressEvidence[optionSymbol]",
+        "candidateStressAegisOverrides",
+        "candidate-bound Python AEGIS LIQUIDITY and SYSTEM families"
+      ],
+      "currentPolicy": "IMMATURE_COMPLETE_HISTORY_IS_PAPER_COLD_START_NOT_APPLICABLE; TRUNCATED_OR_INVALID_CURRENT_EVIDENCE_REMAINS_REQUIRED_UNKNOWN",
+      "sourceDefectFound": false
+    },
+    "systemStress": {
+      "historicalClassification": "MISSING_PROVIDER_DATA",
+      "confidence": "BOUNDED_BY_ARCHIVE",
+      "reason": "SYSTEM_STRESS_STATE_UNKNOWN was the aggregate consequence of an applicable null spread-widening input. The archive does not support relabeling that null as no stress.",
+      "currentProducerPath": [
+        "candidate gap assessment",
+        "candidate IV-shock assessment",
+        "candidate spread-widening assessment",
+        "explicit applicability states",
+        "candidate-bound Python AEGIS SYSTEM family"
+      ],
+      "sourceDefectFound": false
+    }
+  },
+  "currentClosure": {
+    "qAegisScope": "CANDIDATE_BOUND_CASH_SECURED_PUT",
+    "hAegisScope": "CANDIDATE_BOUND_CASH_SECURED_PUT_SHORT_DTE",
+    "dAegisScope": "CANDIDATE_BOUND_DEFINED_RISK_VERTICAL",
+    "dNotApplicableFamilies": ["INVENTORY", "ASSIGNMENT", "RECOVERY"],
+    "qRiskCannotFlowIntoHOrD": true,
+    "unknownNeverCoercedToFalse": true,
+    "paperAuthority": ["THETA_CONVENTIONAL"],
+    "shadowOnly": ["THETA_HOLD_STRIKE", "THETA_DEFINED_RISK"]
+  }
+}

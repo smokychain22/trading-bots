@@ -445,6 +445,12 @@ itMockedProviderRealCodePath('shadow research window supplies short-DTE contract
     evaluationMode: 'SHADOW_EVIDENCE',
     shadowResearchExpirationDateGte: '2026-09-12',
     shadowResearchExpirationDateLte: '2026-09-29',
+    routerPolicy: {
+      policyVersion: 'router-phase3-independent-shadow-aegis-v1',
+      thetaQMinOwnershipAcceptability: 0.1,
+      thetaHMinOwnershipAcceptability: 0,
+      thetaDGateSatisfied: true,
+    },
   }));
   assert.equal(result.optionContractsComplete, true);
   assert.ok(requestedUrls.some((url) => url.includes('expiration_date_gte=2026-09-12')));
@@ -461,6 +467,14 @@ itMockedProviderRealCodePath('shadow research window supplies short-DTE contract
   JSON.stringify(frontier.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')));
   assert.ok(frontier.branches.some((branch) => branch.branch === 'THETA_DEFINED_RISK'
     && branch.candidates.some((candidate) => candidate.legs.some((leg) => leg.optionSymbol === 'SPY260921P00500000'))));
+  const hBranch = frontier.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE');
+  assert.equal(hBranch?.applicable, false, 'unknown ownership/event evidence must keep H inapplicable');
+  assert.ok(hBranch?.candidates.every((candidate) => candidate.aegisState === null),
+    'an inapplicable H candidate must not borrow Q or D AEGIS evidence');
+  const dBranch = frontier.branches.find((branch) => branch.branch === 'THETA_DEFINED_RISK');
+  assert.equal(dBranch?.applicable, true);
+  assert.ok(dBranch?.candidates.some((candidate) => candidate.aegisState !== null),
+    'an applicable D finalist must receive its own candidate-bound AEGIS assessment');
   assert.ok(frontier.selectedBranch === null || frontier.selectedBranch === 'THETA_CONVENTIONAL');
   assert.equal(frontier.executionAuthorized, false);
 });
