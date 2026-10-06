@@ -61,6 +61,7 @@ import { inspectRuntimeSchemaCompatibility } from './runtime-schema-compatibilit
 import { resolveReleaseIdentity } from './release-identity.js';
 
 let runtimePool: Pool | null = null;
+let executionPool: Pool | null = null;
 
 export interface LocalWorkerIdentity {
   readonly workerId: string;
@@ -578,6 +579,8 @@ application_name: 'theta-corporate-action-capture' });
     return;
   }
   runtimePool ??= createRuntimePostgresPool(environment.DATABASE_URL);
+  // one dedicated connection for execution-critical work so research breadth can never queue a broker-authorized plan or handoff
+  executionPool ??= createRuntimePostgresPool(environment.DATABASE_URL,undefined,{maximumConnections:1,applicationName:'theta-runtime-execution'});
   const localWorkerId = localIdentity.kind === 'VALID' ? localIdentity.identity.workerId : null;
   const workerStore=new PostgresWorkerRuntimeStore(runtimePool);
   if(request.method==='DELETE'){
@@ -885,7 +888,7 @@ application_name: 'theta-corporate-action-capture' });
       vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA,
       localWorkerBuildSha: localIdentity.kind === 'VALID' ? localIdentity.identity.buildSha : null,
     });
-    const report = await runAutonomousRuntimeCycle(environment, runtimePool, new Date(),{scope,
+    const report = await runAutonomousRuntimeCycle(environment, runtimePool, new Date(),{scope,executionPool,
       releaseIdentity:{sourceSha:resolvedReleaseIdentity.sourceSha,workerSha:resolvedReleaseIdentity.workerBuildSha}});
     if(localWorkerId!==null)await workerStore.cycleCompleted(localWorkerId,report,new Date().toISOString());
     if(report.status==='FAILED'||report.status==='QUARANTINED'){

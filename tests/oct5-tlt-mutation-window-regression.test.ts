@@ -69,3 +69,18 @@ test('Production wiring: the evidence scan hands broker-authorized symbols to th
   const { requestMutationWindowMs } = await import('../src/execution/mutation-fence.js');
   assert.equal(requestMutationWindowMs, 150_000, 'the mutation fence was not weakened');
 });
+
+// The runtime pool is two connections shared by ~100 concurrent research symbols. A broker-authorized symbol's evaluation, plan and handoff
+// get their own connection lane so research queries can never queue them (the 2026-10-05 plans waited ~26 s between plan and claim).
+test('Execution connection lane: authorized-symbol DB work and the handoff use a dedicated pool, research uses the shared one', () => {
+  const handler = readFileSync(new URL('../src/theta/autonomous-runtime-handler.ts', import.meta.url), 'utf8');
+  assert.match(handler, /executionPool \?\?= createRuntimePostgresPool\(environment\.DATABASE_URL,undefined,\{maximumConnections:1,applicationName:'theta-runtime-execution'\}\)/);
+  assert.match(handler, /runAutonomousRuntimeCycle\(environment, runtimePool, new Date\(\),\{scope,executionPool,/);
+  const runtime = readFileSync(new URL('../src/theta/autonomous-runtime.ts', import.meta.url), 'utf8');
+  assert.equal((runtime.match(/priorityPool:executionPool,/g) ?? []).length, 2, 'both scan entry points pass the lane');
+  assert.match(runtime, /const planStore=new PostgresMasterPaperActionPlanStore\(executionPool\);/);
+  assert.match(runtime, /new PostgresPaperOrderStore\(executionPool,master\.executionAccountId\)/);
+  const scan = readFileSync(new URL('../src/research/production-shadow-runtime.ts', import.meta.url), 'utf8');
+  assert.match(scan, /const lanePool=\(symbol:string\):Pool=>input\.priorityPool!==undefined&&brokerAuthoritySymbols\.has\(symbol\)\?input\.priorityPool:input\.pool;/);
+  assert.match(scan, /new PostgresMasterPaperActionPlanStore\(memberPool\)\.enqueue/);
+});

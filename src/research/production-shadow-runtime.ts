@@ -299,6 +299,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   readOnlyPreSubmitPreview?:boolean;
   /** Run the existing sovereign handoff as soon as a READY plan is durable. */
   onActionPlanEnqueued?:(actionPlanId:string)=>Promise<void>;
+  /** Dedicated connection lane for broker-authorized symbols (evaluation, persistence, plan): never queued behind research queries. */
+  priorityPool?:Pool;
   // Phase 1 Zero-Unknown Reclosure Pass 3 (item 2): forwarded, never
   // recomputed, into the persistence context so trade.decision.receipt_json
   // carries the exact release identity this cycle actually ran under.
@@ -420,13 +422,19 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   // pressure gate; operational truth never does. The new-risk entry gate below only tightens, and never touches management or closing.
   const dataPlatform=dataPlatformRuntime(input.pool,process.env);
   const storageNewRiskGate=await dataPlatform.newRiskGate();
-  const cycleStore=new PostgresThetaCycleStore(input.pool,{
+  // Execution priority lane: a broker-authorized symbol's DB work runs on its own connection so ~100 concurrent research symbols can not
+  // queue it (the runtime pool is two connections). Same stores, same code; only the connection queue differs.
+  const lanePool=(symbol:string):Pool=>input.priorityPool!==undefined&&brokerAuthoritySymbols.has(symbol)?input.priorityPool:input.pool;
+  const cycleStoreOptions={
     ...cycleStoreDataPlatformOptions(dataPlatform),
     // The immutable canonical frontier retains every candidate in PostgreSQL.
     // Avoid a second high-volume relational copy. The Windows worker exports
     // this frontier to its durable SQLite WAL after the server cycle returns.
     persistRelationalCandidateEvidence:false,
-  }),persisted=new Map<string,{
+  };
+  const cycleStore=new PostgresThetaCycleStore(input.pool,cycleStoreOptions);
+  const priorityCycleStore=input.priorityPool===undefined?cycleStore:new PostgresThetaCycleStore(input.priorityPool,cycleStoreOptions);
+  const persisted=new Map<string,{
     fusionSnapshotId:string|null;candidateSetId:string|null;decisionId:string|null;
   }>();
   let observationsScheduled=0;
@@ -443,7 +451,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const processMember=async(member:ShadowSymbolScanResult):Promise<void>=>{
     processedSymbols.add(member.symbol);
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) return;
-    const saved=await cycleStore.persist(runtimeContext,member.cycle);
+    const memberPool=lanePool(member.symbol);
+    const saved=await (memberPool===input.pool?cycleStore:priorityCycleStore).persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
     const selectedFrontierCandidate=member.cycle.strategyFrontier?.branches.flatMap((branch)=>branch.candidates)
       .find((candidate)=>candidate.candidateId===member.cycle?.strategyFrontier?.selectedCandidateId);
@@ -502,7 +511,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       ? selectedFrontierCandidate.legs.map((leg)=>leg.optionSymbol):selectedOptionSymbol===null?[]:[selectedOptionSymbol];
     const alpacaIvVerification=brokerAuthoritySymbols.has(member.symbol)&&ivLegSymbols.length>0
       &&saved.fusionSnapshotId!==null
-      ? await Promise.all(ivLegSymbols.map((optionSymbol)=>verifyPersistedAlpacaContractIvAssessment({pool:input.pool,
+      ? await Promise.all(ivLegSymbols.map((optionSymbol)=>verifyPersistedAlpacaContractIvAssessment({pool:memberPool,
         fusionSnapshotId:saved.fusionSnapshotId as string,optionSymbol,
         underlying:member.symbol,decisionAsOf:ivDecisionAsOf})
         .catch(()=>({ready:false,reason:'PERSISTED_ALPACA_IV_READ_FAILED',assessment:null}))))
@@ -515,7 +524,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       &&brokerAuthoritySymbols.has(member.symbol)
       &&alpacaIvVerification?.ready===true
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
-      const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
+      const selected=await memberPool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
         c.option_contract_id::text,COALESCE(oc.underlying_id,c.underlying_id)::text AS underlying_id,cv.assumptions_json,
         c.structure_code,c.metrics_json->'strategyCandidate' AS strategy_candidate,
         d.receipt_json->'aegisAssessmentIdentity' AS aegis_assessment_identity
@@ -572,7 +581,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       if(assembled.state==='READY'&&!storageAdmission.admitted){
         actionPlansBlocked.push(`${member.symbol}:${storageAdmission.blocker??'STORAGE_NEW_RISK_BLOCKED'}:${storageNewRiskGate.reason}`);
       }else if(assembled.state==='READY'){
-        if(runtimePlanEnqueueEnabled&&await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
+        if(runtimePlanEnqueueEnabled&&await new PostgresMasterPaperActionPlanStore(memberPool).enqueue(assembled.plan,planNow,
           {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId})){
           actionPlansReady++;
           // The 45-second plan window starts at durable enqueue. Execute the
@@ -632,19 +641,19 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:scanUnderlyings,maxUnderlyings:Math.max(1,scanUnderlyings.length),
     branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
       const ivStressRefresh=optionomicsIvSchemaReady
-        ? await refreshScanIvStress({pool:input.pool,optionomics,underlying:underlying.symbol,now:input.now})
+        ? await refreshScanIvStress({pool:lanePool(underlying.symbol),optionomics,underlying:underlying.symbol,now:input.now})
         : {state:'PERSISTENCE_ERROR' as const,assessment:null,reason:'OPTIONOMICS_IV_SCHEMA_065_UNAVAILABLE'};
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
-      const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
+      const recoveryHistory=await loadRecoveryHistory(lanePool(underlying.symbol),underlying.symbol,input.now());
       return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,holdStrikePaperAuthority,definedRiskPaperAuthority,
         routerPortfolioSource:'CURRENT_BROKER_READS',
         aegisInputsOrigin:'DERIVED_FROM_REAL',
         aegisIvStressEvidence:ivStressRefresh.assessment,
         aegisSpreadStressAssessor:({contracts,decisionAsOf})=>assessAegisSpreadStressForContracts({
-          pool:input.pool,contracts,decisionAsOf,
+          pool:lanePool(underlying.symbol),contracts,decisionAsOf,
         }),
         aegisAlpacaIvStressAssessor:({contracts,decisionAsOf})=>assessAlpacaContractIvStressForContracts({
-          pool:input.pool,contracts,decisionAsOf,
+          pool:lanePool(underlying.symbol),contracts,decisionAsOf,
         }),
         aegisInputs:{
         tickerConcentrationPct:null,sectorConcentrationPct:null,correlationClusterExposurePct:null,

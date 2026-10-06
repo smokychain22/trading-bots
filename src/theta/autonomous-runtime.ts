@@ -303,6 +303,8 @@ export interface AutonomousRuntimeDependencies {
   // cycle persists carries the release identity that produced it. Never
   // recomputed independently here -- one identity, one source of truth.
   readonly releaseIdentity?: { readonly sourceSha: string | null; readonly workerSha: string | null };
+  /** Dedicated connection lane for execution-critical work (authorized-symbol evaluation, plan, claim, handoff). Defaults to the runtime pool. */
+  readonly executionPool?: Pool;
 }
 
 /**
@@ -456,6 +458,7 @@ export async function runAutonomousRuntimeCycle(
   const correlationId = `theta-runtime:${bucket}:${scope.toLowerCase()}`;
   const workerInstance = `${process.env.VERCEL_REGION ?? 'local'}:${randomUUID()}`;
   const requestStartedAtMs = Date.now();
+  const executionPool = dependencies.executionPool ?? pool;
   const windowFence = requestWindowFence(requestStartedAtMs);
   const cycleStore = new PostgresRuntimeCycleStore(pool);
   if (!await cycleStore.begin(correlationId, workerInstance, now.toISOString())) {
@@ -505,7 +508,7 @@ export async function runAutonomousRuntimeCycle(
   const immediateReadyPlanHandoff = async (actionPlanId: string, jobId: string): Promise<JobRunResult> => {
     const result = await executor('PAPER_EXECUTION_HANDOFF', 'IMMEDIATE_READY_PLAN', jobId);
     if (result.status !== 'SUCCEEDED') {
-      await new PostgresMasterPaperActionPlanStore(pool).recordHandoffNotReached(actionPlanId,
+      await new PostgresMasterPaperActionPlanStore(executionPool).recordHandoffNotReached(actionPlanId,
         [`${result.status}:${result.errorCode ?? 'NO_CODE'}`], new Date().toISOString()).catch(() => false);
     }
     return result;
@@ -670,6 +673,7 @@ export async function runAutonomousRuntimeCycle(
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
           now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null,
+          priorityPool:executionPool,
           onActionPlanEnqueued:async(actionPlanId)=>{
             immediateHandoff.result=await immediateReadyPlanHandoff(actionPlanId,jobId);
           }});
@@ -690,6 +694,7 @@ export async function runAutonomousRuntimeCycle(
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
           now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null,
+          priorityPool:executionPool,
           onActionPlanEnqueued:async(actionPlanId)=>{
             immediateHandoff.result=await immediateReadyPlanHandoff(actionPlanId,jobId);
           }});
@@ -710,7 +715,7 @@ export async function runAutonomousRuntimeCycle(
         if(!executionControl.managementSubmissionEnabled)
           return degraded('MASTER_PAPER_SUBMISSION_NOT_AUTHORIZED',retryAt);
         if(master.executionAccountId===null)return degraded('MASTER_EXECUTION_ACCOUNT_NOT_CREATED',retryAt);
-        const planStore=new PostgresMasterPaperActionPlanStore(pool);
+        const planStore=new PostgresMasterPaperActionPlanStore(executionPool);
         const claimAtMs=Date.now();
         const plan=await planStore.claimNext(master.executionAccountId,workerInstance,new Date(claimAtMs).toISOString(),
           {allowNewRisk:newRiskRuntimeEnabled,claimLatency:{requestElapsedMs:claimAtMs-requestStartedAtMs,
@@ -737,10 +742,10 @@ export async function runAutonomousRuntimeCycle(
             throw new MutationFenceLostError(held.mismatches[0]??'PLAN_CLAIM_NOT_HELD');
           throw new Error(held.mismatches.length===1&&held.mismatches[0]===planNoLongerCurrent?planNoLongerCurrent:'PLAN_INTEGRITY_MISMATCH');
         };
-        const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(pool,master.executionAccountId),{
+        const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(executionPool,master.executionAccountId),{
           masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders},allFences(windowFence,claimFence));
         const handoff=new MasterPaperActionHandoff(new AlpacaExecutionQuoteSource(master.alpaca),
-          new MasterPaperExecutionOrchestrator(coordinator,new PostgresExecutionEvidenceStore(pool)),
+          new MasterPaperExecutionOrchestrator(coordinator,new PostgresExecutionEvidenceStore(executionPool)),
           paperBootstrapPreSubmitQuoteAgePolicy,undefined,new AlpacaStockInventorySource(master.alpaca));
         try{
           const at=new Date().toISOString();
@@ -755,7 +760,7 @@ export async function runAutonomousRuntimeCycle(
             if(disposition==='TERMINAL')await planStore.terminal(plan.actionPlanId,result.execution.orderIntentId,at);
             else await planStore.submitted(plan.actionPlanId,result.execution.orderIntentId,at);
             if(result.execution.submittedNow&&plan.decisionAuthority==='NEW_RISK'&&plan.firstCanaryCompleted!==true){
-              const persistedLock=await new PostgresPaperExecutionAuthorizationStore(pool)
+              const persistedLock=await new PostgresPaperExecutionAuthorizationStore(executionPool)
                 .lockNewRiskAfterFirstCanary(at);
               if(!persistedLock)return degraded('FIRST_CANARY_RUNTIME_LOCKED_PERSISTED_CONTROL_PENDING',retryAt);
             }
