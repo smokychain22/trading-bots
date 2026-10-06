@@ -153,5 +153,14 @@ test('D plan enqueue binds the persisted two-leg identity, a DEFINED_RISK chain 
     const hold = await persistD(12, 'THETA_HOLD_STRIKE');
     await assert.rejects(plans.enqueueWithDisposition({ ...planFor(first), decisionId: hold.row.decision_id, candidateId: hold.row.candidate_id } as ApprovedMasterPaperActionPlan,
       '2026-10-08T15:12:01.000Z', chain), /ACTION_PLAN_DEFINED_RISK_CANDIDATE_INVALID/);
+    // NO SILENT EXPIRY: the immediate handoff did not reach this READY plan; its leaf reason survives the expiry quarantine
+    assert.equal(await plans.recordHandoffNotReached(plan.actionPlanId, ['SKIPPED:MARKET_CLOSED'], '2026-10-08T15:10:03.000Z'), true);
+    assert.equal(await plans.recordHandoffNotReached(randomUUID(), ['SKIPPED:X'], '2026-10-08T15:10:03.000Z'), false, 'only a READY plan is annotated');
+    assert.equal(await plans.claimNext(accountId, 'worker-test', '2026-10-08T15:31:00.000Z'), null, 'the expired plan is never claimed');
+    const expired = (await pool.query('SELECT status, last_blockers_json FROM trade.master_paper_action_plan WHERE action_plan_id=$1', [plan.actionPlanId])).rows[0];
+    assert.deepEqual(expired, { status: 'QUARANTINED', last_blockers_json: ['DECISION_EXPIRED', 'HANDOFF_NOT_REACHED:SKIPPED:MARKET_CLOSED'] });
+    const lastEvent = (await pool.query(`SELECT state, detail_json FROM trade.master_paper_action_plan_event WHERE action_plan_id=$1 ORDER BY event_time DESC, created_at DESC LIMIT 1`,
+      [plan.actionPlanId])).rows[0];
+    assert.deepEqual(lastEvent?.detail_json?.blockers, ['DECISION_EXPIRED', 'HANDOFF_NOT_REACHED:SKIPPED:MARKET_CLOSED']);
   } finally { await pool.end(); }
 });

@@ -296,15 +296,18 @@ export class PostgresMasterPaperActionPlanStore {
   async claimNext(executionAccountId:string,workerId:string,now:string,
     options:{readonly allowNewRisk:boolean}={allowNewRisk:true}):Promise<ApprovedMasterPaperActionPlan|null>{
     const claimed=await withRuntimePostgresTransaction(this.pool,async(client)=>{
+      // an expiry keeps the leaf reason that stopped the plan earlier (handoff not reached, fence lost, gate): DECISION_EXPIRED alone
+      // hides why an ACTION_READY plan never reached the broker
       const expired=await client.query(`UPDATE trade.master_paper_action_plan SET status='QUARANTINED',
-        last_blockers_json='["DECISION_EXPIRED"]'::jsonb,claimed_by=NULL,claimed_at=NULL,claim_expires_at=NULL,updated_at=$2
+        last_blockers_json='["DECISION_EXPIRED"]'::jsonb||(SELECT COALESCE(jsonb_agg(b),'[]'::jsonb)
+          FROM jsonb_array_elements(COALESCE(last_blockers_json,'[]'::jsonb)) b WHERE b<>'"DECISION_EXPIRED"'::jsonb),
+        claimed_by=NULL,claimed_at=NULL,claim_expires_at=NULL,updated_at=$2
         WHERE execution_account_id=$1 AND status IN ('READY','WAITING_GATE','CLAIMED')
           AND (plan_json->>'decisionExpiresAt')::timestamptz <= $2
-        RETURNING action_plan_id`,[executionAccountId,now]);
-      if((expired.rowCount??0)>0)await client.query(`INSERT INTO trade.master_paper_action_plan_event(
-        action_plan_event_id,action_plan_id,state,event_time,detail_json)
-        SELECT gen_random_uuid(),action_plan_id,'QUARANTINED',$2,'{"blockers":["DECISION_EXPIRED"]}'::jsonb
-        FROM unnest($1::uuid[]) AS expired_id(action_plan_id)`,[expired.rows.map((row)=>String(row.action_plan_id)),now]);
+        RETURNING action_plan_id,last_blockers_json`,[executionAccountId,now]);
+      for(const row of expired.rows as Array<{action_plan_id:string;last_blockers_json:unknown}>)await client.query(`INSERT INTO trade.master_paper_action_plan_event(
+        action_plan_event_id,action_plan_id,state,event_time,detail_json) VALUES(gen_random_uuid(),$1,'QUARANTINED',$2,jsonb_build_object('blockers',$3::jsonb))`,
+        [String(row.action_plan_id),now,JSON.stringify(row.last_blockers_json??['DECISION_EXPIRED'])]);
       let corrupt:string[]=[];
       let row:Record<string,unknown>|undefined;
       // A plan whose stored payload no longer matches its sealed hash is quarantined and the scan moves on: one corrupt row
@@ -396,6 +399,22 @@ export class PostgresMasterPaperActionPlanStore {
         planState:current.plan_state==null?null:String(current.plan_state)}))return {ok:false,mismatches:[planNoLongerCurrent]};
     }
     return {ok:true,mismatches:[]};
+  }
+
+  /**
+   * ACTION-READY LOSS EVIDENCE: the immediate handoff ran for a READY plan but never claimed it (gate, market, authority, account,
+   * another plan first). The plan stays READY (nothing about its claimability changes); its exact leaf reason is recorded so a later
+   * expiry reports WHY it never reached the broker. Returns false when the plan is no longer READY.
+   */
+  async recordHandoffNotReached(actionPlanId:string,reasons:readonly string[],at:string):Promise<boolean>{
+    const blockers=reasons.map((reason)=>`HANDOFF_NOT_REACHED:${reason}`);
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{
+      const result=await client.query(`UPDATE trade.master_paper_action_plan SET last_blockers_json=$2::jsonb,updated_at=$3
+        WHERE action_plan_id=$1 AND status='READY' RETURNING action_plan_id`,[actionPlanId,JSON.stringify(blockers),at]);
+      if(result.rowCount!==1)return false;
+      await this.event(actionPlanId,'READY',at,{blockers,handoff:'NOT_REACHED'},client);
+      return true;
+    });
   }
 
   async wait(actionPlanId:string,blockers:readonly string[],retryAt:string,at:string):Promise<void>{

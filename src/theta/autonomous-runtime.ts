@@ -500,6 +500,16 @@ export async function runAutonomousRuntimeCycle(
     return jobType==='POSITION_MANAGEMENT_SCAN'&&definedRiskEscalated&&result.status!=='FAILED'&&result.status!=='QUARANTINED'
       ?degraded('DEFINED_RISK_ESCALATION_REQUIRED',retryAt):result;
   };
+  // The immediate handoff of a just-enqueued ACTION_READY plan. When it does not claim THIS plan (a gate, market, authority or
+  // account precondition, or another plan claimed first), the exact leaf reason is recorded on the plan: no silent expiry.
+  const immediateReadyPlanHandoff = async (actionPlanId: string, jobId: string): Promise<JobRunResult> => {
+    const result = await executor('PAPER_EXECUTION_HANDOFF', 'IMMEDIATE_READY_PLAN', jobId);
+    if (result.status !== 'SUCCEEDED') {
+      await new PostgresMasterPaperActionPlanStore(pool).recordHandoffNotReached(actionPlanId,
+        [`${result.status}:${result.errorCode ?? 'NO_CODE'}`], new Date().toISOString()).catch(() => false);
+    }
+    return result;
+  };
   const wheelAndSpreadExecutor = async (jobType: JobType, _key: string, jobId: string): Promise<JobRunResult> => {
     try {
       if (jobType === 'POSITION_RECONCILIATION') {
@@ -660,8 +670,8 @@ export async function runAutonomousRuntimeCycle(
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
           now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null,
-          onActionPlanEnqueued:async()=>{
-            immediateHandoff.result=await executor('PAPER_EXECUTION_HANDOFF','IMMEDIATE_READY_PLAN',jobId);
+          onActionPlanEnqueued:async(actionPlanId)=>{
+            immediateHandoff.result=await immediateReadyPlanHandoff(actionPlanId,jobId);
           }});
         if(immediateHandoff.result!==null&&immediateHandoff.result.status!=='SUCCEEDED')return immediateHandoff.result;
         if(scan.completeness!=='COMPLETE')return degraded(`WAIT_RECHECK_SCAN_${scan.completeness}`,retryAt);
@@ -680,8 +690,8 @@ export async function runAutonomousRuntimeCycle(
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
           now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null,
-          onActionPlanEnqueued:async()=>{
-            immediateHandoff.result=await executor('PAPER_EXECUTION_HANDOFF','IMMEDIATE_READY_PLAN',jobId);
+          onActionPlanEnqueued:async(actionPlanId)=>{
+            immediateHandoff.result=await immediateReadyPlanHandoff(actionPlanId,jobId);
           }});
         if(immediateHandoff.result!==null&&immediateHandoff.result.status!=='SUCCEEDED')return immediateHandoff.result;
         return scan.completeness==='COMPLETE' ? succeeded() : degraded(`SHADOW_SCAN_${scan.completeness}`,retryAt);
