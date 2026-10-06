@@ -26,7 +26,7 @@ async function freshDatabase(pool: pg.Pool): Promise<void> {
   await pool.query('DROP SCHEMA IF EXISTS dp CASCADE');
   await pool.query('DROP SCHEMA IF EXISTS dp_it CASCADE');
   await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
-  await pool.query(readFileSync(new URL('../../docs/proposals/069_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
+  await pool.query(readFileSync(new URL('../../docs/proposals/DP1_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
 }
 
 const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -43,7 +43,7 @@ test('draft schema: applies cleanly, is idempotent, and every partitioned histor
   const pool = new pg.Pool({ connectionString: url, max: 2 });
   try {
     await freshDatabase(pool);
-    await pool.query(readFileSync(new URL('../../docs/proposals/069_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
+    await pool.query(readFileSync(new URL('../../docs/proposals/DP1_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
     const partitioned = (await pool.query(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_partitioned_table p ON p.partrelid=c.oid WHERE n.nspname='dp' ORDER BY 1`)).rows.map((row) => row.relname);
     assert.deepEqual(partitioned, ['cycle_evidence_blob', 'decision_context', 'payload_blob', 'payload_observation', 'pit_candidate', 'rejection_histogram']);
     const defaults = (await pool.query(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='dp' AND c.relname LIKE '%\\_default' ORDER BY 1`)).rows.map((row) => row.relname);

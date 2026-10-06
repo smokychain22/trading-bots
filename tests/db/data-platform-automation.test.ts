@@ -39,7 +39,7 @@ async function insertContext(pool: pg.Pool, session: string, base: number): Prom
 }
 async function reset(pool: pg.Pool): Promise<void> {
   await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto'); await pool.query('DROP SCHEMA IF EXISTS dp CASCADE');
-  await pool.query(readFileSync(new URL('../../docs/proposals/069_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
+  await pool.query(readFileSync(new URL('../../docs/proposals/DP1_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
 }
 const count = async (pool: pg.Pool, sql: string, values: unknown[] = []): Promise<number> => Number((await pool.query(sql, values)).rows[0].n);
 

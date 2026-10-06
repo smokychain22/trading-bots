@@ -4,7 +4,7 @@
   "evidenceScope": "SOURCE_AND_EXECUTED_TEST_EVIDENCE_NOT_CURRENT_WORKER_L7",
   "sourceHashes": {
     "bots/theta/quant/models/theta_q_lattice.py": "06f846d9ca08cde9d269466be1341ba7c5d89558d8d81925f47ed9b742d485d3",
-    "docs/proposals/071_bounded_historical_truth_DRAFT.sql": "af50317947077867a65d6d82bd131724c7bde75350e96db7c4a3feb65c4b0155",
+    "docs/proposals/DP3_bounded_historical_truth_DRAFT.sql": "af50317947077867a65d6d82bd131724c7bde75350e96db7c4a3feb65c4b0155",
     "src/execution/broker-reconciliation-worker.ts": "444b95eade6f20c3914bccad9941af618802a5b4522a20e8a710800ea86b0bae",
     "src/execution/broker.ts": "dc8e985b2d1aeeb1760aa86eb377017e3fac5f30a5e676de6a309e140d39b7eb",
     "src/execution/execution-option-quote.ts": "8cca2460b0f288b174924eaeba6711790c094b3e69e3a5e1727207427979b03e",

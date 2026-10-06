@@ -35,7 +35,7 @@ async function resetDp(pool: pg.Pool): Promise<void> {
   // a database left in the swapped state is rolled back through the product's own rollback (DROP SCHEMA dp CASCADE would take the compat view and its dependents with it)
   if ((await pool.query(`SELECT to_regclass('trade.candidate_point_in_time_evidence_legacy') IS NOT NULL AND to_regclass('dp.dual_write_ledger') IS NOT NULL AS ok`)).rows[0].ok === true) await rollbackAuthoritativeAndSwap(pool);
   await pool.query('DROP SCHEMA IF EXISTS dp CASCADE');
-  await pool.query(draft('069_data_platform_DRAFT.sql'));
+  await pool.query(draft('DP1_data_platform_DRAFT.sql'));
 }
 
 test('PAYLOAD DEDUPE (real store): identical raw provider bytes observed in two cycles are ONE blob and TWO observations; the row keeps a reference; pressure removes the payload from the hot row', { skip }, async () => {
@@ -136,7 +136,7 @@ test('PIT COMPATIBILITY SWAP (070): an existing consumer reads old and new point
 
     const dependentBefore = (await pool.query(`SELECT count(*)::int AS n FROM research.option_contract_risk_history WHERE candidate_id IN (SELECT candidate_id FROM trade.candidate_point_in_time_evidence WHERE fusion_snapshot_id = ANY($1::uuid[]))`, [[a.fusionSnapshotId, b.fusionSnapshotId, c.fusionSnapshotId]])).rows[0].n as number;
     assert.equal(Number(dependentBefore), legacyRows, 'before the swap the dependent production view (migration 062) sees the legacy rows only');
-    await pool.query(draft('070_pit_compat_swap_DRAFT.sql'));
+    await pool.query(draft('DP2_pit_compat_swap_DRAFT.sql'));
     // the production view research.option_contract_risk_history was re-pointed: it sees OLD and NEW rows, not just the renamed table
     assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM research.option_contract_risk_history WHERE candidate_id IN (SELECT candidate_id FROM trade.candidate_point_in_time_evidence WHERE fusion_snapshot_id = ANY($1::uuid[]))`, [[a.fusionSnapshotId, b.fusionSnapshotId, c.fusionSnapshotId]])).rows[0].n), legacyRows + newRows, 'dependent views follow the unchanged name');
     assert.equal(await count(pool, 'SELECT count(*)::int AS n FROM trade.candidate_point_in_time_evidence WHERE fusion_snapshot_id = ANY($1::uuid[])', [[a.fusionSnapshotId, b.fusionSnapshotId, c.fusionSnapshotId]]), legacyRows + newRows, 'the unchanged name now serves old and new rows');
@@ -145,7 +145,7 @@ test('PIT COMPATIBILITY SWAP (070): an existing consumer reads old and new point
     assert.equal(before.rowCounts.candidates, legacyRows, 'before the swap the research export sees the legacy rows');
     assert.equal(after.rowCounts.candidates, legacyRows + newRows, 'after the swap the SAME export (an existing consumer, unchanged SQL) sees old and new rows');
     // the swap is refused twice, and rollback-mode writes (mode OFF) land in the renamed legacy table and are visible through the view
-    await assert.rejects(pool.query(draft('070_pit_compat_swap_DRAFT.sql')), /PIT_COMPAT_SWAP_ALREADY_APPLIED/);
+    await assert.rejects(pool.query(draft('DP2_pit_compat_swap_DRAFT.sql')), /PIT_COMPAT_SWAP_ALREADY_APPLIED/);
     const d = await writer('OFF').persist(context, buildCycle(40, '2026-09-11T15:04:00.000Z', { sharedKiB: 30 }, salt + 4));
     assert.ok(await count(pool, 'SELECT count(*)::int AS n FROM trade.candidate_point_in_time_evidence_legacy WHERE fusion_snapshot_id = $1', [d.fusionSnapshotId]) > 5);
     assert.ok(await count(pool, 'SELECT count(*)::int AS n FROM trade.candidate_point_in_time_evidence WHERE fusion_snapshot_id = $1', [d.fusionSnapshotId]) > 5);
@@ -175,8 +175,8 @@ test('MIGRATION 069 on the production schema: applies from 068, is idempotent, l
     await new PostgresThetaCycleStore(pool, { persistRelationalCandidateEvidence: false }).persist(context, buildCycle(30, '2026-09-11T15:30:00.000Z', { sharedKiB: 30 }, salt + 77));
     const before = await tables();
     await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
-    await pool.query(draft('069_data_platform_DRAFT.sql'));
-    await pool.query(draft('069_data_platform_DRAFT.sql'));
+    await pool.query(draft('DP1_data_platform_DRAFT.sql'));
+    await pool.query(draft('DP1_data_platform_DRAFT.sql'));
     assert.deepEqual(await tables(), before, 'applying 069 changes no existing row');
     assert.ok(await count(pool, `SELECT count(*)::int AS n FROM pg_trigger WHERE tgname = 'reject_mutation' AND NOT tgisinternal`) >= 6, 'append-only triggers are installed on every history table and partition');
     assert.equal(await count(pool, `SELECT count(*)::int AS n FROM pg_views WHERE schemaname IN ('dp') AND viewname IN ('candidate_point_in_time_evidence_v', 'cycle_archive_reference_v')`), 2);

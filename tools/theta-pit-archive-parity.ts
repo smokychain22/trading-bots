@@ -74,7 +74,7 @@ async function main(): Promise<void> {
     const pool = new pg.Pool({ connectionString: url, max: 2 });
     try {
       await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto'); await pool.query('DROP SCHEMA IF EXISTS dp CASCADE');
-      await pool.query(readFileSync(new URL('../docs/proposals/069_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
+      await pool.query(readFileSync(new URL('../docs/proposals/DP1_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
       await pool.query('DROP TABLE IF EXISTS public.pit_legacy_probe');
       await pool.query(`CREATE TABLE public.pit_legacy_probe (candidate_id uuid PRIMARY KEY, ${PIT_JSON_COLUMNS.map((column) => `${column} jsonb NOT NULL`).join(', ')})`);
       const ids = [...rowsByDecision.keys()].sort((a, b) => (rowsByDecision.get(b)?.length ?? 0) - (rowsByDecision.get(a)?.length ?? 0)).slice(0, Math.min(5, pgSample)).concat([...rowsByDecision.keys()].filter((_, index) => index % Math.max(1, Math.floor(rowsByDecision.size / pgSample)) === 0).slice(0, pgSample));

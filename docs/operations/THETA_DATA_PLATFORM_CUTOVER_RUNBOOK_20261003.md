@@ -44,7 +44,7 @@ Exit criteria (`--mode=dual-write-status` evaluates them; `--mode=dual-write-cut
 ## Stage 3: AUTHORITATIVE (cutover)
 
 `--mode=dual-write-cutover` records `CUTOVER_AT` and `LEGACY_WRITER_DISABLED=true` (the table CHECK refuses an AUTHORITATIVE row with mismatches). Same window: apply
-`docs/proposals/070_pit_compat_swap_DRAFT.sql` (renames the legacy table, puts a view with the unchanged name over old + rebuilt rows) and set `THETA_PIT_STORAGE_MODE=AUTHORITATIVE`. Existing consumers keep their SQL
+`docs/proposals/DP2_pit_compat_swap_DRAFT.sql` (renames the legacy table, puts a view with the unchanged name over old + rebuilt rows) and set `THETA_PIT_STORAGE_MODE=AUTHORITATIVE`. Existing consumers keep their SQL
 (`tests/db/data-platform-lifecycle.test.ts` runs the research export over the view). Enable `THETA_DATA_PLATFORM_BLOB_STORE=1` in the same release as the readers that use `cycleBlobSelectExpression`.
 
 Acceptance: a week of sessions with parity sweeps clean, post-session receipts every day, consumers unchanged, rollback rehearsed on a disposable copy

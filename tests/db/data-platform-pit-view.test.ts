@@ -51,7 +51,7 @@ function decision(seed: number, candidates: number, options: { readonly surfaceK
 
 async function prepare(pool: pg.Pool): Promise<void> {
   await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto'); await pool.query('DROP SCHEMA IF EXISTS dp CASCADE');
-  await pool.query(readFileSync(new URL('../../docs/proposals/069_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
+  await pool.query(readFileSync(new URL('../../docs/proposals/DP1_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
   await pool.query('DROP TABLE IF EXISTS public.pit_probe');
   await pool.query(`CREATE TABLE public.pit_probe (candidate_id uuid PRIMARY KEY, ${PIT_JSON_COLUMNS.map((column) => `${column} jsonb NOT NULL`).join(', ')}, hard_status text, soft_status text, selected boolean, rank_at_decision int, rejection_reason text, content_hash char(64))`);
 }

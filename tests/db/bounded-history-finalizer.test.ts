@@ -31,8 +31,8 @@ test('REAL POSTGRES: schema 071 finalizes a session atomically, chains the root 
   const pool = new pg.Pool({ connectionString: url, max: 2 });
   try {
     await pool.query('DROP SCHEMA IF EXISTS dp CASCADE');
-    await pool.query(readFileSync(new URL('../../docs/proposals/069_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
-    await pool.query(readFileSync(new URL('../../docs/proposals/071_bounded_historical_truth_DRAFT.sql', import.meta.url), 'utf8'));
+    await pool.query(readFileSync(new URL('../../docs/proposals/DP1_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
+    await pool.query(readFileSync(new URL('../../docs/proposals/DP3_bounded_historical_truth_DRAFT.sql', import.meta.url), 'utf8'));
     const receipt = buildFinalChainReceipt({
       state: {
         chainId: uuid(2), lifecycleTerminal: true, openOptionExposure: false, openStockExposure: false,

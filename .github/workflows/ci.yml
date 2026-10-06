@@ -140,7 +140,7 @@ jobs:
         run: |
           createdb -h 127.0.0.1 -U trading_bots theta_dp_ci
           npx tsx --test --test-concurrency=1 --test-reporter=spec tests/db/data-platform-postgres.test.ts tests/db/data-platform-cli.test.ts tests/db/data-platform-automation.test.ts tests/db/data-platform-rebuild.test.ts tests/db/data-platform-pit-view.test.ts
-      - name: Test the normalized point-in-time writer, cycle blob lifecycle, compatibility swap and migration 069 on the production schema (migrations 001-068)
+      - name: Test the normalized point-in-time writer, cycle blob lifecycle, compatibility swap and draft DP1 on the production schema (all migrations)
         env:
           THETA_DATA_PLATFORM_FULL_DATABASE_URL: postgresql://trading_bots:ci-only-password@127.0.0.1:5432/theta_dp_full_ci
         run: |
@@ -149,7 +149,7 @@ jobs:
             psql -h 127.0.0.1 -U trading_bots -d theta_dp_full_ci -v ON_ERROR_STOP=1 -q -f "$migration" >/dev/null
           done
           npx tsx --test --test-concurrency=1 --test-reporter=spec tests/db/data-platform-pit.test.ts tests/db/data-platform-lifecycle.test.ts
-      - name: Prove operational truth is unaffected by a STORAGE_CRITICAL pressure state (migration 069 applied, governor enabled)
+      - name: Prove operational truth is unaffected by a STORAGE_CRITICAL pressure state (draft DP1 applied, governor enabled)
         env:
           TEST_DATABASE_URL: postgresql://trading_bots:ci-only-password@127.0.0.1:5432/theta_phase2_recovery_ci
           THETA_STORAGE_GOVERNOR: '1'
@@ -159,7 +159,7 @@ jobs:
           for migration in migrations/*.sql; do
             psql -h 127.0.0.1 -U trading_bots -d theta_phase2_recovery_ci -v ON_ERROR_STOP=1 -q -f "$migration" >/dev/null
           done
-          psql -h 127.0.0.1 -U trading_bots -d theta_phase2_recovery_ci -v ON_ERROR_STOP=1 -q -f docs/proposals/069_data_platform_DRAFT.sql >/dev/null
+          psql -h 127.0.0.1 -U trading_bots -d theta_phase2_recovery_ci -v ON_ERROR_STOP=1 -q -f docs/proposals/DP1_data_platform_DRAFT.sql >/dev/null
           psql -h 127.0.0.1 -U trading_bots -d theta_phase2_recovery_ci -v ON_ERROR_STOP=1 -q -c "INSERT INTO dp.storage_pressure_state(singleton, band, database_bytes, plan_bytes, archive_queue_bytes, archive_lag_sessions, archive_backend_healthy, projected_sessions_to_critical, evaluated_at) VALUES (true, 'STORAGE_CRITICAL', 7700000000, 8589934592, 3000000000, 9, false, 0, now())"
           npx tsx --test --test-concurrency=1 --test-reporter=spec $(ls tests/db/*.test.ts | grep -v 'data-platform-' | grep -v 'phase3-' | grep -v 'runtime-postgres-faults' | grep -v 'autonomous-paper-transition' | grep -v 'schema-064')
       - name: Scan generated evidence and test output for secrets before it is uploaded

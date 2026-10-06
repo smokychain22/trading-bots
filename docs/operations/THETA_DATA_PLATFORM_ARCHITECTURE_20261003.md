@@ -85,7 +85,7 @@ Weekly: integrity sweep (re-read, hash, row count) that sends a failed archive b
 
 ## 9. Cutover (staged, no permanent dual write)
 
-1. Release the inert code (flag off). 2. Apply migration 069 (`docs/proposals/069_data_platform_DRAFT.sql`: new empty tables, default partitions, lifecycle tables) through the governed verified-backup path. 3. Enable readers first
+1. Release the inert code (flag off). 2. Apply migration 069 (`docs/proposals/DP1_data_platform_DRAFT.sql`: new empty tables, default partitions, lifecycle tables) through the governed verified-backup path. 3. Enable readers first
 (`COALESCE(s.evidence_archive_gzip, b.blob)` is safe with no `dp` rows), then the writer flag `THETA_DATA_PLATFORM_BLOB_STORE=1`: **new** cycles write the blob to `dp.cycle_evidence_blob` only; no dual write ever exists.
 4. Parity gate: blob hash equals the stored `evidence_archive_hash` for every new cycle for three sessions. 5. Backfill the 616 current blobs (852 MB) into `dp` partitions, verify, then null the legacy column. 6. Install the scheduled tasks.
 7. Legacy populations: archive (done), owner approves the exact population, governed purge (see `THETA_PHASE4_GOVERNED_PURGE_PROPOSAL_20261003.md`). Exit condition for step 5: zero parity mismatches for three sessions.

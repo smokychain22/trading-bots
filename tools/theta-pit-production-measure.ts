@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   const local = new pg.Pool({ connectionString: localUrl, max: 2 });
   try {
     await local.query('CREATE EXTENSION IF NOT EXISTS pgcrypto'); await local.query('DROP SCHEMA IF EXISTS dp CASCADE');
-    await local.query(readFileSync(new URL('../docs/proposals/069_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
+    await local.query(readFileSync(new URL('../docs/proposals/DP1_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
     const decisions = (await readOnly.query(`SELECT d.fusion_snapshot_id::text AS fusion, d.decision_id::text AS decision, d.candidate_set_id::text AS candidate_set, s.decision_time::text AS decision_time, s.storage_contract_version AS contract
       FROM trade.decision d JOIN trade.fusion_snapshot s ON s.fusion_snapshot_id = d.fusion_snapshot_id WHERE s.storage_contract_version = 'theta-postgres-cycle-evidence-storage-v3' ORDER BY s.decision_time DESC LIMIT $1`, [limit])).rows as Array<{ fusion: string; decision: string; candidate_set: string | null; decision_time: string }>;
     const oldPerRow = await indexBytesPerRow(readOnly);

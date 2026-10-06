@@ -32,7 +32,7 @@ test('REAL POSTGRES: tools/theta-data-platform.ts runs status, pre-session, post
     await pool.query('DROP SCHEMA IF EXISTS dp CASCADE');
     assert.equal(run('status').state, 'DATA_PLATFORM_SCHEMA_ABSENT', 'inert until the schema exists');
     await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
-    await pool.query(readFileSync(new URL('../../docs/proposals/069_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
+    await pool.query(readFileSync(new URL('../../docs/proposals/DP1_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
     const ops = new PostgresPartitionOps(pool, catalogFor([DATASET]));
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
     const dayBefore = (n: number): string => new Date(Date.parse(`${today}T12:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);

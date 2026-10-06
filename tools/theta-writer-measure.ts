@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const report: Record<string, unknown> = { measuredAt: new Date().toISOString(), method: 'pg_column_size over the stored (compressed/TOAST) value of every column of every decision-keyed hot table, plus 28 bytes tuple overhead per row; index bytes are the batch growth of pg_indexes_size divided by the decisions of the batch', scenarios: [] };
   try {
     await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto'); await pool.query('DROP SCHEMA IF EXISTS dp CASCADE');
-    await pool.query(readFileSync(new URL('../docs/proposals/069_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
+    await pool.query(readFileSync(new URL('../docs/proposals/DP1_data_platform_DRAFT.sql', import.meta.url), 'utf8'));
     await pool.query(`INSERT INTO dp.dual_write_ledger(dataset, mode, dual_write_started_at, dual_write_deadline, cutover_at, legacy_writer_disabled) VALUES ($1, 'AUTHORITATIVE', now(), now() + interval '1 day', now(), true)`, [PIT_DATASET]);
     const world = await seedWorld(pool, '2026-09-11T14:59:00.000Z'); const context = persistenceContext(world);
     // [contracts, decisions per variant, relational research copies (the opt-in the store supports; Production runs without it)]
