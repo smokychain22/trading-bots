@@ -140,6 +140,9 @@ export interface ManagementInputState {
    */
   readonly accountStockLedgerShares?: number | null;
   readonly originalEntryThesis?: ManagementEntryThesis;
+  /** Immutable strategy lineage of the open short-put chain. UNKNOWN keeps
+   * strategy-specific management fail closed instead of treating H as Q. */
+  readonly strategyOrigin?: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'UNKNOWN';
   readonly wholeChainComponentEvidence?: WholeChainComponentEvidence;
   readonly wholeChainComponents?: WholeChainComponents | null;
   readonly assignedAtObservedAt?: string | null;
@@ -517,6 +520,10 @@ export function assembleManagementInput(row: Row, input: {
   }
   if (evidenceBundle.timingState === 'FUTURE_EVIDENCE') hardBlockers.push('EVIDENCE_OBSERVED_AFTER_DECISION');
 
+  const originalEntryThesis = loadManagementEntryThesis(row.original_entry_thesis, {
+    decisionId: row.original_decision_id, snapshotId: row.original_snapshot_id,
+    decidedAt: row.original_decided_at, underlying: String(row.underlying), managementAsOf: input.observedAt,
+  });
   const unsigned = {
     contractVersion: managementInputVersion,
     managementInputSnapshotId: input.managementInputSnapshotId,
@@ -527,10 +534,9 @@ export function assembleManagementInput(row: Row, input: {
       ? { brokerStockInventory: brokerStockInventoryEvidence(row), accountStockLedgerShares: numeric(row.account_ledger_shares) } : {}),
     ...(stockShares > 0 && input.stockQuoteRead != null
       ? { stockExecutionQuote: classifyManagementStockQuote(String(row.underlying), input.stockQuoteRead, input.observedAt) } : {}),
-    originalEntryThesis: loadManagementEntryThesis(row.original_entry_thesis, {
-      decisionId: row.original_decision_id, snapshotId: row.original_snapshot_id,
-      decidedAt: row.original_decided_at, underlying: String(row.underlying), managementAsOf: input.observedAt,
-    }),
+    originalEntryThesis,
+    ...(originalEntryThesis.state === 'VERIFIED' && originalEntryThesis.receipt !== null
+      ? { strategyOrigin: originalEntryThesis.receipt.strategy } : {}),
     lifecycleState, underlying: String(row.underlying),
     underlyingId: String(row.underlying_id),
     contract: { optionLegId: text(row.option_leg_id), optionContractId: text(row.option_contract_id), symbol: contractSymbol,

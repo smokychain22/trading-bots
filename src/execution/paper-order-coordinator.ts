@@ -66,8 +66,21 @@ export type PaperOrderGate = Omit<ExecutionGateContext,
 function validateAuthorizationEvidence(intent: PersistedPaperOrderIntent | PrepareIntentInput): void {
   // Defense in depth behind buildAlpacaLimitOrder: a persisted sell order on a call contract is only
   // legitimate as an explicit covered-call open. Any other action carrying it is an uncovered short call.
-  if (intent.request.side === 'sell' && parseOccOptionSymbol(intent.request.symbol)?.optionType === 'CALL'
+  if (intent.request.order_class !== 'mleg' && intent.request.side === 'sell' && parseOccOptionSymbol(intent.request.symbol)?.optionType === 'CALL'
     && intent.action !== 'OPEN_CC' && intent.action !== 'ROLL_CC_OPEN') throw new Error('SHORT_CALL_REQUIRES_COVERED_CALL_ACTION');
+  if (intent.request.order_class === 'mleg') {
+    if (intent.action !== 'OPEN_DEFINED_RISK' && intent.action !== 'CLOSE_DEFINED_RISK') {
+      throw new Error('MULTI_LEG_ACTION_IDENTITY_INVALID');
+    }
+    if (intent.request.legs === undefined || intent.request.legs.length < 2 || intent.request.legs.length > 4) {
+      throw new Error('MULTI_LEG_REQUEST_INVALID');
+    }
+    for (const leg of intent.request.legs) {
+      const occ = parseOccOptionSymbol(leg.symbol);
+      if (occ === null || !Number.isSafeInteger(leg.ratio_qty) || leg.ratio_qty <= 0
+        || !leg.position_intent.startsWith(`${leg.side}_`)) throw new Error('MULTI_LEG_REQUEST_INVALID');
+    }
+  }
   const evidence = intent.authorizationEvidence;
   if (!['PAPER_EVIDENCE', 'EMPIRICALLY_PROMOTED_PAPER'].includes(evidence.executionTier)) throw new Error('LIVE_EXECUTION_NOT_AUTHORIZED');
   if (![evidence.canonicalQuantity, evidence.paperEvidenceQuantity, intent.request.qty].every(value => Number.isSafeInteger(value) && value > 0)
@@ -84,6 +97,17 @@ function assertBrokerSnapshotMatches(intent: PersistedPaperOrderIntent, order: B
     || order.side !== intent.request.side || order.qty !== intent.request.qty
     || (order.positionIntent != null && order.positionIntent !== intent.request.position_intent)
     || (intent.brokerOrderId !== null && order.id !== intent.brokerOrderId)) throw new Error('BROKER_ORDER_INTENT_IDENTITY_MISMATCH');
+  if (intent.request.order_class === 'mleg') {
+    if (order.orderClass !== 'mleg' || order.legs === undefined || intent.request.legs === undefined
+      || order.legs.length !== intent.request.legs.length) throw new Error('BROKER_MULTI_LEG_IDENTITY_MISMATCH');
+    for (const [index, expected] of intent.request.legs.entries()) {
+      const actual = order.legs[index];
+      if (actual === undefined || actual.symbol !== expected.symbol || actual.side !== expected.side
+        || actual.ratioQty !== expected.ratio_qty || actual.positionIntent !== expected.position_intent) {
+        throw new Error('BROKER_MULTI_LEG_IDENTITY_MISMATCH');
+      }
+    }
+  } else if (order.orderClass === 'mleg') throw new Error('BROKER_MULTI_LEG_IDENTITY_MISMATCH');
   if (!order.id.trim() || !Number.isSafeInteger(order.qty) || order.qty <= 0
     || !Number.isSafeInteger(order.filledQty) || order.filledQty < 0 || order.filledQty > order.qty
     || (['fill', 'filled'].includes(order.status.toLowerCase()) && order.filledQty !== order.qty))
@@ -318,6 +342,9 @@ export class PaperOrderCoordinator {
     if (['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED'].includes(currentState)) return current;
     if (replacement.action !== original.action || replacement.decisionId !== original.decisionId
       || replacement.executionAccountId !== original.executionAccountId) throw new Error('REPLACEMENT_LINEAGE_MISMATCH');
+    if (original.request.order_class === 'mleg' || replacement.request.order_class === 'mleg') {
+      throw new Error('MULTI_LEG_REPLACE_REQUIRES_CANCEL_RECONCILE_NEW_PARENT');
+    }
     if (replacement.request.symbol !== original.request.symbol || replacement.request.side !== original.request.side
       || replacement.request.position_intent !== original.request.position_intent) throw new Error('REPLACEMENT_EXPOSURE_MISMATCH');
     // Paper policy (owner): a part-filled stock sale is never replaced; it rests as its bounded DAY order and the remainder is

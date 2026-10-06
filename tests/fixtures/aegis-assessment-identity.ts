@@ -7,6 +7,7 @@ export function testAegisAssessmentIdentity(input: Partial<{
   fusionSnapshotId: string;
   fusionSnapshotHash: string;
   runtimeCandidateRef: string;
+  strategyBranch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_DEFINED_RISK';
   persistedCandidateId: string;
   underlying: string;
   optionSymbol: string;
@@ -16,6 +17,9 @@ export function testAegisAssessmentIdentity(input: Partial<{
   const fusionSnapshotId = input.fusionSnapshotId ?? '90000000-0000-4000-8000-000000000001';
   const fusionSnapshotHash = input.fusionSnapshotHash ?? '9'.repeat(64);
   const runtimeCandidateRef = input.runtimeCandidateRef ?? 'THETA_CONVENTIONAL:AAPL261016P00150000';
+  const strategyBranch = input.strategyBranch ?? (runtimeCandidateRef.startsWith('THETA_HOLD_STRIKE:')
+    ? 'THETA_HOLD_STRIKE' : runtimeCandidateRef.startsWith('THETA_DEFINED_RISK:')
+      ? 'THETA_DEFINED_RISK' : 'THETA_CONVENTIONAL');
   const persistedCandidateId = input.persistedCandidateId ?? '44444444-4444-4444-8444-444444444444';
   const underlying = input.underlying ?? 'AAPL';
   const optionSymbol = input.optionSymbol ?? 'AAPL261016P00150000';
@@ -25,6 +29,7 @@ export function testAegisAssessmentIdentity(input: Partial<{
     fusionSnapshotId,
     fusionSnapshotHash,
     runtimeCandidateRef,
+    strategyBranch,
     assessmentCandidateId:optionSymbol,
     persistedCandidateId,
     underlying,

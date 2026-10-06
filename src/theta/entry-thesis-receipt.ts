@@ -16,7 +16,7 @@ export interface EntryThesisReceipt {
   readonly candidateId: string;
   readonly decisionAt: string;
   readonly underlying: string;
-  readonly strategy: 'THETA_CONVENTIONAL';
+  readonly strategy: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE';
   readonly whyUnderlying: ThesisClaim;
   readonly whyStrategy: ThesisClaim;
   readonly whyExpiry: ThesisClaim;

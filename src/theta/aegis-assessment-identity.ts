@@ -13,6 +13,7 @@ const unsignedAegisAssessmentIdentitySchema = z.object({
   fusionSnapshotId: uuid,
   fusionSnapshotHash: sha256,
   runtimeCandidateRef: z.string().min(1),
+  strategyBranch: z.enum(['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_DEFINED_RISK']).optional(),
   assessmentCandidateId: z.string().min(1),
   persistedCandidateId: uuid,
   underlying: z.string().min(1).max(16),
@@ -38,6 +39,7 @@ export function buildAegisAssessmentIdentity(input: {
   readonly fusionSnapshotId: string;
   readonly fusionSnapshotHash: string;
   readonly runtimeCandidateRef: string;
+  readonly strategyBranch?: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_DEFINED_RISK';
   readonly assessmentCandidateId: string;
   readonly persistedCandidateId: string;
   readonly underlying: string;
@@ -48,8 +50,9 @@ export function buildAegisAssessmentIdentity(input: {
 }): AegisAssessmentIdentity {
   const assessment = aegisAssessmentResponseSchema.parse(input.assessment);
   if (assessment.snapshotId !== input.fusionSnapshotHash) throw new Error('AEGIS_ASSESSMENT_SNAPSHOT_MISMATCH');
+  const strategyBranch = input.strategyBranch ?? 'THETA_CONVENTIONAL';
   if (input.assessmentCandidateId !== input.optionSymbol
-    || input.runtimeCandidateRef !== `THETA_CONVENTIONAL:${input.assessmentCandidateId}`)
+    || input.runtimeCandidateRef !== `${strategyBranch}:${input.assessmentCandidateId}`)
     throw new Error('AEGIS_ASSESSMENT_CONTRACT_IDENTITY_MISMATCH');
   if (assessment.decisionId !== `${input.fusionSnapshotHash}:${input.assessmentCandidateId}`)
     throw new Error('AEGIS_ASSESSMENT_CANDIDATE_MISMATCH');
@@ -61,6 +64,7 @@ export function buildAegisAssessmentIdentity(input: {
     fusionSnapshotId: input.fusionSnapshotId,
     fusionSnapshotHash: input.fusionSnapshotHash,
     runtimeCandidateRef: input.runtimeCandidateRef,
+    strategyBranch,
     assessmentCandidateId: input.assessmentCandidateId,
     persistedCandidateId: input.persistedCandidateId,
     underlying: input.underlying,
@@ -81,8 +85,9 @@ export function verifyAegisAssessmentIdentity(value: unknown): AegisAssessmentId
   const { identityHash, ...unsigned } = parsed.data;
   if (hash(unsigned) !== identityHash || hash(parsed.data.assessment) !== parsed.data.assessmentHash) return null;
   if (parsed.data.assessment.snapshotId !== parsed.data.fusionSnapshotHash) return null;
+  const strategyBranch = parsed.data.strategyBranch ?? 'THETA_CONVENTIONAL';
   if (parsed.data.assessmentCandidateId !== parsed.data.optionSymbol
-    || parsed.data.runtimeCandidateRef !== `THETA_CONVENTIONAL:${parsed.data.assessmentCandidateId}`) return null;
+    || parsed.data.runtimeCandidateRef !== `${strategyBranch}:${parsed.data.assessmentCandidateId}`) return null;
   if (parsed.data.assessment.decisionId !== `${parsed.data.fusionSnapshotHash}:${parsed.data.assessmentCandidateId}`) return null;
   if (Date.parse(parsed.data.assessment.timestamp) !== Date.parse(parsed.data.decisionAsOf)) return null;
   if (parsed.data.assessment.policyVersion !== parsed.data.aegisPolicyVersion

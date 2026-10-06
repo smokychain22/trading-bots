@@ -333,7 +333,14 @@ function structuralExpirationSelection(input: ManagementInputState,
  */
 export function buildManagementActionFrontier(input: ManagementInputState,
   evidence: ManagementPolicyEvidence | null = null): ManagementActionFrontier {
-  const baseActions = (actionSets[input.lifecycleState] ?? []).map((action) => evaluateAction(input, action));
+  // Hold-Strike deliberately has no roll action in its registered policy.
+  // Preserve that identity after entry instead of silently inheriting Q's
+  // wider-DTE roll permission. Missing lineage also cannot enable a roll.
+  const applicableActions = input.lifecycleState === 'CSP_OPEN'
+    && input.strategyOrigin === 'THETA_HOLD_STRIKE'
+    ? (actionSets[input.lifecycleState] ?? []).filter((action) => action !== 'ROLL')
+    : actionSets[input.lifecycleState] ?? [];
+  const baseActions = applicableActions.map((action) => evaluateAction(input, action));
   const policy = applyPolicyEvidence(baseActions, input, evidence);
   const passive = policy.actions.find((action) => passiveActions.has(action.action));
   const structuralSelection = evidence === null ? structuralExpirationSelection(input, policy.actions) : null;

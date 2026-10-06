@@ -10,6 +10,8 @@ export type AlpacaPaperAuthentication =
   | { readonly kind: 'FOLLOWER_OAUTH'; readonly accessToken: string };
 
 export interface BrokerOrderRequest {
+  /** Internal economic identity. For an mleg parent this is a deterministic
+   * package identity and is deliberately not sent as Alpaca's `symbol`. */
   readonly symbol: string;
   readonly qty: number;
   readonly side: 'buy' | 'sell';
@@ -18,6 +20,27 @@ export interface BrokerOrderRequest {
   readonly limit_price: string;
   readonly client_order_id: string;
   readonly position_intent?: 'buy_to_open' | 'buy_to_close' | 'sell_to_open' | 'sell_to_close';
+  readonly order_class?: 'mleg';
+  readonly legs?: readonly BrokerOrderLegRequest[];
+}
+
+export interface BrokerOrderLegRequest {
+  readonly symbol: string;
+  readonly side: 'buy' | 'sell';
+  readonly ratio_qty: number;
+  readonly position_intent: 'buy_to_open' | 'buy_to_close' | 'sell_to_open' | 'sell_to_close';
+}
+
+export interface BrokerOrderLegSnapshot {
+  readonly id: string;
+  readonly symbol: string;
+  readonly side: 'buy' | 'sell';
+  readonly positionIntent: BrokerOrderLegRequest['position_intent'] | null;
+  readonly ratioQty: number;
+  readonly qty: number;
+  readonly filledQty: number;
+  readonly filledAvgPrice: number | null;
+  readonly status: string;
 }
 
 export interface BrokerOrderSnapshot {
@@ -34,6 +57,8 @@ export interface BrokerOrderSnapshot {
   readonly submittedAt: string | null;
   readonly replacedBy: string | null;
   readonly replaces: string | null;
+  readonly orderClass?: 'mleg' | null;
+  readonly legs?: readonly BrokerOrderLegSnapshot[];
 }
 
 export interface BrokerActivity {
@@ -102,20 +127,34 @@ const providerDateSchema = z.string().refine(validDateOnly);
 const marketTimeSchema = z.string().refine(validMarketTime);
 const providerIdentitySchema = z.string().refine((value) => value.trim().length > 0);
 
-const rawOrderSchema = z.object({
+const rawOrderLegSchema = z.object({
   id: providerIdentitySchema,
-  client_order_id: providerIdentitySchema,
   symbol: providerIdentitySchema,
+  side: z.enum(['buy', 'sell']),
+  position_intent: z.enum(['buy_to_open', 'buy_to_close', 'sell_to_open', 'sell_to_close']).nullable().optional(),
+  ratio_qty: strictNumericProviderField.optional(),
   qty: strictNumericProviderField,
   filled_qty: strictNumericProviderField,
   filled_avg_price: strictNumericProviderField.nullable().optional(),
-  side: z.enum(['buy', 'sell']),
+  status: providerIdentitySchema,
+}).passthrough();
+
+const rawOrderSchema = z.object({
+  id: providerIdentitySchema,
+  client_order_id: providerIdentitySchema,
+  symbol: providerIdentitySchema.optional(),
+  qty: strictNumericProviderField,
+  filled_qty: strictNumericProviderField,
+  filled_avg_price: strictNumericProviderField.nullable().optional(),
+  side: z.enum(['buy', 'sell']).optional(),
   position_intent: z.enum(['buy_to_open', 'buy_to_close', 'sell_to_open', 'sell_to_close']).nullable().optional(),
   status: providerIdentitySchema,
   limit_price: strictNumericProviderField.nullable().optional(),
   submitted_at: providerInstantSchema.nullable().optional(),
   replaced_by: providerIdentitySchema.nullable().optional(),
   replaces: providerIdentitySchema.nullable().optional(),
+  order_class: z.enum(['mleg']).nullable().optional(),
+  legs: z.array(rawOrderLegSchema).optional(),
 }).passthrough();
 
 const finiteNumber = (value: string | number): number => {
@@ -140,24 +179,76 @@ export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
   const filledQty = finiteNumber(order.filled_qty);
   const filledAvgPrice = nullableNumber(order.filled_avg_price);
   const limitPrice = nullableNumber(order.limit_price);
+  const isMultiLeg = order.order_class === 'mleg';
   if (qty <= 0) throw new Error('Alpaca returned an invalid order quantity.');
   if (filledQty < 0 || filledQty > qty) throw new Error('Alpaca returned an invalid filled order quantity.');
-  if (filledAvgPrice !== null && filledAvgPrice <= 0) throw new Error('Alpaca returned an invalid filled average price.');
-  if (limitPrice !== null && limitPrice <= 0) throw new Error('Alpaca returned an invalid limit price.');
+  if (filledAvgPrice !== null && (isMultiLeg ? filledAvgPrice === 0 : filledAvgPrice <= 0)) {
+    throw new Error('Alpaca returned an invalid filled average price.');
+  }
+  // Alpaca mleg price convention: positive is a debit, negative is a credit.
+  // Single-leg option and stock limits remain strictly positive.
+  if (limitPrice !== null && (isMultiLeg ? limitPrice === 0 : limitPrice <= 0)) {
+    throw new Error('Alpaca returned an invalid limit price.');
+  }
+  const legs: BrokerOrderLegSnapshot[] | undefined = order.legs?.map((leg) => {
+    const legQty = finiteNumber(leg.qty);
+    const legFilledQty = finiteNumber(leg.filled_qty);
+    const ratioQty = finiteNumber(leg.ratio_qty ?? 1);
+    const legFilledAvgPrice = nullableNumber(leg.filled_avg_price);
+    if (!Number.isSafeInteger(ratioQty) || ratioQty <= 0 || legQty <= 0 || legFilledQty < 0 || legFilledQty > legQty) {
+      throw new Error('Alpaca returned invalid multi-leg order quantities.');
+    }
+    if (legFilledAvgPrice !== null && legFilledAvgPrice <= 0) {
+      throw new Error('Alpaca returned an invalid multi-leg average fill price.');
+    }
+    return { id: leg.id, symbol: leg.symbol, side: leg.side, positionIntent: leg.position_intent ?? null,
+      ratioQty, qty: legQty, filledQty: legFilledQty, filledAvgPrice: legFilledAvgPrice, status: leg.status };
+  });
+  if (isMultiLeg && (legs === undefined || legs.length < 2 || legs.length > 4)) {
+    throw new Error('Alpaca returned an invalid multi-leg parent order.');
+  }
+  if (!isMultiLeg && (order.symbol === undefined || order.side === undefined)) {
+    throw new Error('Alpaca returned a single-leg order without symbol or side.');
+  }
+  const symbol = isMultiLeg ? multiLegPackageIdentity(legs as readonly Pick<BrokerOrderLegSnapshot, 'symbol' | 'side' | 'ratioQty' | 'positionIntent'>[])
+    : order.symbol as string;
+  const side = isMultiLeg ? ((legs as readonly BrokerOrderLegSnapshot[])[0]?.side ?? 'sell') : order.side as 'buy' | 'sell';
   return {
     id: order.id,
     clientOrderId: order.client_order_id,
-    symbol: order.symbol,
+    symbol,
     qty,
     filledQty,
     filledAvgPrice,
-    side: order.side,
+    side,
     positionIntent: order.position_intent ?? null,
     status: order.status,
     limitPrice,
     submittedAt: order.submitted_at ?? null,
     replacedBy: order.replaced_by ?? null,
     replaces: order.replaces ?? null,
+    orderClass: order.order_class ?? null,
+    ...(legs === undefined ? {} : { legs }),
+  };
+};
+
+export const multiLegPackageIdentity = (legs: readonly Pick<BrokerOrderLegRequest, 'symbol' | 'side' | 'ratio_qty' | 'position_intent'>[]
+  | readonly Pick<BrokerOrderLegSnapshot, 'symbol' | 'side' | 'ratioQty' | 'positionIntent'>[]): string => {
+  if (legs.length < 2 || legs.length > 4) throw new Error('MULTI_LEG_COUNT_INVALID');
+  const encoded = legs.map((leg) => {
+    const ratio = 'ratio_qty' in leg ? leg.ratio_qty : leg.ratioQty;
+    const intent = 'position_intent' in leg ? leg.position_intent : leg.positionIntent;
+    return `${leg.symbol}:${leg.side}:${ratio}:${intent ?? 'UNKNOWN'}`;
+  }).join('|');
+  return `MLEG:${encoded}`;
+};
+
+export const brokerPayloadForOrder = (order: BrokerOrderRequest): Readonly<Record<string, unknown>> => {
+  if (order.order_class !== 'mleg') return { ...order };
+  if (order.legs === undefined || order.legs.length < 2 || order.legs.length > 4) throw new Error('MULTI_LEG_COUNT_INVALID');
+  return {
+    qty: order.qty, type: order.type, time_in_force: order.time_in_force, limit_price: order.limit_price,
+    client_order_id: order.client_order_id, order_class: 'mleg', legs: order.legs,
   };
 };
 
@@ -412,10 +503,20 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   }
   async getOrderByClientOrderId(clientOrderId: string): Promise<BrokerOrderSnapshot | null> {
     const body = await this.request(`/v2/orders:by_client_order_id?client_order_id=${encodeURIComponent(clientOrderId)}`, {}, true);
-    return body === ORDER_NOT_FOUND ? null : this.parseProviderPayload('/v2/orders:by_client_order_id', () => parseBrokerOrder(body));
+    if (body === ORDER_NOT_FOUND) return null;
+    // Alpaca documents `nested=true` only on the order-by-id endpoint. If the
+    // client-id lookup returns an mleg parent without its legs, resolve that
+    // parent by id before reconciliation rather than treating missing legs as
+    // proof of an invalid or atomic fill.
+    const parent = z.object({ id: providerIdentitySchema, order_class: z.literal('mleg'),
+      legs: z.array(z.unknown()).optional() }).passthrough().safeParse(body);
+    if (parent.success && (parent.data.legs === undefined || parent.data.legs.length === 0)) {
+      return this.getOrder(parent.data.id);
+    }
+    return this.parseProviderPayload('/v2/orders:by_client_order_id', () => parseBrokerOrder(body));
   }
   async getOrder(providerOrderId: string): Promise<BrokerOrderSnapshot | null> {
-    const body = await this.request(`/v2/orders/${encodeURIComponent(providerOrderId)}`, {}, true);
+    const body = await this.request(`/v2/orders/${encodeURIComponent(providerOrderId)}?nested=true`, {}, true);
     return body === ORDER_NOT_FOUND ? null : this.parseProviderPayload('/v2/orders/{id}', () => parseBrokerOrder(body));
   }
   async getActivities(activityTypes?: readonly string[]): Promise<readonly BrokerActivity[]> {
@@ -456,7 +557,7 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   }
   async submitOrder(order: BrokerOrderRequest, authorization: BrokerMutationAuthorization): Promise<BrokerOrderSnapshot> {
     assertBrokerMutationAuthorized(authorization, order.client_order_id, order.qty, 'SUBMIT');
-    const payload = await this.request('/v2/orders', { method: 'POST', body: JSON.stringify(order) });
+    const payload = await this.request('/v2/orders', { method: 'POST', body: JSON.stringify(brokerPayloadForOrder(order)) });
     return this.parseProviderPayload('/v2/orders', () => parseBrokerOrder(payload), true);
   }
   async replaceOrder(providerOrderId: string, replacement: Pick<BrokerOrderRequest, 'qty' | 'limit_price' | 'time_in_force' | 'client_order_id'>, authorization: BrokerMutationAuthorization): Promise<BrokerOrderSnapshot> {

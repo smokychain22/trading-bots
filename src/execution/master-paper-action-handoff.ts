@@ -31,6 +31,10 @@ export interface ApprovedMasterPaperActionPlan {
   readonly decisionId: string;
   readonly candidateId: string;
   readonly strategyVersion: string;
+  readonly strategyBranch?: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_RECOVERY' | 'THETA_CC';
+  /** Required for a non-Q new-risk branch. This binds the plan to the
+   * independently hashed owner, technical, risk, broker and lifecycle gates. */
+  readonly strategyPaperAuthorityReceiptHash?: string;
   readonly chainId: string;
   readonly optionContractId: string | null;
   readonly underlyingId: string;
@@ -78,7 +82,9 @@ export const masterPaperActionPlanSchema = z.object({
   decisionAuthority:z.enum(['NEW_RISK','MANAGEMENT']),managementInputSnapshotId:z.string().uuid().nullable(),
   managementActionFrontierId:z.string().uuid().nullable(),actionGroupId:z.string().uuid(),legSequence:z.number().int().positive(),
   dependsOnActionPlanId:z.string().uuid().nullable(),
-  decisionId:z.string().uuid(),candidateId:z.string().min(1),strategyVersion:z.string().min(1),chainId:z.string().uuid(),
+  decisionId:z.string().uuid(),candidateId:z.string().min(1),strategyVersion:z.string().min(1),
+  strategyBranch:z.enum(['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC']).optional(),chainId:z.string().uuid(),
+  strategyPaperAuthorityReceiptHash:z.string().regex(/^[a-f0-9]{64}$/).optional(),
   optionContractId:z.string().uuid().nullable(),underlyingId:z.string().uuid(),underlying:z.string().min(1).max(16),
   optionType:z.enum(['PUT','CALL']).nullable(),symbol:z.string().min(1).max(64),
   quantity:z.number().int().nonnegative(),canonicalQuantity:z.number().int().nonnegative(),
@@ -108,6 +114,9 @@ export const masterPaperActionPlanSchema = z.object({
     context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MAY_NOT_REFERENCE_MANAGEMENT_AUTHORITY'});
   if(plan.decisionAuthority==='NEW_RISK'&&plan.aegisAssessmentIdentity===undefined)
     context.addIssue({code:'custom',message:'NEW_RISK_PLAN_REQUIRES_AEGIS_ASSESSMENT_IDENTITY'});
+  if(plan.decisionAuthority==='NEW_RISK'&&plan.strategyBranch==='THETA_HOLD_STRIKE'
+    &&plan.strategyPaperAuthorityReceiptHash===undefined)
+    context.addIssue({code:'custom',message:'H_NEW_RISK_PLAN_REQUIRES_STRATEGY_AUTHORITY'});
   if(plan.decisionAuthority==='NEW_RISK'&&(plan.actionGroupId!==plan.actionPlanId||plan.legSequence!==1||plan.dependsOnActionPlanId!==null))
     context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MUST_BE_SINGLE_LEG'});
   if(plan.decisionAuthority==='MANAGEMENT'&&(plan.managementInputSnapshotId===null||plan.managementActionFrontierId===null))

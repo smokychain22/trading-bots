@@ -5,6 +5,7 @@ import { jsonValueSchema } from '../market/fusion-snapshot.js';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import { normalizedOptionContractSchema } from './option-contract.js';
 import { strategyRoutingResponseSchema } from './strategy-router-contract.js';
+import { strategyPaperAuthorityReceiptSchema } from './strategy-paper-authority.js';
 
 // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 17-25). Real
 // exhaustive T0 source search for the Sep24 episode
@@ -80,6 +81,13 @@ const thetaQDecisionSchema = z.object({
   quantity: z.number().int().nonnegative(),
 });
 
+const paperEntryDecisionSchema = thetaQDecisionSchema.extend({
+  branch:z.enum(['THETA_CONVENTIONAL','THETA_HOLD_STRIKE']),
+  technicalCertification:z.literal('CERTIFIED'),
+  paperAuthorization:z.enum(['PAPER_EXPERIMENTAL_AUTHORIZED','PAPER_CHAMPION']),
+  strategyPaperAuthority:strategyPaperAuthorityReceiptSchema,
+});
+
 const stockSchema = z.object({
   underlying: z.string().min(1), shares: z.number().nullable(), currentPrice: z.number().nullable(),
   brokerCostBasisPerShare: z.number().nullable(), wholeChainEconomicBasisPerShare: z.number().nullable(),
@@ -135,6 +143,7 @@ export const t0ReplayBundleSchema = z.object({
   entryEligibilityByOptionSymbol: z.record(z.string(), entryEligibilitySchema).optional(),
   thetaQCandidateEvaluationByOptionSymbol: z.record(z.string(), thetaQCandidateEvaluationSchema).optional(),
   thetaQDecision: thetaQDecisionSchema.optional(),
+  paperEntryDecision: paperEntryDecisionSchema.optional(),
   optionsApprovedLevel: z.number().nullable().optional(),
   optionsTradingLevel: z.number().nullable().optional(),
 }).strict().superRefine((bundle, context) => {
@@ -217,6 +226,14 @@ export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0Re
       }])),
     thetaQCandidateEvaluationByOptionSymbol: input.thetaQCandidateEvaluationByOptionSymbol,
     thetaQDecision: input.thetaQDecision,
+    ...(input.paperEntryDecision === undefined ? {} : { paperEntryDecision: {
+      ...input.paperEntryDecision,
+      strategyPaperAuthority: {
+        ...input.paperEntryDecision.strategyPaperAuthority,
+        evidenceIds: [...input.paperEntryDecision.strategyPaperAuthority.evidenceIds],
+        blockers: [...input.paperEntryDecision.strategyPaperAuthority.blockers],
+      },
+    } }),
     optionsApprovedLevel: input.optionsApprovedLevel ?? null, optionsTradingLevel: input.optionsTradingLevel ?? null,
   };
   const unsealed = t0ReplayBundleSchema.parse(bundle);
@@ -259,6 +276,7 @@ export function replayFromT0Bundle(bundle: T0ReplayBundle): CanonicalStrategyFro
     entryEligibilityByOptionSymbol: parsed.entryEligibilityByOptionSymbol,
     thetaQCandidateEvaluationByOptionSymbol: parsed.thetaQCandidateEvaluationByOptionSymbol,
     thetaQDecision: parsed.thetaQDecision,
+    paperEntryDecision: parsed.paperEntryDecision,
     optionsApprovedLevel: parsed.optionsApprovedLevel ?? null, optionsTradingLevel: parsed.optionsTradingLevel ?? null,
   };
   const replayed = buildCanonicalStrategyFrontier(replayInput);

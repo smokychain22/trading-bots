@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AlpacaPaperBrokerAdapter, AlpacaPaperBrokerError, parseBrokerActivity, parseBrokerOrder } from '../src/execution/broker.js';
+import { AlpacaPaperBrokerAdapter, AlpacaPaperBrokerError, multiLegPackageIdentity, parseBrokerActivity,
+  parseBrokerOrder, type BrokerOrderRequest } from '../src/execution/broker.js';
 import { assertRollPair, buildAlpacaLimitOrder, type ThetaOrderInstruction } from '../src/execution/order-construction.js';
 import { authorizeBrokerMutation } from '../src/execution/execution-control.js';
 
@@ -88,6 +89,44 @@ test('submit, replace, cancel, retrieve, and activities use documented paths wit
   assert.equal(calls[0]?.url, 'https://paper-api.alpaca.markets/v2/orders');
   assert.equal(calls[1]?.url, 'https://paper-api.alpaca.markets/v2/orders/broker-1');
   assert.equal(calls[0]?.body && (calls[0]?.body as Record<string, unknown>).type, 'limit');
+});
+
+test('native multi-leg submit sends one Alpaca mleg payload without synthetic parent symbol or side', async () => {
+  let payload: Record<string, unknown> | null = null;
+  const urls: string[] = [];
+  const legs = [
+    { symbol:'SPY261016P00650000',side:'sell' as const,ratio_qty:1,position_intent:'sell_to_open' as const },
+    { symbol:'SPY261016P00645000',side:'buy' as const,ratio_qty:1,position_intent:'buy_to_open' as const },
+  ];
+  const request: BrokerOrderRequest = { symbol:multiLegPackageIdentity(legs),side:'sell',qty:1,type:'limit',
+    time_in_force:'day',limit_price:'-1.10',client_order_id:'theta-mleg-test',order_class:'mleg',legs };
+  const adapter = new AlpacaPaperBrokerAdapter({ baseUrl:'https://paper-api.alpaca.markets',
+    authentication:{kind:'MASTER_API_KEY',apiKey:'synthetic',apiSecret:'synthetic'},fetchImpl:async(input,init)=>{
+      const url=String(input);
+      urls.push(url);
+      if(url.includes('by_client_order_id')) return new Response(JSON.stringify({id:'parent',client_order_id:request.client_order_id,
+        qty:'1',filled_qty:'0',filled_avg_price:null,status:'accepted',limit_price:'-1.10',order_class:'mleg'}),{status:200});
+      if((init?.method??'GET')==='POST') payload=JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ id:'parent',client_order_id:request.client_order_id,qty:'1',filled_qty:'0',
+        filled_avg_price:null,status:'accepted',limit_price:'-1.10',submitted_at:'2026-09-11T14:00:00Z',order_class:'mleg',
+        legs:legs.map((leg,index)=>({id:`leg-${index}`,symbol:leg.symbol,side:leg.side,position_intent:leg.position_intent,
+          ratio_qty:'1',qty:'1',filled_qty:'0',filled_avg_price:null,status:'accepted'})) }),{status:200});
+    }});
+  const authorization=authorizeBrokerMutation({masterEnabled:true,followerEnabled:false,pauseNewOrders:false},{
+    accountKind:'MASTER_API_KEY',environment:'PAPER',baseHostname:'paper-api.alpaca.markets',accountVerified:true,
+    optionsCapabilityVerified:true,intentPersisted:true,aegisState:'ALLOW_FULL',quantity:1,quoteFresh:true,
+    priceEvidence:'ALPACA_OPRA_BBO',decisionExpiresAt:'2026-09-11T15:00:00Z',clientOrderId:request.client_order_id,
+    now:'2026-09-11T14:00:00Z',isNewEntry:true,operation:'SUBMIT'});
+  const result=await adapter.submitOrder(request,authorization);
+  assert.equal(result.orderClass,'mleg');
+  assert.equal(result.legs?.length,2);
+  assert.equal(payload?.order_class,'mleg');
+  assert.equal(payload?.limit_price,'-1.10');
+  assert.equal('symbol' in (payload ?? {}),false);
+  assert.equal('side' in (payload ?? {}),false);
+  const reconciled=await adapter.getOrderByClientOrderId(request.client_order_id);
+  assert.equal(reconciled?.legs?.length,2);
+  assert.ok(urls.some((url)=>url.endsWith('/v2/orders/parent?nested=true')));
 });
 
 test('broker order snapshots preserve real zero fills and reject missing or malformed numeric evidence', () => {

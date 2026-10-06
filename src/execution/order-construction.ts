@@ -4,7 +4,8 @@ import { parseOccOptionSymbol } from '../theta/account-exposure.js';
 
 export type ThetaOrderAction =
   | 'OPEN_CSP' | 'CLOSE_CSP' | 'ROLL_CSP_CLOSE' | 'ROLL_CSP_OPEN'
-  | 'OPEN_CC' | 'CLOSE_CC' | 'ROLL_CC_CLOSE' | 'ROLL_CC_OPEN' | 'SELL_STOCK';
+  | 'OPEN_CC' | 'CLOSE_CC' | 'ROLL_CC_CLOSE' | 'ROLL_CC_OPEN' | 'SELL_STOCK'
+  | 'OPEN_DEFINED_RISK' | 'CLOSE_DEFINED_RISK';
 
 export interface ThetaOrderInstruction {
   readonly action: ThetaOrderAction;
@@ -34,8 +35,9 @@ const instructionSchema = z.object({
 
 const buyActions: readonly ThetaOrderAction[] = ['CLOSE_CSP', 'ROLL_CSP_CLOSE', 'CLOSE_CC', 'ROLL_CC_CLOSE'];
 const coveredCallOpenActions: readonly ThetaOrderAction[] = ['OPEN_CC', 'ROLL_CC_OPEN'];
-const newRiskActions = new Set<ThetaOrderAction>(['OPEN_CSP', 'ROLL_CSP_OPEN', 'OPEN_CC', 'ROLL_CC_OPEN']);
-const allThetaOrderActions = new Set<ThetaOrderAction>(instructionSchema.shape.action.options);
+const newRiskActions = new Set<ThetaOrderAction>(['OPEN_CSP', 'ROLL_CSP_OPEN', 'OPEN_CC', 'ROLL_CC_OPEN', 'OPEN_DEFINED_RISK']);
+const allThetaOrderActions = new Set<ThetaOrderAction>([...instructionSchema.shape.action.options,
+  'OPEN_DEFINED_RISK','CLOSE_DEFINED_RISK']);
 export const thetaActionOpensNewRisk = (action: string): boolean => {
   if (!allThetaOrderActions.has(action as ThetaOrderAction)) throw new Error('THETA_ORDER_ACTION_INVALID');
   return newRiskActions.has(action as ThetaOrderAction);

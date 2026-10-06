@@ -5,6 +5,7 @@ import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from
 import { paperBootstrapAllowedUnknownComponents, paperBootstrapAllowedUnknownReasons, paperEntryBootstrapPolicyVersion } from '../theta/paper-entry-bootstrap.js';
 import { verifyPaperEntrySafetyPolicyReceipt, type PaperEntrySafetyPolicyReceipt } from '../theta/paper-entry-safety-policy.js';
 import { verifyAegisAssessmentIdentity, type AegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
+import { assertStrategyPaperOrderAllowed, type StrategyPaperAuthorityReceipt } from '../theta/strategy-paper-authority.js';
 
 export const masterPaperPlanAssemblyVersion = 'theta-master-paper-plan-assembly-v1' as const;
 
@@ -29,6 +30,7 @@ export interface MasterPaperPlanAssemblyInput {
   readonly modeledRoundTripCostPerContract: number | null;
   readonly now: string;
   readonly decisionExpiresAt: string;
+  readonly strategyPaperAuthority?: StrategyPaperAuthorityReceipt;
 }
 
 export type MasterPaperPlanAssemblyResult =
@@ -67,15 +69,37 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
     if (entrySafetyPolicy.corporateAction.action !== 'CLEAR') blockers.push(`CORPORATE_ACTION_POLICY_${entrySafetyPolicy.corporateAction.state}`);
   }
   if (selected === undefined) blockers.push('CANONICAL_SELECTED_CANDIDATE_NOT_FOUND');
-  if (frontier.entrySelectionBasis !== 'THETA_Q_DECISION_BOUND') {
-    blockers.push('CANONICAL_SELECTION_NOT_Q_DECISION_BOUND');
-  }
+  const expectedSelectionBasis = selected?.branch === 'THETA_HOLD_STRIKE'
+    ? 'THETA_H_DECISION_BOUND' : 'THETA_Q_DECISION_BOUND';
+  if (frontier.entrySelectionBasis !== expectedSelectionBasis) blockers.push(selected?.branch === 'THETA_HOLD_STRIKE'
+    ? 'CANONICAL_SELECTION_NOT_STRATEGY_DECISION_BOUND' : 'CANONICAL_SELECTION_NOT_Q_DECISION_BOUND');
   if (frontier.primaryAction !== 'OPEN_CSP') blockers.push(`ACTION_NOT_YET_CONNECTED:${frontier.primaryAction}`);
   if (selected?.action !== 'OPEN_CSP') blockers.push('SELECTED_ACTION_NOT_OPEN_CSP');
-  if (selected?.branch !== 'THETA_CONVENTIONAL') blockers.push('BRANCH_NOT_AUTHORIZED_FOR_MASTER_PAPER_ENTRY');
+  if (selected?.branch !== 'THETA_CONVENTIONAL' && selected?.branch !== 'THETA_HOLD_STRIKE') {
+    blockers.push('BRANCH_NOT_AUTHORIZED_FOR_MASTER_PAPER_ENTRY');
+  }
   if (selected?.branch !== frontier.selectedBranch || selected?.action !== frontier.primaryAction
     || frontier.globalWaitEarned) blockers.push('CANONICAL_SELECTION_LINEAGE_INVALID');
-  if (selectedBranch?.status !== 'SHADOW') blockers.push('STRATEGY_BRANCH_NOT_PAPER_EVIDENCE_ELIGIBLE');
+  if (selected?.branch === 'THETA_CONVENTIONAL' && selectedBranch?.status !== 'SHADOW') {
+    blockers.push('STRATEGY_BRANCH_NOT_PAPER_EVIDENCE_ELIGIBLE');
+  }
+  if (selected?.branch === 'THETA_HOLD_STRIKE' && frontier.entrySelectionBasis !== 'THETA_H_DECISION_BOUND') {
+    blockers.push('H_PAPER_EXPERIMENTAL_DECISION_MISSING');
+  }
+  if (selected?.branch === 'THETA_HOLD_STRIKE') {
+    try {
+      if (input.strategyPaperAuthority === undefined) throw new Error('MISSING');
+      assertStrategyPaperOrderAllowed(input.strategyPaperAuthority, 'THETA_HOLD_STRIKE');
+      if (frontier.paperEntryAuthorityReceiptHash !== input.strategyPaperAuthority.receiptHash) {
+        throw new Error('MISMATCH');
+      }
+      if (Date.parse(input.strategyPaperAuthority.observedAt) > Date.parse(input.now)) {
+        throw new Error('FUTURE');
+      }
+    } catch {
+      blockers.push('H_STRATEGY_PAPER_AUTHORITY_INVALID');
+    }
+  }
   if (selected?.legs.length !== 1) blockers.push('SINGLE_LEG_CSP_REQUIRED');
   const selectedLeg = selected?.legs[0];
   if (selectedLeg?.positionIntent !== 'SELL_TO_OPEN' || selectedLeg?.optionType !== 'PUT') blockers.push('CSP_LEG_IDENTITY_INVALID');
@@ -113,6 +137,7 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   const aegisIdentity = verifyAegisAssessmentIdentity(input.aegisAssessmentIdentity);
   if (aegisIdentity === null || selected === undefined || selectedLeg === undefined
     || aegisIdentity.runtimeCandidateRef !== selected.candidateId
+    || (aegisIdentity.strategyBranch ?? 'THETA_CONVENTIONAL') !== selected.branch
     || aegisIdentity.persistedCandidateId !== input.persistedCandidateId
     || aegisIdentity.underlying !== selected.underlying
     || aegisIdentity.optionSymbol !== selectedLeg.optionSymbol
@@ -172,6 +197,9 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
       decisionId: input.decisionId,
       candidateId: input.persistedCandidateId,
       strategyVersion: frontier.strategyVersion,
+      strategyBranch: selected.branch as 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE',
+      ...(selected.branch === 'THETA_HOLD_STRIKE' && input.strategyPaperAuthority !== undefined
+        ? { strategyPaperAuthorityReceiptHash: input.strategyPaperAuthority.receiptHash } : {}),
       chainId,
       optionContractId: input.optionContractId,
       underlyingId: input.underlyingId,

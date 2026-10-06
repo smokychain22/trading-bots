@@ -5,7 +5,8 @@ const claim = z.object({ state: z.enum(['KNOWN', 'UNKNOWN', 'EMPIRICALLY_UNPROVE
   statement: z.string().trim().min(1), evidenceIds: z.array(z.string().min(1)) }).strict();
 const schema = z.object({
   contractVersion: z.literal(entryThesisReceiptVersion), decisionId: z.string().min(1), snapshotId: z.string().min(1),
-  candidateId: z.string().min(1), decisionAt: z.string(), underlying: z.string().min(1), strategy: z.literal('THETA_CONVENTIONAL'),
+  candidateId: z.string().min(1), decisionAt: z.string(), underlying: z.string().min(1),
+  strategy: z.enum(['THETA_CONVENTIONAL','THETA_HOLD_STRIKE']),
   whyUnderlying: claim, whyStrategy: claim, whyExpiry: claim, whyStrike: claim, whyNow: claim, quantityReason: claim,
   volatilityThesis: claim, directionalTolerance: claim, eventAssumptions: claim, assignmentWillingness: claim,
   expectedManagementPath: claim, breakEven: z.number().positive(), downsideCushion: z.number(),

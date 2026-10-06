@@ -92,6 +92,70 @@ test('ambiguous submission absent at broker stays RECONCILING and never blindly 
   assert.equal((await store.getIntent('11111111-1111-4111-8111-111111111111'))?.status, 'RECONCILING');
 });
 
+test('ambiguous native multi-leg submission reconciles the exact parent and every leg without resubmitting', async () => {
+  const request: BrokerOrderRequest = {
+    symbol: 'MLEG:SPY261016P00650000:sell:1:sell_to_open|SPY261016P00645000:buy:1:buy_to_open',
+    qty: 1, side: 'sell', type: 'limit', time_in_force: 'day', limit_price: '1.10',
+    client_order_id: 'theta-d-parent-1', order_class: 'mleg', legs: [
+      { symbol:'SPY261016P00650000',side:'sell',ratio_qty:1,position_intent:'sell_to_open' },
+      { symbol:'SPY261016P00645000',side:'buy',ratio_qty:1,position_intent:'buy_to_open' },
+    ],
+  };
+  const parent: BrokerOrderSnapshot = {
+    id:'broker-d-parent',clientOrderId:request.client_order_id,symbol:request.symbol,qty:1,filledQty:0,
+    filledAvgPrice:null,side:'sell',positionIntent:null,status:'accepted',limitPrice:1.1,submittedAt:gate.now,
+    replacedBy:null,replaces:null,orderClass:'mleg',legs:[
+      {id:'leg-short',symbol:'SPY261016P00650000',side:'sell',positionIntent:'sell_to_open',ratioQty:1,
+        qty:1,filledQty:0,filledAvgPrice:null,status:'new'},
+      {id:'leg-long',symbol:'SPY261016P00645000',side:'buy',positionIntent:'buy_to_open',ratioQty:1,
+        qty:1,filledQty:0,filledAvgPrice:null,status:'new'},
+    ],
+  };
+  const broker=new MockBroker();
+  broker.submitError=new AlpacaPaperBrokerError('AMBIGUOUS_NETWORK',null,'timeout');
+  broker.lookupResult=parent;
+  const store=new InMemoryPaperOrderStore();
+  const coordinator=new PaperOrderCoordinator(broker,store,control({masterEnabled:true,pauseNewOrders:false}));
+  await coordinator.prepare({orderIntentId:'88888888-8888-4888-8888-888888888888',executionAccountId:'22222222-2222-4222-8222-222222222222',
+    request,action:'OPEN_DEFINED_RISK',decisionId:'33333333-3333-4333-8333-333333333333',persistedAt:gate.now,
+    ...executionLineage,optionContractId:null});
+  const result=await coordinator.submit('88888888-8888-4888-8888-888888888888',gate);
+  assert.equal(result?.id,'broker-d-parent');
+  assert.equal(broker.submitCalls,1);
+  assert.equal(broker.lookupCalls,1);
+  assert.equal((await store.getIntent('88888888-8888-4888-8888-888888888888'))?.status,'ACKNOWLEDGED');
+});
+
+test('multi-leg reconciliation fails closed on any leg identity drift and native parent replace is prohibited', async () => {
+  const request: BrokerOrderRequest = {
+    symbol:'MLEG:SPY261016P00650000:sell:1:sell_to_open|SPY261016P00645000:buy:1:buy_to_open',qty:1,
+    side:'sell',type:'limit',time_in_force:'day',limit_price:'1.10',client_order_id:'theta-d-parent-2',order_class:'mleg',
+    legs:[{symbol:'SPY261016P00650000',side:'sell',ratio_qty:1,position_intent:'sell_to_open'},
+      {symbol:'SPY261016P00645000',side:'buy',ratio_qty:1,position_intent:'buy_to_open'}],
+  };
+  const broker=new MockBroker(),store=new InMemoryPaperOrderStore();
+  const coordinator=new PaperOrderCoordinator(broker,store,control({masterEnabled:true,pauseNewOrders:false}));
+  const prepared=await coordinator.prepare({orderIntentId:'99999999-9999-4999-8999-999999999999',
+    executionAccountId:'22222222-2222-4222-8222-222222222222',request,action:'OPEN_DEFINED_RISK',
+    decisionId:'33333333-3333-4333-8333-333333333333',persistedAt:gate.now,...executionLineage,optionContractId:null});
+  await store.transitionIntent(prepared.orderIntentId,'READY','SUBMITTING');
+  broker.lookupResult={id:'broker-d',clientOrderId:request.client_order_id,symbol:request.symbol,qty:1,filledQty:0,
+    filledAvgPrice:null,side:'sell',positionIntent:null,status:'accepted',limitPrice:1.1,submittedAt:gate.now,
+    replacedBy:null,replaces:null,orderClass:'mleg',legs:[
+      {id:'s',symbol:'SPY261016P00650000',side:'sell',positionIntent:'sell_to_open',ratioQty:1,qty:1,filledQty:0,filledAvgPrice:null,status:'new'},
+      {id:'l',symbol:'SPY261016P00644000',side:'buy',positionIntent:'buy_to_open',ratioQty:1,qty:1,filledQty:0,filledAvgPrice:null,status:'new'},
+    ]};
+  await assert.rejects(coordinator.reconcileIntent(prepared.orderIntentId),/BROKER_MULTI_LEG_IDENTITY_MISMATCH/);
+  broker.lookupResult={...broker.lookupResult,legs:[
+    {id:'s',symbol:'SPY261016P00650000',side:'sell',positionIntent:'sell_to_open',ratioQty:1,qty:1,filledQty:0,filledAvgPrice:null,status:'new'},
+    {id:'l',symbol:'SPY261016P00645000',side:'buy',positionIntent:'buy_to_open',ratioQty:1,qty:1,filledQty:0,filledAvgPrice:null,status:'new'},
+  ]};
+  await assert.rejects(coordinator.replace(prepared.orderIntentId,{...prepared,
+    orderIntentId:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',request:{...request,client_order_id:'theta-d-reprice'}},gate),
+  /MULTI_LEG_REPLACE_REQUIRES_CANCEL_RECONCILE_NEW_PARENT/);
+  assert.equal(broker.replaceCalls,0);
+});
+
 test('restart recovery reconciles an interrupted submission without submitting', async () => {
   const broker = new MockBroker(); broker.lookupResult = brokerOrder; const store = new InMemoryPaperOrderStore();
   const coordinator = new PaperOrderCoordinator(broker, store, control()); await prepare(coordinator);

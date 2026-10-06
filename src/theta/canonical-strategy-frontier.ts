@@ -17,6 +17,7 @@ import {
 import {
   buildSovereignStrategyAssessment, type SovereignStrategyAssessment,
 } from './sovereign-strategy-assessment.js';
+import { verifyStrategyPaperAuthorityReceipt, type StrategyPaperAuthorityReceipt } from './strategy-paper-authority.js';
 
 export const canonicalStrategyFrontierVersion = 'theta-canonical-strategy-frontier-v1' as const;
 export const canonicalDecisionAuthorityVersion = 'theta-canonical-decision-authority-v1' as const;
@@ -268,7 +269,8 @@ export interface CanonicalStrategyFrontier {
    * decision may cross the Master Paper plan boundary. Optional solely for
    * historical archive compatibility. New frontier receipts always set it.
    */
-  readonly entrySelectionBasis?: 'THETA_Q_DECISION_BOUND' | 'STRUCTURAL_RESEARCH_ONLY' | 'NO_SELECTION';
+  readonly entrySelectionBasis?: 'THETA_Q_DECISION_BOUND' | 'THETA_H_DECISION_BOUND' | 'STRUCTURAL_RESEARCH_ONLY' | 'NO_SELECTION';
+  readonly paperEntryAuthorityReceiptHash?: string | null;
   readonly primaryAction: CanonicalFrontierAction | 'GLOBAL_WAIT' | 'MANAGEMENT_AUTHORITY' | 'SYSTEM_HOLD';
   readonly selectedQuantity: number;
   readonly empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED';
@@ -364,6 +366,16 @@ export interface CanonicalStrategyFrontierInput {
   readonly thetaQCandidateEvaluationByOptionSymbol?: Readonly<Record<string, ThetaQCandidateEvaluationEntry>>;
   readonly thetaQDecision?: Pick<NewRiskDecisionReceipt,
     'snapshotId' | 'timestamp' | 'underlying' | 'winningAction' | 'selectedCandidateId' | 'quantity'>;
+  /** Optional sovereign Paper-experimental decision. It is consumed by this
+   * same frontier, so H cannot create a parallel selection authority. The
+   * legacy thetaQDecision remains the Production Q input when this is absent. */
+  readonly paperEntryDecision?: Pick<NewRiskDecisionReceipt,
+    'snapshotId' | 'timestamp' | 'underlying' | 'winningAction' | 'selectedCandidateId' | 'quantity'> & {
+      readonly branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE';
+      readonly technicalCertification: 'CERTIFIED';
+      readonly paperAuthorization: 'PAPER_EXPERIMENTAL_AUTHORIZED' | 'PAPER_CHAMPION';
+      readonly strategyPaperAuthority: StrategyPaperAuthorityReceipt;
+    };
   readonly optionsApprovedLevel?: number | null;
   readonly optionsTradingLevel?: number | null;
 }
@@ -1306,29 +1318,37 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const managementAuthorityRequired = applicable.some((branch) => branch.branch === 'THETA_RECOVERY' || branch.branch === 'THETA_CC');
   // Research-only and shadow branches may have structurally positive size.
   // They are never eligible for the Paper-facing frontier selection.
-  const sizedNewRisk = feasible.filter((candidate) =>
+  const qSizedNewRisk = feasible.filter((candidate) =>
     candidate.branch === 'THETA_CONVENTIONAL' && candidate.action === 'OPEN_CSP' && candidate.sizing.quantity > 0);
+  const decisionBranch = input.paperEntryDecision?.branch ?? 'THETA_CONVENTIONAL';
+  const decisionReasonPrefix = decisionBranch === 'THETA_CONVENTIONAL' ? 'THETA_Q' : 'THETA_H';
+  const sizedNewRisk = feasible.filter((candidate) => candidate.branch === decisionBranch
+    && candidate.action === 'OPEN_CSP' && candidate.sizing.quantity > 0);
   // The Python-backed Q receipt owns the economic OPEN/PASS/WAIT choice.
   // Structural Pareto order is research evidence, never a substitute for it.
-  const decision = input.thetaQDecision;
+  const decision = input.paperEntryDecision ?? input.thetaQDecision;
+  const decisionAuthorityValid = decisionBranch === 'THETA_CONVENTIONAL'
+    || (input.paperEntryDecision !== undefined
+      && verifyStrategyPaperAuthorityReceipt(input.paperEntryDecision.strategyPaperAuthority, 'THETA_HOLD_STRIKE'));
   const openDecision = decision !== undefined && [
     'OPEN_FULL', 'OPEN_REDUCED', 'OPEN_ALTERNATE_CONTRACT', 'OPEN_ALTERNATE_EXPIRY', 'OPEN_ALTERNATE_STRUCTURE',
   ].includes(decision.winningAction);
   const decisionSnapshotValid = decision === undefined || (decision.snapshotId === input.snapshotId
     && decision.timestamp === input.timestamp);
   const decisionCandidate = openDecision && decisionSnapshotValid
-    ? sizedNewRisk.find((candidate) => candidate.candidateId === `THETA_CONVENTIONAL:${decision.selectedCandidateId}`
+    ? sizedNewRisk.find((candidate) => candidate.candidateId === `${decisionBranch}:${decision.selectedCandidateId}`
       && candidate.underlying === decision.underlying) ?? null : null;
-  const decisionInvalid = decision !== undefined && (!decisionSnapshotValid ||
+  const decisionInvalid = decision !== undefined && (!decisionSnapshotValid || !decisionAuthorityValid ||
     (openDecision && (decisionCandidate === null || !Number.isInteger(decision.quantity) || decision.quantity <= 0)) ||
     decision.winningAction === 'SYSTEM_HOLD' || decision.winningAction === 'HARD_VETO');
   const structuralSelection = managementAuthorityRequired ? null
-    : decision === undefined ? sizedNewRisk[0] ?? null : decisionInvalid ? null : decisionCandidate;
+    : decision === undefined ? qSizedNewRisk[0] ?? null : decisionInvalid ? null : decisionCandidate;
   const entrySelectionBasis = structuralSelection === null ? 'NO_SELECTION' as const
-    : decision === undefined ? 'STRUCTURAL_RESEARCH_ONLY' as const : 'THETA_Q_DECISION_BOUND' as const;
+    : decision === undefined ? 'STRUCTURAL_RESEARCH_ONLY' as const
+      : decisionBranch === 'THETA_HOLD_STRIKE' ? 'THETA_H_DECISION_BOUND' as const : 'THETA_Q_DECISION_BOUND' as const;
   const selectedQuantity = structuralSelection === null ? 0 : decision === undefined
     ? structuralSelection.sizing.quantity : Math.min(structuralSelection.sizing.quantity, decision.quantity);
-  const secondBest = managementAuthorityRequired || decision !== undefined ? null : sizedNewRisk[1] ?? null;
+  const secondBest = managementAuthorityRequired || decision !== undefined ? null : qSizedNewRisk[1] ?? null;
   const paperCandidates = globallyRanked.filter((candidate) => candidate.branch === 'THETA_CONVENTIONAL');
   const rejected = paperCandidates.filter((candidate) => !candidate.riskFeasible);
   const nearMiss = paperCandidates.find((candidate) => candidate.riskFeasible && candidate.sizing.quantity === 0)
@@ -1346,7 +1366,8 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
       || unknownCodedReason.test(candidate.sizing.bindingConstraint)));
   const paperBranch = branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
   const paperBranchEvaluated = paperBranch?.applicable === true && paperBranch.evaluationState === 'EVALUATED';
-  const qEvaluationRequired = input.thetaQCandidateEvaluationByOptionSymbol !== undefined || decision !== undefined;
+  const qEvaluationRequired = input.thetaQCandidateEvaluationByOptionSymbol !== undefined
+    || (decision !== undefined && decisionBranch === 'THETA_CONVENTIONAL');
   const incompleteReasonCounts: Record<string, number> = {};
   for (const candidate of paperCandidates) {
     if (!qEvaluationRequired) continue;
@@ -1383,24 +1404,26 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     primaryAction: managementAuthorityRequired ? 'MANAGEMENT_AUTHORITY' as const
       : structuralSelection?.action ?? (globalWaitEarned ? 'GLOBAL_WAIT' as const : 'SYSTEM_HOLD' as const),
     selectedQuantity,
+    paperEntryAuthorityReceiptHash: decisionBranch === 'THETA_HOLD_STRIKE' && input.paperEntryDecision !== undefined
+      ? input.paperEntryDecision.strategyPaperAuthority.receiptHash : null,
     empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED' as const,
     secondBestCandidateId: secondBest?.candidateId ?? null,
-    structuralTopTwo: describeStructuralTopTwo(sizedNewRisk),
+    structuralTopTwo: describeStructuralTopTwo(decision === undefined ? qSizedNewRisk : sizedNewRisk),
     nearMissCandidateId: nearMiss?.candidateId ?? null,
     bestRejectedCandidateId: rejected[0]?.candidateId ?? null,
     paperEvaluationCoverage,
     globalWaitEarned, globalWaitReasons: globalWaitEarned ? ['PAPER_AUTHORIZED_BRANCH_EVALUATED',
-      decision !== undefined ? `THETA_Q_ECONOMIC_${decision.winningAction}` : 'NO_RISK_FEASIBLE_ACTION']
+      decision !== undefined ? `${decisionReasonPrefix}_ECONOMIC_${decision.winningAction}` : 'NO_RISK_FEASIBLE_ACTION']
       : [...blockedApplicable.map((branch) => `BRANCH_NOT_FULLY_EVALUATED:${branch.branch}`),
           ...Object.entries(paperEvaluationCoverage.incompleteReasonCounts)
             .map(([reason, count]) => `PAPER_CANDIDATE_EVALUATION_INCOMPLETE:${reason}:${count}`),
           ...(!paperBranch?.applicable ? ['PAPER_BRANCH_NOT_APPLICABLE'] : []),
-          ...(decision !== undefined && !decisionSnapshotValid ? ['THETA_Q_DECISION_SNAPSHOT_MISMATCH'] : []),
-          ...(decision !== undefined && openDecision && decisionCandidate === null ? ['THETA_Q_WINNER_NOT_STRUCTURALLY_FEASIBLE'] : []),
+          ...(decision !== undefined && !decisionSnapshotValid ? [`${decisionReasonPrefix}_DECISION_SNAPSHOT_MISMATCH`] : []),
+          ...(decision !== undefined && openDecision && decisionCandidate === null ? [`${decisionReasonPrefix}_WINNER_NOT_STRUCTURALLY_FEASIBLE`] : []),
           ...(decision !== undefined && openDecision && (!Number.isInteger(decision.quantity) || decision.quantity <= 0)
-            ? ['THETA_Q_WINNER_QUANTITY_INVALID'] : []),
+            ? [`${decisionReasonPrefix}_WINNER_QUANTITY_INVALID`] : []),
           ...(decision?.winningAction === 'SYSTEM_HOLD' || decision?.winningAction === 'HARD_VETO'
-            ? [`THETA_Q_DECISION_${decision.winningAction}`] : []),
+            ? [`${decisionReasonPrefix}_DECISION_${decision.winningAction}`] : []),
           ...(managementAuthorityRequired ? ['EXISTING_POSITION_DELEGATED_TO_MANAGEMENT_AUTHORITY'] : []),
           ...(managementIncomplete ? ['OPEN_POSITION_MANAGEMENT_NOT_ATTACHED'] : []),
           ...(universeIncomplete ? [`UNDERLYINGS_NOT_EVALUATED:${input.unevaluatedUnderlyingCount}`] : []),
