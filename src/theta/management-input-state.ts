@@ -725,7 +725,17 @@ export class PostgresManagementInputStore {
       ) latest_decision ON true
       LEFT JOIN trade.broker_position_snapshot bp ON bp.reconciliation_snapshot_id=$2 AND bp.symbol=u.symbol
       LEFT JOIN trade.broker_position_snapshot bop ON bop.reconciliation_snapshot_id=$2 AND bop.symbol=oc.contract_symbol
-      WHERE ec.closed_at IS NULL AND ec.chain_kind='WHEEL' ORDER BY ec.opened_at,ec.chain_id`, [connectionId, reconciliationSnapshotId]);
+      WHERE ec.closed_at IS NULL AND ec.chain_kind='WHEEL'
+        -- A WAIT chain that never reached the broker (its entry plan expired: no option leg, no stock lot, no live order intent) holds no
+        -- exposure and has nothing to manage. It is not loaded, so it can not raise management hard blockers that would mask a real
+        -- position's. The chain itself is untouched (the frozen lifecycle has no WAIT -> CLOSED transition); a WAIT chain with an
+        -- in-flight entry order IS loaded.
+        AND NOT (ec.lifecycle_state='WAIT'
+          AND NOT EXISTS(SELECT 1 FROM trade.option_leg l0 WHERE l0.chain_id=ec.chain_id)
+          AND NOT EXISTS(SELECT 1 FROM trade.stock_lot s0 WHERE s0.chain_id=ec.chain_id)
+          AND NOT EXISTS(SELECT 1 FROM trade.order_intent oi0 WHERE oi0.chain_id=ec.chain_id
+            AND oi0.status::text NOT IN ('FILLED','CANCELED','REJECTED','EXPIRED')))
+      ORDER BY ec.opened_at,ec.chain_id`, [connectionId, reconciliationSnapshotId]);
     // The query may fetch an observation received after broker reconciliation.
     // Freeze the decision only after its evidence has been read, never at the
     // earlier reconciliation timestamp.

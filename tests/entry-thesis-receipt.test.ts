@@ -132,3 +132,11 @@ test('an H-opened chain keeps THETA_HOLD_STRIKE under management from its openin
   assert.equal(q.strategyOrigin, undefined, 'Q without a thesis keeps its existing (unchanged) behavior');
   assert.ok(buildManagementActionFrontier(q).actions.some((action) => action.action === 'ROLL'));
 });
+
+// Production 2026-10-07: 11 WAIT chains from expired 2026-10-05 entry plans (no leg, no stock, no order) were loaded into every management
+// scan, raising MANAGEMENT_HARD_BLOCKERS_PRESENT each cycle and masking any real position's blocker. Such a chain has no exposure to manage.
+test('management never loads a WAIT chain that never reached the broker, but still loads one with an in-flight entry order', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../src/theta/management-input-state.ts', import.meta.url), 'utf8');
+  assert.match(source, /AND NOT \(ec\.lifecycle_state='WAIT'\s+AND NOT EXISTS\(SELECT 1 FROM trade\.option_leg l0 WHERE l0\.chain_id=ec\.chain_id\)\s+AND NOT EXISTS\(SELECT 1 FROM trade\.stock_lot s0 WHERE s0\.chain_id=ec\.chain_id\)\s+AND NOT EXISTS\(SELECT 1 FROM trade\.order_intent oi0 WHERE oi0\.chain_id=ec\.chain_id\s+AND oi0\.status::text NOT IN \('FILLED','CANCELED','REJECTED','EXPIRED'\)\)\)/);
+});
