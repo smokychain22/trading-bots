@@ -117,3 +117,18 @@ test('management thesis health evaluates qualified current conditions without eq
       'THESIS_UNKNOWN');
   }
 });
+
+// H lineage (directive: H must remain THETA_HOLD_STRIKE through management). The entry thesis is produced only by the Q orchestrator, so an
+// H-opened chain has none; its identity must come from the persisted OPENING decision branch, never default to Q's roll permission.
+test('an H-opened chain keeps THETA_HOLD_STRIKE under management from its opening decision branch, with no roll; a Q chain is unchanged', async () => {
+  const { buildManagementActionFrontier } = await import('../src/theta/management-action-frontier.js');
+  const row = { chain_id: 'chain-h', lifecycle_state: 'CSP_OPEN', underlying: 'TLT', underlying_id: 'tlt', realized_option_pnl: 0, realized_stock_pnl: 0,
+    open_stock_shares: 0, dividends: 0, fees: 0, unknown_fill_fees: false, original_entry_thesis: null, fusion_content_hash: 'h' };
+  const at = { managementInputSnapshotId: 'input', reconciliationSnapshotId: 'recon', observedAt: '2026-10-07T15:00:00.000Z' };
+  const h = assembleManagementInput({ ...row, original_strategy_branch: 'THETA_HOLD_STRIKE' }, at);
+  assert.equal(h.strategyOrigin, 'THETA_HOLD_STRIKE');
+  assert.ok(!buildManagementActionFrontier(h).actions.some((action) => action.action === 'ROLL'), 'H never rolls');
+  const q = assembleManagementInput({ ...row, original_strategy_branch: 'THETA_CONVENTIONAL' }, at);
+  assert.equal(q.strategyOrigin, undefined, 'Q without a thesis keeps its existing (unchanged) behavior');
+  assert.ok(buildManagementActionFrontier(q).actions.some((action) => action.action === 'ROLL'));
+});

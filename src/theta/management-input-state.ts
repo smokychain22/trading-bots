@@ -535,8 +535,11 @@ export function assembleManagementInput(row: Row, input: {
     ...(stockShares > 0 && input.stockQuoteRead != null
       ? { stockExecutionQuote: classifyManagementStockQuote(String(row.underlying), input.stockQuoteRead, input.observedAt) } : {}),
     originalEntryThesis,
-    ...(originalEntryThesis.state === 'VERIFIED' && originalEntryThesis.receipt !== null
-      ? { strategyOrigin: originalEntryThesis.receipt.strategy } : {}),
+    // Strategy identity follows the persisted OPENING decision. The entry thesis is produced only by the Q orchestrator, so an H-opened
+    // chain has none: without this an H position would lose its no-roll identity and its mandatory H lifecycle review under management.
+    ...(row.original_strategy_branch === 'THETA_HOLD_STRIKE' ? { strategyOrigin: 'THETA_HOLD_STRIKE' as const }
+      : originalEntryThesis.state === 'VERIFIED' && originalEntryThesis.receipt !== null
+        ? { strategyOrigin: originalEntryThesis.receipt.strategy } : {}),
     lifecycleState, underlying: String(row.underlying),
     underlyingId: String(row.underlying_id),
     contract: { optionLegId: text(row.option_leg_id), optionContractId: text(row.option_contract_id), symbol: contractSymbol,
@@ -614,6 +617,7 @@ export class PostgresManagementInputStore {
       SELECT ec.chain_id,ec.lifecycle_state,u.underlying_id,u.symbol AS underlying,
         original_entry.decision_id AS original_decision_id,original_entry.fusion_snapshot_id AS original_snapshot_id,
         original_entry.decided_at AS original_decided_at,original_entry.entry_thesis AS original_entry_thesis,
+        original_entry.strategy_branch AS original_strategy_branch,
         ol.option_leg_id,ol.remaining_quantity AS quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
         oc.strike,oc.expiration_date,oc.multiplier,
         oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.retrieved_at AS quote_retrieved_at,oq.feed,oq.quality AS quote_quality,
@@ -661,7 +665,8 @@ export class PostgresManagementInputStore {
           COALESCE(d.receipt_json #>> '{legacyThetaQReceipt,timestamp}',
             d.receipt_json #>> '{subordinateNewRiskEvidence,receipt,timestamp}') AS decided_at,
           COALESCE(d.receipt_json #> '{legacyThetaQReceipt,entryThesisReceipt}',
-            d.receipt_json #> '{subordinateNewRiskEvidence,receipt,entryThesisReceipt}') AS entry_thesis
+            d.receipt_json #> '{subordinateNewRiskEvidence,receipt,entryThesisReceipt}') AS entry_thesis,
+          d.strategy_branch::text AS strategy_branch
         FROM trade.option_leg first_leg JOIN trade.decision d ON d.decision_id=first_leg.decision_id
         WHERE first_leg.chain_id=ec.chain_id
         ORDER BY first_leg.opened_at,first_leg.option_leg_id LIMIT 1

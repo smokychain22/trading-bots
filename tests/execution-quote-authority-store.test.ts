@@ -64,14 +64,16 @@ test('serverless runtime scopes keep management and evidence bounded without dro
 
 test('a durable READY plan reaches the canonical handoff before scan post-processing consumes its window',()=>{
   const scanSource=readFileSync('src/research/production-shadow-runtime.ts','utf8');
-  const enqueueAt=scanSource.indexOf('new PostgresMasterPaperActionPlanStore(input.pool).enqueue');
+  const enqueueAt=scanSource.indexOf('new PostgresMasterPaperActionPlanStore(memberPool).enqueue');
   const callbackAt=scanSource.indexOf('await input.onActionPlanEnqueued?.(assembled.plan.actionPlanId)',enqueueAt);
   const scanPersistenceAt=scanSource.indexOf('await evidenceStore.saveScan(scan,persisted)',callbackAt);
   assert.ok(enqueueAt>=0&&callbackAt>enqueueAt&&scanPersistenceAt>callbackAt,
     'durable enqueue must invoke the handoff before non-decision scan persistence');
   const runtimeSource=readFileSync('src/theta/autonomous-runtime.ts','utf8');
-  assert.match(runtimeSource,/onActionPlanEnqueued:async\(\)=>\{\s*immediateHandoff\.result=await executor\('PAPER_EXECUTION_HANDOFF'/,
-    'the callback must reuse the existing PAPER_EXECUTION_HANDOFF authority');
+  assert.match(runtimeSource,/onActionPlanEnqueued:async\(actionPlanId\)=>\{\s*immediateHandoff\.result=await immediateReadyPlanHandoff\(actionPlanId,jobId\)/,
+    'the callback runs the immediate handoff for the exact enqueued plan');
+  assert.match(runtimeSource,/const immediateReadyPlanHandoff = async \(actionPlanId: string, jobId: string\): Promise<JobRunResult> => \{\s*const result = await executor\('PAPER_EXECUTION_HANDOFF'/,
+    'the immediate handoff reuses the existing PAPER_EXECUTION_HANDOFF authority');
   assert.match(runtimeSource,/if\(paperExecutionHandoffCompleted\)return skipped\('PAPER_EXECUTION_HANDOFF_ALREADY_ATTEMPTED'\)/,
     'one scan request must never create two broker handoff attempts');
 });
