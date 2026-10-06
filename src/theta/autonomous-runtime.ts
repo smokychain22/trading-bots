@@ -492,7 +492,15 @@ export async function runAutonomousRuntimeCycle(
   let masterPaperOrdersSubmitted = 0;
   const retryAt = new Date(now.getTime() + 60_000).toISOString();
 
-  const executor = async (jobType: JobType, _key: string, jobId: string): Promise<JobRunResult> => {
+  // A spread that needs a human (see POSITION_MANAGEMENT_SCAN) degrades that job even when the Wheel chains are fine. Applied OUTSIDE the Wheel code path so none of its returns change.
+  let definedRiskEscalated=false;
+  const executor = async (jobType: JobType, key: string, jobId: string): Promise<JobRunResult> => {
+    definedRiskEscalated=jobType==='POSITION_MANAGEMENT_SCAN'?false:definedRiskEscalated;
+    const result=await wheelAndSpreadExecutor(jobType,key,jobId);
+    return jobType==='POSITION_MANAGEMENT_SCAN'&&definedRiskEscalated&&result.status!=='FAILED'&&result.status!=='QUARANTINED'
+      ?degraded('DEFINED_RISK_ESCALATION_REQUIRED',retryAt):result;
+  };
+  const wheelAndSpreadExecutor = async (jobType: JobType, _key: string, jobId: string): Promise<JobRunResult> => {
     try {
       if (jobType === 'POSITION_RECONCILIATION') {
         reconciliation = await runReadOnlyBrokerReconciliation({
@@ -520,9 +528,7 @@ export async function runAutonomousRuntimeCycle(
           orders:definedRiskStore,executionAccountId:master.executionAccountId,
           reconciliation:{snapshotId:reconciliation.snapshotId,marketOpen:reconciliation.marketOpen,dataQuality:reconciliation.dataQuality,observedAt:reconciliation.observedAt},
           managementSubmissionEnabled:executionControl.managementSubmissionEnabled});
-        const definedRiskEscalation=definedRisk.some((item)=>item.escalate);
-        const withDefinedRisk=(result:JobRunResult):JobRunResult=>definedRiskEscalation&&result.status!=='FAILED'&&result.status!=='QUARANTINED'
-          ?degraded('DEFINED_RISK_ESCALATION_REQUIRED',retryAt):result;
+        definedRiskEscalated=definedRisk.some((item)=>item.escalate);
         const managementStore = new PostgresManagementInputStore(pool);
         // Candidate BBO must be observed and persisted before the immutable
         // management input freezes its decision timestamp. The candidate
@@ -534,7 +540,7 @@ export async function runAutonomousRuntimeCycle(
           // SELL_STOCK executable evidence: one bounded Alpaca IEX stock quote read per underlying holding shares.
           (symbol)=>fetchLatestStockQuote(master.alpaca,symbol,'iex'),
         );
-        if (states.length === 0) return withDefinedRisk(skipped('NO_OPEN_THETA_CHAINS'));
+        if (states.length === 0) return skipped('NO_OPEN_THETA_CHAINS');
         // Persist research-only profit-preservation and strategy-switching
         // evidence before the production policy boundary is evaluated. This
         // collector has no conversion path to ManagementPolicyEvidence and
@@ -587,11 +593,11 @@ export async function runAutonomousRuntimeCycle(
             firstChainBlocker??=assembly.blockers[0]??'MANAGEMENT_ACTION_PLAN_BLOCKED';continue;
           }
         }
-        if (firstChainBlocker !== null) return withDefinedRisk(degraded(firstChainBlocker, retryAt));
+        if (firstChainBlocker !== null) return degraded(firstChainBlocker, retryAt);
         if (states.some((state) => state.hardBlockers.length > 0)) {
-          return withDefinedRisk(degraded('MANAGEMENT_HARD_BLOCKERS_PRESENT', retryAt));
+          return degraded('MANAGEMENT_HARD_BLOCKERS_PRESENT', retryAt);
         }
-        return withDefinedRisk(degraded('EV_MODEL_NOT_EMPIRICALLY_READY', retryAt));
+        return degraded('EV_MODEL_NOT_EMPIRICALLY_READY', retryAt);
       }
       if (jobType === 'ASSIGNMENT_EXPIRY_RECONCILIATION') {
         if (reconciliation===null) return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);

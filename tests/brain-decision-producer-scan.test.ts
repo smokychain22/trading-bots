@@ -29,6 +29,8 @@ const thetaClass: Readonly<Record<string, ProducerClass>> = {
   'decision-explainability.ts': 'DISPLAY',
   'deep-system-inventory.ts': 'DISPLAY',
   'execution-quality-contract.ts': 'SUBORDINATE_CALCULATOR',
+  // H's branch-local nominator: it can only propose an H candidate AFTER Q declined, from a verified governed receipt; canonical-strategy-frontier.ts stays the sole selector
+  'hold-strike-production-decision.ts': 'SUBORDINATE_CALCULATOR',
   'management-action-frontier.ts': 'PRODUCTION_AUTHORITY',
   'management-assembly.ts': 'LEGACY',
   'management-input-state.ts': 'SUBORDINATE_CALCULATOR',

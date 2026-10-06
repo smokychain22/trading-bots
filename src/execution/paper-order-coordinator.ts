@@ -298,7 +298,8 @@ export class PaperOrderCoordinator {
     const intent = await this.store.getIntent(orderIntentId);
     if (intent === null) throw new Error('Order intent cannot be synchronized before persistence.');
     assertBrokerSnapshotMatches(intent, brokerOrder);
-    await this.store.recordBrokerSnapshot(orderIntentId,brokerOrder);
+    // Per-leg broker truth is persisted for native multi-leg parents ONLY, before any local state advances. Single-leg orders keep their existing single writer.
+    if(intent.request.order_class==='mleg')await this.store.recordBrokerSnapshot(orderIntentId,brokerOrder);
     if(intent.request.order_class==='mleg'){
       const structure=reconcileDefinedRiskParent(brokerOrder);
       if(structure.requiresReconciliation){

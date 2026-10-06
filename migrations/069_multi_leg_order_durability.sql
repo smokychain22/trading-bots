@@ -16,9 +16,10 @@ ALTER TABLE trade.order_intent ADD CONSTRAINT ck_order_intent_order_class CHECK 
     AND credit_debit_direction IN ('CREDIT','DEBIT'))
 );
 
+-- The single-leg branch is EXACTLY migration 013's predicate (it must not become stricter: ADD CONSTRAINT validates every historical row, and 013 never required a contract id).
 ALTER TABLE trade.order_intent DROP CONSTRAINT IF EXISTS ck_order_intent_position_intent;
 ALTER TABLE trade.order_intent ADD CONSTRAINT ck_order_intent_position_intent CHECK (
-  (instrument_type='OPTION' AND order_class='simple' AND option_contract_id IS NOT NULL
+  (instrument_type='OPTION' AND order_class='simple'
     AND position_intent IN ('BUY_TO_OPEN','BUY_TO_CLOSE','SELL_TO_OPEN','SELL_TO_CLOSE')
     AND (side=position_intent
       OR (side='buy' AND position_intent IN ('BUY_TO_OPEN','BUY_TO_CLOSE'))

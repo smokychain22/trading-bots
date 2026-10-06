@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { AlpacaPaperBrokerError, type BrokerOrderRequest, type BrokerOrderSnapshot, type PaperBrokerAdapter } from '../src/execution/broker.js';
 import type { BrokerMutationAuthorization } from '../src/execution/execution-control.js';
 import { InMemoryPaperOrderStore, PaperOrderCoordinator, type PersistedPaperOrderIntent } from '../src/execution/paper-order-coordinator.js';
@@ -144,4 +146,20 @@ test('H shares the ONE order path with Q: no H module owns broker mutation, orde
     const text = readFileSync(new URL(`../src/theta/${file}`, import.meta.url), 'utf8');
     assert.doesNotMatch(text, /PaperOrderCoordinator|PaperBrokerAdapter|submitOrder|cancelOrder|replaceOrder|\bpg\b|from 'pg'|fetch\(/, `${file} must not mutate the broker or touch the database`);
   }
+});
+
+// SOLE BROKER MUTATION AUTHORITY: the adapter exposes exactly submit / replace / cancel, and nothing outside the coordinator (and the adapter itself) calls them.
+test('RAW_BROKER_MUTATION_CALLERS_OUTSIDE_COORDINATOR = 0 across src and tools', () => {
+  const walk = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory()
+    ? (entry.name === 'node_modules' || entry.name === '.theta-local-worker' ? [] : walk(join(directory, entry.name)))
+    : /\.(ts|mjs)$/.test(entry.name) ? [join(directory, entry.name)] : []);
+  const offenders: string[] = [];
+  for (const directory of ['../src', '../tools']) for (const file of walk(fileURLToPath(new URL(directory, import.meta.url)))) {
+    if (/paper-order-coordinator\.ts$/.test(file)) continue;
+    if (/\.(submitOrder|replaceOrder|cancelOrder)\s*\(/.test(readFileSync(file, 'utf8'))) offenders.push(file);
+  }
+  assert.deepEqual(offenders, []);
+  const adapter = readFileSync(new URL('../src/execution/broker.ts', import.meta.url), 'utf8');
+  const mutationEndpoints = [...adapter.matchAll(/method: '(POST|PATCH|DELETE|PUT)'/g)].map((match) => match[1]).sort();
+  assert.deepEqual(mutationEndpoints, ['DELETE', 'PATCH', 'POST'], 'exactly the three order mutations; no position-close, exercise or transfer endpoint');
 });

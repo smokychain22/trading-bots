@@ -6,11 +6,11 @@ import { deriveDatabaseRuntimeMismatches, deriveRuntimeMismatches, maximumWorker
 const healthy: RuntimeTruthInputs = {
   sourceSha: 'a'.repeat(40), sourceDirty: false, workerSha: 'a'.repeat(40), activeWorkerLeases: 1,
   workerHeartbeat: '2026-09-23T13:30:00.000Z', workerMode: 'MASTER_THETA_PAPER',
-  executionGate: 'LOCKED', migrationHead: '067_postgres_cycle_evidence_compaction',
+  executionGate: 'LOCKED', migrationHead: '069_multi_leg_order_durability',
   requiredMigrationPresent: true, observedAt: '2026-09-23T13:30:20.000Z',
 };
 
-test('current locked release with schema 067 has no mismatch', () => {
+test('current locked release with schema 069 has no mismatch', () => {
   assert.deepEqual(deriveRuntimeMismatches(healthy), []);
 });
 

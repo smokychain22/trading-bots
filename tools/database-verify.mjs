@@ -76,6 +76,7 @@ try {
     "066_local_observation_evidence",
     "067_postgres_cycle_evidence_compaction",
     "068_action_plan_integrity",
+    "069_multi_leg_order_durability",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -557,7 +558,7 @@ try {
   process.stdout.write(JSON.stringify({
     state: "CONNECTED",
     migrations: expected.length,
-    migrationHead: "068_action_plan_integrity",
+    migrationHead: "069_multi_leg_order_durability",
     // Canonical Paper IV cohort assessments live in schema-064 FusionSnapshot
     // JSON with separate source-proven PIT candidate rows. Migration 065 is a
     // distinct Optionomics research assessment, never the Paper IV prerequisite.

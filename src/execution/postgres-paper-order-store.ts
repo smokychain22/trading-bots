@@ -263,10 +263,9 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
 
   async recordBrokerSnapshot(orderIntentId:string,snapshot:BrokerOrderSnapshot):Promise<void>{
     await withRuntimePostgresTransaction(this.pool,async(client)=>{
-      await client.query(`INSERT INTO trade.broker_order(order_intent_id,provider_order_id,submitted_at,acknowledged_at,broker_status)
-        VALUES($1,$2,$3,CASE WHEN $4 IN ('accepted','new','partially_filled','filled') THEN now() ELSE NULL END,$4)
-        ON CONFLICT(order_intent_id,provider_order_id) DO UPDATE SET broker_status=EXCLUDED.broker_status,
-          acknowledged_at=COALESCE(trade.broker_order.acknowledged_at,EXCLUDED.acknowledged_at)`,
+      // the parent row's broker_status is owned by transitionIntent (intent-state vocabulary, same as every other order); raw per-leg broker status lives in broker_order_leg_state
+      await client.query(`INSERT INTO trade.broker_order(order_intent_id,provider_order_id,submitted_at,broker_status)
+        VALUES($1,$2,$3,$4) ON CONFLICT(order_intent_id,provider_order_id) DO NOTHING`,
       [orderIntentId,snapshot.id,snapshot.submittedAt,snapshot.status]);
       if(snapshot.orderClass==='mleg'){
         if(snapshot.legs===undefined)throw new Error('BROKER_MULTI_LEG_STATE_MISSING');

@@ -22,32 +22,35 @@ test('schema 064 is a typed fail-closed state before lease or cycle work', () =>
     '065_aegis_iv_stress_evidence',
     '066_local_observation_evidence',
     '067_postgres_cycle_evidence_compaction',
+    '069_multi_leg_order_durability',
   ]);
   assert.equal(receipt.executionGate, 'LOCKED');
   assert.equal(receipt.brokerAuthority, false);
   assert.equal('SCHEMA_064_WORKER_42703', 'SCHEMA_064_WORKER_42703');
 });
 
-test('exact schema 067 and exact source-worker identity are compatible', () => {
+test('exact schema 069 and exact source-worker identity are compatible', () => {
   const receipt = assessRuntimeSchemaCompatibility({
     appliedVersions: [...runtimeRequiredMigrations], sourceSha, workerSha: sourceSha,
   });
   assert.equal(receipt.state, 'COMPATIBLE');
   assert.equal(receipt.compatible, true);
-  assert.equal(receipt.observedHead, '067_postgres_cycle_evidence_compaction');
+  assert.equal(receipt.observedHead, '069_multi_leg_order_durability');
 });
 
-test('schema 068 (additive plan-integrity hardening) is compatible, so deploy-then-migrate and migrate-then-deploy are both safe', () => {
+test('a pre-069 schema (head 068) is locked, never run mid-cycle: the safe order is migrate 069 first, then deploy', () => {
   const receipt = assessRuntimeSchemaCompatibility({
-    appliedVersions: [...runtimeRequiredMigrations, '068_action_plan_integrity'], sourceSha, workerSha: sourceSha,
+    appliedVersions: [...runtimeRequiredMigrations.filter((version) => version !== '069_multi_leg_order_durability'), '068_action_plan_integrity'], sourceSha, workerSha: sourceSha,
   });
-  assert.equal(receipt.state, 'COMPATIBLE');
-  assert.equal(receipt.observedHead, '068_action_plan_integrity');
+  assert.equal(receipt.state, 'MIGRATION_REQUIRED');
+  assert.equal(receipt.compatible, false);
+  assert.deepEqual(receipt.missingRequiredMigrations, ['069_multi_leg_order_durability']);
+  assert.equal(receipt.executionGate, 'LOCKED');
 });
 
 test('schema ahead, source mismatch, and unreadable migration metadata fail closed', async () => {
   assert.equal(assessRuntimeSchemaCompatibility({
-    appliedVersions: [...runtimeRequiredMigrations, '069_future_schema'], sourceSha, workerSha: sourceSha,
+    appliedVersions: [...runtimeRequiredMigrations, '070_future_schema'], sourceSha, workerSha: sourceSha,
   }).state, 'SCHEMA_AHEAD_UNSUPPORTED');
   assert.equal(assessRuntimeSchemaCompatibility({
     appliedVersions: [...runtimeRequiredMigrations], sourceSha,

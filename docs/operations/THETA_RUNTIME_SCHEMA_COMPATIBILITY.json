@@ -1,18 +1,18 @@
 {
   "contractVersion": "theta-runtime-schema-compatibility-v1",
   "authority": "PRODUCTION_RUNTIME_FAIL_CLOSED",
-  "expectedMinimum": "067_postgres_cycle_evidence_compaction",
-  "expectedMaximum": "068_action_plan_integrity",
+  "expectedMinimum": "069_multi_leg_order_durability",
+  "expectedMaximum": "069_multi_leg_order_durability",
   "compatibleExactHeads": [
-    "067_postgres_cycle_evidence_compaction",
-    "068_action_plan_integrity"
+    "069_multi_leg_order_durability"
   ],
   "requiredMigrations": [
     "020_local_worker_runtime",
     "064_alpaca_corporate_action_observation",
     "065_aegis_iv_stress_evidence",
     "066_local_observation_evidence",
-    "067_postgres_cycle_evidence_compaction"
+    "067_postgres_cycle_evidence_compaction",
+    "069_multi_leg_order_durability"
   ],
   "failureIncident": {
     "id": "SCHEMA_064_WORKER_42703",
@@ -53,6 +53,22 @@
         "trade.canonical_strategy_frontier.frontier_projection_hash",
         "trade.decision.receipt_storage_contract_version",
         "trade.decision.receipt_projection_hash"
+      ]
+    },
+    {
+      "migration": "069_multi_leg_order_durability",
+      "objects": [
+        "trade.order_intent.order_class",
+        "trade.order_intent.package_identity",
+        "trade.order_intent.credit_debit_direction",
+        "trade.order_intent_leg",
+        "trade.broker_order_leg_state",
+        "trade.multi_leg_lifecycle_event",
+        "trade.multi_leg_chain_accounting",
+        "trade.defined_risk_position",
+        "trade.economic_chain.chain_kind",
+        "trade.economic_chain.origin_chain_id",
+        "ops.theta_strategy_paper_authority"
       ]
     }
   ],

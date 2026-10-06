@@ -1,10 +1,11 @@
 import type { Pool } from 'pg';
 
 export const runtimeSchemaCompatibilityVersion = 'theta-runtime-schema-compatibility-v1' as const;
-export const runtimeSchemaMinimum = '067_postgres_cycle_evidence_compaction' as const;
-// 068 (action plan integrity trigger + pre-submit uniqueness) is additive hardening: the runtime works on a 067 schema and on a
-// 068 schema, so deploy-then-migrate and migrate-then-deploy are both safe. Any head outside [minimum, maximum] stays locked.
-export const runtimeSchemaMaximum = '068_action_plan_integrity' as const;
+// 069 (native multi-leg durability: order_class / order_intent_leg / defined_risk_position / chain_kind / governed strategy authority) is REQUIRED by this runtime: every order insert
+// writes order_class and every Wheel loader filters chain_kind. 069 is additive with defaults, so the PREVIOUS runtime still works on a 069 schema: the safe order is
+// migrate-then-deploy. Deploy-then-migrate stays locked (MIGRATION_REQUIRED) instead of failing mid-cycle. Any head outside [minimum, maximum] stays locked.
+export const runtimeSchemaMinimum = '069_multi_leg_order_durability' as const;
+export const runtimeSchemaMaximum = '069_multi_leg_order_durability' as const;
 
 export const runtimeRequiredMigrations = [
   '020_local_worker_runtime',
@@ -12,6 +13,7 @@ export const runtimeRequiredMigrations = [
   '065_aegis_iv_stress_evidence',
   '066_local_observation_evidence',
   '067_postgres_cycle_evidence_compaction',
+  '069_multi_leg_order_durability',
 ] as const;
 
 export type RuntimeSchemaCompatibilityState =
@@ -86,8 +88,8 @@ export function assessRuntimeSchemaCompatibility(input: {
       observedHead, missingRequiredMigrations };
   }
   const observedOrdinal = observedHead === null ? null : migrationOrdinal(observedHead);
-  const maximumOrdinal = migrationOrdinal(runtimeSchemaMaximum) ?? 68;
-  const minimumOrdinal = migrationOrdinal(runtimeSchemaMinimum) ?? 67;
+  const maximumOrdinal = migrationOrdinal(runtimeSchemaMaximum) ?? 69;
+  const minimumOrdinal = migrationOrdinal(runtimeSchemaMinimum) ?? 69;
   if (observedOrdinal !== null && observedOrdinal > maximumOrdinal) {
     return { ...base, state: 'SCHEMA_AHEAD_UNSUPPORTED', compatible: false,
       observedHead, missingRequiredMigrations };
