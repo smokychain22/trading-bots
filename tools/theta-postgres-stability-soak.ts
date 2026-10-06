@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import { loadEnvironmentFile } from '../src/config/environment.js';
+import { loadEnvironment, loadEnvironmentFile } from '../src/config/environment.js';
 import { runWithBoundedConcurrency } from '../src/theta/bounded-concurrency.js';
 import { thetaSoakFreshPhysicalConnectionTimeoutMillis,
   thetaSoakPoolWaitTimeoutMillis, type FreshPostgresAttemptReceipt } from '../src/theta/postgres-connection-characterization.js';
@@ -18,7 +18,9 @@ const durationArg=process.argv.find((value)=>value.startsWith('--duration-second
 const parsedDuration=Number(durationArg??900);
 if(!Number.isFinite(parsedDuration))throw new Error('SOAK_DURATION_INVALID');
 const durationSeconds=Math.max(120,Math.min(3_600,Math.trunc(parsedDuration)));
-const environment=loadEnvironmentFile(environmentFile);
+// `--environment-file=process` reads ONLY the process environment: the governed migration sets the exact database it just migrated there, and a file
+// (which takes precedence over the process in loadEnvironmentFile) must never silently redirect the post-migration soak to another database.
+const environment=environmentFile==='process'?loadEnvironment():loadEnvironmentFile(environmentFile);
 if(!environment.DATABASE_URL)throw new Error('DATABASE_NOT_CONFIGURED');
 
 const safeErrors:string[]=[];

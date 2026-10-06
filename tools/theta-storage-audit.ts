@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import pg from 'pg';
-import { loadEnvironmentFile } from '../src/config/environment.js';
+import { loadEnvironment, loadEnvironmentFile } from '../src/config/environment.js';
 import {
   categoryBytes, measuredAppendRates, normalizeRelationStat,
   type AuditedRelation, type PostgresRelationStatRow,
@@ -20,7 +20,8 @@ const parquetRoot = resolve(process.argv.find((argument) => argument.startsWith(
   ?.slice('--parquet-root='.length) ?? 'C:\\ProjectBackups\\trading-bots\\research-archives');
 const sqliteSpoolPath = resolve(process.argv.find((argument) => argument.startsWith('--sqlite-spool='))
   ?.slice('--sqlite-spool='.length) ?? resolve('.theta-local-worker', 'evidence-spool', 'theta-evidence.sqlite'));
-const environment = loadEnvironmentFile(environmentFile);
+// `--environment-file=process`: read only the process environment (the governed migration's exact target); see theta-postgres-stability-soak.ts
+const environment = environmentFile === 'process' ? loadEnvironment() : loadEnvironmentFile(environmentFile);
 const connectionString = environment.AIVEN_DATABASE_URL ?? environment.DATABASE_URL;
 if (connectionString === undefined) throw new Error('CANONICAL_DATABASE_URL_NOT_CONFIGURED');
 

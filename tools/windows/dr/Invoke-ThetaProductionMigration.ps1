@@ -112,7 +112,7 @@ try {
     if ($verifyProcess.State -eq 'TIMED_OUT') { throw 'POST_MIGRATION_SCHEMA_INVARIANT_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED' }
     if ($verifyProcess.ExitCode -ne 0) { throw 'POST_MIGRATION_SCHEMA_INVARIANT_FAILED_PRE_BACKUP_PRESERVED' }
     $storageProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 300 -Arguments @(
-      '--import','tsx','tools/theta-storage-audit.ts','--environment-file=.env.local')
+      '--import','tsx','tools/theta-storage-audit.ts','--environment-file=process')
     $storageRaw = $storageProcess.Output
     if ($storageProcess.State -eq 'TIMED_OUT') { throw 'POST_MIGRATION_STORAGE_AUDIT_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED' }
     if ($storageProcess.ExitCode -ne 0) { throw 'POST_MIGRATION_STORAGE_AUDIT_FAILED_PRE_BACKUP_PRESERVED' }
@@ -121,7 +121,7 @@ try {
       throw 'POST_MIGRATION_STORAGE_AUDIT_INCOMPLETE_PRE_BACKUP_PRESERVED'
     }
     $soakProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 1020 -Arguments @(
-      '--import','tsx','tools/theta-postgres-stability-soak.ts','--environment-file=.env.local','--duration-seconds=900')
+      '--import','tsx','tools/theta-postgres-stability-soak.ts','--environment-file=process','--duration-seconds=900')
     $soakRaw = $soakProcess.Output
     $soakExitCode = $soakProcess.ExitCode
     $soakLog = Join-Path $root ('logs\database-stability-soak-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.jsonl')
