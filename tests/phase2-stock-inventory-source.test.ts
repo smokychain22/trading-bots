@@ -46,9 +46,9 @@ test('inventory source: no position row is a KNOWN zero; short stock is negative
 });
 
 test('inventory source: committed short calls come from LIVE positions and open sell-to-open orders, and unknown order rows fail closed', async () => {
-  const withCalls = await source([equity('300'), shortCall('2')], [{ id: 'o1', client_order_id: 'c1', symbol: 'AAPL261120C00210000', side: 'sell', position_intent: 'sell_to_open', qty: '1', status: 'new', type: 'limit' }]).source.readStockInventory('AAPL');
+  const withCalls = await source([equity('300'), shortCall('2')], [{ id: 'o1', client_order_id: 'c1', symbol: 'AAPL261120C00210000', side: 'sell', position_intent: 'sell_to_open', qty: '1', filled_qty: '0', status: 'new', type: 'limit' }]).source.readStockInventory('AAPL');
   assert.equal(withCalls.committedShortCallContracts, 3);
-  const ambiguous = await source([equity('100')], [{ id: 'o2', client_order_id: 'c2', symbol: 'AAPL261120C00210000', side: 'sell', position_intent: null, qty: '1', status: 'new', type: 'limit' }]).source.readStockInventory('AAPL');
+  const ambiguous = await source([equity('100')], [{ id: 'o2', client_order_id: 'c2', symbol: 'AAPL261120C00210000', side: 'sell', position_intent: null, qty: '1', filled_qty: '0', status: 'new', type: 'limit' }]).source.readStockInventory('AAPL');
   assert.equal(ambiguous.committedShortCallContracts, null, 'a sell of a call with no position intent cannot be proven not to be a short call');
 });
 

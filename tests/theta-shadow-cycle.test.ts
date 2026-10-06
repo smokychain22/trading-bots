@@ -305,6 +305,8 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   const persistedConventional = result.strategyFrontier?.branches
     .find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates[0];
   assert.ok(persistedConventional !== undefined);
+  assert.equal(persistedConventional.moneyManagementReceipt?.accountPolicyReference?.field,
+    'accountPolicyCompatibility');
   assert.equal(persistedConventional.entryEligibility?.ownershipFloor,
     paperBootstrapRuntimePolicy.ownership.thetaQAcceptabilityFloor);
   const persistedWithCandidateOwnership = result.strategyFrontier?.branches

@@ -58,7 +58,10 @@ test('baseline: ample capital sizes a positive quantity with AEGIS ALLOW_FULL', 
   assert.equal(frontier.selectedQuantity, candidate.sizing.quantity);
   assert.equal(frontier.executionAuthorized, false, 'sizing alone never authorizes execution');
   assert.equal(candidate.moneyManagementReceipt?.candidateId, candidate.candidateId);
-  assert.equal(candidate.moneyManagementReceipt?.sizing, candidate.sizing, 'receipt references canonical sizing instead of recomputing it');
+  assert.equal(candidate.moneyManagementReceipt?.sizingReference.field, 'sizing');
+  assert.equal(candidate.moneyManagementReceipt?.sizingReference.quantity, candidate.sizing.quantity);
+  assert.equal(candidate.moneyManagementReceipt?.sizingReference.bindingConstraint, candidate.sizing.bindingConstraint);
+  assert.equal(candidate.moneyManagementReceipt?.accountPolicyReference, null);
   assert.equal(candidate.moneyManagementReceipt?.result.finalQuantity, candidate.sizing.quantity);
   assert.equal(candidate.moneyManagementReceipt?.result.executionAuthorityGranted, false);
   assert.ok(frontier.branches.flatMap((branch) => branch.candidates)

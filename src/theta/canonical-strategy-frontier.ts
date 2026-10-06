@@ -144,18 +144,29 @@ export interface CanonicalFrontierCandidate {
    * policy receipt, AEGIS result and sizing waterfall without recomputing
    * any of them. */
   readonly moneyManagementReceipt?: {
-    readonly version: 'theta-candidate-money-management-receipt-v1';
+    readonly version: 'theta-candidate-money-management-receipt-v2';
     readonly candidateId: string;
     readonly snapshotId: string;
     readonly strategy: ThetaStrategyBranch;
     readonly riskStructure: CanonicalFrontierAction;
-    readonly accountPolicy: StrategyAccountPolicyCompatibility | null;
+    /** Compact reference to the canonical receipt on this same candidate.
+     * The complete receipt remains in accountPolicyCompatibility and is not
+     * duplicated into the bounded PostgreSQL projection. */
+    readonly accountPolicyReference: {
+      readonly field: 'accountPolicyCompatibility';
+      readonly assessmentVersion: StrategyAccountPolicyCompatibility['assessmentVersion'];
+      readonly scope: StrategyAccountPolicyCompatibility['scope'];
+    } | null;
     readonly accountPolicyState: StrategyAccountPolicyCompatibility['state'] | 'NOT_EVALUATED';
-    readonly aegis: {
-      readonly state: CanonicalStrategyFrontierInput['aegisNewRiskState'];
-      readonly bindingReasons: readonly string[];
+    readonly aegisReference: {
+      readonly stateField: 'aegisState';
+      readonly bindingReasonsSource: 'canonicalFrontierInput.aegisBindingReasonsByCandidateId';
     };
-    readonly sizing: CanonicalFrontierCandidate['sizing'];
+    readonly sizingReference: {
+      readonly field: 'sizing';
+      readonly quantity: number;
+      readonly bindingConstraint: string;
+    };
     readonly result: {
       readonly brokerFeasible: boolean | null;
       readonly accountPolicyFeasible: boolean | null;
@@ -1229,13 +1240,18 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const branches = branchOrder.map((branch) => {
     const built = buildBranch(branch, input, sharedRoutingResults, sharedStockShares);
     return { ...built, candidates: built.candidates.map((candidate) => ({ ...candidate, moneyManagementReceipt: {
-      version: 'theta-candidate-money-management-receipt-v1' as const,
+      version: 'theta-candidate-money-management-receipt-v2' as const,
       candidateId: candidate.candidateId, snapshotId: input.snapshotId, strategy: candidate.branch,
-      riskStructure: candidate.action, accountPolicy: candidate.accountPolicyCompatibility ?? null,
+      riskStructure: candidate.action, accountPolicyReference: candidate.accountPolicyCompatibility === undefined ? null : {
+        field: 'accountPolicyCompatibility' as const,
+        assessmentVersion: candidate.accountPolicyCompatibility.assessmentVersion,
+        scope: candidate.accountPolicyCompatibility.scope,
+      },
       accountPolicyState: candidate.accountPolicyCompatibility?.state ?? 'NOT_EVALUATED' as const,
-      aegis: { state: candidate.aegisState,
-        bindingReasons: input.aegisBindingReasonsByCandidateId?.[candidate.candidateId] ?? candidate.sizing.reasons },
-      sizing: candidate.sizing,
+      aegisReference: { stateField: 'aegisState' as const,
+        bindingReasonsSource: 'canonicalFrontierInput.aegisBindingReasonsByCandidateId' as const },
+      sizingReference: { field: 'sizing' as const, quantity: candidate.sizing.quantity,
+        bindingConstraint: candidate.sizing.bindingConstraint },
       result: { brokerFeasible: candidate.accountPolicyCompatibility?.brokerFeasible ?? null,
         accountPolicyFeasible: candidate.accountPolicyCompatibility?.accountFeasible ?? null,
         finalQuantity: candidate.sizing.quantity, bindingConstraint: candidate.sizing.bindingConstraint,
