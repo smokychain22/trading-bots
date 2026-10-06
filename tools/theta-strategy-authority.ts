@@ -1,11 +1,14 @@
 // Governed recording of a strategy's Paper authority receipt (the ONLY writer of ops.theta_strategy_paper_authority).
-//   node --import tsx tools/theta-strategy-authority.ts --strategy=THETA_HOLD_STRIKE --input=<gates.json> [--release-sha=<40 hex, must equal HEAD>] [--environment-file=.env.local] [--apply]
+//   node --import tsx tools/theta-strategy-authority.ts --strategy=THETA_HOLD_STRIKE --input=<gates.json> [--release-sha=<40 hex, must equal HEAD>] [--apply --environment-file=process|<file>]
+// --apply REQUIRES an explicit --environment-file: `process` reads only the process environment (the governed Production target, as the
+// migration tooling does); a dotenv file is used only when named. There is no default, because .env.local may point at a non-Production database
+// and a receipt recorded there would never be read by the Production runtime.
 // Default is a DRY RUN: it prints the receipt's maturity and blockers and writes nothing. --apply records a receipt only when it genuinely ALLOWS a Paper opening order
 // (no blockers), for exactly the release SHA that is checked out. It can never authorize live money (liveAuthorization is structurally false) and it prints no secret.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import { loadEnvironmentFile } from '../src/config/environment.js';
+import { loadEnvironment, loadEnvironmentFile } from '../src/config/environment.js';
 import { buildStrategyPaperAuthorityReceipt, type PaperExposureStrategy, type StrategyPaperAuthorityInput } from '../src/theta/strategy-paper-authority.js';
 import { PostgresStrategyPaperAuthorityStore } from '../src/theta/postgres-strategy-paper-authority-store.js';
 
@@ -22,7 +25,9 @@ const receipt = buildStrategyPaperAuthorityReceipt({ ...gates, strategy, liveAut
 process.stdout.write(`${JSON.stringify({ strategy, releaseSha, maturity: receipt.maturity, paperOpeningOrderAllowed: receipt.paperOpeningOrderAllowed, blockers: receipt.blockers, receiptHash: receipt.receiptHash, applied: false }, null, 2)}\n`);
 if (process.argv.includes('--apply')) {
   if (!receipt.paperOpeningOrderAllowed) throw new Error('RECEIPT_HAS_BLOCKERS_NOTHING_RECORDED');
-  const environment = loadEnvironmentFile(arg('environment-file') ?? '.env.local');
+  const environmentFile = arg('environment-file');
+  if (environmentFile === undefined || environmentFile.trim() === '') throw new Error('APPLY_REQUIRES_EXPLICIT_ENVIRONMENT_FILE');
+  const environment = environmentFile === 'process' ? loadEnvironment() : loadEnvironmentFile(environmentFile);
   const connectionString = environment.AIVEN_DATABASE_URL ?? environment.DATABASE_URL;
   if (connectionString === undefined) throw new Error('CANONICAL_DATABASE_URL_NOT_CONFIGURED');
   const pool = new pg.Pool({ connectionString, max: 1 });

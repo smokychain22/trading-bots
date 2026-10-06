@@ -14,3 +14,12 @@ test('post-migration storage audit and stability soak validate the database that
     assert.match(readFileSync(new URL(tool, import.meta.url), 'utf8'), /=== ?'process' ?\? ?loadEnvironment\(\)/, `${tool} supports the process-only mode`);
   }
 });
+
+// The strategy Paper authority receipt is read by the Production runtime from the Production database. Recording it into whatever .env.local
+// points at (a non-Production database here) would silently leave H/D unauthorized in Production, so --apply has no default target.
+test('the governed strategy-authority writer needs an explicit target and supports the process-only Production mode', () => {
+  const tool = readFileSync(new URL('../tools/theta-strategy-authority.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(tool, /\?\? '\.env\.local'/, 'no silent dotenv default');
+  assert.match(tool, /APPLY_REQUIRES_EXPLICIT_ENVIRONMENT_FILE/);
+  assert.match(tool, /=== 'process' \? loadEnvironment\(\)/);
+});
