@@ -5,7 +5,8 @@ import { InMemoryPaperOrderStore, PaperOrderCoordinator, type PersistedPaperOrde
 import { control } from './phase3-exec-fixtures.js';
 import type { BrokerMutationAuthorization } from '../src/execution/execution-control.js';
 import type { BrokerOrderRequest, BrokerOrderSnapshot, PaperBrokerAdapter } from '../src/execution/broker.js';
-import { assessHoldStrikeLifecycle, reconcileHoldStrikeAssignment } from '../src/theta/hold-strike-lifecycle.js';
+import { assessHoldStrikeLifecycle } from '../src/theta/hold-strike-lifecycle.js';
+import { reconcileManagedOptionLifecycle } from '../src/execution/broker-lifecycle-evidence.js';
 import { buildDefinedRiskClosePlan, classifyDefinedRiskExpiry, computeDefinedRiskWholeChainAccounting } from '../src/execution/defined-risk-lifecycle.js';
 import type { ManagementInputState } from '../src/theta/management-input-state.js';
 
@@ -57,19 +58,20 @@ test('H has a bounded review deadline, forces a two-sided close near expiry, and
   assert.ok(Date.parse(assessment?.reviewDeadline??'')>Date.parse(NOW));
 });
 
-test('H assignment requires broker confirmation and is idempotent across late update and restart',()=>{
-  const missing=reconcileHoldStrikeAssignment({chainId:'c',optionLegId:'l',contracts:1,multiplier:100,
-    brokerActivityId:null,brokerEvent:null,expiredItm:true});
-  assert.equal(missing.state,'WAIT_BROKER_CONFIRMATION');
-  const confirmed=reconcileHoldStrikeAssignment({chainId:'c',optionLegId:'l',contracts:1,multiplier:100,
-    brokerActivityId:'activity-1',brokerEvent:'ASSIGNMENT',expiredItm:true});
-  const replayed=reconcileHoldStrikeAssignment({chainId:'c',optionLegId:'l',contracts:1,multiplier:100,
-    brokerActivityId:'activity-1',brokerEvent:'ASSIGNMENT',expiredItm:true});
-  assert.equal(confirmed.state,'ASSIGNED_STOCK_CREATED');
-  assert.equal(confirmed.shares,100);
-  assert.equal(replayed.stockInventoryKey,confirmed.stockInventoryKey);
-  assert.equal(reconcileHoldStrikeAssignment({chainId:'c',optionLegId:'l',contracts:1,multiplier:100,
-    brokerActivityId:'expiry-1',brokerEvent:'EXPIRATION',expiredItm:false}).state,'EXPIRED_OTM');
+test('H assignment is decided only by the single broker-confirmed lifecycle authority: a vanished contract or ITM mark is never assignment',()=>{
+  // H shares the one assignment authority with Q (reconcileManagedOptionLifecycle); there is deliberately no H-specific copy of it
+  const base={chainId:'chain-h',currentState:'CSP_OPEN' as const,legKind:'SHORT_PUT' as const,optionSymbol:'SPY261009P00650000',
+    underlyingSymbol:'SPY',contracts:1,multiplier:100,observedAt:NOW,previousPositions:[{symbol:'SPY261009P00650000',quantity:-1}]};
+  const vanished=reconcileManagedOptionLifecycle({...base,currentPositions:[],activities:[]});
+  assert.equal(vanished.state,'UNKNOWN');
+  const confirmed=reconcileManagedOptionLifecycle({...base,currentPositions:[{symbol:'SPY',quantity:100}],
+    activities:[{id:'activity-1',activityType:'OPASN',symbol:'SPY261009P00650000',quantity:1,price:null,date:NOW,orderId:null}]});
+  assert.equal(confirmed.state,'CONFIRMED');
+  assert.deepEqual(confirmed.transitionPath,['ASSIGNED','STOCK_HELD','RECOVERY_WAIT']);
+  // a late replay of the same broker activity yields the same identity, so the idempotent evidence key downstream is stable across restart
+  const replay=reconcileManagedOptionLifecycle({...base,currentPositions:[{symbol:'SPY',quantity:100}],
+    activities:[{id:'activity-1',activityType:'OPASN',symbol:'SPY261009P00650000',quantity:1,price:null,date:NOW,orderId:null}]});
+  assert.equal(replay.brokerActivityId,confirmed.brokerActivityId);
 });
 
 test('D close always refreshes and references both exact legs',()=>{

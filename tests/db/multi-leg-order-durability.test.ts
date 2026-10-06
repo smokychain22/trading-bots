@@ -80,7 +80,7 @@ test('multi-leg parent, legs, broker leg state, lifecycle events and accounting 
     } finally { client.release(); }
 
     // asymmetric broker truth: one leg filled, the other untouched. Both leg rows are persisted exactly, and re-observation updates in place (no duplicate rows).
-    const asymmetric: BrokerOrderSnapshot = { id: 'broker-parent-1', clientOrderId: intent.request.client_order_id, symbol: intent.request.symbol, qty: 1, filledQty: 0, filledAvgPrice: null,
+    const asymmetric: BrokerOrderSnapshot = { id: `broker-parent-${orderIntentId}`, clientOrderId: intent.request.client_order_id, symbol: intent.request.symbol, qty: 1, filledQty: 0, filledAvgPrice: null,
       side: 'sell', positionIntent: null, status: 'partially_filled', limitPrice: -1.1, submittedAt: NOW, replacedBy: null, replaces: null, orderClass: 'mleg', legs: [
         { id: 'broker-leg-short', symbol: shortSymbol, side: 'sell', positionIntent: 'sell_to_open', ratioQty: 1, qty: 1, filledQty: 1, filledAvgPrice: 2, status: 'filled' },
         { id: 'broker-leg-long', symbol: longSymbol, side: 'buy', positionIntent: 'buy_to_open', ratioQty: 1, qty: 1, filledQty: 0, filledAvgPrice: null, status: 'new' }] };
@@ -96,9 +96,9 @@ test('multi-leg parent, legs, broker leg state, lifecycle events and accounting 
 
     // lifecycle events are idempotent by provider event identity, INCLUDING a parent-level event that has no leg index
     const lifecycle = new PostgresDefinedRiskLifecycleStore(pool);
-    const assignment = { orderIntentId, chainId, providerEventId: 'activity-assign-1', eventType: 'ASSIGNMENT' as const, legIndex: 1, sharesDelta: 100, cashFlow: -65000, occurredAt: NOW, detail: {} };
+    const assignment = { orderIntentId, chainId, providerEventId: 'activity-assign-1', eventType: 'ASSIGNMENT' as const, legIndex: 1, contracts: 1, sharesDelta: 100, cashFlow: -65000, occurredAt: NOW, detail: {} };
     await lifecycle.recordLifecycleEvent(assignment); await lifecycle.recordLifecycleEvent(assignment);
-    const parentEvent = { orderIntentId, chainId, providerEventId: 'activity-expire-1', eventType: 'EXPIRATION' as const, legIndex: null, sharesDelta: null, cashFlow: null, occurredAt: NOW, detail: {} };
+    const parentEvent = { orderIntentId, chainId, providerEventId: 'activity-expire-1', eventType: 'EXPIRATION' as const, legIndex: null, contracts: null, sharesDelta: null, cashFlow: null, occurredAt: NOW, detail: {} };
     await lifecycle.recordLifecycleEvent(parentEvent); await lifecycle.recordLifecycleEvent(parentEvent);
     const events = (await pool.query(`SELECT provider_event_id, count(*)::int AS n FROM trade.multi_leg_lifecycle_event WHERE order_intent_id=$1 GROUP BY provider_event_id ORDER BY provider_event_id`, [orderIntentId])).rows;
     assert.deepEqual(events.map((row) => [row.provider_event_id, row.n]), [['activity-assign-1', 1], ['activity-expire-1', 1]], 'a replayed broker event (restart, late update) must not duplicate stock consequences');

@@ -53,7 +53,7 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
     LEFT JOIN LATERAL(SELECT COALESCE(jsonb_agg(jsonb_build_object('stock_lot_id',sl.stock_lot_id,'shares',sl.shares,'economic_basis_per_share',sl.economic_basis_per_share,'acquired_at',sl.acquired_at) ORDER BY sl.acquired_at,sl.stock_lot_id),'[]'::jsonb) AS open_stock_lots FROM trade.stock_lot sl WHERE sl.chain_id=ec.chain_id AND sl.disposed_at IS NULL) stock ON true
     WHERE EXISTS(SELECT 1 FROM copy.follower_account fa WHERE fa.follower_account_id=$1
       AND fa.account_role='MASTER_THETA_PAPER' AND fa.environment='PAPER' AND fa.disconnected_at IS NULL)
-      AND bi.bot_code='THETA' AND ec.closed_at IS NULL AND ec.lifecycle_state IN ('CSP_OPEN','CC_OPEN')`,
+      AND bi.bot_code='THETA' AND ec.closed_at IS NULL AND ec.chain_kind='WHEEL' AND ec.lifecycle_state IN ('CSP_OPEN','CC_OPEN')`,
     [connectionId,String(previous.rows[0].reconciliation_snapshot_id),currentSnapshotId,observedAt]);
   const store=new PostgresLifecycleApplicationStore(pool),copyPlanner=new PostgresDisabledCopyPlanner(pool),results:LifecycleApplicationResult[]=[];
   let unresolved=0;

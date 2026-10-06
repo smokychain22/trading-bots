@@ -53,23 +53,35 @@ export function classifyDefinedRiskExpiry(input:{spot:number|null;shortStrike:nu
 }
 
 export interface DefinedRiskWholeChainAccounting{
-  readonly openingNetCredit:number; readonly openingFees:number; readonly closingNetDebit:number|null;
-  readonly closingFees:number; readonly assignmentExerciseCashFlow:number; readonly realizedPnl:number|null;
+  /** null = UNKNOWN (never coerced to zero): the actual per-leg fill prices were not reported */
+  readonly openingNetCredit:number|null; readonly openingFees:number|null; readonly closingNetDebit:number|null;
+  readonly closingFees:number|null; readonly assignmentExerciseCashFlow:number;
+  /** after-fee realized P&L: UNKNOWN (null) until every fee is known */
+  readonly realizedPnl:number|null;
+  /** realized P&L before fees: known as soon as the opening credit and closing debit are known */
+  readonly realizedPnlBeforeFees:number|null;
+  readonly pnlState:'OPEN'|'REALIZED'|'REALIZED_BEFORE_FEES'|'UNKNOWN_INPUT';
   readonly remainingUnrealizedExposure:'NONE'|'OPEN_SPREAD'|'STOCK_INVENTORY'|'UNKNOWN';
 }
 
-export function computeDefinedRiskWholeChainAccounting(input:{quantity:number;multiplier:number;openingNetCreditPerShare:number;
-  openingFees:number;closingNetDebitPerShare:number|null;closingFees:number;assignmentExerciseCashFlow:number;
+/** Whole-chain economics of the ONE spread, from actual per-leg fills. Any unknown component keeps realized P&L unknown; it is never treated as zero. */
+export function computeDefinedRiskWholeChainAccounting(input:{quantity:number;multiplier:number;openingNetCreditPerShare:number|null;
+  openingFees:number|null;closingNetDebitPerShare:number|null;closingFees:number|null;assignmentExerciseCashFlow:number;
   lifecycle:'OPEN'|'CLOSED'|'STOCK_INVENTORY'|'UNKNOWN'}):DefinedRiskWholeChainAccounting{
-  const numbers=[input.quantity,input.multiplier,input.openingNetCreditPerShare,input.openingFees,input.closingFees,input.assignmentExerciseCashFlow];
-  if(numbers.some(value=>!Number.isFinite(value))||input.quantity<=0||input.multiplier<=0||input.openingNetCreditPerShare<0
-    ||input.openingFees<0||input.closingFees<0||input.closingNetDebitPerShare!==null&&(!Number.isFinite(input.closingNetDebitPerShare)||input.closingNetDebitPerShare<0))
+  const known=(value:number|null):boolean=>value===null||(Number.isFinite(value)&&value>=0);
+  if(!Number.isSafeInteger(input.quantity)||!Number.isSafeInteger(input.multiplier)||input.quantity<=0||input.multiplier<=0
+    ||!known(input.openingNetCreditPerShare)||!known(input.openingFees)||!known(input.closingFees)||!known(input.closingNetDebitPerShare)
+    ||!Number.isFinite(input.assignmentExerciseCashFlow))
     throw new Error('DEFINED_RISK_ACCOUNTING_INPUT_INVALID');
-  const openingNetCredit=input.quantity*input.multiplier*input.openingNetCreditPerShare;
+  const openingNetCredit=input.openingNetCreditPerShare===null?null:input.quantity*input.multiplier*input.openingNetCreditPerShare;
   const closingNetDebit=input.closingNetDebitPerShare===null?null:input.quantity*input.multiplier*input.closingNetDebitPerShare;
-  const realizedPnl=input.lifecycle==='CLOSED'&&closingNetDebit!==null
-    ?Number((openingNetCredit-input.openingFees-closingNetDebit-input.closingFees+input.assignmentExerciseCashFlow).toFixed(8)):null;
+  const closed=input.lifecycle==='CLOSED';
+  const realizedPnlBeforeFees=closed&&openingNetCredit!==null&&closingNetDebit!==null
+    ?Number((openingNetCredit-closingNetDebit+input.assignmentExerciseCashFlow).toFixed(8)):null;
+  const realizedPnl=realizedPnlBeforeFees!==null&&input.openingFees!==null&&input.closingFees!==null
+    ?Number((realizedPnlBeforeFees-input.openingFees-input.closingFees).toFixed(8)):null;
   return{openingNetCredit,openingFees:input.openingFees,closingNetDebit,closingFees:input.closingFees,
-    assignmentExerciseCashFlow:input.assignmentExerciseCashFlow,realizedPnl,remainingUnrealizedExposure:
-      input.lifecycle==='CLOSED'?'NONE':input.lifecycle==='OPEN'?'OPEN_SPREAD':input.lifecycle==='STOCK_INVENTORY'?'STOCK_INVENTORY':'UNKNOWN'};
+    assignmentExerciseCashFlow:input.assignmentExerciseCashFlow,realizedPnl,realizedPnlBeforeFees,
+    pnlState:realizedPnl!==null?'REALIZED':realizedPnlBeforeFees!==null?'REALIZED_BEFORE_FEES':closed?'UNKNOWN_INPUT':'OPEN',
+    remainingUnrealizedExposure:closed?'NONE':input.lifecycle==='OPEN'?'OPEN_SPREAD':input.lifecycle==='STOCK_INVENTORY'?'STOCK_INVENTORY':'UNKNOWN'};
 }

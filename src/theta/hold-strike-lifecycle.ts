@@ -33,29 +33,3 @@ export function assessHoldStrikeLifecycle(state:ManagementInputState):HoldStrike
   if(deterioration.length>0)return {...base,action:'CLOSE_FULL',mandatory:true,reasons:deterioration};
   return {...base,action:'HOLD',mandatory:false,reasons:['NO_H_SPECIFIC_SAFETY_TRIGGER']};
 }
-
-export interface HoldStrikeAssignmentTransition{
-  readonly state:'WAIT_BROKER_CONFIRMATION'|'EXPIRED_OTM'|'ASSIGNED_STOCK_CREATED'|'QUARANTINED';
-  readonly chainId:string;
-  readonly optionLegId:string;
-  readonly stockInventoryKey:string|null;
-  readonly shares:number;
-  readonly reason:string;
-}
-
-/** Assignment is created only from a broker activity identity. Contract
- * disappearance and an ITM mark are never sufficient. The deterministic
- * inventory key makes late/replayed broker events idempotent across restart. */
-export function reconcileHoldStrikeAssignment(input:{chainId:string;optionLegId:string;contracts:number;multiplier:number;
-  brokerActivityId:string|null;brokerEvent:'ASSIGNMENT'|'EXPIRATION'|null;expiredItm:boolean|null}):HoldStrikeAssignmentTransition{
-  if(input.brokerEvent===null||input.brokerActivityId===null)return{state:'WAIT_BROKER_CONFIRMATION',chainId:input.chainId,
-    optionLegId:input.optionLegId,stockInventoryKey:null,shares:0,reason:'BROKER_LIFECYCLE_EVENT_NOT_CONFIRMED'};
-  if(input.brokerEvent==='EXPIRATION')return input.expiredItm===false
-    ?{state:'EXPIRED_OTM',chainId:input.chainId,optionLegId:input.optionLegId,stockInventoryKey:null,shares:0,reason:'BROKER_CONFIRMED_OTM_EXPIRATION'}
-    :{state:'QUARANTINED',chainId:input.chainId,optionLegId:input.optionLegId,stockInventoryKey:null,shares:0,reason:'ITM_EXPIRATION_WITHOUT_ASSIGNMENT_ACTIVITY'};
-  if(!Number.isSafeInteger(input.contracts)||input.contracts<=0||!Number.isSafeInteger(input.multiplier)||input.multiplier<=0)
-    return{state:'QUARANTINED',chainId:input.chainId,optionLegId:input.optionLegId,stockInventoryKey:null,shares:0,reason:'ASSIGNMENT_QUANTITY_INVALID'};
-  return{state:'ASSIGNED_STOCK_CREATED',chainId:input.chainId,optionLegId:input.optionLegId,
-    stockInventoryKey:`${input.chainId}:${input.optionLegId}:${input.brokerActivityId}`,shares:input.contracts*input.multiplier,
-    reason:'BROKER_CONFIRMED_ASSIGNMENT'};
-}

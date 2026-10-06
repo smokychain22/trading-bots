@@ -157,7 +157,7 @@ export class ProductionPaperManagementCandidateSource {
         SELECT COALESCE(sum(s.shares),0) AS open_stock_shares FROM trade.stock_lot s
         WHERE s.chain_id=ec.chain_id AND s.disposed_at IS NULL
       ) stocks ON true
-      WHERE ec.closed_at IS NULL ORDER BY ec.opened_at,ec.chain_id`,[connectionId,reconciliationSnapshotId]);
+      WHERE ec.closed_at IS NULL AND ec.chain_kind='WHEEL' ORDER BY ec.opened_at,ec.chain_id`,[connectionId,reconciliationSnapshotId]);
     return result.rows.map((row)=>({chainId:String(row.chain_id),underlyingId:String(row.underlying_id),
       underlying:String(row.underlying),lifecycleState:String(row.lifecycle_state),
       currentContractSymbol:row.current_contract_symbol==null?null:String(row.current_contract_symbol),

@@ -71,7 +71,7 @@ export class PostgresOutcomeResolver {
       COALESCE((SELECT sum(sl.realized_pnl) FROM trade.stock_lot sl WHERE sl.chain_id=ec.chain_id),0)::text AS stock_pnl,
       COALESCE((SELECT sum(de.amount_per_share*sl.shares) FROM trade.dividend_event de JOIN trade.stock_lot sl USING(stock_lot_id) WHERE sl.chain_id=ec.chain_id),0)::text AS dividends,
       COALESCE((SELECT sum(fe.amount) FROM trade.fee_event fe WHERE fe.chain_id=ec.chain_id),0)::text AS fees
-      FROM trade.economic_chain ec WHERE ec.closed_at IS NOT NULL AND ec.closed_at <= $1
+      FROM trade.economic_chain ec WHERE ec.closed_at IS NOT NULL AND ec.chain_kind='WHEEL' AND ec.closed_at <= $1
       AND NOT EXISTS(SELECT 1 FROM research.theta_outcome_label l WHERE l.subject_type='WHOLE_CHAIN' AND l.subject_id=ec.chain_id AND l.censoring_state='RESOLVED')
       ORDER BY ec.closed_at,ec.chain_id`,[asOf]);
     // asOf selects closed chains. It cannot make present-day ledger reads
@@ -181,7 +181,7 @@ export class PostgresOutcomeResolver {
       LEFT JOIN trade.decision d ON d.decision_id=ol.decision_id
       LEFT JOIN trade.fusion_snapshot fs ON fs.fusion_snapshot_id=d.fusion_snapshot_id
       LEFT JOIN core.strategy_version sv ON sv.strategy_version_id=bi.strategy_version_id
-      WHERE ec.closed_at IS NOT NULL AND ec.closed_at>ec.opened_at
+      WHERE ec.closed_at IS NOT NULL AND ec.chain_kind='WHEEL' AND ec.closed_at>ec.opened_at
       ORDER BY ec.opened_at,ec.chain_id`);
     let created=0;
     for(const row of rows.rows){

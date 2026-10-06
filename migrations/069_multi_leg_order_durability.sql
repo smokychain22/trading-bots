@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS trade.multi_leg_lifecycle_event (
   provider_event_id text NOT NULL,
   event_type text NOT NULL CHECK(event_type IN ('EXPIRATION','ASSIGNMENT','EXERCISE','PIN_REVIEW','UNEXPECTED_ONE_LEG_STATE')),
   leg_index integer,
+  -- contracts removed from the leg by this broker-confirmed event (assignment/exercise on a leg; a parent-level expiration removes every remaining contract)
+  contracts integer CHECK(contracts IS NULL OR contracts>0),
   shares_delta integer,
   cash_flow numeric(24,8),
   occurred_at timestamptz NOT NULL,
@@ -86,16 +88,52 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_multi_leg_lifecycle_event_identity
 CREATE TABLE IF NOT EXISTS trade.multi_leg_chain_accounting (
   order_intent_id uuid PRIMARY KEY REFERENCES trade.order_intent(order_intent_id),
   chain_id uuid NOT NULL REFERENCES trade.economic_chain(chain_id),
-  opening_net_credit numeric(24,8) NOT NULL,
-  opening_fees numeric(24,8) NOT NULL,
+  -- NULL = UNKNOWN (actual leg fill prices / fees not yet reported). Never coerced to zero.
+  opening_net_credit numeric(24,8),
+  opening_fees numeric(24,8),
   closing_net_debit numeric(24,8),
-  closing_fees numeric(24,8) NOT NULL DEFAULT 0,
+  closing_fees numeric(24,8),
   assignment_exercise_cash_flow numeric(24,8) NOT NULL DEFAULT 0,
   realized_pnl numeric(24,8),
+  realized_pnl_before_fees numeric(24,8),
+  pnl_state text NOT NULL CHECK(pnl_state IN ('OPEN','REALIZED','REALIZED_BEFORE_FEES','UNKNOWN_INPUT')),
   remaining_exposure text NOT NULL CHECK(remaining_exposure IN ('NONE','OPEN_SPREAD','STOCK_INVENTORY','UNKNOWN')),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CHECK((remaining_exposure='NONE')=(realized_pnl IS NOT NULL))
+  CHECK((pnl_state='REALIZED')=(realized_pnl IS NOT NULL)),
+  CHECK((pnl_state IN ('REALIZED','REALIZED_BEFORE_FEES'))=(realized_pnl_before_fees IS NOT NULL)),
+  CHECK(pnl_state NOT IN ('REALIZED','REALIZED_BEFORE_FEES') OR (opening_net_credit IS NOT NULL AND closing_net_debit IS NOT NULL)),
+  CHECK(pnl_state<>'REALIZED' OR (opening_fees IS NOT NULL AND closing_fees IS NOT NULL)),
+  CHECK(pnl_state='OPEN' OR remaining_exposure<>'OPEN_SPREAD')
 );
+
+-- Strategy isolation in the ledger. Every Wheel loader (management, assignment, candidate discovery, shadow evidence) reads open chains; a defined-risk spread must never be
+-- picked up by a single-leg code path (that is how only the short leg of a spread could be closed). A D chain is therefore a different KIND of chain, and every Wheel loader
+-- filters on chain_kind='WHEEL'. Stock created by a D assignment/exercise starts a NEW Wheel chain that keeps the originating D chain id (origin_chain_id).
+ALTER TABLE trade.economic_chain
+  ADD COLUMN IF NOT EXISTS chain_kind text NOT NULL DEFAULT 'WHEEL' CHECK(chain_kind IN ('WHEEL','DEFINED_RISK')),
+  ADD COLUMN IF NOT EXISTS origin_chain_id uuid REFERENCES trade.economic_chain(chain_id);
+
+-- One row per native spread: its own typed lifecycle, never the Wheel lifecycle enum. Both strikes and the exact expiry are kept here so expiry/pin/assignment
+-- management never needs a representative leg.
+CREATE TABLE IF NOT EXISTS trade.defined_risk_position (
+  order_intent_id uuid PRIMARY KEY REFERENCES trade.order_intent(order_intent_id),
+  chain_id uuid NOT NULL UNIQUE REFERENCES trade.economic_chain(chain_id),
+  underlying_id uuid NOT NULL REFERENCES market.underlying(underlying_id),
+  quantity integer NOT NULL CHECK(quantity>0),
+  multiplier integer NOT NULL CHECK(multiplier>0),
+  expiration date NOT NULL,
+  short_strike numeric(20,8) NOT NULL CHECK(short_strike>0),
+  long_strike numeric(20,8) NOT NULL CHECK(long_strike>0 AND long_strike<short_strike),
+  state text NOT NULL CHECK(state IN ('PENDING_OPEN','ASYMMETRIC_OPEN','OPEN','CLOSE_PENDING','CLOSED','EXPIRED_WORTHLESS',
+    'STOCK_FROM_ASSIGNMENT','DIVERGED_EMERGENCY')),
+  close_order_intent_id uuid REFERENCES trade.order_intent(order_intent_id),
+  opened_at timestamptz,
+  closed_at timestamptz,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CHECK((state IN ('CLOSED','EXPIRED_WORTHLESS','STOCK_FROM_ASSIGNMENT'))=(closed_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS ix_defined_risk_position_active ON trade.defined_risk_position(state)
+  WHERE state IN ('PENDING_OPEN','ASYMMETRIC_OPEN','OPEN','CLOSE_PENDING','DIVERGED_EMERGENCY');
 
 INSERT INTO core.schema_migration(version,checksum)
 VALUES('069_multi_leg_order_durability',repeat('0',64)) ON CONFLICT DO NOTHING;

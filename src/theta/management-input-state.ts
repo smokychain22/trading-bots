@@ -720,7 +720,7 @@ export class PostgresManagementInputStore {
       ) latest_decision ON true
       LEFT JOIN trade.broker_position_snapshot bp ON bp.reconciliation_snapshot_id=$2 AND bp.symbol=u.symbol
       LEFT JOIN trade.broker_position_snapshot bop ON bop.reconciliation_snapshot_id=$2 AND bop.symbol=oc.contract_symbol
-      WHERE ec.closed_at IS NULL ORDER BY ec.opened_at,ec.chain_id`, [connectionId, reconciliationSnapshotId]);
+      WHERE ec.closed_at IS NULL AND ec.chain_kind='WHEEL' ORDER BY ec.opened_at,ec.chain_id`, [connectionId, reconciliationSnapshotId]);
     // The query may fetch an observation received after broker reconciliation.
     // Freeze the decision only after its evidence has been read, never at the
     // earlier reconciliation timestamp.
