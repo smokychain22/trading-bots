@@ -5,6 +5,7 @@ import type { ThetaShadowCycleResult } from '../theta/theta-shadow-cycle.js';
 import type { UnderlyingCandidateInput } from '../theta/universe-policy.js';
 import { canonicalJson } from './point-in-time-evidence.js';
 import { gateAllows, type StorageWriteGate } from '../storage/data-platform/write-gate.js';
+import { classifyPostgresRuntimeError } from '../theta/postgres-runtime-error.js';
 
 export const shadowRuntimeMode = 'THETA_SHADOW_ONLY' as const;
 export const shadowScanContractVersion = 'theta-cross-symbol-shadow-scan-v2' as const;
@@ -53,8 +54,22 @@ export interface CrossSymbolShadowScanResult {
   readonly results: readonly ShadowSymbolScanResult[];
 }
 
-const safeErrorCode = (error: unknown): string => error instanceof Error && /^[A-Z0-9_:-]+$/.test(error.message)
-  ? error.message : 'SHADOW_SYMBOL_SCAN_FAILED';
+/**
+ * A symbol failure is reported by a typed code, never the provider message (it can carry a URL or payload). A message that is already a code
+ * passes through; otherwise the failure is classified (database class, timeout/abort, provider fetch) and only as a last resort reduced to
+ * SHADOW_SYMBOL_SCAN_FAILED:<ErrorClassName>, so a failed symbol is never an untraceable generic UNKNOWN (2026-10-07: SPY/TLT).
+ */
+export const safeErrorCode = (error: unknown): string => {
+  if (error instanceof Error && /^[A-Z0-9_:-]+$/.test(error.message)) return error.message;
+  const database = classifyPostgresRuntimeError(error);
+  if (database.errorClass !== 'UNKNOWN_DATABASE_ERROR') return `SHADOW_SYMBOL_DATABASE_${database.safeCode}`;
+  const name = error instanceof Error ? error.name : typeof error;
+  const message = error instanceof Error ? error.message : '';
+  if (name === 'AbortError' || name === 'TimeoutError' || /timed? ?out|timeout/i.test(message)) return 'SHADOW_SYMBOL_SCAN_TIMEOUT';
+  if (name === 'TypeError' && /fetch failed|network|ENOTFOUND|EAI_AGAIN/i.test(message)) return 'SHADOW_SYMBOL_PROVIDER_FETCH_FAILED';
+  const safeName = /^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(name) ? name : 'NonError';
+  return `SHADOW_SYMBOL_SCAN_FAILED:${safeName}`;
+};
 
 /** Runs every symbol inside a versioned, bounded opportunity set. */
 /**
