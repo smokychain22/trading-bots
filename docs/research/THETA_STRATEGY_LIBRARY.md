@@ -14,10 +14,10 @@ authority:
 | Q broad economics | `q-economic-funnel.ts` evaluates every structurally eligible put before the bounded finalist set and records excluded economic leaders. | Selection remains shadow until governed evidence supports promotion. |
 | Q/H/D independent ranking | `branch-economic-shadow.ts` ranks each branch across strikes and expiries with the shared risk-constrained economics engine. | Expected after-cost EV remains uncalibrated. |
 | Q vs D | `canonical-shadow-comparison.ts` compares same-underlying, same-expiration Q/H/D structures on one-lot deterministic economics and preserves WAIT opportunity cost as unknown. | There is no calibrated common-horizon profitability winner. |
-| Q management | `management-economics/q-management.ts` compares the configured management alternatives with explicit repricing and costs. | Challenger choice is research-only pending resolved episodes. |
-| H management | `management-economics/h-management.ts` adds gamma, move-speed and short-DTE early-warning evidence and preserves the no-roll rule. | Independent outcome evidence is absent. |
-| D management | `management-economics/d-management.ts` treats the spread as one two-leg economic position. | Real spread episodes and fill calibration are absent. |
-| C opportunity cost | `management-economics/covered-call-utility.ts` can prefer `HOLD_SHARES_NO_CC` when forfeited upside dominates premium. | Utility weights remain shadow and unvalidated. |
+| Q management | `management-economics/q-management-economics.ts` compares the configured management alternatives with explicit repricing and costs. | Challenger choice is research-only pending resolved episodes. |
+| H management | `management-economics/h-early-warning.ts` adds gamma, move-speed and short-DTE early-warning evidence and preserves the no-roll rule. | Independent outcome evidence is absent. |
+| D management | `management-economics/d-management-economics.ts` treats the spread as one two-leg economic position. | Real spread episodes and fill calibration are absent. |
+| C opportunity cost | `management-economics/c-covered-call-utility.ts` can prefer `HOLD_SHARES_NO_CC` when forfeited upside dominates premium. | Utility weights remain shadow and unvalidated. |
 | Whole-chain accounting | `management-economics/episode-accounting.ts` keeps Q, assignment, stock, C and exit in one episode. | Real resolved complete-chain sample size is insufficient. |
 | Entry price | `management-economics/entry-price-engine.ts` produces non-submittable price bounds from candidate economics. | No Production repricing policy is promoted. |
 | Market regime | `strategy-intelligence/market-regime.ts` is attached to every reached decision receipt and archive-persistence tested. | Thresholds are implementation inference, not empirical policy. |
