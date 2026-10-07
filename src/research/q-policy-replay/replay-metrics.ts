@@ -51,6 +51,8 @@ export interface PolicyMetrics {
   readonly meanRoc: number | null;
   readonly expectedShortfall5Roc: number | null;
   readonly maxDrawdownRocUnits: number | null;
+  /** ES5 of maximum adverse excursion / capital: path risk that realized P&L hides when losses are held, not realized. */
+  readonly expectedShortfall5MaeRoc: number | null;
   readonly totalPnl: number;
   readonly returnPerCapitalDay: number | null;
   readonly annualizedReturnOnCapitalDays: number | null;
@@ -81,6 +83,7 @@ function maxDrawdown(episodes: readonly Episode[], value: (e: Episode) => number
 export function computePolicyMetrics(episodes: readonly Episode[]): PolicyMetrics {
   const pnl = buildR8PerformanceReceipt(episodes.map((e, i) => r8Episode(e, i, e.pnl)), []);
   const roc = buildR8PerformanceReceipt(episodes.map((e, i) => r8Episode(e, i, e.roc)), []);
+  const mae = buildR8PerformanceReceipt(episodes.map((e, i) => r8Episode(e, i, e.maeUsd / e.capital)), []);
   const wins = episodes.filter((e) => e.pnl > 0).length, losses = episodes.filter((e) => e.pnl < 0).length;
   const capitalDays = episodes.reduce((s, e) => s + e.capitalDays, 0);
   const totalPnl = episodes.reduce((s, e) => s + e.pnl, 0);
@@ -91,6 +94,7 @@ export function computePolicyMetrics(episodes: readonly Episode[]): PolicyMetric
     averageWin: pnl.averageWin, averageLoss: pnl.averageLoss, expectancy: pnl.expectancy, profitFactor: pnl.profitFactor,
     maxDrawdown: maxDrawdown(episodes, (e) => e.pnl), expectedShortfall5: pnl.expectedShortfall,
     meanRoc: roc.expectancy, expectedShortfall5Roc: roc.expectedShortfall, maxDrawdownRocUnits: maxDrawdown(episodes, (e) => e.roc),
+    expectedShortfall5MaeRoc: mae.expectedShortfall,
     totalPnl, returnPerCapitalDay: perDay, annualizedReturnOnCapitalDays: perDay === null ? null : perDay * 365,
     assignmentRate: episodes.length === 0 ? null : episodes.filter((e) => e.assigned).length / episodes.length,
     averageHoldDays: episodes.length === 0 ? null : episodes.reduce((s, e) => s + e.holdDays, 0) / episodes.length,
@@ -147,22 +151,24 @@ const quantile = (values: readonly number[], q: number): number => {
 
 /**
  * Declared multi-objective rule, applied to in-sample evidence only (N >= minN, positive in-sample expectancy):
- *  CONSERVATIVE: ES5(ROC) in the best (least negative) third AND max ROC drawdown in the best half -> highest return/capital-day.
- *  BALANCED: ES5(ROC) and max ROC drawdown both no worse than the median -> highest return/capital-day.
+ * The tail measure is the ES5 of MAXIMUM ADVERSE EXCURSION / capital (path risk), not realized ES: a no-stop policy that
+ * holds losers until they recover never shows a realized loss.
+ *  CONSERVATIVE: ES5(MAE ROC) in the best (least negative) third AND max ROC drawdown in the best half -> highest return/capital-day.
+ *  BALANCED: ES5(MAE ROC) and max ROC drawdown both no worse than the median -> highest return/capital-day.
  *  AGGRESSIVE: max ROC drawdown no worse than the 75th-percentile-worst -> highest return/capital-day.
  */
 export function chooseProfiles(evidence: readonly CandidatePolicyEvidence[], minN = 20): readonly ProfileChoice[] {
   const pool = evidence.filter((e) => e.inSample.n >= minN && (e.inSample.expectancy ?? 0) > 0
     && (e.inSampleStress ?? []).every((m) => m.n >= minN && (m.expectancy ?? 0) > 0)
-    && e.inSample.expectedShortfall5Roc !== null && e.inSample.maxDrawdownRocUnits !== null && e.inSample.returnPerCapitalDay !== null);
+    && e.inSample.expectedShortfall5MaeRoc !== null && e.inSample.maxDrawdownRocUnits !== null && e.inSample.returnPerCapitalDay !== null);
   if (pool.length === 0) return (['CONSERVATIVE', 'BALANCED', 'AGGRESSIVE'] as const).map((profile) => ({ profile, policyId: null, rule: 'NO_ELIGIBLE_POLICY' }));
-  const es = pool.map((e) => e.inSample.expectedShortfall5Roc as number), dd = pool.map((e) => e.inSample.maxDrawdownRocUnits as number);
+  const es = pool.map((e) => e.inSample.expectedShortfall5MaeRoc as number), dd = pool.map((e) => e.inSample.maxDrawdownRocUnits as number);
   const best = (filter: (e: CandidatePolicyEvidence) => boolean) => pool.filter(filter)
     .toSorted((a, b) => (b.inSample.returnPerCapitalDay as number) - (a.inSample.returnPerCapitalDay as number) || a.policyId.localeCompare(b.policyId))[0]?.policyId ?? null;
   return [
-    { profile: 'CONSERVATIVE', policyId: best((e) => (e.inSample.expectedShortfall5Roc as number) >= quantile(es, 2 / 3)
+    { profile: 'CONSERVATIVE', policyId: best((e) => (e.inSample.expectedShortfall5MaeRoc as number) >= quantile(es, 2 / 3)
       && (e.inSample.maxDrawdownRocUnits as number) >= quantile(dd, 0.5)), rule: 'ES5_TOP_THIRD_AND_DD_TOP_HALF_THEN_MAX_RETURN_PER_CAPITAL_DAY' },
-    { profile: 'BALANCED', policyId: best((e) => (e.inSample.expectedShortfall5Roc as number) >= quantile(es, 0.5)
+    { profile: 'BALANCED', policyId: best((e) => (e.inSample.expectedShortfall5MaeRoc as number) >= quantile(es, 0.5)
       && (e.inSample.maxDrawdownRocUnits as number) >= quantile(dd, 0.5)), rule: 'ES5_AND_DD_AT_LEAST_MEDIAN_THEN_MAX_RETURN_PER_CAPITAL_DAY' },
     { profile: 'AGGRESSIVE', policyId: best((e) => (e.inSample.maxDrawdownRocUnits as number) >= quantile(dd, 0.25)),
       rule: 'DD_NOT_IN_WORST_QUARTER_THEN_MAX_RETURN_PER_CAPITAL_DAY' },

@@ -251,7 +251,7 @@ const inSampleOf = (eps: readonly Episode[]) => inSampleEpisodes(eps, plan);
 const oosOf = (eps: readonly Episode[]) => oosEpisodes(eps, plan);
 const compact = (m: PolicyMetrics) => ({ n: m.n, winRate: m.winRate, wilson95: m.winRateWilson95, avgWin: m.averageWin, avgLoss: m.averageLoss,
   expectancy: m.expectancy, profitFactor: m.profitFactor, maxDD: m.maxDrawdown, es5: m.expectedShortfall5, meanRoc: m.meanRoc,
-  es5Roc: m.expectedShortfall5Roc, maxDDRoc: m.maxDrawdownRocUnits, totalPnl: m.totalPnl, annualizedRocOnCapitalDays: m.annualizedReturnOnCapitalDays,
+  es5Roc: m.expectedShortfall5Roc, es5MaeRoc: m.expectedShortfall5MaeRoc, maxDDRoc: m.maxDrawdownRocUnits, totalPnl: m.totalPnl, annualizedRocOnCapitalDays: m.annualizedReturnOnCapitalDays,
   assignmentRate: m.assignmentRate, avgHoldDays: m.averageHoldDays, slippage: m.modeledSlippageTotal, modelPricedExits: m.modelPricedExitCount });
 
 const quarterStarts = (() => {
@@ -333,7 +333,7 @@ function universeReport(name: string, names: readonly string[], equity: number |
     combos.filter((c) => c.kind === 'PROFILE' && c.exit === exit && c.selection.endsWith('_Rnone')).map((c) => {
       const m = (baseSummary.get(comboKey(c)) as SelectionSummary).inSample;
       const ps = (prints.summaries.get(comboKey(c)) as SelectionSummary).inSample;
-      return { profile: c.selection, n: m.n, expectancy: m.expectancy, annRoc: m.annualizedReturnOnCapitalDays, es5Roc: m.expectedShortfall5Roc,
+      return { profile: c.selection, n: m.n, expectancy: m.expectancy, annRoc: m.annualizedReturnOnCapitalDays, es5Roc: m.expectedShortfall5Roc, es5MaeRoc: m.expectedShortfall5MaeRoc,
         maxDDRoc: m.maxDrawdownRocUnits, winRate: m.winRate, adversePrintExpectancy: ps.expectancy };
     })]));
   const buckets = Object.fromEntries(keyCombos.map((k) => {

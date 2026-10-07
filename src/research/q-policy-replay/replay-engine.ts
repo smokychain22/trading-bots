@@ -245,6 +245,8 @@ export interface Episode {
   readonly assigned: boolean;
   readonly modelPricedExit: boolean;
   readonly modeledSlippage: number;
+  /** Maximum adverse excursion: worst executable mark-to-market P&L while held (<= 0), including the exit. Path risk. */
+  readonly maeUsd: number;
   readonly features: { readonly absDelta: number | null; readonly iv: number | null; readonly dte: number;
     readonly cushionSigmas: number | null; readonly regime: string };
 }
@@ -263,6 +265,7 @@ export function simulateExit(input: {
   const creditPs = c.creditPerShare;
   const entryHalf = a.halfSpread(c.mid);
   let lastIv = c.iv;
+  let worstMark = 0;
   const breakeven = K - creditPs;
   for (let i = entryIndex + 1; i < input.underlying.dates.length; i++) {
     const date = input.underlying.dates[i] as string, spot = input.underlying.closes[i] as number;
@@ -277,6 +280,7 @@ export function simulateExit(input: {
       return { state: 'CLOSED', episode: {
         underlying: input.underlying.symbol, symbol: c.symbol, entryDate: input.entryDate, exitDate: date, exitReason,
         pnl, capital, holdDays, capitalDays: capital * holdDays, roc: pnl / capital, assigned, modelPricedExit: modelPriced,
+        maeUsd: Math.min(worstMark, pnl, 0),
         modeledSlippage: (entryHalf + exitHalf) * m,
         features: { absDelta: c.delta === null ? null : Math.abs(c.delta), iv: c.iv, dte: c.dte,
           cushionSigmas: kv(c.receipt.breakevenCushionSigmas), regime: input.regime } } };
@@ -298,6 +302,7 @@ export function simulateExit(input: {
     } else continue;
     const half = a.halfSpread(mid);
     const debitPs = mid + half;
+    worstMark = Math.min(worstMark, (creditPs - debitPs) * m - 2 * a.feePerContractSide);
     const capture = (creditPs - debitPs) / creditPs;
     const dte = calendarDays(date, c.expiration);
     const delta = lastIv === null ? null : blackScholesPut(spot, K, t, lastIv, a.riskFreeRate).delta;

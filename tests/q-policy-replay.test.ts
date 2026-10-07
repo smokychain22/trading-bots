@@ -132,7 +132,7 @@ test('CURRENT_Q emulation ends in OCC lexical order among the Pareto front; econ
 test('profile selection reads only in-sample evidence; OOS outcomes cannot influence it', () => {
   const ep = (entry: string, exit: string, pnl: number) => ({ underlying: 'XYZ', symbol: `S${entry}${exit}${pnl}`, entryDate: entry, exitDate: exit,
     exitReason: 'EXPIRED_OTM' as const, pnl, capital: 1000, holdDays: 10, capitalDays: 10_000, roc: pnl / 1000, assigned: false,
-    modelPricedExit: false, modeledSlippage: 0, features: { absDelta: 0.2, iv: 0.3, dte: 40, cushionSigmas: 1, regime: 'X' } });
+    modelPricedExit: false, modeledSlippage: 0, maeUsd: Math.min(0, pnl), features: { absDelta: 0.2, iv: 0.3, dte: 40, cushionSigmas: 1, regime: 'X' } });
   const plan = { trainEnd: '2025-02-28', validationEnd: '2025-08-31' };
   const eps = [ep('2025-01-01', '2025-02-01', 10), ep('2025-08-20', '2025-09-15', -500), ep('2025-10-01', '2025-11-01', 999)];
   assert.deepEqual(inSampleEpisodes(eps, plan).map((e) => e.pnl), [10]); // exit after validation end is excluded too
@@ -157,10 +157,21 @@ test('profit capture never fires on a model-priced (no-trade) day: theta at cons
 test('the stress gate rejects a policy whose in-sample edge disappears under execution stress', () => {
   const ep = (i: number, pnl: number) => ({ underlying: 'XYZ', symbol: `S${i}`, entryDate: `2024-0${1 + (i % 9)}-0${1 + (i % 9)}`,
     exitDate: `2024-0${1 + (i % 9)}-1${i % 9}`, exitReason: 'EXPIRED_OTM' as const, pnl, capital: 1000, holdDays: 10, capitalDays: 10_000,
-    roc: pnl / 1000, assigned: false, modelPricedExit: false, modeledSlippage: 0,
+    roc: pnl / 1000, assigned: false, modelPricedExit: false, modeledSlippage: 0, maeUsd: Math.min(0, pnl),
     features: { absDelta: 0.2, iv: 0.3, dte: 40, cushionSigmas: 1, regime: 'X' } });
   const base = computePolicyMetrics(Array.from({ length: 25 }, (_, i) => ep(i, 10)));
   const stressedNegative = computePolicyMetrics(Array.from({ length: 25 }, (_, i) => ep(i, i % 2 === 0 ? -30 : 10)));
   assert.ok(chooseProfiles([{ policyId: 'FRAGILE', inSample: base, inSampleStress: [stressedNegative] }]).every((c) => c.policyId === null));
   assert.ok(chooseProfiles([{ policyId: 'ROBUST', inSample: base, inSampleStress: [base] }]).every((c) => c.policyId === 'ROBUST'));
+});
+
+test('path risk: a no-stop position that recovers records its maximum adverse excursion, and selection sees it', () => {
+  // Price spikes (loss) then decays (recovery): realized P&L is positive, MAE is negative.
+  const c = contract('XYZ_P95', 95, expiry, optionBars(hUp, 0, 29, (i) => i < 5 ? 1 + i * 0.6 : Math.max(0.05, 3 - (i - 5) * 0.2)));
+  const cand = candidateFor(hUp, c, 0);
+  const r = simulateExit({ underlying: hUp, contract: c, candidate: cand, entryDate: hUp.dates[0] as string, policy: { id: 'HOLD' }, assumptions: A, regime: 'X' });
+  assert.ok(r.state === 'CLOSED' && r.episode.pnl > 0 && r.episode.maeUsd < -150);
+  const m = computePolicyMetrics(r.state === 'CLOSED' ? [r.episode] : []);
+  assert.ok(m.expectedShortfall5Roc !== null && m.expectedShortfall5Roc > 0);
+  assert.ok(m.expectedShortfall5MaeRoc !== null && m.expectedShortfall5MaeRoc < 0);
 });
