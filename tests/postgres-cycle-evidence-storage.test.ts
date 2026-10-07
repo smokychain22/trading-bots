@@ -81,7 +81,8 @@ function cycle(): ThetaShadowCycleResult {
   return {
     fusionSnapshot, snapshotContentHash: fusionSnapshot.contentHash, strategyFrontier: null,
     orchestration: {
-      receipt: { selectedCandidateId: contracts[9]?.optionSymbol ?? null },
+      receipt: { selectedCandidateId: contracts[9]?.optionSymbol ?? null,
+        marketRegime: { version: 'theta-market-regime-research-v0', asOf: now, shadowOnly: true } },
       thetaQ: { candidates }, shadowOpportunities: [],
     },
   } as unknown as ThetaShadowCycleResult;
@@ -104,6 +105,8 @@ test('PostgreSQL projection is bounded while compressed archive retains the comp
   assert.equal((projection.snapshot.contractCandidates as unknown[]).length, 4);
   assert.equal((projection.snapshot.optionomicsFeatureState as Record<string, unknown>).storageState,
     'FULL_STATE_IN_COMPRESSED_CYCLE_ARCHIVE');
+  assert.deepEqual((decoded.decisionReceipt as Record<string, unknown>).marketRegime,
+    { version: 'theta-market-regime-research-v0', asOf: now, shadowOnly: true });
 });
 
 test('the real packed PostgreSQL archive feeds provider-free same-source T0 replay', () => {
