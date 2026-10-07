@@ -103,7 +103,7 @@ test('BA: missing risk evidence never improves rank -- the durable 63P (no IV/de
   assert.equal(blind.rewardToStressRisk.state, 'UNKNOWN');
   const order = rankEconomically([{ receipt: blind, verdict: 'NOT_CONFIGURED' }, { receipt: seen, verdict: 'NOT_CONFIGURED' }]);
   assert.deepEqual(order.map((r) => r.receipt.candidateId), ['A', 'B']);
-  assert.deepEqual(order[1]?.requiredUnknowns, ['breakevenCushionSigmas', 'impliedTwoSigmaMoveLossUsd', 'rewardToStressRisk']);
+  assert.deepEqual(order[1]?.requiredUnknowns, ['breakevenCushionSigmas', 'impliedThreeSigmaMoveLossUsd', 'impliedTwoSigmaMoveLossUsd', 'rewardToStressRisk']);
 });
 
 test('AZ: two economically different contracts with no EV are ordered by an economic key, never by OCC symbol', () => {
@@ -136,7 +136,7 @@ test('only a genuinely exact economic tie falls to the candidate ID', () => {
 
 test('BB: raw yield alone cannot select a high-delta near-ATM put over a lower-risk put with stronger risk-adjusted economics', () => {
   const atm: CspContractEvidence = { ...xle57, optionSymbol: 'ATM', strike: 64, bid: 1.9, ask: 1.95, delta: -0.48, iv: 0.28 };
-  const safer: CspContractEvidence = { ...xle57, optionSymbol: 'SAFER', strike: 60, bid: 1.4, ask: 1.45, delta: -0.22, iv: 0.33 };
+  const safer: CspContractEvidence = { ...xle57, optionSymbol: 'SAFER', strike: 60, bid: 1.6, ask: 1.65, delta: -0.22, iv: 0.33 };
   const rows = [atm, safer].map((c) => ({ candidateId: c.optionSymbol, contract: c }));
   const { ranked } = economicRankingForCspCandidates(rows, { ...config, mode: 'SHADOW', policy: null, scenarioVolatility: 0.28 });
   const byId = new Map(ranked.map((r) => [r.receipt.candidateId, r.receipt]));

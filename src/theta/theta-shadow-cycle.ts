@@ -72,6 +72,7 @@ import { deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.j
 import { classifyMethodInputProvenance, type MethodInputProvenance } from './profitability-method-input-provenance.js';
 import { wholeContractsAffordable } from './secured-contract-capacity.js';
 import { buildCycleQEntryFunnelSummary, type QEntryFunnelSummary } from './q-entry-funnel.js';
+import { buildQEconomicFunnelReceipt, type QEconomicFunnelReceipt } from './q-economic-funnel.js';
 
 /** Distinguish unshortlisted chain contracts from missing Q finalist responses. */
 export function completeConventionalFrontierEvaluationCoverage(
@@ -1194,6 +1195,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap = {};
   let aegisAlpacaIvStressEvidence: AlpacaContractIvAssessmentMap = {};
   let finalistQuoteRefresh: FinalistQuoteRefreshReceipt | null = null;
+  // SHADOW observation only: never changes the shortlist, the selection or any quantity.
+  let qEconomicFunnel: QEconomicFunnelReceipt | { readonly state: 'FAILED'; readonly reasonCode: string } | null = null;
   const underlyingStockPosition = positions.find((position) => position.symbol === underlying
     && position.assetClass === 'us_equity') ?? null;
   const hasPotentialCoveredStock = underlyingStockPosition !== null
@@ -1346,20 +1349,28 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       snapshots: snapshotsBySymbol.size });
 
     const finalistChosenAt = config.now();
+    const finalistCapital = {
+      equity: account?.equity ?? null,
+      buyingPower: account?.optionsBuyingPower ?? null,
+      hardTickerConcentrationLimitPct: typeof config.aegisPolicy.maxTickerConcentrationPct === 'number'
+        && typeof config.aegisPolicy.hardCapMultiplier === 'number'
+        ? config.aegisPolicy.maxTickerConcentrationPct * config.aegisPolicy.hardCapMultiplier : null,
+    };
     const finalists = selectFinalistContractsForRefresh({
       contracts: initialMergedContracts,
       latticeConfig: config.latticeConfig,
       policy: config.finalistQuoteRefreshPolicy,
       asOf: finalistChosenAt,
-      capital: {
-        equity: account?.equity ?? null,
-        buyingPower: account?.optionsBuyingPower ?? null,
-        hardTickerConcentrationLimitPct: typeof config.aegisPolicy.maxTickerConcentrationPct === 'number'
-          && typeof config.aegisPolicy.hardCapMultiplier === 'number'
-          ? config.aegisPolicy.maxTickerConcentrationPct * config.aegisPolicy.hardCapMultiplier : null,
-      },
+      capital: finalistCapital,
     });
     const finalistSymbols = new Set(finalists.map((contract) => contract.optionSymbol));
+    try {
+      qEconomicFunnel = buildQEconomicFunnelReceipt({ underlying, contracts: initialMergedContracts, latticeConfig: config.latticeConfig,
+        capital: finalistCapital, structuralFinalistSymbols: finalistSymbols, topK: config.finalistQuoteRefreshPolicy.maxFinalists,
+        stressGapPct: paperBootstrapRuntimePolicy.aegis.stressGapThresholdAbsoluteReturn });
+    } catch (error) {
+      qEconomicFunnel = { state: 'FAILED', reasonCode: `Q_ECONOMIC_FUNNEL_FAILED:${error instanceof Error ? error.constructor.name : 'UnknownThrowValue'}` };
+    }
     const refreshObservations: FinalistQuoteRefreshObservation[] = [];
     const refreshFailedSymbols = new Set<string>();
     const listingBySymbol = new Map(contractItems.map((contract) => [contract.symbol, contract]));
@@ -2251,6 +2262,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       EVENT_DATA: eventContextQuality,
     },
     policyVersion: config.policyVersion, modelVersions: config.modelVersions, requiredModelVersions: config.requiredModelVersions,
+    ...(qEconomicFunnel === null ? {} : { qEconomicFunnel }),
     ownershipPolicy: config.ownershipPolicy,
     ownershipInputs: {
       stockAvgVolume, optionOpenInterest: null, optionVolume: null, spreadPct: null,

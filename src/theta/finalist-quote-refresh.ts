@@ -50,7 +50,7 @@ export interface FinalistQuoteRefreshReceipt {
   };
 }
 
-interface ParsedLattice {
+export interface ParsedLattice {
   readonly minDte: number | null;
   readonly maxDte: number | null;
   readonly deltaCenters: readonly number[];
@@ -63,7 +63,7 @@ interface ParsedLattice {
 const finiteOrNull = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
 
-function parseLattice(lattice: Readonly<Record<string, unknown>>): ParsedLattice {
+export function parseLattice(lattice: Readonly<Record<string, unknown>>): ParsedLattice {
   const minDte = typeof lattice.minDte === 'number' && Number.isFinite(lattice.minDte) ? lattice.minDte : null;
   const maxDte = typeof lattice.maxDte === 'number' && Number.isFinite(lattice.maxDte) ? lattice.maxDte : null;
   const rawBands = Array.isArray(lattice.deltaBands) ? lattice.deltaBands : [];

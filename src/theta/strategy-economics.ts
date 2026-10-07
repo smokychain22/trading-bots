@@ -116,6 +116,8 @@ export interface StrategyEconomicsReceipt {
   readonly assignmentProbabilityProxy: EconomicValue;
   readonly stressLossUsd: EconomicValue;
   readonly impliedTwoSigmaMoveLossUsd: EconomicValue;
+  /** Tail scenario: expiry loss after a -3 sigma move (same shared scenario volatility). */
+  readonly impliedThreeSigmaMoveLossUsd: EconomicValue;
   readonly rewardToStressRisk: EconomicValue;
   readonly opportunityCostUsd: EconomicValue;
   readonly excessOverOpportunityCostUsd: EconomicValue;
@@ -221,9 +223,15 @@ export function buildStrategyEconomicsReceipt(input: StrategyEconomicsInput): St
     : packageLossAt(spot * Math.exp(-2 * ivForSigma * Math.sqrt(dte / 365)));
   const twoSigma = twoSigmaValue === null ? unknown(spot === null ? 'SPOT_UNKNOWN' : ivForSigma === null ? 'SCENARIO_VOLATILITY_UNKNOWN' : 'DTE_OR_CREDIT_INVALID')
     : known(round(twoSigmaValue, 4), `EXPIRY_INTRINSIC_AT_MINUS_TWO_SIGMA:${scenarioProvenance}`);
-  // Reward-to-stress uses the larger of the two adverse scenarios as the denominator, and needs BOTH: dropping an
-  // unknown scenario would silently flatter exactly the candidates with missing IV.
-  const worstStress = finite(stressValue) && finite(twoSigmaValue) ? Math.max(stressValue, twoSigmaValue) : null;
+  const threeSigmaValue = spot === null || ivForSigma === null || dte <= 0 ? null
+    : packageLossAt(spot * Math.exp(-3 * ivForSigma * Math.sqrt(dte / 365)));
+  const threeSigma = threeSigmaValue === null ? unknown(spot === null ? 'SPOT_UNKNOWN' : ivForSigma === null ? 'SCENARIO_VOLATILITY_UNKNOWN' : 'DTE_OR_CREDIT_INVALID')
+    : known(round(threeSigmaValue, 4), `EXPIRY_INTRINSIC_AT_MINUS_THREE_SIGMA:${scenarioProvenance}`);
+  // Reward-to-stress: max profit over the WORST of the gap, -2 sigma and -3 sigma scenarios; all three are required, so an
+  // unknown scenario can never flatter a candidate. A package with no modeled loss even at -3 sigma is NOT "infinitely
+  // good": its reward-to-stress is UNKNOWN (unrankable on this key), and it sorts after every candidate with a defined value.
+  const scenarioLosses = [stressValue, twoSigmaValue, threeSigmaValue];
+  const worstStress = scenarioLosses.every(finite) ? Math.max(...(scenarioLosses as number[])) : null;
   const rewardToStress = profitBasis === null || worstStress === null ? unknown('PROFIT_OR_A_STRESS_SCENARIO_UNKNOWN')
     : worstStress <= 0 ? unknown('NO_STRESS_LOSS_IN_MODELED_SCENARIOS')
       : known(round(profitBasis / worstStress, 8), 'MAX_PROFIT_OVER_WORST_MODELED_STRESS_LOSS');
@@ -244,7 +252,7 @@ export function buildStrategyEconomicsReceipt(input: StrategyEconomicsInput): St
     distanceToStrikePct: distanceToStrike, distanceToBreakevenPct: distanceToBreakeven, breakevenCushionSigmas: cushionSigmas,
     returnOnCapital: roc, annualizedReturnOnCapital: annualized, returnPerCapitalDay: perDay,
     rewardToMaxLoss, bidAskSpreadPct, ivMinusRealizedVol: ivMinusRv, ivRank,
-    assignmentProbabilityProxy: assignmentProxy, stressLossUsd: stressLoss, impliedTwoSigmaMoveLossUsd: twoSigma,
+    assignmentProbabilityProxy: assignmentProxy, stressLossUsd: stressLoss, impliedTwoSigmaMoveLossUsd: twoSigma, impliedThreeSigmaMoveLossUsd: threeSigma,
     rewardToStressRisk: rewardToStress, opportunityCostUsd: opportunityCost, excessOverOpportunityCostUsd: excess,
     expectedValueUsd: unknown('EV_MODEL_NOT_EMPIRICALLY_READY'),
     eventRisk: input.eventInWindow === null ? 'UNKNOWN' : input.eventInWindow ? 'EVENT_IN_WINDOW' : 'NO_KNOWN_EVENT_IN_WINDOW',
@@ -441,6 +449,7 @@ export function requiredEconomicUnknowns(receipt: StrategyEconomicsReceipt): rea
     ['capitalRequiredUsd', receipt.capitalRequiredUsd], ['maxProfitUsd', receipt.maxProfitUsd], ['maxLossUsd', receipt.maxLossUsd],
     ['breakeven', receipt.breakeven], ['assignmentProbabilityProxy', receipt.assignmentProbabilityProxy],
     ['stressLossUsd', receipt.stressLossUsd], ['impliedTwoSigmaMoveLossUsd', receipt.impliedTwoSigmaMoveLossUsd],
+    ['impliedThreeSigmaMoveLossUsd', receipt.impliedThreeSigmaMoveLossUsd],
     ...objectivesByClass[receipt.strategyClass].map((o): [string, EconomicValue] => [o.name, o.value(receipt)]),
   ];
   const missing = new Set(required.filter(([, v]) => v.state === 'UNKNOWN'
@@ -453,7 +462,7 @@ const verdictRank: Record<EconomicVerdict, number> = { PASS: 0, NOT_CONFIGURED: 
 const objectiveValue = (o: Objective, r: StrategyEconomicsReceipt): number | null => {
   const v = o.value(r);
   if (v.state === 'KNOWN') return o.direction === 'MAX' ? v.value : -v.value;
-  return o.name === 'rewardToStressRisk' && v.reason === 'NO_STRESS_LOSS_IN_MODELED_SCENARIOS' ? Number.POSITIVE_INFINITY : null;
+  return null; // includes NO_STRESS_LOSS_IN_MODELED_SCENARIOS: unrankable on this key, never treated as infinitely good
 };
 
 export interface EconomicRankRow {
