@@ -63,6 +63,15 @@ import { resolveReleaseIdentity } from './release-identity.js';
 let runtimePool: Pool | null = null;
 let executionPool: Pool | null = null;
 
+/** Connection-lane metric for every cycle response: counters only (no query), so it costs nothing and cannot itself contend for a slot.
+ * The execution lane is bounded to one connection per runtime instance; research never borrows it. */
+export function describeRuntimeDatabasePools(pools:{readonly runtime:Pick<Pool,'totalCount'|'idleCount'|'waitingCount'>|null;
+  readonly execution:Pick<Pool,'totalCount'|'idleCount'|'waitingCount'>|null}){
+  const lane=(pool:Pick<Pool,'totalCount'|'idleCount'|'waitingCount'>|null)=>pool===null?null
+    :{total:pool.totalCount,active:pool.totalCount-pool.idleCount,idle:pool.idleCount,waiting:pool.waitingCount};
+  return {executionPool:lane(pools.execution),runtimePool:lane(pools.runtime),executionPoolMaximum:1};
+}
+
 export interface LocalWorkerIdentity {
   readonly workerId: string;
   readonly hostId: string;
@@ -899,7 +908,8 @@ application_name: 'theta-corporate-action-capture' });
         if(safeCode!==null)response.setHeader('X-Theta-Safe-Error-Code',safeCode);
       }
     }
-    send(response, report.status === 'FAILED' || report.status === 'QUARANTINED' ? 503 : report.status === 'DEGRADED' ? 207 : 200, report);
+    send(response, report.status === 'FAILED' || report.status === 'QUARANTINED' ? 503 : report.status === 'DEGRADED' ? 207 : 200,
+      {...report,databasePools:describeRuntimeDatabasePools({runtime:runtimePool,execution:executionPool})});
   } catch (error) {
     const failure = safeRuntimeFailure(error);
     const code = failure.code;

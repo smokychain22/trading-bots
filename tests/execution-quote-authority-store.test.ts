@@ -89,3 +89,16 @@ test('an exhausted read-only checkpoint cannot permanently suppress fresh eviden
   assert.equal(shouldRecoverRuntimeCheckpoint({ jobKind: 'PAPER_EXECUTION_HANDOFF', attempt: 3 }), true);
   assert.equal(shouldRecoverRuntimeCheckpoint({ jobKind: 'ASSIGNMENT_EXPIRY_RECONCILIATION', attempt: 3 }), true);
 });
+
+test('every cycle response carries the execution-lane connection metric: one bounded connection, counters only', async () => {
+  const { describeRuntimeDatabasePools } = await import('../src/theta/autonomous-runtime-handler.js');
+  const metric = describeRuntimeDatabasePools({ runtime: { totalCount: 3, idleCount: 2, waitingCount: 0 }, execution: { totalCount: 1, idleCount: 0, waitingCount: 0 } });
+  assert.deepEqual(metric.executionPool, { total: 1, active: 1, idle: 0, waiting: 0 });
+  assert.deepEqual(metric.runtimePool, { total: 3, active: 1, idle: 2, waiting: 0 });
+  assert.equal(metric.executionPoolMaximum, 1);
+  assert.equal(describeRuntimeDatabasePools({ runtime: null, execution: null }).executionPool, null, 'no pool yet is reported as absent, never as zero');
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync('src/theta/autonomous-runtime-handler.ts', 'utf8');
+  assert.match(source, /executionPool \?\?= createRuntimePostgresPool\(environment\.DATABASE_URL,undefined,\{maximumConnections:1,applicationName:'theta-runtime-execution'\}\)/,
+    'the execution lane is created once per instance (reused, never per cycle) and capped at one connection');
+});
