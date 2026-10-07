@@ -131,3 +131,17 @@ test('CANARY STATE MACHINE: every Alpaca status maps to one typed canary state; 
     assert.ok(!reArmable.includes(`'${status}'`), `${status} never re-arms the canary lane`);
   }
 });
+
+test('2026-10-07 OPEN REGRESSION: a WORKING canary has no position yet, so an unreconciled position is IN_PROGRESS (never FAILED); a FILLED one still requires it', () => {
+  const base = input();
+  const unreconciled = { ...base.evidence, reconciliationComplete: good(false) };
+  const working = buildFirstCanaryAcceptanceReceipt({ ...base, broker: { ...base.broker, orderState: good('WORKING'), filledQuantity: good(0) }, evidence: unreconciled });
+  assert.equal(working.status, 'IN_PROGRESS');
+  assert.deepEqual(working.blockers, []);
+  assert.deepEqual(working.pending, ['BROKER_ORDER_WORKING']);
+  const filled = buildFirstCanaryAcceptanceReceipt({ ...base, evidence: unreconciled });
+  assert.equal(filled.status, 'FAILED');
+  assert.ok(filled.blockers.includes('RECONCILIATION_COMPLETE_FALSE'), 'a filled canary is never accepted before its position reconciles');
+  const expired = buildFirstCanaryAcceptanceReceipt({ ...base, broker: { ...base.broker, orderState: good('EXPIRED'), filledQuantity: good(0) }, evidence: unreconciled });
+  assert.deepEqual(expired.blockers, ['BROKER_ORDER_EXPIRED'], 'a zero-fill terminal canary is typed by its broker state only');
+});

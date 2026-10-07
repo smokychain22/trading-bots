@@ -136,7 +136,8 @@ export function buildFirstCanaryAcceptanceReceipt(input: FirstCanaryAcceptanceIn
   if (clientOrderId !== null && clientOrderId !== input.expected.clientOrderId) blockers.push('BROKER_CLIENT_ORDER_ID_MISMATCH');
   if (duplicateCount !== null && duplicateCount !== 1) blockers.push('DUPLICATE_ECONOMIC_EXPOSURE');
 
-  requireTrue(input.evidence.reconciliationComplete, 'RECONCILIATION_COMPLETE', blockers);
+  // A broker position exists only once the order FILLED: a working (or zero-fill terminal) canary can not have a reconciled position, so
+  // requiring it here typed every healthy WORKING canary as FAILED (2026-10-07 open). It is required in the FILLED branch below.
   requireTrue(input.evidence.newRiskRelocked, 'NEW_RISK_RELOCKED', blockers);
   requireTrue(input.evidence.managementEnabled, 'MANAGEMENT_ENABLED', blockers);
   const followerMutations = good(input.evidence.followerMutationCount, 'FOLLOWER_MUTATION_COUNT', blockers);
@@ -146,6 +147,7 @@ export function buildFirstCanaryAcceptanceReceipt(input: FirstCanaryAcceptanceIn
 
   if (state === 'FILLED') {
     if (filledQuantity !== input.expected.quantity) blockers.push('FILLED_QUANTITY_NOT_COMPLETE');
+    requireTrue(input.evidence.reconciliationComplete, 'RECONCILIATION_COMPLETE', blockers);
     // every leg of a filled package filled in full (quantity x ratio): a parent FILLED with a short leg missing is never accepted
     if (brokerLegs !== null && brokerLegs.some((leg) => leg.filledQuantity !== input.expected.quantity * leg.ratio)) {
       blockers.push('PACKAGE_LEG_FILL_NOT_COMPLETE');
