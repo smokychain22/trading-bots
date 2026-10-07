@@ -9,6 +9,7 @@ import { accountPolicyIncompatibilityBlocker } from './account-capacity-zero.js'
 import { coveredCallContractCapacity, securedContractCapacity, wholeContractsAffordable } from './secured-contract-capacity.js';
 import { buildCapitalBudgetEvidence, type CapitalBudgetAccountEvidence, type CapitalBudgetEvidence } from './capital-budget-evidence.js';
 import type { NewRiskDecisionReceipt } from './decision-assembly.js';
+import { buildBranchEconomicShadow, type BranchEconomicShadowRecord } from './branch-economic-shadow.js';
 import type { ThetaQCandidateEvaluationEntry } from './new-risk-orchestrator.js';
 import type { StrategyAccountPolicyCompatibility } from './strategy-account-policy-compatibility.js';
 import {
@@ -296,6 +297,9 @@ export interface CanonicalStrategyFrontier {
   /** One bounded D finalist receipt. It is research-only and structurally
    * impossible to submit through the single-leg Master Paper handoff. */
   readonly definedRiskLockedPlan: DefinedRiskLockedPlanResult;
+  /** SHADOW: per-branch economic best beside the structural best (branch-economic-shadow.ts). Never selection authority.
+   * Optional for historical archives. */
+  readonly economicShadow?: readonly BranchEconomicShadowRecord[] | { readonly state: 'FAILED'; readonly reasonCode: string };
   /** One sovereign explanation surface. Q remains the only Paper-authorized
    * entry branch. H/D comparison remains structural, shadow and unable to
    * replace the selected Q contract or create a broker plan. */
@@ -1478,6 +1482,13 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     shadowComparison: adaptiveShadowDecision.shadowComparison,
     dBrokerSupport,
   });
-  const complete = { ...partial, adaptiveShadowDecision, definedRiskLockedPlan, sovereignStrategyAssessment };
+  // SHADOW per-branch economic order beside the structural best; a failure is typed and never affects the frontier.
+  let economicShadow: CanonicalStrategyFrontier['economicShadow'];
+  try {
+    economicShadow = buildBranchEconomicShadow(branches, input.contracts);
+  } catch (error) {
+    economicShadow = { state: 'FAILED', reasonCode: `BRANCH_ECONOMIC_SHADOW_FAILED:${error instanceof Error ? error.constructor.name : 'UnknownThrowValue'}` };
+  }
+  const complete = { ...partial, adaptiveShadowDecision, definedRiskLockedPlan, sovereignStrategyAssessment, economicShadow };
   return { ...complete, contentHash: canonicalStrategyFrontierContentHash(complete) };
 }
