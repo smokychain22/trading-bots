@@ -8,9 +8,10 @@ import { summarizeFreshPostgresCampaign, type FreshPostgresAttemptReceipt,
   thetaSoakFreshPhysicalConnectionTimeoutMillis,
   thetaSoakPoolWaitTimeoutMillis } from '../src/theta/postgres-connection-characterization.js';
 import { runInstrumentedFreshPostgresAttempt } from '../src/theta/postgres-fresh-connection-probe.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const contractVersion='theta-postgres-fresh-connection-diagnostic-v1';
-const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1]??'.env.local';
+const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1]?? explicitEnvironmentFile();
 const samplesArgument=Number(process.argv.find((value)=>value.startsWith('--samples='))?.split('=',2)[1]??40);
 const intervalArgument=Number(process.argv.find((value)=>value.startsWith('--interval-ms='))?.split('=',2)[1]??5_000);
 const receiptPathArgument=process.argv.find((value)=>value.startsWith('--receipt-path='))?.split('=',2)[1];

@@ -7,9 +7,10 @@ import pg from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { planRebuild } from '../src/storage/data-platform/legacy-rebuild.js';
 import { archivePopulations, defaultLegacyCutoff } from './storage/storage-populations.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const arg = (name: string): string | undefined => process.argv.find((value) => value.startsWith(`--${name}=`))?.slice(name.length + 3);
-const environment = loadEnvironmentFile(arg('environment-file') ?? '.env.local');
+const environment = loadEnvironmentFile(arg('environment-file') ?? explicitEnvironmentFile());
 const connectionString = environment.AIVEN_DATABASE_URL ?? environment.DATABASE_URL;
 if (connectionString === undefined) throw new Error('CANONICAL_DATABASE_URL_NOT_CONFIGURED');
 const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));

@@ -4,10 +4,11 @@ import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { buildHistoricalReplayExport, type HistoricalReplayExportArtifact } from '../src/research/historical-replay-export.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const root = resolve(process.cwd());
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
-  ?.slice('--environment-file='.length) ?? '.env.local';
+  ?.slice('--environment-file='.length) ?? explicitEnvironmentFile();
 const sessionArgument = process.argv.find((argument) => argument.startsWith('--sessions='))
   ?.slice('--sessions='.length);
 const sessionDates = sessionArgument?.split(',').map((value) => value.trim()).filter(Boolean)

@@ -8,11 +8,12 @@ import {
 } from '../src/storage/local-research-archive-health.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
 import { PostgresPressureProvider } from '../src/storage/data-platform/pressure-state.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const value = (prefix: string): string | undefined =>
   process.argv.slice(2).find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
 
-const environmentFile = value('--environment-file=') ?? '.env.local';
+const environmentFile = value('--environment-file=') ?? explicitEnvironmentFile();
 const spoolPath = value('--sqlite=') ?? '.theta-local-worker/research-spool/theta-research.sqlite';
 const schedulerPath = value('--scheduler=') ?? '.theta-local-worker/research-spool/theta-observation-jobs.sqlite';
 const healthPath = value('--health=') ?? '.theta-local-worker/research-spool/archive-health.json';

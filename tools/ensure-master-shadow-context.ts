@@ -1,8 +1,9 @@
 import { Pool } from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { ensureMasterShadowContext, masterShadowContextVersions } from '../src/research/master-shadow-context.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
-const environment=loadEnvironmentFile('.env.local');
+const environment=loadEnvironmentFile(explicitEnvironmentFile());
 if(environment.DATABASE_URL===undefined) throw new Error('DATABASE_URL_REQUIRED');
 const pool=new Pool({connectionString:environment.DATABASE_URL,max:1,connectionTimeoutMillis:10_000,
   application_name:'theta-ensure-master-shadow-context'});

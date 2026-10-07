@@ -7,8 +7,9 @@ import {
   requiredPostMigrationVersions,
 } from '../src/database/post-migration-resume.js';
 import { classifyPostgresRelation } from '../src/storage/storage-authority-registry.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
-const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1]??'.env.local';
+const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1]?? explicitEnvironmentFile();
 const environment=loadEnvironmentFile(environmentFile);
 if(!environment.AIVEN_DATABASE_URL)throw new Error('AIVEN_DATABASE_URL_NOT_CONFIGURED');
 assertPostMigrationExecutionLocked(environment);

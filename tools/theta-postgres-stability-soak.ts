@@ -12,8 +12,9 @@ import { decodeCycleEvidenceArchive, postgresCycleEvidenceStorageVersion } from 
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
 import { withRuntimePostgresClient } from '../src/theta/runtime-postgres-client.js';
 import type { RuntimePostgresClientObservation } from '../src/theta/runtime-postgres-client.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
-const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1]??'.env.local';
+const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1]?? explicitEnvironmentFile();
 const durationArg=process.argv.find((value)=>value.startsWith('--duration-seconds='))?.split('=',2)[1];
 const parsedDuration=Number(durationArg??900);
 if(!Number.isFinite(parsedDuration))throw new Error('SOAK_DURATION_INVALID');

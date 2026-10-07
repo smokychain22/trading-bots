@@ -8,9 +8,10 @@ import {
   PostgresBrokerReconciliationStore,
   runReadOnlyBrokerReconciliation,
 } from '../src/execution/broker-reconciliation-worker.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const environmentArgument = process.argv.find((argument) => argument.startsWith('--environment-file='));
-const environmentFile = environmentArgument?.slice('--environment-file='.length) ?? '.env.local';
+const environmentFile = environmentArgument?.slice('--environment-file='.length) ?? explicitEnvironmentFile();
 const environment = loadEnvironmentFile(environmentFile);
 
 if (!environment.DATABASE_URL) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');

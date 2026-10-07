@@ -1,9 +1,10 @@
 import { Pool } from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { summarizeAegisBaselineProgress } from '../src/theta/aegis-baseline-progress.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const environmentFile = process.argv.find((arg) => arg.startsWith('--environment-file='))
-  ?.slice('--environment-file='.length) ?? '.env.local';
+  ?.slice('--environment-file='.length) ?? explicitEnvironmentFile();
 const environment = loadEnvironmentFile(environmentFile);
 if (!environment.DATABASE_URL) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
 const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1,

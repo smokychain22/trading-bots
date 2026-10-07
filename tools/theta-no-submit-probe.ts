@@ -22,9 +22,10 @@ import { createGetOnlyFetch } from '../src/theta/read-only-fetch.js';
 import { classifyNoSubmitDecisionAuthority } from '../src/theta/no-submit-decision-authority.js';
 import { assessRuntimeSchemaCompatibility } from '../src/theta/runtime-schema-compatibility.js';
 import { withRuntimePostgresClient, type RuntimePostgresClientObservation } from '../src/theta/runtime-postgres-client.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
-  ?.slice('--environment-file='.length) ?? '.env.local';
+  ?.slice('--environment-file='.length) ?? explicitEnvironmentFile();
 const sourceGitOptions = { encoding: 'utf8' as const, maxBuffer: 1024 * 1024,
   timeout: 30_000, windowsHide: true };
 const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], sourceGitOptions).trim();

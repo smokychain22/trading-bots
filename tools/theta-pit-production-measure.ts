@@ -12,10 +12,11 @@ import { decisionBytes, indexBytesPerRow, indexBytesFor, percentile, type Decisi
 import { PIT_JSON_COLUMNS, PIT_SCALAR_COLUMNS, type PitEvidenceRow } from '../src/storage/data-platform/pit-storage.js';
 import { planPitWrite, writePlan } from '../src/storage/data-platform/pit-writer.js';
 import { sessionDateNewYork } from '../src/storage/data-platform/cycle-blob-store.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const arg = (name: string): string | undefined => process.argv.find((value) => value.startsWith(`--${name}=`))?.slice(name.length + 3);
 const limit = Number(arg('decisions') ?? '150');
-const environment = loadEnvironmentFile(arg('environment-file') ?? '.env.local');
+const environment = loadEnvironmentFile(arg('environment-file') ?? explicitEnvironmentFile());
 const productionUrl = environment.AIVEN_DATABASE_URL ?? environment.DATABASE_URL;
 const localUrl = process.env.THETA_DATA_PLATFORM_FULL_DATABASE_URL;
 if (productionUrl === undefined) throw new Error('CANONICAL_DATABASE_URL_NOT_CONFIGURED');

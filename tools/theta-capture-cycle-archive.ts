@@ -7,10 +7,11 @@ import { decodeCycleEvidenceArchive } from '../src/theta/postgres-cycle-evidence
 import { canonicalJson } from '../src/research/point-in-time-evidence.js';
 import type { CycleArchiveReplayIdentity } from '../src/theta/cycle-archive-replay.js';
 import { cycleBlobJoinClause, cycleBlobSelectExpression, dataPlatformBlobStoreEnabled } from '../src/storage/data-platform/cycle-blob-store.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const cycleId = process.argv.find((value) => value.startsWith('--cycle-id='))?.slice('--cycle-id='.length);
 if (cycleId === undefined || !/^[0-9a-f-]{36}$/.test(cycleId)) throw new Error('CYCLE_ID_REQUIRED');
-const environment = loadEnvironmentFile(resolve('.env.local'), {});
+const environment = loadEnvironmentFile(resolve(explicitEnvironmentFile()), {});
 if (!environment.DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
 const outputDir = resolve('.theta-local-worker', 'replay-corpus');
 const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1, connectionTimeoutMillis: 8000,

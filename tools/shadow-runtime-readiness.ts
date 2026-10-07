@@ -1,9 +1,10 @@
 import { Pool } from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { buildR6ReadinessReceipt } from '../src/research/r6-readiness.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))
-  ?.slice('--environment-file='.length)??'.env.local';
+  ?.slice('--environment-file='.length)?? explicitEnvironmentFile();
 const connectionString=loadEnvironmentFile(environmentFile).DATABASE_URL;
 if(!connectionString) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
 const pool=new Pool({connectionString,max:1,application_name:'theta-shadow-runtime-readiness'});

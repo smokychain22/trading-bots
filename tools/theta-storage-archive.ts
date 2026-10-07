@@ -18,10 +18,11 @@ import {
 } from './storage/storage-archive-lib.js';
 import { archivePopulations, defaultLegacyCutoff } from './storage/storage-populations.js';
 import { assessStorageBudgetV2 } from './storage/storage-budget-v2.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const arg = (name: string): string | undefined => process.argv.find((value) => value.startsWith(`--${name}=`))?.slice(name.length + 3);
 const mode = arg('mode') ?? 'plan';
-const environment = loadEnvironmentFile(arg('environment-file') ?? '.env.local');
+const environment = loadEnvironmentFile(arg('environment-file') ?? explicitEnvironmentFile());
 const connectionString = environment.AIVEN_DATABASE_URL ?? environment.DATABASE_URL;
 if (connectionString === undefined) throw new Error('CANONICAL_DATABASE_URL_NOT_CONFIGURED');
 const archiveRoot = resolve(arg('archive-root') ?? 'C:\\ProjectBackups\\trading-bots\\storage-archives\\theta-20261003');

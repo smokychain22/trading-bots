@@ -27,6 +27,7 @@ import {
   processCommand5aPage,
   resolveCommand5aFeeds,
 } from '../src/research/command5a-runtime-planning.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 type FrontierRow = {
   frontier_id: string;
@@ -46,7 +47,7 @@ type FrontierRow = {
 const argument = (prefix: string): string | undefined => process.argv.slice(2)
   .find((value) => value.startsWith(prefix))?.slice(prefix.length);
 const mode = argument('--mode=');
-const environmentFile = argument('--environment-file=') ?? '.env.local';
+const environmentFile = argument('--environment-file=') ?? explicitEnvironmentFile();
 const schedulerPath = argument('--scheduler=') ?? '.theta-local-worker/research-spool/theta-observation-jobs.sqlite';
 const spoolPath = argument('--spool=') ?? '.theta-local-worker/research-spool/theta-research.sqlite';
 const parquetRoot = argument('--parquet-root=') ?? 'C:\\ProjectBackups\\trading-bots\\research-archives';

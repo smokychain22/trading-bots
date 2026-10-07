@@ -8,10 +8,11 @@ import {
   buildHistoricalCertification,
   type DailySourceEvidence,
 } from '../src/operations/historical-session-certification.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const start = process.argv.find((arg) => arg.startsWith('--start='))?.slice(8) ?? '2026-09-09';
 const end = process.argv.find((arg) => arg.startsWith('--end='))?.slice(6) ?? new Date().toISOString().slice(0, 10);
-const environmentFile = process.argv.find((arg) => arg.startsWith('--environment-file='))?.slice(19) ?? '.env.local';
+const environmentFile = process.argv.find((arg) => arg.startsWith('--environment-file='))?.slice(19) ?? explicitEnvironmentFile();
 const generatedAt = new Date().toISOString();
 const gitOptions = { encoding: 'utf8' as const, maxBuffer: 16 * 1024 * 1024,
   timeout: 30_000, windowsHide: true };

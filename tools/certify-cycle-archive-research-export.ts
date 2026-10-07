@@ -5,10 +5,11 @@ import { loadEnvironmentFile } from '../src/config/environment.js';
 import { archiveCanonicalStrategyFrontiers } from '../src/storage/canonical-frontier-local-archive.js';
 import { LocalResearchHistorySpool } from '../src/storage/local-research-history-spool.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const argument = (prefix: string): string | undefined => process.argv.slice(2)
   .find((value) => value.startsWith(prefix))?.slice(prefix.length);
-const environmentFile = argument('--environment-file=') ?? '.env.local';
+const environmentFile = argument('--environment-file=') ?? explicitEnvironmentFile();
 const spoolPath = argument('--sqlite=') ?? '.theta-local-worker/research-spool/theta-research.sqlite';
 const parquetRoot = argument('--parquet-root=') ?? 'C:\\ProjectBackups\\trading-bots\\research-archives';
 const verificationCache = argument('--verification-cache=')

@@ -3,11 +3,12 @@ import { loadEnvironmentFile } from '../src/config/environment.js';
 import { loadAlpacaContractIvHistory, paperBootstrapAlpacaContractIvPolicy } from '../src/theta/aegis-alpaca-iv-stress.js';
 import { loadAegisSpreadHistory, paperBootstrapAegisSpreadStressPolicy,
   spreadDteBucket, spreadMoneynessBucket } from '../src/theta/aegis-spread-stress.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 // Read-only, bounded evidence census. No contract/account identifiers, quotes,
 // credentials, or connection errors are emitted. The protected runtime owns
 // the actual assessment and Paper gate, this is an operator diagnostic.
-const environment = loadEnvironmentFile('.env.local');
+const environment = loadEnvironmentFile(explicitEnvironmentFile());
 if (!environment.AIVEN_DATABASE_URL || environment.AIVEN_DATABASE_URL === '[SENSITIVE]') {
   process.stdout.write(`${JSON.stringify({ state: 'DATABASE_CREDENTIAL_UNAVAILABLE' })}\n`);
   process.exit(1);

@@ -4,9 +4,10 @@ import { loadEnvironmentFile } from '../src/config/environment.js';
 import { LocalEvidenceSpool } from '../src/theta/local-evidence-spool.js';
 import { PostgresLocalEvidenceBackfillTarget } from '../src/theta/postgres-local-evidence-backfill.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const environmentFile=process.argv.find((argument)=>argument.startsWith('--environment-file='))
-  ?.slice('--environment-file='.length)??'.env.local';
+  ?.slice('--environment-file='.length)?? explicitEnvironmentFile();
 const environment=loadEnvironmentFile(environmentFile);
 if(!environment.DATABASE_URL)throw new Error('DATABASE_URL_REQUIRED');
 const sourceSha=execFileSync('git',['rev-parse','HEAD'],{

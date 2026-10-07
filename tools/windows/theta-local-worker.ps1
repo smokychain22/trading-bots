@@ -702,7 +702,7 @@ try {
             } else { $parquetVerification = 'FAILED' }
           }
           $healthProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 60 -Arguments @(
-            '--import','tsx','tools/archive-canonical-strategy-frontiers.ts',"--sqlite=$researchSpoolPath",
+            '--import','tsx','tools/archive-canonical-strategy-frontiers.ts',"--environment-file=$productionEnvFile","--sqlite=$researchSpoolPath",
             "--scheduler=$command5aSchedulerPath","--health=$researchArchiveHealthPath",
             "--parquet-root=$researchParquetRoot","--duckdb-verification=$parquetVerification",'--health-only')
           $healthOutput = $healthProcess.Output

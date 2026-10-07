@@ -2,10 +2,11 @@ import { Pool } from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { PostgresCustomerStore } from '../src/customer/customer-store.js';
 import { verifyStoredMasterPaperConnection } from '../src/customer/master-paper-runtime.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 // Vercel writes a dotenv file. Parse dotenv syntax before schema validation,
 // and let the freshly pulled file override stale session variables.
-const environment = loadEnvironmentFile(process.env.THETA_ENV_FILE ?? '.env.local');
+const environment = loadEnvironmentFile(process.env.THETA_ENV_FILE ?? explicitEnvironmentFile());
 if (!environment.DATABASE_URL) throw new Error('CUSTOMER_DATABASE_NOT_CONFIGURED');
 const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 2, idleTimeoutMillis: 5_000,
   application_name: 'theta-verify-stored-master-paper' });

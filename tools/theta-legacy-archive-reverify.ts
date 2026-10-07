@@ -13,6 +13,7 @@ import { decodeCycleEvidenceArchive } from '../src/theta/postgres-cycle-evidence
 import { canonicalJson } from '../src/research/point-in-time-evidence.js';
 import { evaluatePurgeEligibility, isOutsideDatabaseArchiveRoot, readArchiveRows, verifyArchiveOnDisk, type ArchiveManifest } from './storage/storage-archive-lib.js';
 import { archivePopulations, defaultLegacyCutoff } from './storage/storage-populations.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const arg = (name: string): string | undefined => process.argv.find((value) => value.startsWith(`--${name}=`))?.slice(name.length + 3);
 const offline = process.argv.includes('--offline');
@@ -28,7 +29,7 @@ function mulberry32(initial: number): () => number { let a = initial >>> 0; retu
 
 let pool: pg.Pool | null = null;
 if (!offline) {
-  const environment = loadEnvironmentFile(arg('environment-file') ?? '.env.local');
+  const environment = loadEnvironmentFile(arg('environment-file') ?? explicitEnvironmentFile());
   const connectionString = environment.AIVEN_DATABASE_URL ?? environment.DATABASE_URL;
   if (connectionString === undefined) throw new Error('CANONICAL_DATABASE_URL_NOT_CONFIGURED');
   pool = new pg.Pool({ connectionString, max: 1, connectionTimeoutMillis: 15_000, idleTimeoutMillis: 2_000, application_name: 'theta-readonly-archive-reverify', options: '-c statement_timeout=240000' });

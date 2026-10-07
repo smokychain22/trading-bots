@@ -10,9 +10,10 @@ import {
 import {
   aivenDeveloper1BootstrapStorageBudget, assessStorageBudget, forecastStorageGrowth,
 } from '../src/storage/storage-budget.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
-  ?.slice('--environment-file='.length) ?? '.env.local';
+  ?.slice('--environment-file='.length) ?? explicitEnvironmentFile();
 const configuredOutputRoot = process.argv.find((argument) => argument.startsWith('--output-root='))
   ?.slice('--output-root='.length);
 const outputRoot = resolve(configuredOutputRoot ?? resolve('.theta-local-worker', 'storage-audits'));

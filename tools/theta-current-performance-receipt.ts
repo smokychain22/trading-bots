@@ -3,10 +3,11 @@ import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { hashJson, type JsonValue } from '../src/market/fusion-snapshot.js';
+import { explicitEnvironmentFile } from '../src/config/tool-environment.js';
 
 const root = resolve(process.cwd());
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
-  ?.slice('--environment-file='.length) ?? '.env.local';
+  ?.slice('--environment-file='.length) ?? explicitEnvironmentFile();
 const environment = loadEnvironmentFile(resolve(root, environmentFile), {});
 if (!environment.DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
 
