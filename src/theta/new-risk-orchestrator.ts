@@ -17,6 +17,8 @@ import { classifyObservation, type DataQualityState, type FreshnessPolicy } from
 import { assessPaperBootstrapOwnershipEvidence, type PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 import { buildEntryThesisReceipt, type ThesisClaim } from './entry-thesis-receipt.js';
 import type { StrategyAccountPolicyCompatibility } from './strategy-account-policy-compatibility.js';
+import { economicRankingForCspCandidates, type EconomicsGateMode } from './strategy-economics.js';
+import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 
 export interface CandidateAegisRequest {
   readonly snapshotId: string;
@@ -318,6 +320,8 @@ export interface NewRiskOrchestrationRequest {
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
   readonly requiredModelVersions: Readonly<Record<string, string>>;
+  /** Strategy-economics ranking mode (default SHADOW: observe beside the Production choice, never select). */
+  readonly economicsGateMode?: EconomicsGateMode;
 
   readonly ownershipPolicy: Record<string, unknown>;
   readonly ownershipInputs: Record<string, unknown>;
@@ -1064,11 +1068,17 @@ export async function runNewRiskOrchestration(
     });
   }
 
+  const economicsGateMode = request.economicsGateMode ?? 'SHADOW';
+  const economicRanking = economicsGateMode === 'OFF' ? undefined : economicRankingForCspCandidates(
+    candidateResults.map((c) => ({ candidateId: c.candidateId, contract: c.contract })),
+    { mode: economicsGateMode, strategyClass: 'THETA_CONVENTIONAL', policy: null, openingCostPerContractUsd: null,
+      stressGapPct: paperBootstrapRuntimePolicy.aegis.stressGapThresholdAbsoluteReturn, opportunityCostAnnualRate: null }).ranking;
   const assembledReceipt = assembleNewRiskDecision({
     snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
     underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data,
     candidates: candidateResults, policyVersion: request.policyVersion, modelVersions: request.modelVersions,
     requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
+    ...(economicRanking === undefined ? {} : { economicRanking }),
   });
   const receipt = attachEntryThesis(
     assembledReceipt, request, ownershipResult.data, regimeResult.data, candidateResults,

@@ -5,6 +5,7 @@ import type { ExecutionQualityResponse } from './execution-quality-contract.js';
 import type { OwnershipEvaluationResponse } from './ownership-contract.js';
 import type { RegimeSnapshotResponse } from './regime-contract.js';
 import type { EntryThesisReceipt } from './entry-thesis-receipt.js';
+import type { EconomicsGateMode } from './strategy-economics.js';
 
 // R1G decision assembly: composes ALREADY-COMPUTED Python quant outputs
 // (ownership, regime, opportunity-frontier per-candidate disposition,
@@ -71,6 +72,31 @@ export interface NewRiskDecisionInput {
   readonly modelVersions: Readonly<Record<string, string>>;
   readonly requiredModelVersions: Readonly<Record<string, string>>; // what THIS decision service expects -- mismatch fails closed
   readonly providerStateGood: boolean;
+  /**
+   * Precomputed economic order (strategy-economics.ts) over this decision's candidates. This module never computes it.
+   * Absent or OFF: unchanged behaviour. SHADOW: recorded beside the Production choice, selection unchanged.
+   * ENFORCED: replaces ONLY the candidate-ID tie-break among already-qualified candidates when calibrated EV is
+   * unavailable; it never changes eligibility, quantity, AEGIS or sizing.
+   */
+  readonly economicRanking?: EconomicRankingInput;
+}
+
+export interface EconomicRankingInput {
+  readonly contractVersion: string;
+  readonly mode: EconomicsGateMode;
+  readonly orderedCandidateIds: readonly string[];
+  readonly basis: readonly string[];
+}
+
+export interface EconomicRankingDecisionRecord {
+  readonly contractVersion: string;
+  readonly mode: EconomicsGateMode;
+  readonly basis: readonly string[];
+  readonly qualifiedCandidateIds: readonly string[];
+  readonly legacyOrderSelectedCandidateId: string | null;
+  readonly economicOrderSelectedCandidateId: string | null;
+  readonly diverges: boolean;
+  readonly appliedToSelection: boolean;
 }
 
 export interface NewRiskAlternative {
@@ -106,6 +132,8 @@ export interface NewRiskDecisionReceipt {
   /** Present for an actionable selected candidate. Historical WAIT/PASS/HOLD
    * receipts legitimately have no entry thesis. */
   readonly entryThesisReceipt?: EntryThesisReceipt | null;
+  /** Present when an economic ranking was supplied (see NewRiskDecisionInput.economicRanking). */
+  readonly economicRanking?: EconomicRankingDecisionRecord;
 }
 
 const alternativeFrom = (c: CandidateFrontierResult): NewRiskAlternative => ({
@@ -307,12 +335,31 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
     };
   }
 
-  openCandidates.sort((a, b) => {
-    if (a.returnPerCapitalDay !== null && b.returnPerCapitalDay !== null) return b.returnPerCapitalDay - a.returnPerCapitalDay;
-    if (a.returnPerCapitalDay !== null) return -1;
-    if (b.returnPerCapitalDay !== null) return 1;
-    return a.candidateId.localeCompare(b.candidateId);
-  });
+  // Calibrated EV-backed return per capital-day always ranks first. Without it the legacy tie-break is the candidate ID
+  // (OCC symbol order: lowest strike / nearest expiry first), which selected XLE 57P over XLE 63P on 2026-10-07.
+  const economicIndex = new Map((input.economicRanking?.orderedCandidateIds ?? []).map((id, index) => [id, index]));
+  const byReturnThen = (tieBreak: (a: CandidateFrontierResult, b: CandidateFrontierResult) => number) =>
+    (a: CandidateFrontierResult, b: CandidateFrontierResult): number => {
+      if (a.returnPerCapitalDay !== null && b.returnPerCapitalDay !== null && a.returnPerCapitalDay !== b.returnPerCapitalDay)
+        return b.returnPerCapitalDay - a.returnPerCapitalDay;
+      if (a.returnPerCapitalDay !== null && b.returnPerCapitalDay === null) return -1;
+      if (b.returnPerCapitalDay !== null && a.returnPerCapitalDay === null) return 1;
+      return tieBreak(a, b);
+    };
+  const legacyOrder = byReturnThen((a, b) => a.candidateId.localeCompare(b.candidateId));
+  const economicOrder = byReturnThen((a, b) => (economicIndex.get(a.candidateId) ?? Number.MAX_SAFE_INTEGER)
+    - (economicIndex.get(b.candidateId) ?? Number.MAX_SAFE_INTEGER) || a.candidateId.localeCompare(b.candidateId));
+  const ranking = input.economicRanking;
+  const legacyWinnerId = openCandidates.toSorted(legacyOrder)[0]?.candidateId ?? null;
+  const economicWinnerId = openCandidates.toSorted(economicOrder)[0]?.candidateId ?? null;
+  const applyEconomicOrder = ranking?.mode === 'ENFORCED';
+  openCandidates.sort(applyEconomicOrder ? economicOrder : legacyOrder);
+  const economicRanking: EconomicRankingDecisionRecord | undefined = ranking === undefined || ranking.mode === 'OFF' ? undefined : {
+    contractVersion: ranking.contractVersion, mode: ranking.mode, basis: ranking.basis,
+    qualifiedCandidateIds: openCandidates.map((c) => c.candidateId).toSorted(),
+    legacyOrderSelectedCandidateId: legacyWinnerId, economicOrderSelectedCandidateId: economicWinnerId,
+    diverges: legacyWinnerId !== economicWinnerId, appliedToSelection: applyEconomicOrder,
+  };
   const winner = openCandidates[0];
   if (winner === undefined || winner.sizing === null) {
     return systemHold(input, 'Internal inconsistency: a qualifying candidate lost its sizing result during selection.', ['INTERNAL_INCONSISTENCY']);
@@ -339,5 +386,6 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
     failClosedReason: null,
     policyVersion: input.policyVersion,
     modelVersions: input.modelVersions,
+    ...(economicRanking === undefined ? {} : { economicRanking }),
   };
 }
