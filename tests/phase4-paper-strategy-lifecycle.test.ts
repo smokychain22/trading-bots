@@ -265,3 +265,17 @@ test('a SELECTED H candidate never borrows Q AEGIS: the Q per-symbol identity or
   assert.equal(ready.state, 'READY', JSON.stringify(ready.blockers));
   if (ready.state === 'READY') assert.equal(ready.plan.strategyBranch, 'THETA_HOLD_STRIKE', 'H identity survives into the plan');
 });
+
+test('AEGIS is never borrowed: Q ALLOW_FULL for the same contract never validates an H candidate that has no H assessment', () => {
+  const raw = hFrontierInput();
+  const frontier = buildCanonicalStrategyFrontier({ ...raw, routing: route(['THETA_Q', 'THETA_H']), paperEntryDecision: undefined,
+    aegisNewRiskStateByCandidateId: { [`THETA_CONVENTIONAL:${hContract.optionSymbol}`]: 'ALLOW_FULL' } });
+  const h = frontier.branches.flatMap((branch) => branch.candidates).find((candidate) => candidate.candidateId === `THETA_HOLD_STRIKE:${hContract.optionSymbol}`);
+  assert.ok(h, 'the H fixture produces an H candidate (no vacuous pass)');
+  assert.equal(h.aegisState, null, 'no H-specific assessment: never Q verdict');
+  assert.equal(h.sizing.quantity, 0);
+  const withOwn = buildCanonicalStrategyFrontier({ ...raw, routing: route(['THETA_Q', 'THETA_H']), paperEntryDecision: undefined,
+    aegisNewRiskStateByCandidateId: { [`THETA_CONVENTIONAL:${hContract.optionSymbol}`]: 'HARD_VETO', [`THETA_HOLD_STRIKE:${hContract.optionSymbol}`]: 'ALLOW_FULL' } });
+  const hOwn = withOwn.branches.flatMap((branch) => branch.candidates).find((candidate) => candidate.candidateId === `THETA_HOLD_STRIKE:${hContract.optionSymbol}`);
+  assert.equal(hOwn?.aegisState, 'ALLOW_FULL', 'H uses its own assessment even when Q is vetoed on the same contract');
+});

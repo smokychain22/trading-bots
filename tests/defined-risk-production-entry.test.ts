@@ -75,3 +75,20 @@ test('AEGIS identity is strategy-bound: H/D can never be satisfied by Q\'s per-s
   // Q is unchanged
   assert.ok(verifyAegisAssessmentIdentity(testAegisAssessmentIdentity({ runtimeCandidateRef: `THETA_CONVENTIONAL:${SHORT}`, optionSymbol: SHORT })));
 });
+
+test('AEGIS is never borrowed across strategies: a Q HARD_VETO does not veto an independently safe D package', () => {
+  const structural = buildCanonicalStrategyFrontier(dInput() as Parameters<typeof buildCanonicalStrategyFrontier>[0]);
+  const dCandidate = structural.branches.find((branch) => branch.branch === 'THETA_DEFINED_RISK')?.candidates[0];
+  const qCandidate = structural.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates[0];
+  assert.ok(dCandidate, 'fixture produces a D candidate');
+  const perCandidate = (map: Record<string, 'ALLOW_FULL' | 'HARD_VETO'>) => buildCanonicalStrategyFrontier({ ...dInput(),
+    aegisNewRiskStateByCandidateId: map } as Parameters<typeof buildCanonicalStrategyFrontier>[0]);
+  const qVetoDSafe = perCandidate({ [`THETA_CONVENTIONAL:${SHORT}`]: 'HARD_VETO', [dCandidate.candidateId]: 'ALLOW_FULL' });
+  const dAfter = qVetoDSafe.branches.flatMap((branch) => branch.candidates).find((candidate) => candidate.candidateId === dCandidate.candidateId);
+  assert.equal(dAfter?.aegisState, 'ALLOW_FULL', 'D carries its own assessment');
+  assert.ok((dAfter?.sizing.quantity ?? 0) > 0, 'a Q veto on the short-leg contract does not zero the D package');
+  if (qCandidate !== undefined) {
+    const qAfter = qVetoDSafe.branches.flatMap((branch) => branch.candidates).find((candidate) => candidate.candidateId === qCandidate.candidateId);
+    assert.equal(qAfter?.sizing.quantity, 0, 'the Q veto still binds Q');
+  }
+});
