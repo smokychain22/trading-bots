@@ -19,7 +19,7 @@ test('with zero drift and zero rate, the expected forfeited upside equals the Bl
   assert.equal(expectedCallPayoff(100, 90, 0, 0.3, 0), 10);
 });
 
-test('IV rich vs realized: calls carry edge; the shadow pick differs from the zero-weight highest-premium pick', () => {
+test('IV rich vs realized: every call carries edge; the divergence flag is recorded against the zero-weight pick', () => {
   const r = evaluateCoveredCallShadow(input());
   assert.equal(r.decision, 'SELL_CC');
   assert.equal(r.legacyZeroWeightContractId, 'C100');
