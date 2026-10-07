@@ -5,7 +5,7 @@ import {
   buildDecisionCandidates, runSequentialPolicy, selectCurrentQ, selectEconomicQ, simulateExit, splitAdjustedCloses,
   type ContractHistory, type DecisionPoint, type ReplayAssumptions, type ReplayCandidate, type UnderlyingHistory,
 } from '../src/research/q-policy-replay/replay-engine.js';
-import { chooseProfiles, computePolicyMetrics, inSampleEpisodes, oosEpisodes } from '../src/research/q-policy-replay/replay-metrics.js';
+import { bucketKeys, chooseProfiles, computePolicyMetrics, inSampleEpisodes, oosEpisodes, realizedVolatilityAt } from '../src/research/q-policy-replay/replay-metrics.js';
 
 // Synthetic fixtures only (no market data in git).
 const A: ReplayAssumptions = {
@@ -174,4 +174,24 @@ test('path risk: a no-stop position that recovers records its maximum adverse ex
   const m = computePolicyMetrics(r.state === 'CLOSED' ? [r.episode] : []);
   assert.ok(m.expectedShortfall5Roc !== null && m.expectedShortfall5Roc > 0);
   assert.ok(m.expectedShortfall5MaeRoc !== null && m.expectedShortfall5MaeRoc < 0);
+});
+
+test('reporting reconciles gross P&L to net P&L and exposes PIT IV/RV plus sector buckets', () => {
+  const h = { ...history(Array.from({ length: 50 }, (_, index) => 100 + index * 0.2 + (index % 2 === 0 ? 1 : -1))),
+    sector: 'TEST_SECTOR' };
+  const rv = realizedVolatilityAt(h, h.closes.length - 1);
+  assert.ok(rv !== null && rv > 0);
+  const c = contract('XYZ_P95', 95, h.dates[29] as string, optionBars(h, 0, 29, (index) => Math.max(0.2, 2 - index * 0.04)));
+  const candidate = buildDecisionCandidates({ underlying: 'XYZ', date: h.dates[0] as string, spot: 100, contracts: [c], assumptions: A,
+    realizedVolatility: 0.2 })[0] as ReplayCandidate;
+  assert.equal(candidate.ivToRvRatio, candidate.iv === null ? null : candidate.iv / 0.2);
+  const result = simulateExit({ underlying: h, contract: c, candidate, entryDate: h.dates[0] as string,
+    policy: { id: 'HOLD' }, assumptions: A, regime: 'TEST' });
+  assert.equal(result.state, 'CLOSED');
+  if (result.state !== 'CLOSED') return;
+  assert.ok(Math.abs(result.episode.grossPnl - result.episode.modeledCosts - result.episode.pnl) < 1e-9);
+  assert.equal(bucketKeys.sector(result.episode), 'TEST_SECTOR');
+  assert.notEqual(bucketKeys.ivRv(result.episode), 'UNKNOWN');
+  const metrics = computePolicyMetrics([result.episode]);
+  assert.ok(Math.abs(metrics.grossPnl - metrics.modeledCosts - metrics.totalPnl) < 1e-9);
 });

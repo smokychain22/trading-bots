@@ -14,7 +14,7 @@
 import { blackScholesPut, impliedPutVolatility } from './black-scholes.js';
 import { buildStrategyEconomicsReceipt, nearestAtmPutIv, rankEconomically, type StrategyEconomicsReceipt } from '../../theta/strategy-economics.js';
 
-export const qPolicyReplayVersion = 'theta-q-policy-replay-v1' as const;
+export const qPolicyReplayVersion = 'theta-q-policy-replay-v2' as const;
 
 export interface ReplayAssumptions {
   readonly riskFreeRate: number;
@@ -65,6 +65,8 @@ export interface ContractHistory {
 }
 export interface UnderlyingHistory {
   readonly symbol: string;
+  /** Research taxonomy only. UNKNOWN is preserved when no qualified mapping exists. */
+  readonly sector?: string;
   /** Ascending trading dates with raw (unadjusted) closes. */
   readonly dates: readonly string[];
   readonly closes: readonly number[];
@@ -79,6 +81,8 @@ export interface ReplayCandidate {
   readonly mid: number;
   readonly volume: number;
   readonly iv: number | null;
+  readonly realizedVolatility: number | null;
+  readonly ivToRvRatio: number | null;
   readonly delta: number | null;
   readonly gamma: number | null;
   readonly thetaPerDay: number | null;
@@ -99,6 +103,7 @@ const kv = (v: { readonly state: string; readonly value?: number }): number | nu
 export function buildDecisionCandidates(input: {
   readonly underlying: string; readonly date: string; readonly spot: number;
   readonly contracts: readonly ContractHistory[]; readonly assumptions: ReplayAssumptions;
+  readonly realizedVolatility?: number | null;
 }): readonly ReplayCandidate[] {
   const a = input.assumptions;
   const raw = input.contracts.flatMap((contract) => {
@@ -137,12 +142,15 @@ export function buildDecisionCandidates(input: {
         iv, volume: bar.volume, openInterest: null },
       spot: input.spot, creditPerShare: credit > 0 ? credit : null, creditBasis: 'EXECUTABLE_BID',
       openingCostsUsd: a.feePerContractSide, openingCostProvenance: 'REPLAY_MODELED_REGULATORY_FEE',
-      realizedVolatility: null, ivRank: null, eventInWindow: null, stressGapPct: a.stressGapPct, opportunityCostAnnualRate: null,
+      realizedVolatility: input.realizedVolatility ?? null, ivRank: null, eventInWindow: null, stressGapPct: a.stressGapPct, opportunityCostAnnualRate: null,
       scenarioVolatility, scenarioVolatilityProvenance: 'NEAREST_ATM_PUT_BS_INVERTED_IV',
     });
     return {
       symbol: contract.symbol, strike: contract.strike, expiration: contract.expiration, dte, mid: bar.close, volume: bar.volume,
-      iv, delta: greeks?.delta ?? null, gamma: greeks?.gamma ?? null, thetaPerDay: greeks?.thetaPerDay ?? null, vega: greeks?.vega ?? null,
+      iv, realizedVolatility: input.realizedVolatility ?? null,
+      ivToRvRatio: iv !== null && input.realizedVolatility !== undefined && input.realizedVolatility !== null && input.realizedVolatility > 0
+        ? iv / input.realizedVolatility : null,
+      delta: greeks?.delta ?? null, gamma: greeks?.gamma ?? null, thetaPerDay: greeks?.thetaPerDay ?? null, vega: greeks?.vega ?? null,
       modeledSpreadPct: spreadPct, creditPerShare: credit, gates,
       latticeEligible: gates.dte === 'PASS' && gates.deltaBand === 'PASS' && gates.spread === 'PASS' && gates.volume === 'PASS'
         && gates.capital !== 'FAIL' && credit > 0,
@@ -238,6 +246,10 @@ export interface Episode {
   readonly exitDate: string;
   readonly exitReason: ExitReason;
   readonly pnl: number;
+  /** Before modeled half-spread and known per-side fees. */
+  readonly grossPnl: number;
+  /** Modeled spread plus known fees. Always grossPnl - pnl. */
+  readonly modeledCosts: number;
   readonly capital: number;
   readonly holdDays: number;
   readonly capitalDays: number;
@@ -247,8 +259,9 @@ export interface Episode {
   readonly modeledSlippage: number;
   /** Maximum adverse excursion: worst executable mark-to-market P&L while held (<= 0), including the exit. Path risk. */
   readonly maeUsd: number;
-  readonly features: { readonly absDelta: number | null; readonly iv: number | null; readonly dte: number;
-    readonly cushionSigmas: number | null; readonly regime: string };
+  readonly features: { readonly absDelta: number | null; readonly iv: number | null; readonly realizedVolatility: number | null;
+    readonly ivToRvRatio: number | null; readonly dte: number; readonly cushionSigmas: number | null;
+    readonly underlyingSector: string; readonly regime: string };
 }
 
 export type SimulationResult = { readonly state: 'CLOSED'; readonly episode: Episode }
@@ -274,16 +287,20 @@ export function simulateExit(input: {
     const finish = (exitReason: ExitReason, debitPs: number, exitHalf: number, modelPriced: boolean, assigned: boolean): SimulationResult => {
       // Fees only on actual trades: the opening sale, and a closing buyback (never on expiry or assignment settlement).
       const closingTrade = exitReason !== 'EXPIRED_OTM' && exitReason !== 'ASSIGNED_AT_EXPIRY';
+      const grossPnl = ((creditPs + entryHalf) - (debitPs - exitHalf)) * m;
       const pnl = (creditPs - debitPs) * m - a.feePerContractSide - (closingTrade ? a.feePerContractSide : 0);
       const holdDays = Math.max(1, calendarDays(input.entryDate, date));
       const capital = K * m;
       return { state: 'CLOSED', episode: {
         underlying: input.underlying.symbol, symbol: c.symbol, entryDate: input.entryDate, exitDate: date, exitReason,
-        pnl, capital, holdDays, capitalDays: capital * holdDays, roc: pnl / capital, assigned, modelPricedExit: modelPriced,
+        pnl, grossPnl, modeledCosts: grossPnl - pnl, capital, holdDays, capitalDays: capital * holdDays, roc: pnl / capital,
+        assigned, modelPricedExit: modelPriced,
         maeUsd: Math.min(worstMark, pnl, 0),
         modeledSlippage: (entryHalf + exitHalf) * m,
-        features: { absDelta: c.delta === null ? null : Math.abs(c.delta), iv: c.iv, dte: c.dte,
-          cushionSigmas: kv(c.receipt.breakevenCushionSigmas), regime: input.regime } } };
+        features: { absDelta: c.delta === null ? null : Math.abs(c.delta), iv: c.iv,
+          realizedVolatility: c.realizedVolatility, ivToRvRatio: c.ivToRvRatio, dte: c.dte,
+          cushionSigmas: kv(c.receipt.breakevenCushionSigmas), underlyingSector: input.underlying.sector ?? 'UNKNOWN',
+          regime: input.regime } } };
     };
     if (date >= c.expiration) {
       // Settle at intrinsic on the expiry-day close (or the first trading date at/after expiry when it was a holiday).

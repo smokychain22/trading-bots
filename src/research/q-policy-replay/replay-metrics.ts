@@ -32,6 +32,20 @@ export function regimeAt(history: UnderlyingHistory, index: number): string {
   return `${trend}|${current <= t1 ? 'VOL_LOW' : current <= t2 ? 'VOL_MID' : 'VOL_HIGH'}`;
 }
 
+/** Annualized close-to-close volatility through `index`, using only the trailing completed observations. */
+export function realizedVolatilityAt(history: UnderlyingHistory, index: number, lookback = 20): number | null {
+  if (lookback < 2 || index < lookback) return null;
+  const returns: number[] = [];
+  for (let i = index - lookback + 1; i <= index; i++) {
+    const previous = history.closes[i - 1];
+    const current = history.closes[i];
+    if (previous === undefined || current === undefined || !(previous > 0) || !(current > 0)) return null;
+    returns.push(Math.log(current / previous));
+  }
+  const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+  return Math.sqrt(returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (returns.length - 1) * 252);
+}
+
 // ---------------------------------------------------------------------------
 // Metrics
 // ---------------------------------------------------------------------------
@@ -53,6 +67,8 @@ export interface PolicyMetrics {
   readonly maxDrawdownRocUnits: number | null;
   /** ES5 of maximum adverse excursion / capital: path risk that realized P&L hides when losses are held, not realized. */
   readonly expectedShortfall5MaeRoc: number | null;
+  readonly grossPnl: number;
+  readonly modeledCosts: number;
   readonly totalPnl: number;
   readonly returnPerCapitalDay: number | null;
   readonly annualizedReturnOnCapitalDays: number | null;
@@ -95,6 +111,8 @@ export function computePolicyMetrics(episodes: readonly Episode[]): PolicyMetric
     maxDrawdown: maxDrawdown(episodes, (e) => e.pnl), expectedShortfall5: pnl.expectedShortfall,
     meanRoc: roc.expectancy, expectedShortfall5Roc: roc.expectedShortfall, maxDrawdownRocUnits: maxDrawdown(episodes, (e) => e.roc),
     expectedShortfall5MaeRoc: mae.expectedShortfall,
+    grossPnl: episodes.reduce((sum, episode) => sum + episode.grossPnl, 0),
+    modeledCosts: episodes.reduce((sum, episode) => sum + episode.modeledCosts, 0),
     totalPnl, returnPerCapitalDay: perDay, annualizedReturnOnCapitalDays: perDay === null ? null : perDay * 365,
     assignmentRate: episodes.length === 0 ? null : episodes.filter((e) => e.assigned).length / episodes.length,
     averageHoldDays: episodes.length === 0 ? null : episodes.reduce((s, e) => s + e.holdDays, 0) / episodes.length,
@@ -114,9 +132,12 @@ export const bucketKeys = {
     : e.features.absDelta < 0.3 ? '0.20-0.30' : '0.30-0.50',
   dte: (e: Episode) => e.features.dte < 35 ? '25-34' : e.features.dte < 45 ? '35-44' : '45-60',
   iv: (e: Episode) => e.features.iv === null ? 'UNKNOWN' : e.features.iv < 0.2 ? '<0.20' : e.features.iv < 0.3 ? '0.20-0.30' : e.features.iv < 0.45 ? '0.30-0.45' : '>=0.45',
+  ivRv: (e: Episode) => e.features.ivToRvRatio === null ? 'UNKNOWN' : e.features.ivToRvRatio < 0.8 ? '<0.80'
+    : e.features.ivToRvRatio < 1 ? '0.80-1.00' : e.features.ivToRvRatio < 1.2 ? '1.00-1.20' : '>=1.20',
   cushionSigma: (e: Episode) => e.features.cushionSigmas === null ? 'UNKNOWN' : e.features.cushionSigmas < 0.5 ? '<0.5' : e.features.cushionSigmas < 1 ? '0.5-1.0'
     : e.features.cushionSigmas < 1.5 ? '1.0-1.5' : '>=1.5',
   underlying: (e: Episode) => e.underlying,
+  sector: (e: Episode) => e.features.underlyingSector,
   regime: (e: Episode) => e.features.regime,
 };
 

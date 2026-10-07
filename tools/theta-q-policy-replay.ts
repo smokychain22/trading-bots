@@ -13,7 +13,8 @@ import {
   type ReplayCandidate, type UnderlyingHistory,
 } from '../src/research/q-policy-replay/replay-engine.js';
 import {
-  bucketize, bucketKeys, chooseProfiles, computePolicyMetrics, inSampleEpisodes, oosEpisodes, regimeAt, type PolicyMetrics, type SplitPlan,
+  bucketize, bucketKeys, chooseProfiles, computePolicyMetrics, inSampleEpisodes, oosEpisodes, realizedVolatilityAt, regimeAt,
+  type PolicyMetrics, type SplitPlan,
 } from '../src/research/q-policy-replay/replay-metrics.js';
 
 const arg = (name: string): string | undefined => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -21,6 +22,10 @@ const envFile = arg('env'), cacheDir = arg('cache'), outFile = arg('out');
 if (envFile === undefined || cacheDir === undefined || outFile === undefined) throw new Error('usage: --env= --cache= --out=');
 const PRIMARY = ['SPY', 'TLT', 'XLE'];
 const SECONDARY = ['AAPL', 'AMD', 'META', 'NVDA'];
+const SECTOR: Readonly<Record<string, string>> = {
+  SPY: 'BROAD_MARKET', TLT: 'FIXED_INCOME', XLE: 'ENERGY', AAPL: 'INFORMATION_TECHNOLOGY',
+  AMD: 'INFORMATION_TECHNOLOGY', META: 'COMMUNICATION_SERVICES', NVDA: 'INFORMATION_TECHNOLOGY',
+};
 const underlyings = (arg('underlyings') ?? [...PRIMARY, ...SECONDARY].join(',')).split(',');
 
 const env = loadEnvironmentFile(envFile) as Record<string, unknown>;
@@ -72,7 +77,7 @@ async function stockHistory(symbol: string): Promise<UnderlyingHistory> {
         for (const bar of body.bars ?? []) { const d = String(bar.t).slice(0, 10); if (d >= TODAY) continue; dates.push(d); closes.push(Number(bar.c)); }
         token = body.next_page_token ?? null;
       } while (token);
-      if (dates.length > 0) return { symbol, dates: [...dates], closes: [...closes] };
+      if (dates.length > 0) return { symbol, sector: SECTOR[symbol] ?? 'UNKNOWN', dates: [...dates], closes: [...closes] };
     } catch (error) { if (feed === 'iex') throw error; }
   }
   throw new Error(`NO_STOCK_BARS:${symbol}`);
@@ -197,7 +202,10 @@ function buildDecisions(p: Prepared, a: ReplayAssumptions): DecisionPoint[] {
   return p.decisionDates.map((date) => {
     const index = p.history.dates.indexOf(date), spot = p.history.closes[index] as number;
     const live = all.filter((c) => c.expiration > date && c.bars.has(date));
-    return { date, spot, regime: regimeAt(p.adjusted, index), candidates: buildDecisionCandidates({ underlying: p.history.symbol, date, spot, contracts: live, assumptions: a }) };
+    const realizedVolatility = realizedVolatilityAt(p.adjusted, index);
+    return { date, spot, regime: regimeAt(p.adjusted, index), candidates: buildDecisionCandidates({
+      underlying: p.history.symbol, date, spot, contracts: live, assumptions: a, realizedVolatility,
+    }) };
   });
 }
 
@@ -251,7 +259,8 @@ const inSampleOf = (eps: readonly Episode[]) => inSampleEpisodes(eps, plan);
 const oosOf = (eps: readonly Episode[]) => oosEpisodes(eps, plan);
 const compact = (m: PolicyMetrics) => ({ n: m.n, winRate: m.winRate, wilson95: m.winRateWilson95, avgWin: m.averageWin, avgLoss: m.averageLoss,
   expectancy: m.expectancy, profitFactor: m.profitFactor, maxDD: m.maxDrawdown, es5: m.expectedShortfall5, meanRoc: m.meanRoc,
-  es5Roc: m.expectedShortfall5Roc, es5MaeRoc: m.expectedShortfall5MaeRoc, maxDDRoc: m.maxDrawdownRocUnits, totalPnl: m.totalPnl, annualizedRocOnCapitalDays: m.annualizedReturnOnCapitalDays,
+  es5Roc: m.expectedShortfall5Roc, es5MaeRoc: m.expectedShortfall5MaeRoc, maxDDRoc: m.maxDrawdownRocUnits,
+  grossPnl: m.grossPnl, modeledCosts: m.modeledCosts, netPnl: m.totalPnl, annualizedRocOnCapitalDays: m.annualizedReturnOnCapitalDays,
   assignmentRate: m.assignmentRate, avgHoldDays: m.averageHoldDays, slippage: m.modeledSlippageTotal, modelPricedExits: m.modelPricedExitCount });
 
 const quarterStarts = (() => {
@@ -357,7 +366,8 @@ const report = {
   labels: ['OPTION_PRICE_IS_DAILY_TRADE_CLOSE_NOT_QUOTE', 'MODELED_HALF_SPREAD_BASE_max($0.01,3%)_STRESS_2X', 'GREEKS_BS_INVERTED_FIXED_RATE_0.045_Q_0',
     'TIMING_MISMATCH_OPTION_LAST_TRADE_VS_UNDERLYING_CLOSE', 'OPEN_INTEREST_NOT_EVALUABLE', 'ASSIGNMENT_MARKED_AT_EXPIRY_CLOSE',
     'SURVIVORSHIP_FIXED_UNIVERSE', 'EXPIRY_SUBSET_LAST_PER_ISO_WEEK', 'STRIKE_BAND_PIT_RV_BASED', 'ONE_CONTRACT_SEQUENTIAL_NON_OVERLAPPING_PER_UNDERLYING',
-    'CURRENT_Q_IS_AN_EMULATION', 'NO_AEGIS_OWNERSHIP_EVENT_GATES', 'FEES_0.05_PER_CONTRACT_SIDE', 'EV_NOT_USED'],
+    'CURRENT_Q_IS_AN_EMULATION', 'NO_AEGIS_OWNERSHIP_EVENT_GATES', 'FEES_0.05_PER_CONTRACT_SIDE',
+    'GROSS_PNL_BEFORE_MODELED_SPREAD_AND_KNOWN_FEES', 'NET_PNL_AFTER_MODELED_SPREAD_AND_KNOWN_FEES', 'EV_NOT_USED'],
   primary: universeReport('PRIMARY_APPROVED_CAPITAL_CONSTRAINED', underlyings.filter((u) => PRIMARY.includes(u)), 100_000),
   research: universeReport('RESEARCH_ALL_UNCONSTRAINED', underlyings, null),
   requests: requestCount, runtimeSeconds: Math.round((Date.now() - startedAt) / 1000),
