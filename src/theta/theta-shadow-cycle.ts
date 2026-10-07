@@ -73,6 +73,7 @@ import { classifyMethodInputProvenance, type MethodInputProvenance } from './pro
 import { wholeContractsAffordable } from './secured-contract-capacity.js';
 import { buildCycleQEntryFunnelSummary, type QEntryFunnelSummary } from './q-entry-funnel.js';
 import { buildQEconomicFunnelReceipt, type QEconomicFunnelReceipt } from './q-economic-funnel.js';
+import { buildMarketRegimeReceipt, type MarketRegimeReceipt } from './strategy-intelligence/market-regime.js';
 
 /** Distinguish unshortlisted chain contracts from missing Q finalist responses. */
 export function completeConventionalFrontierEvaluationCoverage(
@@ -1197,6 +1198,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let finalistQuoteRefresh: FinalistQuoteRefreshReceipt | null = null;
   // SHADOW observation only: never changes the shortlist, the selection or any quantity.
   let qEconomicFunnel: QEconomicFunnelReceipt | { readonly state: 'FAILED'; readonly reasonCode: string } | null = null;
+  // SHADOW MarketRegimeReceipt from completed daily sessions only (no developing candle); research parameters, never authority.
+  let marketRegime: MarketRegimeReceipt | { readonly state: 'FAILED'; readonly reasonCode: string } | null = null;
   const underlyingStockPosition = positions.find((position) => position.symbol === underlying
     && position.assetClass === 'us_equity') ?? null;
   const hasPotentialCoveredStock = underlyingStockPosition !== null
@@ -2246,6 +2249,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     };
   });
 
+  try {
+    const completed = historyBars.filter((bar) => bar.timestamp.slice(0, 10) < decisionTime.slice(0, 10))
+      .map((bar) => ({ date: bar.timestamp.slice(0, 10), open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume ?? 0 }));
+    const atmIv = qEconomicFunnel !== null && 'scenarioVolatility' in qEconomicFunnel ? qEconomicFunnel.scenarioVolatility : null;
+    marketRegime = completed.length === 0 ? null : buildMarketRegimeReceipt(completed, { iv: atmIv, eventInDays: null });
+  } catch (error) {
+    marketRegime = { state: 'FAILED', reasonCode: `MARKET_REGIME_FAILED:${error instanceof Error ? error.constructor.name : 'UnknownThrowValue'}` };
+  }
   const orchestrationStartedAt = Date.now();
   traceShadowStage(underlying, 'ORCHESTRATION_STARTED', { candidates: runtimeCandidates.length });
   const orchestration = await runNewRiskOrchestration(config.bridge, {
@@ -2263,6 +2274,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     },
     policyVersion: config.policyVersion, modelVersions: config.modelVersions, requiredModelVersions: config.requiredModelVersions,
     ...(qEconomicFunnel === null ? {} : { qEconomicFunnel }),
+    ...(marketRegime === null ? {} : { marketRegime }),
     ownershipPolicy: config.ownershipPolicy,
     ownershipInputs: {
       stockAvgVolume, optionOpenInterest: null, optionVolume: null, spreadPct: null,

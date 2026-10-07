@@ -7,6 +7,7 @@ import type { RegimeSnapshotResponse } from './regime-contract.js';
 import type { EntryThesisReceipt } from './entry-thesis-receipt.js';
 import type { EconomicsGateMode } from './strategy-economics.js';
 import type { QEconomicFunnelReceipt } from './q-economic-funnel.js';
+import type { MarketRegimeReceipt } from './strategy-intelligence/market-regime.js';
 
 // R1G decision assembly: composes ALREADY-COMPUTED Python quant outputs
 // (ownership, regime, opportunity-frontier per-candidate disposition,
@@ -137,6 +138,8 @@ export interface NewRiskDecisionReceipt {
   readonly economicRanking?: EconomicRankingDecisionRecord;
   /** SHADOW Q candidate-funnel receipt (q-economic-funnel.ts), attached by the orchestrator; never selection authority. */
   readonly qEconomicFunnel?: QEconomicFunnelReceipt | { readonly state: 'FAILED'; readonly reasonCode: string };
+  /** SHADOW MarketRegimeReceipt (strategy-intelligence/market-regime.ts); never selection authority. */
+  readonly marketRegime?: MarketRegimeReceipt | { readonly state: 'FAILED'; readonly reasonCode: string };
 }
 
 const alternativeFrom = (c: CandidateFrontierResult): NewRiskAlternative => ({

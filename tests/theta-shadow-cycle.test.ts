@@ -324,6 +324,18 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.equal((portfolio.correlationObservation as Record<string, unknown>).state, 'NOT_APPLICABLE');
   assert.equal(result.orchestration?.regime?.eventState, null);
   assert.ok(result.orchestration?.regime?.reasons.some((reason) => reason.code === 'EVENT_FLAG_UNKNOWN'));
+  const marketRegime = result.orchestration?.receipt.marketRegime;
+  assert.ok(marketRegime !== undefined && !('state' in marketRegime),
+    `the normal cycle must attach the shadow-only MarketRegimeReceipt: ${JSON.stringify(marketRegime)}`);
+  assert.equal(marketRegime.version, 'theta-market-regime-research-v0');
+  assert.equal(marketRegime.asOf, '2026-09-09',
+    'the receipt must stop at the last completed daily bar, never the developing decision session');
+  assert.equal(marketRegime.evidence.trendZ.state, 'KNOWN');
+  if (marketRegime.evidence.trendZ.state === 'KNOWN') {
+    assert.equal(marketRegime.evidence.trendZ.provenance, 'COMPUTED_FROM_DAILY_BARS');
+  }
+  assert.equal(marketRegime.event.state, 'UNKNOWN',
+    'missing event evidence remains explicitly unknown rather than becoming a false no-event claim');
   // Optionomics and event-state are never real in this cycle implementation
   // yet -- provenance can never be FULL_REAL, only HYBRID at best.
   assert.notEqual(result.provenance, 'FULL_REAL');

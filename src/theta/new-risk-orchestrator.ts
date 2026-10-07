@@ -19,6 +19,7 @@ import { buildEntryThesisReceipt, type ThesisClaim } from './entry-thesis-receip
 import type { StrategyAccountPolicyCompatibility } from './strategy-account-policy-compatibility.js';
 import { economicRankingForCspCandidates, type EconomicsGateMode } from './strategy-economics.js';
 import type { QEconomicFunnelReceipt } from './q-economic-funnel.js';
+import type { MarketRegimeReceipt } from './strategy-intelligence/market-regime.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 
 export interface CandidateAegisRequest {
@@ -325,6 +326,8 @@ export interface NewRiskOrchestrationRequest {
   readonly economicsGateMode?: EconomicsGateMode;
   /** SHADOW Q funnel receipt computed at shortlist time; attached to the decision receipt unchanged. */
   readonly qEconomicFunnel?: QEconomicFunnelReceipt | { readonly state: 'FAILED'; readonly reasonCode: string };
+  /** SHADOW MarketRegimeReceipt for the underlying; attached to the decision receipt unchanged, never selection authority. */
+  readonly marketRegime?: MarketRegimeReceipt | { readonly state: 'FAILED'; readonly reasonCode: string };
 
   readonly ownershipPolicy: Record<string, unknown>;
   readonly ownershipInputs: Record<string, unknown>;
@@ -356,6 +359,23 @@ export interface NewRiskOrchestrationRequest {
   };
   readonly executionQualityPolicy: Record<string, unknown>;
   readonly paperEntryBootstrap?: PaperEntryBootstrapAssessment;
+}
+
+/**
+ * Shadow evidence belongs to the cycle receipt even when the canonical
+ * decision fails closed or stops before Q economics. Attaching it here keeps
+ * it observational only and prevents early-return paths from silently losing
+ * already-computed point-in-time evidence.
+ */
+function attachShadowDecisionEvidence(
+  receipt: NewRiskDecisionReceipt,
+  request: NewRiskOrchestrationRequest,
+): NewRiskDecisionReceipt {
+  return {
+    ...receipt,
+    ...(request.qEconomicFunnel === undefined ? {} : { qEconomicFunnel: request.qEconomicFunnel }),
+    ...(request.marketRegime === undefined ? {} : { marketRegime: request.marketRegime }),
+  };
 }
 
 export interface NewRiskOrchestrationResult {
@@ -396,7 +416,7 @@ const systemHoldResult = (
   detail: string,
   partial: Partial<Omit<NewRiskOrchestrationResult, 'receipt' | 'shadowOpportunities'>> = {},
 ): NewRiskOrchestrationResult => ({
-  receipt: {
+  receipt: attachShadowDecisionEvidence({
     decisionId: `${request.snapshotId}:${request.underlying}`,
     snapshotId: request.snapshotId,
     fusionSnapshotHash: request.fusionSnapshotHash,
@@ -414,7 +434,7 @@ const systemHoldResult = (
     failClosedReason: detail,
     policyVersion: request.policyVersion,
     modelVersions: request.modelVersions,
-  },
+  }, request),
   ownership: null,
   regime: null,
   routing: null,
@@ -436,7 +456,7 @@ const providerTransientHoldResult = (
   stage: string,
   detail: string,
 ): NewRiskOrchestrationResult => ({
-  receipt: {
+  receipt: attachShadowDecisionEvidence({
     decisionId: `${request.snapshotId}:${request.underlying}`,
     snapshotId: request.snapshotId,
     fusionSnapshotHash: request.fusionSnapshotHash,
@@ -454,7 +474,7 @@ const providerTransientHoldResult = (
     failClosedReason: null,
     policyVersion: request.policyVersion,
     modelVersions: request.modelVersions,
-  },
+  }, request),
   ownership: null,
   regime: null,
   routing: null,
@@ -471,7 +491,7 @@ const hardVetoResult = (
   stage: string,
   detail: string,
 ): NewRiskOrchestrationResult => ({
-  receipt: {
+  receipt: attachShadowDecisionEvidence({
     decisionId: `${request.snapshotId}:${request.underlying}`,
     snapshotId: request.snapshotId,
     fusionSnapshotHash: request.fusionSnapshotHash,
@@ -489,7 +509,7 @@ const hardVetoResult = (
     failClosedReason: detail,
     policyVersion: request.policyVersion,
     modelVersions: request.modelVersions,
-  },
+  }, request),
   ownership: null,
   regime: null,
   routing: null,
@@ -608,12 +628,12 @@ export async function runNewRiskOrchestration(
         reasons: [{ code: 'STRATEGY_INELIGIBLE_THIS_CYCLE', polarity: -1, detail: 'THETA_Q was not an eligible strategy family for the current lifecycle/market state.' }],
       });
     }
-    const receipt = assembleNewRiskDecision({
+    const receipt = attachShadowDecisionEvidence(assembleNewRiskDecision({
       snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
       underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data, candidates: [],
       policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
-    });
+    }), request);
     return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
   }
 
@@ -726,12 +746,12 @@ export async function runNewRiskOrchestration(
   });
 
   if (freshnessEligible.length === 0) {
-    const receipt = assembleNewRiskDecision({
+    const receipt = attachShadowDecisionEvidence(assembleNewRiskDecision({
       snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
       underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data,
       candidates: [...nonExecutableResults, ...deltaUnknownResults, ...freshnessRejectedResults], policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
-    });
+    }), request);
     return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
   }
 
@@ -841,12 +861,12 @@ export async function runNewRiskOrchestration(
   }
 
   if (feasibleForFrontier.length === 0) {
-    const receipt = assembleNewRiskDecision({
+    const receipt = attachShadowDecisionEvidence(assembleNewRiskDecision({
       snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
       underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data,
       candidates: immediateResults, policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
-    });
+    }), request);
     return { receipt, ...partialAfterRouting, ownershipByCandidateId: ownershipEvidenceByCandidateId,
       thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: null, paretoSurvivorIds: null,
       opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
@@ -1086,7 +1106,7 @@ export async function runNewRiskOrchestration(
   const thesisReceipt = attachEntryThesis(
     assembledReceipt, request, ownershipResult.data, regimeResult.data, candidateResults,
   );
-  const receipt = request.qEconomicFunnel === undefined ? thesisReceipt : { ...thesisReceipt, qEconomicFunnel: request.qEconomicFunnel };
+  const receipt = attachShadowDecisionEvidence(thesisReceipt, request);
 
   return {
     receipt, ownership: ownershipResult.data,
