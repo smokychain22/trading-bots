@@ -73,7 +73,7 @@ export function evaluateDManagementShadow(s: DManagementSnapshot, p: DManagement
   const size = s.multiplier * s.quantity;
   const credit = s.entryNetCreditPerShare;
   const unknownInputs: string[] = [];
-  const legState = s.brokerShortContracts === null || s.brokerLongContracts === null ? 'UNRECONCILED'
+  const legState: DManagementShadowRecord['legState'] = s.brokerShortContracts === null || s.brokerLongContracts === null ? 'UNRECONCILED'
     : s.brokerShortContracts === s.brokerLongContracts && s.brokerShortContracts === s.quantity ? 'SYMMETRIC' : 'ASYMMETRIC';
   const debit = finite(s.shortLeg.ask) && finite(s.longLeg.bid) ? Math.max(0, s.shortLeg.ask - s.longLeg.bid) : null;
   if (debit === null) unknownInputs.push('BOTH_LEG_CLOSE_QUOTE');
