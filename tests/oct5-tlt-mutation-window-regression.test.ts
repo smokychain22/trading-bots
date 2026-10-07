@@ -84,3 +84,13 @@ test('Execution connection lane: authorized-symbol DB work and the handoff use a
   assert.match(scan, /const lanePool=\(symbol:string\):Pool=>input\.priorityPool!==undefined&&brokerAuthoritySymbols\.has\(symbol\)\?input\.priorityPool:input\.pool;/);
   assert.match(scan, /new PostgresMasterPaperActionPlanStore\(memberPool\)\.enqueue/);
 });
+
+// SELECTED-CANDIDATE / ACTION-READY LOSS DETECTOR: a broker-authorized selected candidate that reaches no plan, a READY plan that is not
+// inserted, and a selection the assembler turns into no entry action must each record an exact leaf reason (never a silent WAIT).
+test('every way a selected authorized candidate can fail to become an enqueued plan records an exact reason', () => {
+  const scan = readFileSync(new URL('../src/research/production-shadow-runtime.ts', import.meta.url), 'utf8');
+  assert.match(scan, /PLAN_NOT_ENQUEUED_\$\{enqueued\.disposition\}/);
+  assert.match(scan, /SELECTED_WITHOUT_ENTRY_ACTION:\$\{blocker\}/);
+  assert.match(scan, /SELECTED_CANDIDATE_DROPPED:\$\{!planEvidenceEnabled\?'PLAN_ENQUEUE_DISABLED_BY_ENVIRONMENT'/);
+  for (const reason of ['CORPORATE_ACTION_READ_INCOMPLETE', 'SELECTED_DECISION_NOT_PERSISTED', 'PLAN_PRECONDITION_UNMET']) assert.ok(scan.includes(`'${reason}'`), reason);
+});

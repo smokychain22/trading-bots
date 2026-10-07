@@ -581,12 +581,16 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       if(assembled.state==='READY'&&!storageAdmission.admitted){
         actionPlansBlocked.push(`${member.symbol}:${storageAdmission.blocker??'STORAGE_NEW_RISK_BLOCKED'}:${storageNewRiskGate.reason}`);
       }else if(assembled.state==='READY'){
-        if(runtimePlanEnqueueEnabled&&await new PostgresMasterPaperActionPlanStore(memberPool).enqueue(assembled.plan,planNow,
-          {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId})){
+        const enqueued=runtimePlanEnqueueEnabled?await new PostgresMasterPaperActionPlanStore(memberPool).enqueueWithDisposition(assembled.plan,planNow,
+          {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}):null;
+        if(enqueued?.inserted===true){
           actionPlansReady++;
           // The 45-second plan window starts at durable enqueue. Execute the
           // canonical handoff before research observations and diagnostics.
           await input.onActionPlanEnqueued?.(assembled.plan.actionPlanId);
+        }else if(enqueued!==null){
+          // a READY plan that was not inserted (replay of this decision, or an equivalent entry already in flight) is never a silent WAIT
+          actionPlansBlocked.push(`${member.symbol}:PLAN_NOT_ENQUEUED_${enqueued.disposition}`);
         }
         if(readOnlyQuoteSource!==null){
           try{
@@ -608,6 +612,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
               limitPrice:null,quoteAgePolicyVersion:null,brokerMutationSurface:false});
           }
         }
+      }else if(assembled.state==='NO_ACTION'&&frontier.selectedCandidateId!==null){
+        actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:SELECTED_WITHOUT_ENTRY_ACTION:${blocker}`));
       }else if(assembled.state==='BLOCKED'){
         actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:${blocker}`));
         if(input.readOnlyPreSubmitPreview===true)readOnlyPreSubmitProofs.push({symbol:member.symbol,planState:'BLOCKED',
@@ -621,6 +627,12 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     }else if(brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null
       &&entrySafetyPolicy?.action!=='CLEAR'){
       actionPlansBlocked.push(`${member.symbol}:ENTRY_SAFETY_POLICY_NOT_CLEARED`);
+    }else if(brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier!==null
+      &&member.cycle.strategyFrontier.selectedCandidateId!==null){
+      // SELECTED-CANDIDATE LOSS DETECTOR: a broker-authorized selected candidate that reached no plan always carries its exact reason
+      actionPlansBlocked.push(`${member.symbol}:SELECTED_CANDIDATE_DROPPED:${!planEvidenceEnabled?'PLAN_ENQUEUE_DISABLED_BY_ENVIRONMENT'
+        :!corporateActionReadSucceeded?'CORPORATE_ACTION_READ_INCOMPLETE':saved.decisionId===null?'SELECTED_DECISION_NOT_PERSISTED'
+          :'PLAN_PRECONDITION_UNMET'}`);
     }else if(!brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null){
       actionPlansBlocked.push(`${member.symbol}:UNIVERSE_BREADTH_CHALLENGER_NO_BROKER_AUTHORITY`);
     }
