@@ -196,6 +196,22 @@ export function describeProviderShapeFailure(error: unknown): string {
 class ProviderRowError extends Error {
   constructor(readonly rowIndex: number, override readonly cause: unknown) { super(`PROVIDER_ROW_${rowIndex}_INVALID`); }
 }
+const TERMINAL_PROVIDER_ORDER_STATUSES = new Set(['filled', 'canceled', 'expired', 'rejected', 'replaced', 'done_for_day']);
+const terminalClassRowSchema = z.object({ order_class: z.enum(['bracket', 'oco', 'oto']), status: z.string(),
+  legs: z.array(z.object({ status: z.string() }).passthrough()).nullable().optional() }).passthrough();
+
+/**
+ * A bracket/OCO/OTO order is never a THETA order (THETA sends only simple and mleg). A fully terminal one in the account history (parent AND every
+ * nested child terminal) can carry no working exposure, and a filled one's position is reconciled from the positions endpoint, so it must not
+ * fail the whole order listing the way Release A's historical simple orders did. A non-terminal one (including a filled bracket parent with a
+ * working take-profit/stop child) is live unknown exposure and still fails closed.
+ */
+export function isTerminalNonThetaClassOrder(raw: unknown): boolean {
+  const row = terminalClassRowSchema.safeParse(raw);
+  return row.success && TERMINAL_PROVIDER_ORDER_STATUSES.has(row.data.status.toLowerCase())
+    && (row.data.legs ?? []).every((leg) => TERMINAL_PROVIDER_ORDER_STATUSES.has(leg.status.toLowerCase()));
+}
+
 const parseBrokerOrderRow = (raw: unknown, rowIndex: number): BrokerOrderSnapshot => {
   try { return parseBrokerOrder(raw); } catch (error) { throw new ProviderRowError(rowIndex, error); }
 };
@@ -528,7 +544,8 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   }
   async getOrders(status: 'open' | 'closed' | 'all' = 'open'): Promise<readonly BrokerOrderSnapshot[]> {
     const body = await this.request(`/v2/orders?status=${status}&nested=true&limit=500`);
-    return this.parseProviderPayload('/v2/orders', () => z.array(z.unknown()).parse(body).map(parseBrokerOrderRow));
+    return this.parseProviderPayload('/v2/orders', () => z.array(z.unknown()).parse(body)
+      .flatMap((raw, rowIndex) => (isTerminalNonThetaClassOrder(raw) ? [] : [parseBrokerOrderRow(raw, rowIndex)])));
   }
   async getOrderByClientOrderId(clientOrderId: string): Promise<BrokerOrderSnapshot | null> {
     const body = await this.request(`/v2/orders:by_client_order_id?client_order_id=${encodeURIComponent(clientOrderId)}`, {}, true);

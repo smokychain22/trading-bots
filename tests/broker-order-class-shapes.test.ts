@@ -34,7 +34,7 @@ test('only mleg is a package; a non-THETA order class (bracket/oco/oto) still fa
 test('a malformed order row is reported by endpoint, row index and schema path/code only, never by provider values, and reaches the cycle detail', async () => {
   const { AlpacaPaperBrokerAdapter } = await import('../src/execution/broker.js');
   const { safeRuntimeFailure } = await import('../src/theta/autonomous-runtime.js');
-  const rows = [simpleEquity(), simpleEquity({ id: '00000000-0000-4000-8000-000000000009', symbol: 'SECRETSYM', order_class: 'bracket' })];
+  const rows = [simpleEquity(), simpleEquity({ id: '00000000-0000-4000-8000-000000000009', symbol: 'SECRETSYM', order_class: 'bracket', status: 'new' })];
   const broker = new AlpacaPaperBrokerAdapter({ baseUrl: 'https://paper-api.alpaca.markets',
     authentication: { kind: 'MASTER_API_KEY', apiKey: 'k', apiSecret: 's' },
     fetchImpl: (async () => new Response(JSON.stringify(rows), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch });
@@ -70,4 +70,18 @@ test('a single-leg order with an empty or null symbol/side still fails closed (t
   assert.throws(() => parseBrokerOrder(simpleEquity({ symbol: '' })), /single-leg order without symbol or side/);
   assert.throws(() => parseBrokerOrder(simpleEquity({ side: null })), /single-leg order without symbol or side/);
   assert.throws(() => parseBrokerOrder(simpleEquity({ side: '' })), /single-leg order without symbol or side/);
+});
+
+test('a fully terminal bracket/OCO/OTO row in the account history never fails the order listing; a live one (or a filled parent with a working child) still fails closed', async () => {
+  const { isTerminalNonThetaClassOrder } = await import('../src/execution/broker.js');
+  for (const order_class of ['bracket', 'oco', 'oto']) {
+    for (const status of ['filled', 'canceled', 'expired', 'rejected', 'replaced', 'done_for_day']) {
+      assert.equal(isTerminalNonThetaClassOrder(simpleEquity({ order_class, status, legs: [{ status: 'canceled' }] })), true, `${order_class}/${status}`);
+    }
+    assert.equal(isTerminalNonThetaClassOrder(simpleEquity({ order_class, status: 'new' })), false, 'a working non-THETA class order is live unknown exposure');
+    assert.equal(isTerminalNonThetaClassOrder(simpleEquity({ order_class, status: 'filled', legs: [{ status: 'new' }] })), false,
+      'a filled parent with a working take-profit/stop child is still live');
+  }
+  for (const order_class of ['', 'simple', 'mleg', null]) assert.equal(isTerminalNonThetaClassOrder(simpleEquity({ order_class, status: 'filled' })), false,
+    'THETA order classes are always parsed, never skipped');
 });
