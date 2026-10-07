@@ -25,7 +25,10 @@ const lineage = (patch: Partial<OrphanThetaLineage> = {}, intent: Partial<Orphan
     status: 'FILLED', thetaAction: 'OPEN_CSP', side: 'SELL', positionIntent: 'sell_to_open', symbol: SYMBOL, quantity: 1, ...intent },
   brokerOrder: { orderIntentId: ids.intent, status: 'FILLED', symbol: SYMBOL, filledQuantity: 1 },
   fills: [{ quantity: 1, pricePerShare: 0.28, occurredAt: '2026-10-07T13:47:57.000Z' }],
-  nonTerminalChainOrders: 0, underlyingId: ids.underlying, optionContractId: ids.contract, multiplier: 100, ...patch });
+  nonTerminalChainOrders: 0,
+  identity: { strategyBranch: 'THETA_CONVENTIONAL', candidateId: 'a0000000-0000-4000-8000-000000000009',
+    actionPlanId: 'a0000000-0000-4000-8000-00000000000a', providerOrderId: 'synthetic-broker-order-1' },
+  underlyingId: ids.underlying, optionContractId: ids.contract, multiplier: 100, ...patch });
 
 const confirmed = (): OrphanManagementRepresentation => {
   const result = classifyBrokerConfirmedOrphan(position(), [lineage()]);
@@ -146,8 +149,9 @@ test('(d) symbol / side / quantity / lineage mismatches refuse with typed codes'
   assert.equal(reason(position({ reconciliationQuality: 'DEGRADED' }), [lineage()]), 'ORPHAN_BROKER_EVIDENCE_NOT_GOOD');
 });
 
-test('orphan recovery mode is default-safe', () => {
-  assert.equal(parseOrphanRecoveryMode(undefined), 'OFF');
-  assert.equal(parseOrphanRecoveryMode('ENFORCED'), 'OFF');
-  assert.equal(parseOrphanRecoveryMode('OBSERVE'), 'OBSERVE');
+test('orphan recovery mode defaults to read-only OBSERVE; only an explicit value certifies the close path', () => {
+  assert.equal(parseOrphanRecoveryMode(undefined), 'OBSERVE');
+  assert.equal(parseOrphanRecoveryMode('ENFORCED'), 'OBSERVE');
+  assert.equal(parseOrphanRecoveryMode('OFF'), 'OFF');
+  assert.equal(parseOrphanRecoveryMode('CLOSE_RISK_CERTIFIED'), 'CLOSE_RISK_CERTIFIED');
 });

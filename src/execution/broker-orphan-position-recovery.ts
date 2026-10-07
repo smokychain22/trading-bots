@@ -4,6 +4,7 @@ import { parseOccOptionSymbol } from '../theta/account-exposure.js';
 import { paperBootstrapRuntimePolicy } from '../theta/paper-bootstrap-runtime-policy.js';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
 import { masterPaperActionPlanSchema, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
+import type { ManagementDecisionDraft } from './management-paper-plan-assembly.js';
 
 /**
  * BROKER_CONFIRMED_ORPHAN_POSITION_RECOVERY (2026-10-07 XLE incident).
@@ -32,7 +33,11 @@ export type OrphanRefusalCode =
   | 'ORPHAN_QUANTITY_MISMATCH'
   | 'ORPHAN_FILL_PRICE_MISMATCH'
   | 'ORPHAN_ALREADY_LIFECYCLE_OWNED'
-  | 'ORPHAN_ORDER_IN_FLIGHT';
+  | 'ORPHAN_ORDER_IN_FLIGHT'
+  | 'ORPHAN_STRATEGY_NOT_SUPPORTED';
+
+/** Short-put branches whose open is a single SELL_TO_OPEN put. D (native spreads) has its own typed lifecycle and is never adopted here. */
+export const orphanRecoverableStrategyBranches = ['THETA_CONVENTIONAL', 'THETA_HOLD_STRIKE'] as const;
 
 /** Exact broker position from a GOOD reconciliation snapshot. signedQuantity < 0 is short. */
 export interface BrokerConfirmedOptionPosition {
@@ -70,6 +75,16 @@ export interface OrphanThetaLineage {
   readonly fills: readonly { readonly quantity: number; readonly pricePerShare: number; readonly occurredAt: string }[];
   /** Non-terminal plans or intents on the chain (any in-flight order blocks a second mutation). */
   readonly nonTerminalChainOrders: number;
+  /**
+   * Generic lineage identity (any registration failure: schema bug, DB commit failure, crash between fill and registration).
+   * A null member means the lineage can not be established exactly: the position is RECONCILING, never a guessed recovery.
+   */
+  readonly identity: {
+    readonly strategyBranch: string | null;
+    readonly candidateId: string | null;
+    readonly actionPlanId: string | null;
+    readonly providerOrderId: string | null;
+  };
   /** Persisted identifiers the coordinator plan must carry. */
   readonly underlyingId: string;
   readonly optionContractId: string;
@@ -83,6 +98,11 @@ export interface OrphanManagementRepresentation {
   readonly chainId: string;
   readonly decisionId: string;
   readonly orderIntentId: string;
+  readonly clientOrderId: string;
+  readonly strategyBranch: (typeof orphanRecoverableStrategyBranches)[number];
+  readonly candidateId: string;
+  readonly actionPlanId: string;
+  readonly providerOrderId: string;
   readonly underlying: string;
   readonly underlyingId: string;
   readonly optionContractId: string;
@@ -102,8 +122,12 @@ export interface OrphanManagementRepresentation {
   readonly contentHash: string;
 }
 
+export const orphanLineageIncomplete = 'ORPHAN_LINEAGE_INCOMPLETE_RECONCILING' as const;
+
 export type OrphanClassification =
   | { readonly state: 'ORPHAN_CONFIRMED'; readonly representation: OrphanManagementRepresentation }
+  /** Broker truth and a single THETA lineage agree, but an identity member is missing: wait for reconciliation, adopt nothing. */
+  | { readonly state: 'RECONCILING'; readonly reason: typeof orphanLineageIncomplete; readonly missing: readonly string[] }
   | { readonly state: 'REFUSED'; readonly reason: OrphanRefusalCode; readonly detail: string };
 
 const terminalIntent = new Set(['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED']);
@@ -141,6 +165,14 @@ export function classifyBrokerConfirmedOrphan(position: BrokerConfirmedOptionPos
   if (intent.thetaAction !== 'OPEN_CSP' || intent.side.toUpperCase() !== 'SELL' || intent.positionIntent !== 'sell_to_open') {
     return refuse('ORPHAN_SIDE_MISMATCH', `${intent.thetaAction}:${intent.side}:${intent.positionIntent}`);
   }
+  const identity = lineage.identity;
+  const missing = ([
+    ['STRATEGY_BRANCH', identity.strategyBranch], ['CANDIDATE', identity.candidateId], ['ACTION_PLAN', identity.actionPlanId],
+    ['CLIENT_ORDER_ID', intent.clientOrderId], ['BROKER_ORDER_ID', identity.providerOrderId],
+  ] as const).filter(([, value]) => value === null || String(value).trim() === '').map(([name]) => name);
+  if (missing.length > 0) return { state: 'RECONCILING', reason: orphanLineageIncomplete, missing };
+  const branch = identity.strategyBranch as string;
+  if (!(orphanRecoverableStrategyBranches as readonly string[]).includes(branch)) return refuse('ORPHAN_STRATEGY_NOT_SUPPORTED', branch);
   if (intent.chainId !== lineage.chainId || intent.decisionId !== lineage.decisionId || lineage.chainClosed
     || lineage.chainKind !== 'WHEEL' || lineage.chainLifecycleState !== 'WAIT' || intent.status !== 'FILLED'
     || lineage.brokerOrder.orderIntentId !== intent.orderIntentId || lineage.brokerOrder.status !== 'FILLED'
@@ -163,6 +195,9 @@ export function classifyBrokerConfirmedOrphan(position: BrokerConfirmedOptionPos
     contractVersion: brokerOrphanRecoveryVersion, classification: brokerConfirmedPositionLifecycleRegistrationBlocked,
     lifecycleBlockedCode: lineage.lifecycleApplication.state === 'BLOCKED' ? lineage.lifecycleApplication.blockedCode : null,
     chainId: lineage.chainId, decisionId: lineage.decisionId, orderIntentId: intent.orderIntentId,
+    clientOrderId: intent.clientOrderId, strategyBranch: branch as OrphanManagementRepresentation['strategyBranch'],
+    candidateId: identity.candidateId as string, actionPlanId: identity.actionPlanId as string,
+    providerOrderId: identity.providerOrderId as string,
     underlying: occ.underlying, underlyingId: lineage.underlyingId, optionContractId: lineage.optionContractId,
     symbol: position.symbol, optionType: 'PUT' as const, strike: occ.strike, expiration: occ.expiration,
     multiplier: lineage.multiplier, contracts, entryPricePerShare: entryPrice,
@@ -294,13 +329,15 @@ export function buildOrphanRiskClosePlan(input: OrphanClosePlanInput): OrphanClo
   if (!Number.isFinite(now) || !Number.isFinite(expires) || expires <= now
     || expires - now > paperBootstrapRuntimePolicy.quoteAge.planWindowManagementMilliseconds) blockers.push('DECISION_EXPIRY_INVALID');
   if (blockers.length > 0) return { state: 'BLOCKED', plan: null, blockers: [...new Set(blockers)] };
-  const authorityRef = `orphan-recovery:${input.managementActionFrontierId}:CLOSE_FULL`;
+  // The SAME authority reference and decision identity the sovereign management assembly uses, so publishManagementPlans'
+  // authority checks (frontier row selected CLOSE_FULL, input snapshot, policy lineage, account) apply unchanged.
+  const authorityRef = orphanManagementAuthorityRef(input.managementActionFrontierId);
   const actionPlanId = deterministicRuntimeUuid(`orphan-recovery-plan:${authorityRef}:${rep.symbol}:${rep.contentHash}`);
   const plan: ApprovedMasterPaperActionPlan = {
     contractVersion: masterPaperActionPlanVersion, actionPlanId, decisionAuthority: 'MANAGEMENT',
     managementInputSnapshotId: input.managementInputSnapshotId, managementActionFrontierId: input.managementActionFrontierId,
     actionGroupId: actionPlanId, legSequence: 1, dependsOnActionPlanId: null,
-    executionAccountId: input.executionAccountId, decisionId: deterministicRuntimeUuid(`management-decision:${authorityRef}`),
+    executionAccountId: input.executionAccountId, decisionId: orphanManagementDecisionId(input.managementActionFrontierId),
     candidateId: authorityRef, strategyVersion: input.strategyVersion, chainId: rep.chainId,
     optionContractId: rep.optionContractId, underlyingId: rep.underlyingId, underlying: rep.underlying, optionType: 'PUT',
     symbol: rep.symbol, quantity: rep.contracts, canonicalQuantity: rep.contracts, paperEvidenceQuantity: rep.contracts,
@@ -320,8 +357,172 @@ export function buildOrphanRiskClosePlan(input: OrphanClosePlanInput): OrphanClo
   return { state: 'READY', plan: Object.freeze(plan), blockers: [] };
 }
 
-/** Default-safe gate: the runtime may only surface (HOLD) orphans until the owner certifies the orphan close path. */
+export const orphanManagementAuthorityRef = (managementActionFrontierId: string): string =>
+  `management:${managementActionFrontierId}:CLOSE_FULL`;
+export const orphanManagementDecisionId = (managementActionFrontierId: string): string =>
+  deterministicRuntimeUuid(`management-decision:${orphanManagementAuthorityRef(managementActionFrontierId)}`);
+
+/**
+ * Default OBSERVE: read-only classification; the management job reports BROKER_CONFIRMED_POSITION_LIFECYCLE_REGISTRATION_BLOCKED and
+ * nothing is written or ordered. CLOSE_RISK_CERTIFIED: governed authority rows are persisted and a risk close (only when an owner
+ * trigger fires) is published through the existing management plan store. Explicit OFF disables the read. Unknown values -> OBSERVE.
+ */
 export type OrphanRecoveryMode = 'OFF' | 'OBSERVE' | 'CLOSE_RISK_CERTIFIED';
 export function parseOrphanRecoveryMode(value: string | undefined | null): OrphanRecoveryMode {
-  return value === 'OBSERVE' || value === 'CLOSE_RISK_CERTIFIED' ? value : 'OFF';
+  return value === 'OFF' || value === 'CLOSE_RISK_CERTIFIED' ? value : 'OBSERVE';
 }
+
+const orphanRiskClosePolicySchema = z.object({
+  policyVersion: z.string().trim().min(1),
+  askMultipleOfEntry: z.number().finite().gt(1).optional(),
+  spotWithinFractionOfStrike: z.number().finite().positive().lt(1).optional(),
+  maximumDte: z.number().int().nonnegative().optional(),
+  maximumQuoteAgeMs: z.number().int().positive().max(paperBootstrapRuntimePolicy.quoteAge.planWindowManagementMilliseconds),
+}).strict().refine((policy) => policy.askMultipleOfEntry !== undefined || policy.spotWithinFractionOfStrike !== undefined
+  || policy.maximumDte !== undefined, { message: 'at least one trigger' });
+
+/** Owner policy from configuration. Absent or invalid is null (HOLD), never a default threshold. */
+export function parseOrphanRiskClosePolicy(raw: string | undefined | null):
+{ readonly policy: OrphanRiskClosePolicy | null; readonly reason: 'NOT_CONFIGURED' | 'INVALID' | 'CONFIGURED' } {
+  if (raw === undefined || raw === null || raw.trim() === '') return { policy: null, reason: 'NOT_CONFIGURED' };
+  try {
+    const parsed = orphanRiskClosePolicySchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) return { policy: null, reason: 'INVALID' };
+    const { askMultipleOfEntry, spotWithinFractionOfStrike, maximumDte, ...required } = parsed.data;
+    return { policy: Object.freeze({ ...required, ...(askMultipleOfEntry === undefined ? {} : { askMultipleOfEntry }),
+      ...(spotWithinFractionOfStrike === undefined ? {} : { spotWithinFractionOfStrike }),
+      ...(maximumDte === undefined ? {} : { maximumDte }) }), reason: 'CONFIGURED' };
+  } catch { return { policy: null, reason: 'INVALID' }; }
+}
+
+const canonical = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) =>
+  item !== null && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))) : item);
+const sha = (value: unknown): string => createHash('sha256').update(canonical(value)).digest('hex');
+
+export const orphanManagementPolicyEvidenceHash = (policy: OrphanRiskClosePolicy): string =>
+  sha({ contractVersion: brokerOrphanRecoveryVersion, policy });
+
+/** Discriminator stored in management_input_snapshot.input_json; the normal loader never treats such a row as its predecessor. */
+export const orphanManagementInputKind = 'BROKER_CONFIRMED_ORPHAN' as const;
+
+export interface OrphanManagementAuthorityRows {
+  readonly inputSnapshot: {
+    readonly managementInputSnapshotId: string;
+    readonly reconciliationSnapshotId: string;
+    readonly fusionSnapshotId: string;
+    readonly chainId: string;
+    readonly observedAt: string;
+    readonly lifecycleState: 'WAIT';
+    readonly inputJson: Readonly<Record<string, unknown>>;
+    readonly unknownFields: readonly string[];
+    readonly contentHash: string;
+  };
+  readonly frontier: {
+    readonly managementActionFrontierId: string;
+    readonly managementInputSnapshotId: string;
+    readonly chainId: string;
+    readonly observedAt: string;
+    readonly lifecycleState: 'WAIT';
+    readonly policyVersion: string | null;
+    readonly policyEvidenceHash: string | null;
+    readonly economicModelState: 'EV_MODEL_NOT_EMPIRICALLY_READY';
+    readonly actions: readonly Readonly<Record<string, unknown>>[];
+    readonly selectedAction: 'HOLD' | 'CLOSE_FULL';
+    readonly secondBestAction: 'HOLD' | 'CLOSE_FULL';
+    readonly decisionState: 'ACTION_SELECTED';
+    readonly reasonCodes: readonly string[];
+    readonly contentHash: string;
+  };
+}
+
+/**
+ * Builds the governed management authority rows for one orphan observation: an immutable input snapshot (lifecycle_state WAIT, the
+ * chain's truth) and a frontier selecting exactly HOLD or CLOSE_FULL. Identifiers are content-derived, so a replay of the same
+ * observation (restart, retry) maps to the same rows and the writer's ON CONFLICT makes it a no-op.
+ */
+export function buildOrphanManagementAuthority(input: {
+  readonly representation: OrphanManagementRepresentation;
+  readonly decision: OrphanRiskDecision;
+  readonly market: OrphanMarketEvidence;
+  readonly policy: OrphanRiskClosePolicy | null;
+  readonly reconciliationSnapshotId: string;
+  readonly fusionSnapshotId: string;
+  readonly observedAt: string;
+}): OrphanManagementAuthorityRows {
+  const rep = input.representation;
+  const { contentHash, ...body } = rep;
+  if (hash(body) !== contentHash) throw new Error('ORPHAN_REPRESENTATION_TAMPERED');
+  if (input.decision.action === 'CLOSE_RISK' && (input.policy === null || input.decision.directive.representationHash !== contentHash)) {
+    throw new Error('ORPHAN_CLOSE_DECISION_WITHOUT_POLICY_OR_REPRESENTATION');
+  }
+  for (const id of [input.reconciliationSnapshotId, input.fusionSnapshotId, rep.chainId, rep.underlyingId]) {
+    if (!uuid.safeParse(id).success) throw new Error('ORPHAN_AUTHORITY_ID_INVALID');
+  }
+  if (!Number.isFinite(Date.parse(input.observedAt))) throw new Error('ORPHAN_AUTHORITY_TIME_INVALID');
+  const unknownFields = [
+    ...(input.market.bid === null || input.market.ask === null || input.market.quoteTimestamp === null ? ['market.quote'] : []),
+    ...(input.market.spot === null ? ['market.spot'] : []),
+    ...(input.policy === null ? ['policy'] : []),
+  ];
+  const inputJson = {
+    inputKind: orphanManagementInputKind, contractVersion: brokerOrphanRecoveryVersion,
+    classification: brokerConfirmedPositionLifecycleRegistrationBlocked,
+    chainId: rep.chainId, underlyingId: rep.underlyingId, underlying: rep.underlying, observedAt: input.observedAt,
+    representation: rep, market: input.market, riskDecision: input.decision,
+    policyVersion: input.policy?.policyVersion ?? null,
+  };
+  const inputHash = sha(inputJson);
+  const managementInputSnapshotId = deterministicRuntimeUuid(`orphan-management-input:${rep.chainId}:${inputHash}`);
+  const close = input.decision.action === 'CLOSE_RISK' ? input.decision : null;
+  const actions = [
+    { action: 'HOLD', feasibility: 'FEASIBLE', blockers: [], executionEvidence: null },
+    { action: 'CLOSE_FULL', feasibility: close === null ? 'NOT_SELECTED_NO_RISK_TRIGGER' : 'FEASIBLE',
+      blockers: close === null ? [...input.decision.reasons] : [],
+      executionEvidence: close === null ? null : { closeEconomicBoundary: close.directive.maximumDebitPerShare,
+        economicsRemainPositive: true, expectedAfterCostEv: null, empiricalEconomicsReady: false,
+        quantity: close.directive.quantity, symbol: close.directive.symbol } },
+  ];
+  const policyEvidenceHash = input.policy === null ? null : orphanManagementPolicyEvidenceHash(input.policy);
+  const frontierBody = {
+    managementInputSnapshotId, chainId: rep.chainId, observedAt: input.observedAt, lifecycleState: 'WAIT' as const,
+    policyVersion: input.policy?.policyVersion ?? null, policyEvidenceHash,
+    economicModelState: 'EV_MODEL_NOT_EMPIRICALLY_READY' as const, actions,
+    selectedAction: close === null ? 'HOLD' as const : 'CLOSE_FULL' as const,
+    secondBestAction: close === null ? 'CLOSE_FULL' as const : 'HOLD' as const,
+    decisionState: 'ACTION_SELECTED' as const,
+    reasonCodes: [brokerConfirmedPositionLifecycleRegistrationBlocked, ...input.decision.reasons],
+  };
+  const frontierHash = sha(frontierBody);
+  return Object.freeze({
+    inputSnapshot: Object.freeze({ managementInputSnapshotId, reconciliationSnapshotId: input.reconciliationSnapshotId,
+      fusionSnapshotId: input.fusionSnapshotId, chainId: rep.chainId, observedAt: input.observedAt, lifecycleState: 'WAIT' as const,
+      inputJson, unknownFields, contentHash: inputHash }),
+    frontier: Object.freeze({ ...frontierBody,
+      managementActionFrontierId: deterministicRuntimeUuid(`orphan-management-frontier:${managementInputSnapshotId}:${frontierHash}`),
+      contentHash: frontierHash }),
+  });
+}
+
+/** The management decision for publishManagementPlans; every field is derived from the persisted authority and the plan. */
+export function buildOrphanManagementDecisionDraft(input: {
+  readonly plan: ApprovedMasterPaperActionPlan;
+  readonly authority: OrphanManagementAuthorityRows;
+  readonly decision: Extract<OrphanRiskDecision, { action: 'CLOSE_RISK' }>;
+  readonly policy: OrphanRiskClosePolicy;
+  readonly decidedAt: string;
+}): ManagementDecisionDraft {
+  const frontier = input.authority.frontier;
+  if (frontier.selectedAction !== 'CLOSE_FULL' || input.plan.managementActionFrontierId !== frontier.managementActionFrontierId
+    || input.plan.managementInputSnapshotId !== frontier.managementInputSnapshotId || input.plan.action !== 'CLOSE_CSP'
+    || frontier.policyEvidenceHash !== orphanManagementPolicyEvidenceHash(input.policy)
+    || frontier.policyVersion !== input.policy.policyVersion) throw new Error('ORPHAN_DECISION_AUTHORITY_MISMATCH');
+  return {
+    decisionId: orphanManagementDecisionId(frontier.managementActionFrontierId), decisionKind: 'MANAGEMENT', actionCode: 'CLOSE_FULL',
+    quantity: input.plan.canonicalQuantity, aegisAction: input.plan.aegisState, strategyVersion: input.plan.strategyVersion,
+    managementPolicyVersion: input.policy.policyVersion, managementPolicyEvidenceHash: orphanManagementPolicyEvidenceHash(input.policy),
+    authorityRef: orphanManagementAuthorityRef(frontier.managementActionFrontierId), decidedAt: input.decidedAt,
+    reasonCodes: [brokerConfirmedPositionLifecycleRegistrationBlocked, ...input.decision.reasons],
+  };
+}
+
