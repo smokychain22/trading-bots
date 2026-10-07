@@ -30,3 +30,19 @@ test('only mleg is a package; a non-THETA order class (bracket/oco/oto) still fa
   for (const order_class of ['bracket', 'oco', 'oto']) assert.throws(() => parseBrokerOrder(simpleEquity({ order_class })));
   assert.throws(() => parseBrokerOrder(simpleEquity({ order_class: 'mleg' })), /multi-leg/, 'an mleg parent without legs is invalid');
 });
+
+test('a malformed order row is reported by endpoint, row index and schema path/code only, never by provider values, and reaches the cycle detail', async () => {
+  const { AlpacaPaperBrokerAdapter } = await import('../src/execution/broker.js');
+  const { safeRuntimeFailure } = await import('../src/theta/autonomous-runtime.js');
+  const rows = [simpleEquity(), simpleEquity({ id: '00000000-0000-4000-8000-000000000009', symbol: 'SECRETSYM', order_class: 'bracket' })];
+  const broker = new AlpacaPaperBrokerAdapter({ baseUrl: 'https://paper-api.alpaca.markets',
+    authentication: { kind: 'MASTER_API_KEY', apiKey: 'k', apiSecret: 's' },
+    fetchImpl: (async () => new Response(JSON.stringify(rows), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch });
+  const error = await broker.getOrders('all').then(() => null, (caught: unknown) => caught as Error);
+  assert.ok(error);
+  assert.match(error.message, /\/v2\/orders returned a malformed success payload \[shape: row\[1\] order_class:invalid_value\]/);
+  assert.doesNotMatch(error.message, /SECRETSYM|00000000-0000-4000-8000-000000000009/);
+  const failure = safeRuntimeFailure(error);
+  assert.equal(failure.code, 'ALPACA_ORDERS_MALFORMED_RESPONSE_HTTP_200');
+  assert.match(failure.detail, /Shape: row\[1\] order_class:invalid_value\./);
+});

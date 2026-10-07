@@ -175,6 +175,28 @@ const nullableNumber = (value: string | number | null | undefined): number | nul
  */
 const ORDER_NOT_FOUND = Symbol('ALPACA_ORDER_NOT_FOUND');
 
+/**
+ * Sanitized description of a provider payload that failed the parser: schema paths and issue codes, or the parser's own constant message.
+ * Never a provider value (no ids, symbols, prices or account data), so it is safe in persisted cycle evidence. Release A failed every cycle
+ * with only ALPACA_ORDERS_MALFORMED_RESPONSE_HTTP_200 and needed a live probe to find the shape; this makes the shape visible directly.
+ */
+export function describeProviderShapeFailure(error: unknown): string {
+  const prefix = error instanceof ProviderRowError ? `row[${error.rowIndex}] ` : '';
+  const cause = error instanceof ProviderRowError ? error.cause : error;
+  if (cause instanceof z.ZodError) {
+    return prefix + cause.issues.slice(0, 5).map((issue) => `${issue.path.map(String).join('.') || '(root)'}:${issue.code}`).join(',');
+  }
+  const message = cause instanceof Error ? cause.message : 'UNKNOWN_PARSE_FAILURE';
+  return prefix + (/^Alpaca returned [a-z -]+\.$/i.test(message) ? message : 'PARSER_ERROR');
+}
+
+class ProviderRowError extends Error {
+  constructor(readonly rowIndex: number, override readonly cause: unknown) { super(`PROVIDER_ROW_${rowIndex}_INVALID`); }
+}
+const parseBrokerOrderRow = (raw: unknown, rowIndex: number): BrokerOrderSnapshot => {
+  try { return parseBrokerOrder(raw); } catch (error) { throw new ProviderRowError(rowIndex, error); }
+};
+
 export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
   const order = rawOrderSchema.parse(raw);
   const qty = finiteNumber(order.qty);
@@ -490,7 +512,7 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
     } catch (error) {
       if (error instanceof AlpacaPaperBrokerError) throw error;
       throw new AlpacaPaperBrokerError(mutation ? 'AMBIGUOUS_NETWORK' : 'MALFORMED_RESPONSE', 200,
-        `Alpaca PAPER ${operation} returned a malformed success payload.`);
+        `Alpaca PAPER ${operation} returned a malformed success payload [shape: ${describeProviderShapeFailure(error)}].`);
     }
   }
 
@@ -501,7 +523,7 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   }
   async getOrders(status: 'open' | 'closed' | 'all' = 'open'): Promise<readonly BrokerOrderSnapshot[]> {
     const body = await this.request(`/v2/orders?status=${status}&nested=true&limit=500`);
-    return this.parseProviderPayload('/v2/orders', () => z.array(z.unknown()).parse(body).map(parseBrokerOrder));
+    return this.parseProviderPayload('/v2/orders', () => z.array(z.unknown()).parse(body).map(parseBrokerOrderRow));
   }
   async getOrderByClientOrderId(clientOrderId: string): Promise<BrokerOrderSnapshot | null> {
     const body = await this.request(`/v2/orders:by_client_order_id?client_order_id=${encodeURIComponent(clientOrderId)}`, {}, true);

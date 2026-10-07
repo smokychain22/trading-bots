@@ -119,8 +119,10 @@ export function safeRuntimeFailure(error: unknown): { code: string; detail: stri
             : error.message.includes('/v2/clock') ? 'CLOCK'
               : error.message.includes('/v2/account') ? 'ACCOUNT' : 'UNKNOWN_OPERATION';
     const status = error.httpStatus === null ? 'NO_HTTP_STATUS' : `HTTP_${error.httpStatus}`;
+    // the sanitized shape (schema path / issue code, never a provider value) makes a parser mismatch diagnosable from the cycle record
+    const shape = /\[shape: (.{1,300}?)\]\.$/.exec(error.message)?.[1];
     return { code: `ALPACA_${operation}_${error.category}_${status}`,
-      detail: `Alpaca PAPER ${operation} failed with ${status}.` };
+      detail: `Alpaca PAPER ${operation} failed with ${status}.${shape === undefined ? '' : ` Shape: ${shape}.`}` };
   }
   if (error instanceof AlpacaProviderError) {
     const status = error.httpStatus === null ? 'NO_HTTP_STATUS' : `HTTP_${error.httpStatus}`;
