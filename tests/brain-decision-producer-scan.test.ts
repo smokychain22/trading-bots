@@ -18,6 +18,7 @@ const files = (directory: string): string[] => readdirSync(directory, { withFile
 // tripwire for new decision-shaped modules, not a claim of runtime reachability.
 const thetaClass: Readonly<Record<string, ProducerClass>> = {
   'adaptive-decision-brain.ts': 'SHADOW',
+  'branch-economic-shadow.ts': 'SHADOW',
   'canonical-decision-authority.ts': 'SUBORDINATE_CALCULATOR',
   'canonical-strategy-frontier.ts': 'PRODUCTION_AUTHORITY',
   'covered-call-lattice.ts': 'RESEARCH',
