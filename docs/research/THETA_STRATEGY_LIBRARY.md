@@ -7,7 +7,7 @@ document.
 
 | Label | Meaning |
 | --- | --- |
-| `OWNER_DIRECTIVE_SUMMARY` | Stated in the owner's directives ("Professional Options Trader Intelligence Build", "Strategy Brain Rebuild") as a summary of their premium source material. |
+| `OWNER_CURATED_SOURCE_CLAIM` | Stated in the owner's directives ("Professional Options Trader Intelligence Build", "Strategy Brain Rebuild") as a summary of their premium source material. |
 | `IMPLEMENTATION_INFERENCE` | Claude's engineering choice. Unvalidated. |
 | `MATH_PROVEN` | Reproduced exactly by `src/theta/strategy-intelligence/*` with a test. |
 | `EMPIRICALLY_DERIVED` | None yet. Requires point-in-time replay, walk-forward and Paper shadow evidence. |
@@ -53,7 +53,7 @@ then adjustments, exit and assignment, then restart, failure modes and backtest,
 
 | Field | Value |
 | --- | --- |
-| **Purpose** | A bullish-to-neutral short-volatility thesis with acceptable assignment (`OWNER_DIRECTIVE_SUMMARY`). |
+| **Purpose** | A bullish-to-neutral short-volatility thesis with acceptable assignment (`OWNER_CURATED_SOURCE_CLAIM`). |
 | **Payoff** | Max profit = credit. Max loss = (strike − credit) × multiplier. Breakeven = strike − credit. Theta positive; vega and gamma negative (`MATH_PROVEN`). |
 | **Regime** | Direction from FLAT to STRONG_UP, no strong downside acceleration, supportive geometry. **Do not enter** in STRONG_DOWN, inside an event window, or when IV−RV ≤ 0 (seller gets no variance premium). All three are `IMPLEMENTATION_INFERENCE`, pending validation. |
 | **Strike / expiry** | Rank several strikes per eligible expiry (25–60 DTE canonical) on cushion versus support, premium/collateral, stress loss and liquidity. Do not use delta alone. |
@@ -71,7 +71,7 @@ then adjustments, exit and assignment, then restart, failure modes and backtest,
 
 | Field | Value |
 | --- | --- |
-| **Purpose** | A short-DTE (2–5) put held at its strike with no roll. It is not "Q with fewer days" (`OWNER_DIRECTIVE_SUMMARY`). |
+| **Purpose** | A short-DTE (2–5) put held at its strike with no roll. It is not "Q with fewer days" (`OWNER_CURATED_SOURCE_CLAIM`). |
 | **Payoff** | Same as a CSP, but with gamma far larger per dollar of premium. Annualized ROC is misleading at 2 DTE. |
 | **Regime** | SLOW or COMPRESSED movement (unless the compression sits near a level), no event in the window, contained short-term RV. |
 | **Entry metrics** | Distance to strike and breakeven in ATR terms, RV5, gamma per premium dollar, theta per day, near-expiry liquidity. |
@@ -109,7 +109,7 @@ then adjustments, exit and assignment, then restart, failure modes and backtest,
 ## Future strategy matrix (items 105 and 142; research only, no broker authority)
 
 Columns:
-- **Regime** is `OWNER_DIRECTIVE_SUMMARY`.
+- **Regime** is `OWNER_CURATED_SOURCE_CLAIM`.
 - **Max loss** and **max profit** are `MATH_PROVEN` by `option-payoff.ts` tests.
 - **Broker** is the broker requirement.
 - **Pri** is implementation priority.
@@ -134,13 +134,13 @@ Columns:
 | PROTECTIVE_PUT | Profit lock or hedge | Stock or long call + P | Bounded | Unbounded | Δ reduced | Repeated hedge cost | Single | Profit-lock builder | 4 (as A/C transformation) |
 | COVERED_CALL | Inventory exists | Stock − C | Basis − credit | K − basis + credit | — | — | Existing | **C** | n/a |
 
-## Claim table (items 59–61 and 143). Structures from `OWNER_DIRECTIVE_SUMMARY`; results `MATH_PROVEN` in tests.
+## Claim table (items 59–61 and 143). Structures from `OWNER_CURATED_SOURCE_CLAIM`; results `MATH_PROVEN` in tests.
 
 | Claim wording (summary) | Exact construction | Math result | Path risk | Execution risk | Evidence status |
 | --- | --- | --- | --- | --- | --- |
 | "Lock profit" on a winning long call with a put | Long C100 @2 + long P110 @1.5 (spot 115) | **LOCKED_MINIMUM_PROFIT reproduced**: min expiry P&L +$650 | MTM scenarios reported; floor $646 after $2 per contract cost | Two fills, hedge slippage | MATH_PROVEN; empirical none |
 | Convert a winning long call into a spread | Long C100 @2 − C120 @6 (spot 125) | **Reproduced**: floor +$400 | Short call carries early assignment (American) | mleg fill | MATH_PROVEN |
-| "Risk-free" credit backspread | −C100 @5 + 2×C110 @2 | ZERO_NET_DEBIT and CREDIT_FINANCED_LONG_VOL **reproduced**; STATIC_NO_LOSS **not**: loss valley −$900 at 110 | Valley, vega and theta drag | Ratio fill | MATH_PROVEN |
+| "Risk-free" credit backspread | −C100 @5 + 2×C110 @2 | ZERO_NET_DEBIT and CREDIT_FINANCED_LONG_VOL **reproduced**; STATIC_NO_LOSS **not**: classified **LOSS_VALLEY_PRESENT** (−$900 at 110), never NO_LOSS | Valley, vega and theta drag | Ratio fill | MATH_PROVEN |
 | Delta-hedged long straddle "can't lose locally" | +C +P ATM, residual delta re-hedged | DELTA_HEDGED_LOCAL_RANGE **reproduced** (instantaneous only) | Theta and IV crush are path risks, not covered | Hedge frequency and costs | MATH_PROVEN; gamma-scalp economics unproven |
 | Short strangle "made safe" by wings | Strangle to iron condor | LIMITED_LOSS: unbounded becomes **$300** | — | Wing slippage | MATH_PROVEN |
 | Losing position into a butterfly | Long C100 + 2×(−C105) + C110 | Floor −$300 becomes **+$240** in fixture (price-dependent) | Early assignment on the shorts | 3-strike fill | MATH_PROVEN only for the stated prices |

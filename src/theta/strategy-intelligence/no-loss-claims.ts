@@ -19,6 +19,18 @@ export type NoLossClaimType =
   | 'LIMITED_LOSS'                  // max loss finite
   | 'BROKER_MARGIN_REDUCTION';      // needs a broker margin model: never inferred
 
+export type StaticLossShape = 'NO_STATIC_LOSS' | 'LOSS_VALLEY_PRESENT' | 'LOSS_TAIL';
+
+/** NO_STATIC_LOSS: min expiry P&L >= 0. LOSS_VALLEY_PRESENT: the loss is bounded and interior (P&L at both ends of the
+ * spot range is above the minimum). LOSS_TAIL: the worst loss sits at an end of the spot range or is unbounded. */
+export function staticLossShape(profile: ExpiryProfile): StaticLossShape {
+  if (profile.minPnl !== '-UNBOUNDED' && profile.minPnl >= 0) return 'NO_STATIC_LOSS';
+  if (profile.minPnl === '-UNBOUNDED' || profile.grid.length < 3) return 'LOSS_TAIL';
+  const first = profile.grid[0]?.pnl as number; const last = profile.grid[profile.grid.length - 1]?.pnl as number;
+  const tolerance = 1e-6;
+  return first > profile.minPnl + tolerance && (last > profile.minPnl + tolerance || profile.upsideSlope > 0) ? 'LOSS_VALLEY_PRESENT' : 'LOSS_TAIL';
+}
+
 export type ClaimVerdict = 'REPRODUCED' | 'NOT_REPRODUCED' | 'UNDETERMINED';
 
 export interface PathRiskReport {
@@ -35,7 +47,9 @@ export interface NoLossClaimResult {
   readonly evaluatorVersion: typeof noLossClaimEvaluatorVersion;
   readonly claim: NoLossClaimType;
   readonly verdict: ClaimVerdict;
-  readonly staticEvidence: { readonly minExpiryPnl: number | '-UNBOUNDED'; readonly entryCashflow: number; readonly maxLoss: number | 'UNBOUNDED' };
+  readonly staticEvidence: { readonly minExpiryPnl: number | '-UNBOUNDED'; readonly entryCashflow: number; readonly maxLoss: number | 'UNBOUNDED';
+    /** Shape of the static expiry loss: an interior valley (e.g. a credit backspread) is never labelled no-loss. */
+    readonly lossShape: StaticLossShape; readonly worstSpot: number | null };
   readonly detail: string;
   /** Always reported, independent of the static verdict. */
   readonly pathRisk: PathRiskReport;
@@ -81,7 +95,8 @@ export function pathRisk(legs: readonly PayoffLeg[], profile: ExpiryProfile, con
 export function evaluateNoLossClaim(claim: NoLossClaimType, legs: readonly PayoffLeg[], context: ClaimContext): NoLossClaimResult {
   const profile = expiryProfile(legs, { spot: context.spot });
   const cash = entryCashflow(legs);
-  const staticEvidence = { minExpiryPnl: profile.minPnl, entryCashflow: Number(cash.toFixed(6)), maxLoss: profile.maxLoss };
+  const staticEvidence = { minExpiryPnl: profile.minPnl, entryCashflow: Number(cash.toFixed(6)), maxLoss: profile.maxLoss,
+    lossShape: staticLossShape(profile), worstSpot: profile.minPnlAtSpot };
   const out = (verdict: ClaimVerdict, detail: string): NoLossClaimResult => ({
     evaluatorVersion: noLossClaimEvaluatorVersion, claim, verdict, staticEvidence, detail, pathRisk: pathRisk(legs, profile, context) });
   const min = profile.minPnl;

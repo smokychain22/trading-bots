@@ -48,6 +48,11 @@ test('credit-financed long vol: a 1x2 call backspread for a credit has long gamm
   assert.equal(r.verdict, 'REPRODUCED', r.detail);
   assert.equal(evaluateNoLossClaim('ZERO_NET_DEBIT', back, { spot: 106 }).verdict, 'REPRODUCED');
   assert.equal(evaluateNoLossClaim('STATIC_NO_LOSS_AT_EXPIRY', back, { spot: 106 }).verdict, 'NOT_REPRODUCED'); // loss valley at 110
+  const valley = evaluateNoLossClaim('STATIC_NO_LOSS_AT_EXPIRY', back, { spot: 106 }).staticEvidence;
+  assert.equal(valley.lossShape, 'LOSS_VALLEY_PRESENT'); // never labelled NO_LOSS
+  assert.equal(valley.worstSpot, 110);
+  assert.equal(valley.minExpiryPnl, -900);
+  assert.equal(evaluateNoLossClaim('LIMITED_LOSS', [leg('CALL', 'LONG', 100, 3)], { spot: 100 }).staticEvidence.lossShape, 'LOSS_TAIL');
   assert.equal(evaluateNoLossClaim('NON_NEGATIVE_STATIC_PAYOFF', back, { spot: 106 }).verdict, 'NOT_REPRODUCED');
   assert.equal(evaluateNoLossClaim('NON_NEGATIVE_STATIC_PAYOFF', [leg('CALL', 'LONG', 100, 3)], { spot: 100 }).verdict, 'REPRODUCED');
 });
