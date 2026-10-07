@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { blackScholesPut, impliedPutVolatility } from '../src/research/q-policy-replay/black-scholes.js';
 import {
-  buildDecisionCandidates, runSequentialPolicy, selectCurrentQ, selectEconomicQ, simulateExit, splitAdjustedCloses,
+  buildDecisionCandidates, runSequentialPolicy, selectCurrentQ, selectEconomicQ, simulateExit, splitAdjustedCloses, summarizeReplayFunnel,
   type ContractHistory, type DecisionPoint, type ReplayAssumptions, type ReplayCandidate, type UnderlyingHistory,
 } from '../src/research/q-policy-replay/replay-engine.js';
 import { bucketKeys, chooseProfiles, computePolicyMetrics, inSampleEpisodes, oosEpisodes, realizedVolatilityAt } from '../src/research/q-policy-replay/replay-metrics.js';
@@ -174,6 +174,29 @@ test('path risk: a no-stop position that recovers records its maximum adverse ex
   const m = computePolicyMetrics(r.state === 'CLOSED' ? [r.episode] : []);
   assert.ok(m.expectedShortfall5Roc !== null && m.expectedShortfall5Roc > 0);
   assert.ok(m.expectedShortfall5MaeRoc !== null && m.expectedShortfall5MaeRoc < 0);
+});
+
+test('funnel telemetry distinguishes a capital-only WAIT from a missing or structurally rejected chain', () => {
+  const h = history(Array.from({ length: 40 }, () => 100));
+  const exp = h.dates[35] as string;
+  const c = contract('XYZ_P95', 95, exp, optionBars(h, 0, 30, () => 1.5));
+  const constrained = { ...A, accountEquityUsd: 10_000 };
+  const blocked = buildDecisionCandidates({ underlying: 'XYZ', date: h.dates[0] as string, spot: 100,
+    contracts: [c], assumptions: constrained });
+  const summary = summarizeReplayFunnel([{ date: h.dates[0] as string, spot: 100, regime: 'X', candidates: blocked }],
+    constrained.hardTickerCapPct);
+  assert.equal(summary.decisionsWithNoRawCandidates, 0);
+  assert.equal(summary.decisionsWithNoStructuralCandidate, 0);
+  assert.equal(summary.decisionsBlockedOnlyByCapital, 1);
+  assert.equal(summary.decisionsWithEligibleCandidate, 0);
+  assert.equal(summary.gateFailureCounts.capital, 1);
+  assert.equal(summary.minimumCollateralUsd, 9_500);
+  assert.ok(Math.abs((summary.minimumEquityRequiredAtHardTickerCapUsd as number) - 9_500 / 0.225) < 1e-9);
+
+  const empty = summarizeReplayFunnel([{ date: h.dates[0] as string, spot: 100, regime: 'X', candidates: [] }], 0.225);
+  assert.equal(empty.decisionsWithNoRawCandidates, 1);
+  assert.equal(empty.decisionsBlockedOnlyByCapital, 0);
+  assert.equal(empty.minimumCollateralUsd, null);
 });
 
 test('reporting reconciles gross P&L to net P&L and exposes PIT IV/RV plus sector buckets', () => {

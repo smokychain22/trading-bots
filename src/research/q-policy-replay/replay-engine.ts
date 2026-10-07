@@ -379,6 +379,67 @@ export interface DecisionPoint {
   readonly candidates: readonly ReplayCandidate[];
 }
 
+export interface ReplayFunnelSummary {
+  readonly decisions: number;
+  readonly rawCandidates: number;
+  readonly structurallyEligibleBeforeCapital: number;
+  readonly capitalEligible: number;
+  readonly latticeEligible: number;
+  readonly decisionsWithNoRawCandidates: number;
+  readonly decisionsWithNoStructuralCandidate: number;
+  readonly decisionsBlockedOnlyByCapital: number;
+  readonly decisionsWithEligibleCandidate: number;
+  readonly gateFailureCounts: Readonly<Record<'dte' | 'deltaBand' | 'spread' | 'volume' | 'capital' | 'nonPositiveCredit', number>>;
+  readonly minimumCollateralUsd: number | null;
+  readonly minimumEquityRequiredAtHardTickerCapUsd: number | null;
+}
+
+/**
+ * Complete-enumeration telemetry for a replay decision set. Gate failure counts overlap by design. A capital-only block means at
+ * least one candidate passed every market/contract gate and positive-credit check, but every such candidate failed capital.
+ */
+export function summarizeReplayFunnel(decisions: readonly DecisionPoint[], hardTickerCapPct: number): ReplayFunnelSummary {
+  const failures = { dte: 0, deltaBand: 0, spread: 0, volume: 0, capital: 0, nonPositiveCredit: 0 };
+  let rawCandidates = 0, structurallyEligibleBeforeCapital = 0, capitalEligible = 0, latticeEligible = 0;
+  let decisionsWithNoRawCandidates = 0, decisionsWithNoStructuralCandidate = 0, decisionsBlockedOnlyByCapital = 0;
+  let decisionsWithEligibleCandidate = 0, minimumCollateralUsd = Number.POSITIVE_INFINITY;
+  for (const decision of decisions) {
+    rawCandidates += decision.candidates.length;
+    if (decision.candidates.length === 0) decisionsWithNoRawCandidates++;
+    let structural = 0, capital = 0, eligible = 0;
+    for (const candidate of decision.candidates) {
+      if (candidate.gates.dte === 'FAIL') failures.dte++;
+      if (candidate.gates.deltaBand === 'FAIL') failures.deltaBand++;
+      if (candidate.gates.spread === 'FAIL') failures.spread++;
+      if (candidate.gates.volume === 'FAIL') failures.volume++;
+      if (candidate.gates.capital === 'FAIL') failures.capital++;
+      if (!(candidate.creditPerShare > 0)) failures.nonPositiveCredit++;
+      const marketEligible = candidate.gates.dte === 'PASS' && candidate.gates.deltaBand === 'PASS'
+        && candidate.gates.spread === 'PASS' && candidate.gates.volume === 'PASS' && candidate.creditPerShare > 0;
+      if (!marketEligible) continue;
+      structural++;
+      const collateral = kv(candidate.receipt.capitalRequiredUsd);
+      if (collateral !== null) minimumCollateralUsd = Math.min(minimumCollateralUsd, collateral);
+      if (candidate.gates.capital !== 'FAIL') capital++;
+      if (candidate.latticeEligible) eligible++;
+    }
+    structurallyEligibleBeforeCapital += structural;
+    capitalEligible += capital;
+    latticeEligible += eligible;
+    if (structural === 0) decisionsWithNoStructuralCandidate++;
+    else if (capital === 0) decisionsBlockedOnlyByCapital++;
+    if (eligible > 0) decisionsWithEligibleCandidate++;
+  }
+  const minimumCollateral = Number.isFinite(minimumCollateralUsd) ? minimumCollateralUsd : null;
+  return {
+    decisions: decisions.length, rawCandidates, structurallyEligibleBeforeCapital, capitalEligible, latticeEligible,
+    decisionsWithNoRawCandidates, decisionsWithNoStructuralCandidate, decisionsBlockedOnlyByCapital,
+    decisionsWithEligibleCandidate, gateFailureCounts: failures, minimumCollateralUsd: minimumCollateral,
+    minimumEquityRequiredAtHardTickerCapUsd: minimumCollateral === null || !(hardTickerCapPct > 0)
+      ? null : minimumCollateral / hardTickerCapPct,
+  };
+}
+
 export interface PolicyRunResult {
   readonly episodes: readonly Episode[];
   readonly censored: number;

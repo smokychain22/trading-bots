@@ -9,7 +9,7 @@ import { loadEnvironmentFile } from '../src/config/environment.js';
 import { paperBootstrapRuntimePolicy as P } from '../src/theta/paper-bootstrap-runtime-policy.js';
 import {
   buildDecisionCandidates, calendarDays, economicProfileGrid, exitPolicies, qPolicyReplayVersion, runSequentialPolicy,
-  selectCurrentQ, selectEconomicQ, splitAdjustedCloses, type ContractHistory, type PricingMode, type DecisionPoint, type Episode, type ReplayAssumptions,
+  selectCurrentQ, selectEconomicQ, splitAdjustedCloses, summarizeReplayFunnel, type ContractHistory, type PricingMode, type DecisionPoint, type Episode, type ReplayAssumptions,
   type ReplayCandidate, type UnderlyingHistory,
 } from '../src/research/q-policy-replay/replay-engine.js';
 import {
@@ -306,6 +306,10 @@ function rollingWalkForward(combos: readonly ComboResult[], base: ReadonlyMap<st
 
 function universeReport(name: string, names: readonly string[], equity: number | null): Record<string, unknown> {
   const a = assumptions(equity, false);
+  const funnel = Object.fromEntries(names.map((underlying) => {
+    const p = prepared.get(underlying) as Prepared;
+    return [underlying, summarizeReplayFunnel(buildDecisions(p, a), a.hardTickerCapPct)];
+  }));
   const combos = runUniverse(names, a);
   const byKey = new Map(combos.map((c) => [comboKey(c), c]));
   const baseSummary = new Map(combos.map((c) => [comboKey(c), summarize(c.episodes)]));
@@ -353,7 +357,7 @@ function universeReport(name: string, names: readonly string[], equity: number |
   return { universe: name, underlyings: names, capitalMode: equity === null ? 'UNCONSTRAINED_PER_CONTRACT' : `EQUITY_ASSUMPTION_${equity}_HARD_TICKER_CAP_${a.hardTickerCapPct}`,
     coverage: { decisionsConsideredCurrentQHold: curr.decisions, episodesCurrentQHold: curr.episodes.length, censoredCurrentQHold: curr.censored,
       waitsCurrentQHold: curr.waits, corporateActionExcluded: curr.excluded, policiesEvaluated: combos.length,
-      profilePoliciesRejectedByStressGate: stressRejected },
+      profilePoliciesRejectedByStressGate: stressRejected, candidateFunnel: funnel },
     profileChoices: choices, inSampleKey: table(inSampleOf), oosKey: table(oosOf), fullKey: table((e) => e),
     rollingWalkForward: rollingWalkForward(combos, baseSummary, [spread.summaries, prints.summaries]), baselineExits,
     sensitivitySurfaceInSample: surface, buckets,
