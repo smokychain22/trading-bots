@@ -149,6 +149,11 @@ test('(d) symbol / side / quantity / lineage mismatches refuse with typed codes'
   assert.equal(reason(position({ reconciliationQuality: 'DEGRADED' }), [lineage()]), 'ORPHAN_BROKER_EVIDENCE_NOT_GOOD');
 });
 
+test('persisted enum casing for SELL_TO_OPEN is accepted without weakening side semantics', () => {
+  const classified = classifyBrokerConfirmedOrphan(position(), [lineage({}, { side: 'sell', positionIntent: 'SELL_TO_OPEN' })]);
+  assert.equal(classified.state, 'ORPHAN_CONFIRMED');
+});
+
 test('orphan recovery mode defaults to read-only OBSERVE; only an explicit value certifies the close path', () => {
   assert.equal(parseOrphanRecoveryMode(undefined), 'OBSERVE');
   assert.equal(parseOrphanRecoveryMode('ENFORCED'), 'OBSERVE');

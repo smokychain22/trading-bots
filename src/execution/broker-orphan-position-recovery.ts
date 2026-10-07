@@ -162,7 +162,8 @@ export function classifyBrokerConfirmedOrphan(position: BrokerConfirmedOptionPos
   if (lineage.lifecycleApplication.state === 'APPLIED' || lineage.openOptionLegCount > 0) {
     return refuse('ORPHAN_ALREADY_LIFECYCLE_OWNED');
   }
-  if (intent.thetaAction !== 'OPEN_CSP' || intent.side.toUpperCase() !== 'SELL' || intent.positionIntent !== 'sell_to_open') {
+  if (intent.thetaAction !== 'OPEN_CSP' || intent.side.toUpperCase() !== 'SELL'
+    || intent.positionIntent.toUpperCase() !== 'SELL_TO_OPEN') {
     return refuse('ORPHAN_SIDE_MISMATCH', `${intent.thetaAction}:${intent.side}:${intent.positionIntent}`);
   }
   const identity = lineage.identity;
