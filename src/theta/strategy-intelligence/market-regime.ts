@@ -90,7 +90,7 @@ function atr(bars: readonly DailyBar[], lookback: number): number | null {
 }
 
 function regression(ys: readonly number[]): { slope: number; r2: number } {
-  const n = ys.length; const xs = ys.map((_, i) => i); const mx = mean(xs); const my = mean(ys);
+  const xs = ys.map((_, i) => i); const mx = mean(xs); const my = mean(ys);
   const sxy = xs.reduce((a, x, i) => a + (x - mx) * ((ys[i] as number) - my), 0); const sxx = xs.reduce((a, x) => a + (x - mx) ** 2, 0);
   const slope = sxy / sxx; const ssTot = ys.reduce((a, y) => a + (y - my) ** 2, 0);
   const ssRes = ys.reduce((a, y, i) => a + (y - (my + slope * ((xs[i] as number) - mx))) ** 2, 0);
@@ -259,8 +259,8 @@ export function evaluateForwardEvidence(bars: readonly DailyBar[], signal: (hist
     rows.push({ s, d1: Math.abs(move(1)), d3: Math.abs(move(3)), d5: Math.abs(move(5)), signed5: move(5), breakout: sigma5 !== null && Math.abs(move(5)) > sigmaK * sigma5 });
   }
   const on = rows.filter((r) => r.s !== null && r.s !== false); const off = rows.filter((r) => r.s === false);
-  const avg = (xs: readonly typeof rows, key: 'd1' | 'd3' | 'd5') => xs.length === 0 ? null : mean(xs.map((r) => r[key]));
-  const rate = (xs: readonly typeof rows) => xs.length === 0 ? null : xs.filter((r) => r.breakout).length / xs.length;
+  const avg = (xs: typeof rows, key: 'd1' | 'd3' | 'd5') => xs.length === 0 ? null : mean(xs.map((r) => r[key]));
+  const rate = (xs: typeof rows) => xs.length === 0 ? null : xs.filter((r) => r.breakout).length / xs.length;
   const dir = on.filter((r) => r.s === 'UP' || r.s === 'DOWN');
   return {
     observations: rows.length, signalOn: on.length, signalOff: off.length,
