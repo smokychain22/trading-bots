@@ -71,6 +71,8 @@ import { assessPortfolioCorrelation, type PortfolioCorrelationObservation } from
 import { deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.js';
 import { classifyMethodInputProvenance, type MethodInputProvenance } from './profitability-method-input-provenance.js';
 import { wholeContractsAffordable } from './secured-contract-capacity.js';
+import { observeAllocatorParity, parsePortfolioAllocatorMode, portfolioBudgetPolicyFromRuntimePolicy, summarizeAllocatorObservations,
+  type ParityComparison, type PortfolioBudgetFailure } from './portfolio-budget.js';
 import { buildCycleQEntryFunnelSummary, type QEntryFunnelSummary } from './q-entry-funnel.js';
 
 /** Distinguish unshortlisted chain contracts from missing Q finalist responses. */
@@ -2156,6 +2158,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     stressGapDetected: gapAssessment.stressGapDetected,
   };
 
+  // PORTFOLIO ALLOCATOR (observation only in this revision): OFF computes nothing; SHADOW/PARITY compare the budget envelope with the
+  // existing capacity cap per candidate and emit one aggregate line. It never changes a candidate, a quantity or a decision.
+  const allocatorMode = parsePortfolioAllocatorMode(process.env.PORTFOLIO_ALLOCATOR_MODE);
+  const allocatorObservations: (ParityComparison | PortfolioBudgetFailure)[] = [];
   const runtimeCandidates: RawCandidateInput[] = candidates.map((candidate) => {
     const spreadAssessment = aegisSpreadStressEvidence[candidate.contract.optionSymbol];
     const alpacaIvAssessment = aegisAlpacaIvStressEvidence[candidate.contract.optionSymbol];
@@ -2199,6 +2205,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       recoveryInventoryValue,
     );
     const quantityAuthorities = separateCandidateQuantityAuthorities(candidate.brokerAllowedQty, capacity);
+    if (allocatorMode !== 'OFF') {
+      const observation = observeAllocatorParity({ mode: allocatorMode,
+        policy: portfolioBudgetPolicyFromRuntimePolicy(paperBootstrapRuntimePolicy.aegis, 'paper-bootstrap-capital-v1'), accountId: 'MASTER_THETA_PAPER',
+        observedAt: decisionTime, exposure: derivedExposure, recoveryInventoryValue, underlying: candidate.contract.underlying,
+        strike: candidate.contract.strike, multiplier: candidate.contract.multiplier, brokerAllowedQuantity: candidate.brokerAllowedQty,
+        currentQuantityCap: capacity.quantityCap });
+      if (observation !== null) allocatorObservations.push(observation);
+    }
     const strategyAccountPolicyCompatibility = assessStrategyAccountPolicyCompatibility({
       strategy: 'THETA_CONVENTIONAL', riskProfile: 'CASH_SECURED_SHORT_PUT', underlying: candidate.contract.underlying,
       marketApplicable: true, minimumCapitalRequired: candidate.contract.strike * candidate.contract.multiplier,
@@ -2235,6 +2249,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     };
   });
 
+  if (allocatorMode !== 'OFF') traceShadowStage(underlying, 'PORTFOLIO_ALLOCATOR_OBSERVED', summarizeAllocatorObservations(allocatorMode, allocatorObservations));
   const orchestrationStartedAt = Date.now();
   traceShadowStage(underlying, 'ORCHESTRATION_STARTED', { candidates: runtimeCandidates.length });
   const orchestration = await runNewRiskOrchestration(config.bridge, {

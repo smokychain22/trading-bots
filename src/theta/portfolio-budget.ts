@@ -331,3 +331,54 @@ export function proposalCapitalPerContractCents(input:
 export function parsePortfolioAllocatorMode(value: string | undefined): PortfolioAllocatorMode {
   return (portfolioAllocatorModes as readonly string[]).includes(String(value)) ? value as PortfolioAllocatorMode : 'OFF';
 }
+
+/** The EXISTING capital policy as the allocator's policy (no new percentage); reserves and ceilings stay not configured until policy says so. */
+export function portfolioBudgetPolicyFromRuntimePolicy(aegis: {
+  readonly hardCapMultiplier: number; readonly maximumTickerConcentrationPct: number; readonly maximumSectorConcentrationPct: number;
+  readonly maximumCorrelationClusterPct: number; readonly maximumPortfolioCapitalAtRiskPct: number; readonly maximumAssignmentCapacityPct: number;
+  readonly maximumInventoryCapacityPct: number; readonly maximumRecoveryCapacityPct: number;
+}, policyVersion: string): PortfolioBudgetPolicy {
+  return { policyVersion, hardCapMultiplier: aegis.hardCapMultiplier, maximumTickerConcentrationPct: aegis.maximumTickerConcentrationPct,
+    maximumSectorConcentrationPct: aegis.maximumSectorConcentrationPct, maximumCorrelationClusterPct: aegis.maximumCorrelationClusterPct,
+    maximumPortfolioCapitalAtRiskPct: aegis.maximumPortfolioCapitalAtRiskPct, maximumAssignmentCapacityPct: aegis.maximumAssignmentCapacityPct,
+    maximumInventoryCapacityPct: aegis.maximumInventoryCapacityPct, maximumRecoveryCapacityPct: aegis.maximumRecoveryCapacityPct,
+    assignmentReserveCents: null, managementReserveCents: null, opportunityReserveCents: null };
+}
+
+/**
+ * Observation-only parity row for one candidate (SHADOW / PARITY). Returns null in OFF (nothing computed). ENFORCED is NOT certified in this
+ * revision: it observes exactly like PARITY and the summary reports PORTFOLIO_ALLOCATOR_ENFORCEMENT_NOT_CERTIFIED. Never changes a quantity.
+ */
+export function observeAllocatorParity(input: {
+  readonly mode: PortfolioAllocatorMode; readonly policy: PortfolioBudgetPolicy; readonly accountId: string; readonly observedAt: string;
+  readonly exposure: DerivedAccountExposure; readonly recoveryInventoryValue: number | null; readonly underlying: string;
+  readonly strike: number; readonly multiplier: number; readonly brokerAllowedQuantity: number; readonly currentQuantityCap: number;
+}): ParityComparison | PortfolioBudgetFailure | null {
+  if (input.mode === 'OFF') return null;
+  const snapshot = buildPortfolioBudgetSnapshot({ accountId: input.accountId, observedAt: input.observedAt, exposure: input.exposure,
+    activePositions: 0, pendingOpeningOrders: input.exposure.openOrderCount, recoveryInventoryValue: input.recoveryInventoryValue, reconciling: false }, input.policy);
+  if (snapshot.state !== 'READY') return snapshot.failure;
+  const envelope = buildStrategyBudgetEnvelope(snapshot.snapshot, { strategy: 'THETA_Q', underlying: input.underlying, policy: input.policy, expiresAt: input.observedAt });
+  return compareEnvelopeParity({ envelope, capitalPerContractCents: proposalCapitalPerContractCents({ strategy: 'THETA_Q', strike: input.strike, multiplier: input.multiplier }),
+    brokerAllowedQuantity: input.brokerAllowedQuantity, currentQuantityCap: input.currentQuantityCap, reservesConfigured: false });
+}
+
+/** Compact aggregate for one cycle: counts only (no per-candidate dataset is stored). */
+export function summarizeAllocatorObservations(mode: PortfolioAllocatorMode, rows: readonly (ParityComparison | PortfolioBudgetFailure)[]):
+  Readonly<Record<string, string | number | boolean>> {
+  const comparisons = rows.filter((row): row is ParityComparison => typeof row !== 'string');
+  const divergent = comparisons.filter((row) => row.divergence !== null);
+  const summary: Record<string, string | number | boolean> = { mode, compared: comparisons.length, divergences: divergent.length,
+    snapshotUnavailable: rows.length - comparisons.length, enforcementCertified: false, executionEffect: 'NONE' };
+  for (const row of divergent) {
+    const key = 'divergence_' + (row.divergence === null ? 'UNCLASSIFIED' : row.divergence.classification);
+    summary[key] = Number(summary[key] ?? 0) + 1;
+  }
+  for (const row of rows) {
+    if (typeof row !== 'string') continue;
+    const key = 'failure_' + row;
+    summary[key] = Number(summary[key] ?? 0) + 1;
+  }
+  if (mode === 'ENFORCED') summary.notice = 'PORTFOLIO_ALLOCATOR_ENFORCEMENT_NOT_CERTIFIED';
+  return summary;
+}

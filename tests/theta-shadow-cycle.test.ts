@@ -1106,3 +1106,49 @@ itMockedProviderRealCodePath('an option chain the provider says is not finished 
   assert.equal(result.optionContractsComplete, false);
   assert.ok(!['OPEN_CSP', 'OPEN_NEW_RISK'].includes(String(result.orchestration?.receipt.winningAction)));
 });
+
+itMockedProviderRealCodePath('PORTFOLIO ALLOCATOR zero behaviour change: OFF, SHADOW, PARITY and ENFORCED produce the identical cycle result; observation emits one aggregate line', async () => {
+  // Leaf-path view of a cycle result. Two OFF runs calibrate the noise floor (fresh UUIDs / wall-clock fields); every OTHER leaf must be
+  // identical across modes. The noise floor is bounded so the comparison can not pass by excluding everything.
+  const leaves = (value: unknown, prefix = '', out = new Map<string, string>()): Map<string, string> => {
+    if (value !== null && typeof value === 'object') {
+      for (const [key, item] of Object.entries(value as Record<string, unknown>)) leaves(item, `${prefix}/${key}`, out);
+    } else out.set(prefix, JSON.stringify(value));
+    return out;
+  };
+  const previousMode = process.env.PORTFOLIO_ALLOCATOR_MODE, previousEnv = process.env.VERCEL_ENV;
+  const originalInfo = console.info;
+  const lines: string[] = [];
+  const runWith = async (mode: string | undefined) => {
+    if (mode === undefined) delete process.env.PORTFOLIO_ALLOCATOR_MODE; else process.env.PORTFOLIO_ALLOCATOR_MODE = mode;
+    // production always supplies the recovery inventory symbols (production-shadow-runtime); the base fixture omits them
+    return leaves(await runThetaShadowCycle(baseConfig({ recoveryInventoryUnderlyings: [] })));
+  };
+  const differing = (left: Map<string, string>, right: Map<string, string>) =>
+    [...new Set([...left.keys(), ...right.keys()])].filter((key) => left.get(key) !== right.get(key));
+  try {
+    const off = await runWith(undefined);
+    const noise = new Set(differing(off, await runWith('OFF')));
+    assert.ok(noise.size < off.size * 0.05, `noise floor must be small (${noise.size} of ${off.size} leaves)`);
+    process.env.VERCEL_ENV = 'production';
+    console.info = (message?: unknown) => { lines.push(String(message)); };
+    for (const mode of ['SHADOW', 'PARITY', 'ENFORCED']) {
+      const changed = differing(off, await runWith(mode)).filter((key) => !noise.has(key));
+      assert.deepEqual(changed, [], `${mode} must not change any decision, candidate or quantity`);
+    }
+  } finally {
+    console.info = originalInfo;
+    if (previousMode === undefined) delete process.env.PORTFOLIO_ALLOCATOR_MODE; else process.env.PORTFOLIO_ALLOCATOR_MODE = previousMode;
+    if (previousEnv === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = previousEnv;
+  }
+  const observed = lines.map((line) => { try { return JSON.parse(line) as Record<string, unknown>; } catch { return null; } })
+    .filter((row): row is Record<string, unknown> => row?.stage === 'PORTFOLIO_ALLOCATOR_OBSERVED');
+  assert.equal(observed.length, 3, 'one aggregate line per observing mode per symbol cycle');
+  for (const row of observed) {
+    assert.equal(row.executionEffect, 'NONE');
+    assert.equal(row.enforcementCertified, false);
+    assert.equal(row.divergences, 0, 'PARITY_DIVERGENCES = 0 on the certified cycle fixture');
+    assert.ok(Number(row.compared) >= 1, `parity actually compared a real candidate (not vacuous): ${JSON.stringify(row)}`);
+  }
+  assert.equal(observed.find((row) => row.mode === 'ENFORCED')?.notice, 'PORTFOLIO_ALLOCATOR_ENFORCEMENT_NOT_CERTIFIED');
+});
