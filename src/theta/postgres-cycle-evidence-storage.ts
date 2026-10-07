@@ -425,6 +425,34 @@ function boundedEligibilityProjection(eligibility: readonly {
   } as unknown as JsonValue;
 }
 
+function boundedEdgeReceiptProjection(receipts: readonly {
+  readonly candidateId: string; readonly receiptId: string; readonly strategy: string; readonly edgeId: string;
+  readonly evidenceState: string;
+}[], keep: ReadonlySet<string>): JsonValue {
+  const prioritized = [...receipts].sort((left, right) => {
+    const leftKept = keep.has(left.candidateId) ? 1 : 0;
+    const rightKept = keep.has(right.candidateId) ? 1 : 0;
+    return rightKept - leftKept || left.candidateId.localeCompare(right.candidateId);
+  });
+  const entries = prioritized.slice(0, boundedProjectionSampleSize).map((receipt) => ({
+    candidateId: receipt.candidateId,
+    receiptId: receipt.receiptId,
+    strategy: receipt.strategy,
+    edgeId: receipt.edgeId,
+    evidenceState: receipt.evidenceState,
+  }));
+  return {
+    storageState: BOUNDED_STATE,
+    count: receipts.length,
+    truncated: receipts.length > entries.length,
+    fullListHash: hash(canonicalJson(receipts as unknown as JsonValue)),
+    strategyCounts: countBy(receipts.map((receipt) => receipt.strategy)),
+    edgeCounts: countBy(receipts.map((receipt) => receipt.edgeId)),
+    evidenceStateCounts: countBy(receipts.map((receipt) => receipt.evidenceState)),
+    entries,
+  } as unknown as JsonValue;
+}
+
 export function projectCanonicalFrontierForPostgres(frontier: CanonicalStrategyFrontier): {
   readonly projection: Readonly<Record<string, JsonValue>>; readonly projectionHash: string;
 } {
@@ -449,6 +477,7 @@ export function projectCanonicalFrontierForPostgres(frontier: CanonicalStrategyF
       ...adaptive,
       storageState: 'FULL_STATE_IN_COMPRESSED_CYCLE_ARCHIVE',
       fullStateHash: hash(canonicalJson(adaptive)),
+      strategyEdgeReceipts: boundedEdgeReceiptProjection(adaptive.strategyEdgeReceipts, keep),
       shadowComparison: {
         ...adaptive.shadowComparison,
         cohorts: adaptive.shadowComparison.cohorts.map((cohort) => ({

@@ -62,6 +62,9 @@ interface BoundedList { count: number; truncated: boolean; fullListHash: string;
   riskFeasibleCount?: number; positiveSizedCount?: number }
 const shadowOf = (projection: unknown) => (projection as { adaptiveShadowDecision: { shadowComparison: {
   excluded: BoundedList; candidateEligibility: BoundedList } } }).adaptiveShadowDecision.shadowComparison;
+const edgeReceiptsOf = (projection: unknown) => (projection as { adaptiveShadowDecision: { strategyEdgeReceipts: BoundedList & {
+  strategyCounts: Record<string, number>; edgeCounts: Record<string, number>; evidenceStateCounts: Record<string, number>;
+} } }).adaptiveShadowDecision.strategyEdgeReceipts;
 const sha = (value: unknown): string => createHash('sha256').update(canonicalJson(value as never)).digest('hex');
 
 test('the Postgres frontier projection stays bounded at 300 / 2619 / 5000 contracts and never exceeds the inline policy', () => {
@@ -95,6 +98,16 @@ test('truncation is explicit and exact: counts, per-reason counts and a hash of 
   assert.equal(projected.candidateEligibility.riskFeasibleCount, full.candidateEligibility.filter((entry) => entry.riskFeasible).length);
   assert.equal(projected.candidateEligibility.positiveSizedCount,
     full.candidateEligibility.filter((entry) => (entry.actualSizedQuantity ?? 0) > 0).length);
+
+  const fullEdgeReceipts = frontier.adaptiveShadowDecision?.strategyEdgeReceipts;
+  assert.ok(fullEdgeReceipts);
+  const projectedEdgeReceipts = edgeReceiptsOf(projectCanonicalFrontierForPostgres(frontier).projection);
+  assert.equal(projectedEdgeReceipts.count, fullEdgeReceipts.length);
+  assert.equal(projectedEdgeReceipts.truncated, fullEdgeReceipts.length > boundedProjectionSampleSize);
+  assert.equal(projectedEdgeReceipts.fullListHash, sha(fullEdgeReceipts));
+  assert.equal(Object.values(projectedEdgeReceipts.strategyCounts).reduce((sum, count) => sum + count, 0), fullEdgeReceipts.length);
+  assert.equal(Object.values(projectedEdgeReceipts.edgeCounts).reduce((sum, count) => sum + count, 0), fullEdgeReceipts.length);
+  assert.equal(Object.values(projectedEdgeReceipts.evidenceStateCounts).reduce((sum, count) => sum + count, 0), fullEdgeReceipts.length);
 });
 
 test('a short list is not marked truncated and keeps every entry', () => {

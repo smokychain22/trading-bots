@@ -449,7 +449,7 @@ export function validateDeepSystemInventory(rows: readonly DeepSystemInventoryRo
     if (row.paperAuthority === 'NO' && row.realityLevel === 'L9_BROKER_AUTHORIZED') issues.push(`AUTHORITY_CONTRADICTION:${key}`);
   }
   const expectedCounts: Readonly<Record<string, number>> = {
-    METHOD: 34, STRATEGY: 5, ACTION: 17, FEATURE: 20, HARD_RULE: 11, AEGIS_FAMILY: 12,
+    METHOD: 35, STRATEGY: 5, ACTION: 17, FEATURE: 20, HARD_RULE: 11, AEGIS_FAMILY: 12,
     BRAIN_LAYER: 21, PROFIT_POLICY: canonicalV7ProfitTakingPolicies.length, CLAUDE_WORK_PACKAGE: 100,
     INFRASTRUCTURE: infrastructureDefinitions.length,
   };

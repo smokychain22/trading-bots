@@ -13,7 +13,7 @@ test('deep inventory covers every mandated cardinality without duplicate or blan
   const summary = summarizeDeepSystemInventory();
   assert.equal(summary.inventoryCoverage, 'COMPLETE');
   assert.equal(summary.inventoryCoverageMeaning, 'ROW_CARDINALITY_SCHEMA_AUTHORITY_AND_SOURCE_REFERENCE_VALIDATION_ONLY');
-  assert.equal(summary.byCategory.METHOD, 34);
+  assert.equal(summary.byCategory.METHOD, 35);
   assert.equal(summary.byCategory.STRATEGY, 5);
   assert.equal(summary.byCategory.ACTION, 17);
   assert.equal(summary.byCategory.FEATURE, 20);
@@ -55,8 +55,8 @@ test('research-only strategy actions do not inherit Paper authority from the sha
   assert.equal(conventional?.paperAuthority, 'LOCKED_PAPER_PATH');
 });
 
-test('34-method audit does not infer runtime, empirical, or broker proof from source', () => {
-  assert.equal(methodInventory.length, 34);
+test('35-method audit does not infer runtime, empirical, or broker proof from source', () => {
+  assert.equal(methodInventory.length, 35);
   assert.equal(methodInventory.filter((row) => row.currentWorkerRealData).length, 0);
   assert.equal(methodInventory.filter((row) => row.empiricalStatus === 'VALIDATED').length, 0);
   assert.equal(methodInventory.filter((row) => row.realityLevel === 'L7_CURRENT_WORKER_REAL_DATA').length, 0);
