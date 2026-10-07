@@ -18,6 +18,7 @@ import { assessPaperBootstrapOwnershipEvidence, type PaperEntryBootstrapAssessme
 import { buildEntryThesisReceipt, type ThesisClaim } from './entry-thesis-receipt.js';
 import type { StrategyAccountPolicyCompatibility } from './strategy-account-policy-compatibility.js';
 import { economicRankingForCspCandidates, type EconomicsGateMode } from './strategy-economics.js';
+import type { QEconomicFunnelReceipt } from './q-economic-funnel.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 
 export interface CandidateAegisRequest {
@@ -322,6 +323,8 @@ export interface NewRiskOrchestrationRequest {
   readonly requiredModelVersions: Readonly<Record<string, string>>;
   /** Strategy-economics ranking mode (default SHADOW: observe beside the Production choice, never select). */
   readonly economicsGateMode?: EconomicsGateMode;
+  /** SHADOW Q funnel receipt computed at shortlist time; attached to the decision receipt unchanged. */
+  readonly qEconomicFunnel?: QEconomicFunnelReceipt | { readonly state: 'FAILED'; readonly reasonCode: string };
 
   readonly ownershipPolicy: Record<string, unknown>;
   readonly ownershipInputs: Record<string, unknown>;
@@ -1080,9 +1083,10 @@ export async function runNewRiskOrchestration(
     requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
     ...(economicRanking === undefined ? {} : { economicRanking }),
   });
-  const receipt = attachEntryThesis(
+  const thesisReceipt = attachEntryThesis(
     assembledReceipt, request, ownershipResult.data, regimeResult.data, candidateResults,
   );
+  const receipt = request.qEconomicFunnel === undefined ? thesisReceipt : { ...thesisReceipt, qEconomicFunnel: request.qEconomicFunnel };
 
   return {
     receipt, ownership: ownershipResult.data,
