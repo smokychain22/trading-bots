@@ -690,10 +690,13 @@ export async function runAutonomousRuntimeCycle(
           onActionPlanEnqueued:async(actionPlanId)=>{
             immediateHandoff.result=await immediateReadyPlanHandoff(actionPlanId,jobId);
           }});
+        // The full frontier WAS rescanned, whatever the handoff outcome. Record it before any early return: otherwise a non-SUCCEEDED
+        // handoff (e.g. SKIPPED while the first-canary lock pauses new risk) made OPPORTUNITY_SCAN run a SECOND full scan in the same
+        // request, overrunning the 300 s function limit every evidence cycle (2026-10-07 open) and starving reconciliation/management.
+        opportunityScanCompleted=true;
+        if(scan.completeness==='COMPLETE')await cycleStore.markNearMissesTriggered(pending,new Date().toISOString(),scan.scanId);
         if(immediateHandoff.result!==null&&immediateHandoff.result.status!=='SUCCEEDED')return immediateHandoff.result;
         if(scan.completeness!=='COMPLETE')return degraded(`WAIT_RECHECK_SCAN_${scan.completeness}`,retryAt);
-        await cycleStore.markNearMissesTriggered(pending,new Date().toISOString(),scan.scanId);
-        opportunityScanCompleted=true;
         return succeeded();
       }
       if (jobType === 'OPPORTUNITY_SCAN') {

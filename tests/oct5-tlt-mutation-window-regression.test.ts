@@ -94,3 +94,18 @@ test('every way a selected authorized candidate can fail to become an enqueued p
   assert.match(scan, /SELECTED_CANDIDATE_DROPPED:\$\{!planEvidenceEnabled\?'PLAN_ENQUEUE_DISABLED_BY_ENVIRONMENT'/);
   for (const reason of ['CORPORATE_ACTION_READ_INCOMPLETE', 'SELECTED_DECISION_NOT_PERSISTED', 'PLAN_PRECONDITION_UNMET']) assert.ok(scan.includes(`'${reason}'`), reason);
 });
+
+test('2026-10-07 OPEN REGRESSION: one evidence request scans the full frontier at most ONCE, even when the immediate handoff is not SUCCEEDED', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync('src/theta/autonomous-runtime.ts', 'utf8').replace(/\r\n/g, '\n');
+  const waitRecheck = source.slice(source.indexOf("if (jobType === 'WAIT_RECHECK')"), source.indexOf("if (jobType === 'OPPORTUNITY_SCAN')"));
+  const marked = waitRecheck.indexOf('opportunityScanCompleted=true;');
+  const firstEarlyReturn = waitRecheck.indexOf("immediateHandoff.result.status!=='SUCCEEDED')return immediateHandoff.result;");
+  const incompleteReturn = waitRecheck.indexOf('return degraded(`WAIT_RECHECK_SCAN_');
+  assert.ok(marked > 0 && firstEarlyReturn > 0 && incompleteReturn > 0, 'the WAIT_RECHECK block keeps its shape');
+  assert.ok(marked < firstEarlyReturn && marked < incompleteReturn,
+    'the rescan is recorded BEFORE any early return (a SKIPPED handoff under the canary lock must not trigger a second full scan)');
+  assert.match(waitRecheck, /if\(scan\.completeness==='COMPLETE'\)await cycleStore\.markNearMissesTriggered\(/,
+    'near misses re-evaluated by a complete scan are marked, so WAIT_RECHECK does not re-run them every cycle');
+  assert.match(source, /if\(opportunityScanCompleted\)return skipped\('FULL_FRONTIER_ALREADY_RESCANNED'\);/);
+});
