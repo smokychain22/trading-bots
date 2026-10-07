@@ -779,7 +779,8 @@ export class PostgresManagementInputStore {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [state.chainId]);
         const previous = await client.query(
           `SELECT management_input_snapshot_id,input_json,content_hash FROM trade.management_input_snapshot
-           WHERE chain_id=$1 ORDER BY observed_at DESC,created_at DESC LIMIT 1`, [state.chainId],
+           WHERE chain_id=$1 AND input_json->>'inputKind' IS DISTINCT FROM 'BROKER_CONFIRMED_ORPHAN'
+           ORDER BY observed_at DESC,created_at DESC LIMIT 1`, [state.chainId],
         );
         const previousState = previous.rowCount === 1 ? previous.rows[0].input_json as ManagementInputState : null;
         if (previous.rows[0]?.content_hash === state.contentHash) {

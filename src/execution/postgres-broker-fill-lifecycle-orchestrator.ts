@@ -25,8 +25,35 @@ const openStockLots=(value:unknown):readonly OpenStockLot[]=>Array.isArray(value
 export interface FillLifecycleOrchestrationReport{readonly inspected:number;readonly applied:number;readonly duplicates:number;
   readonly partial:number;readonly unresolved:number;readonly results:readonly LifecycleApplicationResult[];}
 
-/** Routes fully broker-confirmed THETA fills into the same atomic lifecycle writer used by assignment and expiry. */
+/**
+ * Routes fully broker-confirmed THETA fills into the same atomic lifecycle writer used by assignment and expiry.
+ *
+ * Open-then-close convergence (BROKER_CONFIRMED_ORPHAN_POSITION_RECOVERY): when an open's lifecycle registration was blocked (schema
+ * bug, DB commit failure, crash) and its position was closed before registration recovered, the replay applies the OPEN first (rows
+ * are ordered by intent creation) and the close only resolves its option leg once that leg exists. A pass that newly applied an open
+ * and still has unresolved facts therefore runs exactly one more pass, so OPTION_CLOSE lands in the same cycle against the leg just
+ * created. Every application is idempotent by evidence key, so the second pass can not duplicate premium, capital or events.
+ */
 export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,observedAt:string):Promise<FillLifecycleOrchestrationReport>{
+  const first=await applyConfirmedFillLifecyclePass(pool,connectionId,observedAt);
+  const openedNow=first.results.filter((result)=>!result.duplicate
+    &&(result.eventKind==='SHORT_PUT_OPEN'||result.eventKind==='COVERED_CALL_OPEN'));
+  if(openedNow.length===0||first.unresolved===0)return first;
+  const second=await applyConfirmedFillLifecyclePass(pool,connectionId,observedAt);
+  return mergeConvergencePasses(first,second);
+}
+
+/** Pass-two duplicates of pass-one applications are the same facts, not new duplicates; pass two owns the remaining-gap counts. */
+export function mergeConvergencePasses(first:FillLifecycleOrchestrationReport,second:FillLifecycleOrchestrationReport):FillLifecycleOrchestrationReport{
+  const firstApplied=new Set(first.results.filter((result)=>!result.duplicate).map((result)=>result.applicationId));
+  const results=[...first.results.filter((result)=>!result.duplicate),
+    ...second.results.filter((result)=>!firstApplied.has(result.applicationId))];
+  return {inspected:second.inspected,applied:results.filter((result)=>!result.duplicate).length,
+    duplicates:results.filter((result)=>result.duplicate).length+Math.max(0,second.duplicates-second.results.filter((result)=>result.duplicate).length),
+    partial:second.partial,unresolved:second.unresolved,results};
+}
+
+async function applyConfirmedFillLifecyclePass(pool:Pool,connectionId:string,observedAt:string):Promise<FillLifecycleOrchestrationReport>{
   const rows=await pool.query(`SELECT oi.order_intent_id,oi.chain_id,ec.bot_instance_id,oi.decision_id,oi.theta_action,oi.status,oi.quantity AS order_quantity,
     oi.option_contract_id,oi.underlying_id,oc.contract_symbol,u.symbol AS underlying_symbol,oc.multiplier,ol.option_leg_id,ol.entry_credit_debit,
     ol.original_leg_quantity,COALESCE(pc.partial_closed_quantity,0) AS partial_closed_quantity,
