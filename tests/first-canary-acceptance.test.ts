@@ -111,3 +111,23 @@ test('D CANARY: a native two-leg canary is accepted on its exact leg set (order-
   assert.match(source, /JOIN market\.option_contract oc ON oc\.option_contract_id=oi\.option_contract_id/, 'the certified single-leg Q/H query is unchanged');
   assert.match(source, /const definedRisk=await reconcileDefinedRiskCanary\(input\);/, 'an mleg canary is never silently invisible to acceptance');
 });
+
+test('CANARY STATE MACHINE: every Alpaca status maps to one typed canary state; a partial fill is occupied (pending), never accepted or re-armable', async () => {
+  const { classifyAlpacaCanaryOrderState } = await import('../src/execution/postgres-first-canary-acceptance.js');
+  const expected: Record<string, string | null> = { new: 'WORKING', accepted: 'WORKING', pending_new: 'WORKING', partially_filled: 'PARTIAL', filled: 'FILLED',
+    rejected: 'REJECTED', canceled: 'CANCELED', expired: 'EXPIRED', done_for_day: 'CANCELED', something_new: null };
+  for (const [status, state] of Object.entries(expected)) {
+    const actual = classifyAlpacaCanaryOrderState(status);
+    if (state === null) assert.equal(actual, null, `${status} is UNKNOWN evidence, never a guessed state`);
+    else assert.equal(actual, state, status);
+  }
+  const base = input();
+  const partial = buildFirstCanaryAcceptanceReceipt({ ...base, broker: { ...base.broker, orderState: good('PARTIAL'), filledQuantity: good(0) } });
+  assert.equal(partial.status, 'IN_PROGRESS');
+  assert.deepEqual(partial.pending, ['BROKER_ORDER_PARTIAL']);
+  const { unfilledTerminalBrokerOrderSql } = await import('../src/execution/paper-execution-authorization.js');
+  const reArmable = unfilledTerminalBrokerOrderSql('bo');
+  for (const status of ['PARTIAL', 'UNKNOWN_SUBMISSION', 'RECONCILING', 'SUBMITTED', 'ACKNOWLEDGED', 'REJECTED', 'FILLED']) {
+    assert.ok(!reArmable.includes(`'${status}'`), `${status} never re-arms the canary lane`);
+  }
+});
