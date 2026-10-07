@@ -50,7 +50,7 @@ test('a pre-069 schema (head 068) is locked, never run mid-cycle: the safe order
 
 test('schema ahead, source mismatch, and unreadable migration metadata fail closed', async () => {
   assert.equal(assessRuntimeSchemaCompatibility({
-    appliedVersions: [...runtimeRequiredMigrations, '070_future_schema'], sourceSha, workerSha: sourceSha,
+    appliedVersions: [...runtimeRequiredMigrations, '071_future_schema'], sourceSha, workerSha: sourceSha,
   }).state, 'SCHEMA_AHEAD_UNSUPPORTED');
   assert.equal(assessRuntimeSchemaCompatibility({
     appliedVersions: [...runtimeRequiredMigrations], sourceSha,

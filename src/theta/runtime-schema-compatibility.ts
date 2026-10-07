@@ -4,8 +4,11 @@ export const runtimeSchemaCompatibilityVersion = 'theta-runtime-schema-compatibi
 // 069 (native multi-leg durability: order_class / order_intent_leg / defined_risk_position / chain_kind / governed strategy authority) is REQUIRED by this runtime: every order insert
 // writes order_class and every Wheel loader filters chain_kind. 069 is additive with defaults, so the PREVIOUS runtime still works on a 069 schema: the safe order is
 // migrate-then-deploy. Deploy-then-migrate stays locked (MIGRATION_REQUIRED) instead of failing mid-cycle. Any head outside [minimum, maximum] stays locked.
+// 070 only widens the lifecycle_application event_kind CHECK to include SHORT_PUT_OPEN (the kind this runtime already emits). This runtime
+// runs unchanged on 069 (the insert just keeps failing closed until 070 is applied) and on 070, so it is deployed FIRST and the migration
+// follows: deploy-then-migrate is the safe order for 070 (the reverse would leave the previous runtime SCHEMA_AHEAD_UNSUPPORTED).
 export const runtimeSchemaMinimum = '069_multi_leg_order_durability' as const;
-export const runtimeSchemaMaximum = '069_multi_leg_order_durability' as const;
+export const runtimeSchemaMaximum = '070_lifecycle_short_put_open_event' as const;
 
 export const runtimeRequiredMigrations = [
   '020_local_worker_runtime',
