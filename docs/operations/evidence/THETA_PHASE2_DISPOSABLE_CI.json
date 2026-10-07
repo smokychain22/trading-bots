@@ -1,9 +1,9 @@
 {
   "version": "theta-phase2-disposable-ci-evidence-v1",
-  "sourceSha": "3900e753054325a30a87e4b15e7a08a67711aeb4",
-  "ciRun": "37549184994",
-  "ciUrl": "https://github.com/smokychain22/trading-bots/actions/runs/37549184994",
-  "observedAt": "2026-10-07T00:01:51.998Z",
+  "sourceSha": "97f652dcb30a785d14245a7a09f5a9e3e27a24bb",
+  "ciRun": "37594693359",
+  "ciUrl": "https://github.com/smokychain22/trading-bots/actions/runs/37594693359",
+  "observedAt": "2026-10-07T08:43:24.733Z",
   "scope": "DISPOSABLE_DATABASE_NOT_PRODUCTION",
   "currentWorkerProven": false,
   "brokerMutations": 0,
@@ -32,7 +32,7 @@
         ]
       },
       "artifact": "disposable-faults.jsonl",
-      "rawArtifactSha256": "08e939ddc2ea513c59f289a9249e6a8a4a71c1f633780c9406adc5b5d7930d8c",
+      "rawArtifactSha256": "ccb9975e2413b6578bafaecd83cd3457dd54d96b00a6e8c89007345dc7cf511b",
       "result": {
         "requirementId": "2.2.FAULT_MATRIX",
         "reviewedBehavior": "Actual disposable PostgreSQL exercises statement timeout, checked-out and idle backend termination, transaction rollback and expired queue handoff. Every stage checks complete drain and no idle transaction. No Production fault is injected.",
@@ -54,42 +54,42 @@
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "server statement timeout retains SQLSTATE 57014, never acquisition timeout",
             "state": "PASS",
-            "durationMs": 73.552705,
+            "durationMs": 100.31302,
             "line": 44
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "backend termination during a checked-out query is contained and the next client is fresh",
             "state": "PASS",
-            "durationMs": 8.760647,
+            "durationMs": 20.747185,
             "line": 59
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "transaction error rolls back with no leaked transaction or client",
             "state": "PASS",
-            "durationMs": 5.897688,
+            "durationMs": 11.023194,
             "line": 79
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "expired queued acquisition never invokes work and late client handoff is released",
             "state": "PASS",
-            "durationMs": 51.932357,
+            "durationMs": 53.736512,
             "line": 87
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "idle backend termination is reported without an unhandled emitter error",
             "state": "PASS",
-            "durationMs": 6.95654,
+            "durationMs": 13.226245,
             "line": 102
           },
           {
             "file": "tests/db/runtime-postgres-faults.test.ts",
             "name": "real local PostgreSQL fault containment releases clients and distinguishes query failure from acquisition",
             "state": "PASS",
-            "durationMs": 148.985012,
+            "durationMs": 202.937872,
             "line": 24
           }
         ]
@@ -115,7 +115,7 @@
         ]
       },
       "artifact": "disposable-persistence.jsonl",
-      "rawArtifactSha256": "68e6595dfa7fb709287d7f5812c24704e081acb23b7a7d3b9e699385ead2d151",
+      "rawArtifactSha256": "7dfdf6d969d2e1e2729e310fa9e17307a91fc52c19d692771bddb9eccfc16bd8",
       "result": {
         "requirementId": "2.4.FRESH_CYCLE",
         "reviewedBehavior": "Actual runAutonomousRuntimeCycle BROKER scope persists good reconciliation, injects a GET-only broker account 503 and recovers with new reads, correlation and persisted snapshot in real disposable PostgreSQL. Checks zero orders and drained pool. Does not prove deployed recovery or market evidence.",
@@ -129,7 +129,7 @@
         "sourceHashes": {
           "src/customer/customer-store.ts": "1848de3b49c204272cee480812b263448cd8734affe9fdc7d73be8f8c2a5834f",
           "src/customer/paper-account-role.ts": "987b765ed13c0c9029c56b33dac216c404e470678092ffdef6018fccaf7aba66",
-          "src/theta/autonomous-runtime.ts": "9fe9a3a43edab299b6a9072c555939382face90cc894e8e84bd029bef0c6c25c",
+          "src/theta/autonomous-runtime.ts": "a947a64f874b0cd23a904357173e5d9f134a1b40986e0257bda619382479eecc",
           "src/theta/runtime-postgres-client.ts": "61d20c76cfe10fac649fcb6c4a719ea50a69d6bc8fc0fcd615993037112e0748",
           "tests/db/customer-persistence.test.ts": "8c7d3e2a98349912ae8f1d1f5380fe844b652ff2eb0d1e7478877f03e0a8276d"
         },
@@ -138,12 +138,12 @@
             "file": "tests/db/customer-persistence.test.ts",
             "name": "real disposable PostgreSQL preserves user limits, master role and tenant isolation",
             "state": "PASS",
-            "durationMs": 965.519633,
+            "durationMs": 954.585386,
             "line": 12
           }
         ]
       }
     }
   ],
-  "artifactHash": "ea5ac23127a7272a003b1411a83d9a8e66d23e3556436700a9279894d2a1ae5d"
+  "artifactHash": "b90dbfff1aaa4711592d7c6cfd3a8c16d8d252a63101c41db43ddbb10792698a"
 }
