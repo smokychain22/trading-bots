@@ -206,10 +206,10 @@ export function buildStrategyEconomicsReceipt(input: StrategyEconomicsInput): St
     : packageLossAt(spot * Math.exp(-2 * iv * Math.sqrt(dte / 365)));
   const twoSigma = twoSigmaValue === null ? unknown(spot === null ? 'SPOT_UNKNOWN' : iv === null ? 'SHORT_LEG_IV_UNKNOWN' : 'DTE_OR_CREDIT_INVALID')
     : known(round(twoSigmaValue, 4), 'EXPIRY_INTRINSIC_AT_MINUS_TWO_IMPLIED_SIGMA');
-  // Reward-to-stress uses the larger of the two adverse scenarios as the denominator.
-  const stressDenominator = [stressValue, twoSigmaValue].filter(finite);
-  const worstStress = stressDenominator.length === 0 ? null : Math.max(...stressDenominator);
-  const rewardToStress = profitBasis === null || worstStress === null ? unknown('PROFIT_OR_STRESS_UNKNOWN')
+  // Reward-to-stress uses the larger of the two adverse scenarios as the denominator, and needs BOTH: dropping an
+  // unknown scenario would silently flatter exactly the candidates with missing IV.
+  const worstStress = finite(stressValue) && finite(twoSigmaValue) ? Math.max(stressValue, twoSigmaValue) : null;
+  const rewardToStress = profitBasis === null || worstStress === null ? unknown('PROFIT_OR_A_STRESS_SCENARIO_UNKNOWN')
     : worstStress <= 0 ? unknown('NO_STRESS_LOSS_IN_MODELED_SCENARIOS')
       : known(round(profitBasis / worstStress, 8), 'MAX_PROFIT_OVER_WORST_MODELED_STRESS_LOSS');
 

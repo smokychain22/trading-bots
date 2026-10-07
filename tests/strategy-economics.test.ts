@@ -47,6 +47,9 @@ test('XLE 57P fill economics: $28 max profit on $5,700 collateral is a 0.49% / 4
   assert.equal(v(r.stressLossUsd), 0);
   assert.ok(v(r.impliedTwoSigmaMoveLossUsd) > 300);
   assert.ok(v(r.rewardToStressRisk) < 0.1);
+  // Missing IV removes the two-sigma scenario, so reward-to-stress is UNKNOWN rather than computed from the gap alone.
+  assert.deepEqual(buildStrategyEconomicsReceipt(cspInput({ shortLeg: { ...cspInput().shortLeg, iv: null } })).rewardToStressRisk,
+    { state: 'UNKNOWN', reason: 'PROFIT_OR_A_STRESS_SCENARIO_UNKNOWN' });
 });
 
 test('a put credit spread uses width, max loss as capital, and the worst leg spread', () => {
