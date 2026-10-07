@@ -10,7 +10,10 @@ Provenance labels:
 - `MATH_REPRODUCED`: mathematics implemented here and checked by a test.
 - Every numeric threshold in a `*ResearchPolicy` is a **research parameter** for replay grids. None is a Production value.
 
-## Modules (`src/theta/management-economics/`, `src/theta/performance-analytics/`)
+## Modules (`src/theta/management-economics/`, `src/research/performance-analytics-dashboard.ts`, `src/research/postgres-performance-source.ts`)
+
+Performance analytics is kept in the research namespace because it consumes resolved outcomes for reporting and model
+evidence. It has no Production decision authority. Its PostgreSQL source is read-only.
 
 ### `black-scholes.ts`
 European BS price, delta, gamma, theta/day and vega (MATH_REPRODUCED: textbook value, put-call parity, expiry intrinsic).
