@@ -5,6 +5,20 @@ export const firstCanaryAcceptanceVersion = 'theta-first-canary-acceptance-v3' a
 
 export type CanaryBrokerState = 'ACKNOWLEDGED' | 'WORKING' | 'PARTIAL' | 'FILLED' | 'REJECTED' | 'CANCELED' | 'EXPIRED';
 
+/** One leg of a native mleg canary: the exact qualified contract, its position intent and its ratio. */
+export interface CanaryPackageLeg {
+  readonly occ: string;
+  readonly positionIntent: string;
+  readonly ratio: number;
+}
+export interface CanaryBrokerPackageLeg extends CanaryPackageLeg {
+  readonly filledQuantity: number;
+}
+
+/** Package identity compared without depending on the order the provider lists legs in. */
+export const canonicalCanaryPackage = (legs: readonly CanaryPackageLeg[]): string =>
+  legs.map((leg) => `${leg.occ}:${leg.positionIntent}:${leg.ratio}`).sort().join('|');
+
 export interface FirstCanaryAcceptanceInput {
   readonly asOf: string;
   readonly expected: {
@@ -15,6 +29,8 @@ export interface FirstCanaryAcceptanceInput {
     readonly positionIntent: 'sell_to_open';
     readonly quantity: number;
     readonly clientOrderId: string;
+    /** present only for a native multi-leg (D) canary: the parent has no single contract/intent, so identity is the leg set */
+    readonly package?: { readonly legs: readonly CanaryPackageLeg[] };
   };
   readonly persistence: {
     readonly decisionPersisted: Evidence<boolean>;
@@ -33,6 +49,8 @@ export interface FirstCanaryAcceptanceInput {
     readonly orderState: Evidence<CanaryBrokerState>;
     readonly acknowledgementObserved: Evidence<boolean>;
     readonly duplicateEconomicExposureCount: Evidence<number>;
+    /** required when expected.package is present: the broker's own legs for the parent order */
+    readonly packageLegs?: Evidence<readonly CanaryBrokerPackageLeg[]>;
   };
   readonly evidence: {
     readonly reconciliationComplete: Evidence<boolean>;
@@ -85,10 +103,21 @@ export function buildFirstCanaryAcceptanceReceipt(input: FirstCanaryAcceptanceIn
   requireTrue(input.persistence.idempotencyReserved, 'IDEMPOTENCY_RESERVED', blockers);
   requireTrue(input.persistence.deterministicClientOrderId, 'CLIENT_ORDER_ID_DETERMINISTIC', blockers);
 
+  const expectedPackage = input.expected.package;
   const account = good(input.broker.executionAccountId, 'BROKER_ACCOUNT', blockers);
-  const contract = good(input.broker.occContract, 'BROKER_CONTRACT', blockers);
-  const side = good(input.broker.side, 'BROKER_SIDE', blockers);
-  const positionIntent = good(input.broker.positionIntent, 'BROKER_POSITION_INTENT', blockers);
+  // a native mleg parent has no single contract, side or intent: its identity is the exact leg set, checked below
+  const contract = expectedPackage === undefined ? good(input.broker.occContract, 'BROKER_CONTRACT', blockers) : null;
+  const side = expectedPackage === undefined ? good(input.broker.side, 'BROKER_SIDE', blockers) : null;
+  const positionIntent = expectedPackage === undefined ? good(input.broker.positionIntent, 'BROKER_POSITION_INTENT', blockers) : null;
+  let brokerLegs: readonly CanaryBrokerPackageLeg[] | null = null;
+  if (expectedPackage !== undefined) {
+    if (expectedPackage.legs.length < 2) blockers.push('EXPECTED_PACKAGE_LEGS_INVALID');
+    brokerLegs = input.broker.packageLegs === undefined ? (blockers.push('BROKER_PACKAGE_LEGS_MISSING'), null)
+      : good(input.broker.packageLegs, 'BROKER_PACKAGE_LEGS', blockers);
+    if (brokerLegs !== null && canonicalCanaryPackage(brokerLegs) !== canonicalCanaryPackage(expectedPackage.legs)) {
+      blockers.push('BROKER_PACKAGE_IDENTITY_MISMATCH');
+    }
+  }
   const requestedQuantity = good(input.broker.requestedQuantity, 'BROKER_REQUESTED_QUANTITY', blockers);
   const filledQuantity = good(input.broker.filledQuantity, 'BROKER_FILLED_QUANTITY', blockers);
   const clientOrderId = good(input.broker.clientOrderId, 'BROKER_CLIENT_ORDER_ID', blockers);
@@ -117,6 +146,10 @@ export function buildFirstCanaryAcceptanceReceipt(input: FirstCanaryAcceptanceIn
 
   if (state === 'FILLED') {
     if (filledQuantity !== input.expected.quantity) blockers.push('FILLED_QUANTITY_NOT_COMPLETE');
+    // every leg of a filled package filled in full (quantity x ratio): a parent FILLED with a short leg missing is never accepted
+    if (brokerLegs !== null && brokerLegs.some((leg) => leg.filledQuantity !== input.expected.quantity * leg.ratio)) {
+      blockers.push('PACKAGE_LEG_FILL_NOT_COMPLETE');
+    }
     requireTrue(input.evidence.tcaPersisted, 'TCA_PERSISTED', blockers);
     requireTrue(input.evidence.lifecycleApplied, 'LIFECYCLE_APPLIED', blockers);
     requireTrue(input.evidence.managementRegistered, 'MANAGEMENT_REGISTERED', blockers);

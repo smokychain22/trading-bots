@@ -78,3 +78,36 @@ test('a filled canary cannot activate without management ownership and future ob
   assert.ok(receipt.blockers.includes('MANAGEMENT_REGISTERED_FALSE'));
   assert.ok(receipt.blockers.includes('FUTURE_OBSERVATIONS_SCHEDULED_FALSE'));
 });
+
+test('D CANARY: a native two-leg canary is accepted on its exact leg set (order-insensitive), and never with a leg missing, mismatched or partly filled', async () => {
+  const { buildFirstCanaryAcceptanceReceipt } = await import('../src/execution/first-canary-acceptance.js');
+  const at = '2026-10-07T15:00:00.000Z';
+  const ok = <T>(value: T) => ({ state: 'GOOD' as const, value, source: 'TEST', asOf: at });
+  const expectedLegs = [{ occ: 'SPY261016P00500000', positionIntent: 'sell_to_open', ratio: 1 }, { occ: 'SPY261016P00495000', positionIntent: 'buy_to_open', ratio: 1 }];
+  const brokerLegs = (fills: [number, number], legs = expectedLegs) => ok([...legs].reverse().map((leg, index) => ({ ...leg, filledQuantity: fills[index] as number })));
+  const input = (packageLegs: ReturnType<typeof brokerLegs>, orderState: 'FILLED' | 'WORKING' = 'FILLED') => ({ asOf: at,
+    expected: { orderIntentId: 'i', executionAccountId: 'a', occContract: 'MLEG:pkg', side: 'sell' as const, positionIntent: 'sell_to_open' as const,
+      quantity: 1, clientOrderId: 'c', package: { legs: expectedLegs } },
+    persistence: { decisionPersisted: ok(true), orderIntentPersisted: ok(true), idempotencyReserved: ok(true), deterministicClientOrderId: ok(true) },
+    broker: { executionAccountId: ok('a'), occContract: ok('MLEG:any-provider-order'), side: ok('buy'),
+      positionIntent: { state: 'INVALID' as const, value: null, source: 'MLEG_PARENT', asOf: at }, requestedQuantity: ok(1),
+      filledQuantity: ok(orderState === 'FILLED' ? 1 : 0), clientOrderId: ok('c'), orderState: ok(orderState), acknowledgementObserved: ok(true),
+      duplicateEconomicExposureCount: ok(1), packageLegs },
+    evidence: { reconciliationComplete: ok(true), tcaPersisted: ok(true), lifecycleApplied: ok(true), managementRegistered: ok(true),
+      futureObservationsScheduled: ok(true), newRiskRelocked: ok(true), managementEnabled: ok(true), followerMutationCount: ok(0), liveMutationCount: ok(0) } });
+  const accepted = buildFirstCanaryAcceptanceReceipt(input(brokerLegs([1, 1])));
+  assert.equal(accepted.status, 'ACCEPTED', JSON.stringify(accepted.blockers));
+  assert.equal(buildFirstCanaryAcceptanceReceipt(input(brokerLegs([1, 1]), 'WORKING')).status, 'IN_PROGRESS');
+  assert.ok(buildFirstCanaryAcceptanceReceipt(input(brokerLegs([1, 0]))).blockers.includes('PACKAGE_LEG_FILL_NOT_COMPLETE'));
+  const wrong = [{ ...expectedLegs[0]!, occ: 'SPY261016P00490000' }, expectedLegs[1]!];
+  assert.ok(buildFirstCanaryAcceptanceReceipt(input(brokerLegs([1, 1], wrong))).blockers.includes('BROKER_PACKAGE_IDENTITY_MISMATCH'));
+  const noLegs = { ...input(brokerLegs([1, 1])) };
+  assert.ok(buildFirstCanaryAcceptanceReceipt({ ...noLegs, broker: { ...noLegs.broker, packageLegs: undefined } }).blockers.includes('BROKER_PACKAGE_LEGS_MISSING'));
+  const { packageNetPrice } = await import('../src/execution/confirmed-fill-tca.js');
+  assert.equal(Number(packageNetPrice([{ positionIntent: 'sell_to_open', ratio: 1, averageFillPrice: 1.1 }, { positionIntent: 'buy_to_open', ratio: 1, averageFillPrice: 0.45 }]).toFixed(2)), 0.65,
+    'a credit spread nets the short premium minus the long premium');
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync('src/execution/postgres-first-canary-acceptance.ts', 'utf8');
+  assert.match(source, /JOIN market\.option_contract oc ON oc\.option_contract_id=oi\.option_contract_id/, 'the certified single-leg Q/H query is unchanged');
+  assert.match(source, /const definedRisk=await reconcileDefinedRiskCanary\(input\);/, 'an mleg canary is never silently invisible to acceptance');
+});

@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import type { PaperBrokerAdapter,BrokerOrderSnapshot } from './broker.js';
-import { buildFirstCanaryAcceptanceReceipt,type CanaryBrokerState,
+import { buildFirstCanaryAcceptanceReceipt,type CanaryBrokerState,type CanaryPackageLeg,
   type FirstCanaryAcceptanceReceipt } from './first-canary-acceptance.js';
 import { isAutonomousMasterPaperAccepted,PostgresPaperExecutionAuthorizationStore,unfilledTerminalBrokerOrderSql,
   type PersistedPaperExecutionControl } from './paper-execution-authorization.js';
@@ -75,6 +75,8 @@ export async function reconcileFirstCanaryAcceptance(input:{readonly pool:Pool;r
     WHERE p.authority_kind='NEW_RISK' AND oi.execution_account_id=$1 AND NOT ${unfilledTerminalBrokerOrderSql('bo')}
     ORDER BY p.created_at,p.action_plan_id LIMIT 2`,[input.executionAccountId]);
   if(result.rowCount===0){
+    const definedRisk=await reconcileDefinedRiskCanary(input);
+    if(definedRisk!==null)return definedRisk;
     // only zero-fill CANCELED/EXPIRED canaries (or none): re-armed by the governed activation after the last one -> waiting for the next canary
     const unfilled=await input.pool.query(`SELECT count(*)::int AS unfilled,
       EXISTS(SELECT 1 FROM ops.paper_execution_control pec WHERE pec.singleton=true AND pec.changed_by='OWNER_DIRECTIVE_FIRST_PAPER_CANARY'
@@ -128,6 +130,90 @@ export async function reconcileFirstCanaryAcceptance(input:{readonly pool:Pool;r
     newRiskRelocked:good(newRiskRelocked,'ops.paper_execution_control',input.asOf),
     managementEnabled:good(row.master_execution_enabled===true,'ops.paper_execution_control',input.asOf),
     followerMutationCount:good(Number(row.follower_mutation_count??0),'copy.follower_order_intent',input.asOf),
+    liveMutationCount:good(0,'PAPER_ONLY_EXECUTION_ACCOUNT_AND_ADAPTER',input.asOf)}});
+  if(receipt.status!=='ACCEPTED')return {state:receipt.status==='FAILED'?'FAILED':'IN_PROGRESS',receipt,control:null};
+  const control=await authorizationStore
+    .activateAutonomousPaperAfterAcceptedCanary({acceptance:receipt,activatedAt:input.asOf});
+  return {state:'AUTONOMOUS_PAPER_ACTIVE',receipt,control};
+}
+
+/** The first canary may be a native D package (an mleg parent with no single option contract). It is read by its own query so the
+ * single-leg Q/H acceptance query above stays exactly as certified. Identity is the persisted leg set; lifecycle and management evidence
+ * come from the defined-risk position registry; reconciliation must see BOTH leg positions. Returns null when no D canary exists. */
+async function reconcileDefinedRiskCanary(input:{readonly pool:Pool;readonly broker:PaperBrokerAdapter;
+  readonly executionAccountId:string;readonly asOf:string}):Promise<FirstCanaryRuntimeAcceptanceResult|null>{
+  const result=await input.pool.query(`SELECT p.plan_json,oi.order_intent_id::text,oi.execution_account_id::text,
+    oi.client_order_id,oi.quantity::numeric,oi.package_identity,bo.acknowledged_at::text,
+    (SELECT json_agg(json_build_object('occ',l.occ_symbol,'positionIntent',l.position_intent,'ratio',l.ratio_quantity) ORDER BY l.leg_index)
+      FROM trade.order_intent_leg l WHERE l.order_intent_id=oi.order_intent_id) AS legs,
+    EXISTS(SELECT 1 FROM trade.transaction_cost_analysis t WHERE t.order_intent_id=oi.order_intent_id) AS tca_persisted,
+    EXISTS(SELECT 1 FROM trade.defined_risk_position d WHERE d.order_intent_id=oi.order_intent_id AND d.opened_at IS NOT NULL) AS lifecycle_applied,
+    EXISTS(SELECT 1 FROM trade.defined_risk_position d WHERE d.order_intent_id=oi.order_intent_id
+      AND d.state IN ('OPEN','ASYMMETRIC_OPEN','CLOSE_PENDING','DIVERGED_EMERGENCY')) AS management_registered,
+    EXISTS(SELECT 1 FROM research.theta_execution_observation_job j WHERE j.candidate_id::text=p.plan_json->>'candidateId')
+      AS future_observations_scheduled,
+    EXISTS(SELECT 1 FROM trade.broker_reconciliation_snapshot r
+      JOIN copy.follower_account fa ON fa.follower_account_id=r.connection_id
+      JOIN trade.execution_account ea ON ea.execution_account_id=oi.execution_account_id
+        AND encode(digest(fa.provider_account_ref,'sha256'),'hex')=ea.provider_account_ref_hash
+      WHERE r.data_quality='GOOD' AND r.observed_at>=COALESCE(bo.submitted_at,oi.created_at)
+        AND NOT EXISTS(SELECT 1 FROM trade.order_intent_leg l WHERE l.order_intent_id=oi.order_intent_id
+          AND NOT EXISTS(SELECT 1 FROM trade.broker_position_snapshot bp WHERE bp.reconciliation_snapshot_id=r.reconciliation_snapshot_id
+            AND bp.symbol=l.occ_symbol AND abs(bp.quantity)=oi.quantity*l.ratio_quantity))) AS reconciliation_complete,
+    pec.pause_new_orders,pec.master_execution_enabled,pec.follower_execution_enabled
+    FROM trade.master_paper_action_plan p
+    JOIN trade.order_intent oi ON oi.order_intent_id=p.execution_order_intent_id AND oi.order_class='mleg'
+    JOIN LATERAL(SELECT x.* FROM trade.broker_order x WHERE x.order_intent_id=oi.order_intent_id
+      ORDER BY x.created_at DESC,x.broker_order_id DESC LIMIT 1) bo ON true
+    CROSS JOIN ops.paper_execution_control pec
+    WHERE p.authority_kind='NEW_RISK' AND oi.execution_account_id=$1 AND NOT ${unfilledTerminalBrokerOrderSql('bo')}
+    ORDER BY p.created_at,p.action_plan_id LIMIT 2`,[input.executionAccountId]);
+  if(result.rowCount===0)return null;
+  if((result.rowCount??0)!==1)throw new Error('FIRST_CANARY_MULTIPLE_LOCAL_BROKER_ORDERS');
+  const row=result.rows[0] as Row;
+  const expectedLegs=(Array.isArray(row.legs)?row.legs:[]) as CanaryPackageLeg[];
+  const authorizationStore=new PostgresPaperExecutionAuthorizationStore(input.pool);
+  const newRiskRelocked=row.pause_new_orders===true||await authorizationStore.lockNewRiskAfterFirstCanary(input.asOf);
+  const plan=masterPaperActionPlanSchema.parse(row.plan_json) as ApprovedMasterPaperActionPlan;
+  const brokerOrder=await input.broker.getOrderByClientOrderId(String(row.client_order_id));
+  if(brokerOrder===null)throw new Error('FIRST_CANARY_BROKER_ORDER_MISSING');
+  const allOrders=await input.broker.getOrders('all');
+  const duplicates=allOrders.filter((order)=>sameEconomicExposure(order,brokerOrder)
+    &&!['rejected','canceled','expired'].includes(order.status.toLowerCase())).length;
+  const state=classifyAlpacaCanaryOrderState(brokerOrder.status);
+  const identitySeed=economicIdentitySeed({candidateId:plan.candidateId,strategyVersion:plan.strategyVersion,action:plan.action,chainId:plan.chainId});
+  const deterministic=generateClientOrderId(plan.decisionId,identitySeed,plan.pricingAttempt+1)===row.client_order_id;
+  const source=(name:string)=>`${name}:${row.order_intent_id}`;
+  const brokerLegs=brokerOrder.orderClass==='mleg'&&brokerOrder.legs!==undefined&&brokerOrder.legs.length>=2
+    ?good(brokerOrder.legs.map((leg)=>({occ:leg.symbol,positionIntent:String(leg.positionIntent??'UNKNOWN'),ratio:leg.ratioQty,filledQuantity:leg.filledQty})),
+      'ALPACA_PAPER_ORDER_LEGS',input.asOf)
+    :invalid<readonly {occ:string;positionIntent:string;ratio:number;filledQuantity:number}[]>('ALPACA_PAPER_ORDER_LEGS',input.asOf);
+  const receipt=buildFirstCanaryAcceptanceReceipt({asOf:input.asOf,expected:{
+    orderIntentId:String(row.order_intent_id),executionAccountId:String(row.execution_account_id),
+    occContract:String(row.package_identity),side:'sell',positionIntent:'sell_to_open',quantity:Number(row.quantity),
+    clientOrderId:String(row.client_order_id),package:{legs:expectedLegs}},persistence:{
+    decisionPersisted:good(true,source('trade.decision'),input.asOf),
+    orderIntentPersisted:good(true,source('trade.order_intent'),input.asOf),
+    idempotencyReserved:good(true,source('trade.order_intent.client_order_id_unique'),input.asOf),
+    deterministicClientOrderId:good(deterministic,source('theta-client-order-id-v1'),input.asOf)},broker:{
+    executionAccountId:good(String(row.execution_account_id),'ALPACA_PAPER_AUTHENTICATED_MASTER',input.asOf),
+    occContract:good(brokerOrder.symbol,'ALPACA_PAPER_ORDER',input.asOf),side:good(brokerOrder.side,'ALPACA_PAPER_ORDER',input.asOf),
+    positionIntent:invalid('MLEG_PARENT_HAS_NO_SINGLE_POSITION_INTENT',input.asOf),
+    requestedQuantity:good(brokerOrder.qty,'ALPACA_PAPER_ORDER',input.asOf),
+    filledQuantity:good(brokerOrder.filledQty,'ALPACA_PAPER_ORDER',input.asOf),
+    clientOrderId:good(brokerOrder.clientOrderId,'ALPACA_PAPER_ORDER',input.asOf),
+    orderState:state===null?invalid('ALPACA_PAPER_ORDER_STATUS',input.asOf):good(state,'ALPACA_PAPER_ORDER',input.asOf),
+    acknowledgementObserved:good(Boolean(row.acknowledged_at)||brokerOrder.submittedAt!==null,'trade.broker_order+ALPACA_PAPER',input.asOf),
+    duplicateEconomicExposureCount:good(duplicates,'ALPACA_PAPER_ALL_ORDERS',input.asOf),packageLegs:brokerLegs},evidence:{
+    reconciliationComplete:good(row.reconciliation_complete===true,'trade.broker_reconciliation_snapshot:both_legs',input.asOf),
+    tcaPersisted:good(row.tca_persisted===true,source('trade.transaction_cost_analysis'),input.asOf),
+    lifecycleApplied:good(row.lifecycle_applied===true,source('trade.defined_risk_position.opened_at'),input.asOf),
+    managementRegistered:good(row.management_registered===true,source('trade.defined_risk_position.active'),input.asOf),
+    futureObservationsScheduled:good(row.future_observations_scheduled===true,
+      `research.theta_execution_observation_job:${plan.candidateId}`,input.asOf),
+    newRiskRelocked:good(newRiskRelocked,'ops.paper_execution_control',input.asOf),
+    managementEnabled:good(row.master_execution_enabled===true,'ops.paper_execution_control',input.asOf),
+    followerMutationCount:good(0,'copy.follower_order_intent:none_for_defined_risk',input.asOf),
     liveMutationCount:good(0,'PAPER_ONLY_EXECUTION_ACCOUNT_AND_ADAPTER',input.asOf)}});
   if(receipt.status!=='ACCEPTED')return {state:receipt.status==='FAILED'?'FAILED':'IN_PROGRESS',receipt,control:null};
   const control=await authorizationStore

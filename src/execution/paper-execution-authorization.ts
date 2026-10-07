@@ -16,12 +16,14 @@ export const autonomousMasterPaperAuditAction = 'ACTIVATE_AUTONOMOUS_MASTER_PAPE
 export const maximumUnfilledCanaryRearms = 3 as const;
 
 /** SQL predicate over a `trade.broker_order` alias: the order ended CANCELED/EXPIRED locally and no fill was ever recorded for its intent. Only
- * such an order leaves the one-canary lane unused: it created no exposure, no TCA and nothing to accept. Anything else (filled, partial,
+ * such an order leaves the one-canary lane unused: it created no exposure, no TCA and nothing to accept. A native mleg parent reports fills per
+ * LEG (broker_order_leg_state, never trade.fill), so any filled leg also consumes the lane: a canceled spread with one leg filled is exposure. Anything else (filled, partial,
  * rejected, working, or a status not yet reconciled) consumes the lane, so an unreconciled order is always treated as used. */
 export function unfilledTerminalBrokerOrderSql(alias:string):string{
   return `(EXISTS(SELECT 1 FROM trade.order_intent uti WHERE uti.order_intent_id=${alias}.order_intent_id AND uti.status IN ('CANCELED','EXPIRED'))
     AND NOT EXISTS(SELECT 1 FROM trade.fill uf JOIN trade.broker_order ubo ON ubo.broker_order_id=uf.broker_order_id
-      WHERE ubo.order_intent_id=${alias}.order_intent_id))`;
+      WHERE ubo.order_intent_id=${alias}.order_intent_id)
+    AND NOT EXISTS(SELECT 1 FROM trade.broker_order_leg_state uls WHERE uls.order_intent_id=${alias}.order_intent_id AND uls.filled_quantity>0))`;
 }
 
 /** The one durable, restart-safe record that a first Paper canary was fully

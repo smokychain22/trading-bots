@@ -128,3 +128,12 @@ test('the governed activation may re-arm a canary that ended with zero fills, bu
   assert.ok(firstPaperCanaryActivationBlockers({...valid,database:{...valid.database,priorBrokerOrderCount:1,unfilledCanaryCount:0}})
     .includes('FIRST_CANARY_ALREADY_USED'));
 });
+
+test('a zero-fill canary is judged by single-leg fills AND mleg leg fills: a canceled spread with one filled leg consumes the lane', async () => {
+  const { unfilledTerminalBrokerOrderSql } = await import('../src/execution/paper-execution-authorization.js');
+  const sql = unfilledTerminalBrokerOrderSql('bo');
+  assert.match(sql, /status IN \('CANCELED','EXPIRED'\)/);
+  assert.match(sql, /NOT EXISTS\(SELECT 1 FROM trade\.fill uf/);
+  assert.match(sql, /NOT EXISTS\(SELECT 1 FROM trade\.broker_order_leg_state uls WHERE uls\.order_intent_id=bo\.order_intent_id AND uls\.filled_quantity>0\)/);
+  assert.doesNotMatch(sql, /REJECTED/, 'a rejected canary is never treated as an unused lane');
+});
