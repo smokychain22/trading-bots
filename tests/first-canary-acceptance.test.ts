@@ -99,7 +99,7 @@ test('D CANARY: a native two-leg canary is accepted on its exact leg set (order-
   assert.equal(accepted.status, 'ACCEPTED', JSON.stringify(accepted.blockers));
   assert.equal(buildFirstCanaryAcceptanceReceipt(input(brokerLegs([1, 1]), 'WORKING')).status, 'IN_PROGRESS');
   assert.ok(buildFirstCanaryAcceptanceReceipt(input(brokerLegs([1, 0]))).blockers.includes('PACKAGE_LEG_FILL_NOT_COMPLETE'));
-  const wrong = [{ ...expectedLegs[0]!, occ: 'SPY261016P00490000' }, expectedLegs[1]!];
+  const wrong = [{ occ: 'SPY261016P00490000', positionIntent: 'sell_to_open', ratio: 1 }, { occ: 'SPY261016P00495000', positionIntent: 'buy_to_open', ratio: 1 }];
   assert.ok(buildFirstCanaryAcceptanceReceipt(input(brokerLegs([1, 1], wrong))).blockers.includes('BROKER_PACKAGE_IDENTITY_MISMATCH'));
   const noLegs = { ...input(brokerLegs([1, 1])) };
   assert.ok(buildFirstCanaryAcceptanceReceipt({ ...noLegs, broker: { ...noLegs.broker, packageLegs: undefined } }).blockers.includes('BROKER_PACKAGE_LEGS_MISSING'));
