@@ -41,6 +41,8 @@ import { AlpacaStockInventorySource } from '../execution/alpaca-stock-inventory-
 import { expireStaleReadyOrderIntents, PostgresManagementRepriceStore, repriceReasonClass, runManagementRepricing,
   sweepTerminalSubmittedPlans } from '../execution/management-order-repricing.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
+import { parseOrphanRecoveryMode, parseOrphanRiskClosePolicy } from '../execution/broker-orphan-position-recovery.js';
+import { loadBrokerConfirmedOrphanCandidates, PostgresOrphanManagementAuthorityStore, readOrphanMarketEvidence, runBrokerOrphanRecovery } from '../execution/postgres-broker-orphan-recovery.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
 import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.js';
 import { PostgresP2EEvidenceStore } from './p2e-evidence-store.js';
@@ -559,12 +561,30 @@ export async function runAutonomousRuntimeCycle(
         // producer enumerates only; this remains the one policy authority.
         const candidateDiscovery = await new ProductionPaperManagementCandidateSource(pool,master.alpaca)
           .discover(master.connectionId,reconciliation.snapshotId);
+        // BROKER_CONFIRMED_ORPHAN_POSITION_RECOVERY: a broker position whose THETA fill never got a lifecycle owner. Default OBSERVE
+        // is read-only; CLOSE_RISK_CERTIFIED publishes only through publishManagementPlans (the same authority, store and coordinator).
+        const orphanMode=parseOrphanRecoveryMode(environment.THETA_ORPHAN_RECOVERY_MODE);
+        const orphanPolicy=parseOrphanRiskClosePolicy(environment.THETA_ORPHAN_RISK_CLOSE_POLICY_JSON).policy;
+        const orphanAccountId=master.executionAccountId,orphanReconciliation=reconciliation;
+        const runOrphans=(accountId:string)=>runBrokerOrphanRecovery({mode:orphanMode,policy:orphanPolicy,
+            reconciliation:{snapshotId:orphanReconciliation.snapshotId,observedAt:orphanReconciliation.observedAt,
+              accountStatus:orphanReconciliation.accountStatus??'UNKNOWN'},
+            executionAccountId:accountId,optionsCapabilityVerified:master.optionsCapabilityVerified,
+            killSwitchActive:executionControl.emergencyExecutionLock||!executionControl.managementSubmissionEnabled,
+            decisionWindowMs:paperBootstrapRuntimePolicy.quoteAge.planWindowManagementMilliseconds,
+            loadCandidates:()=>loadBrokerConfirmedOrphanCandidates(pool,{reconciliationSnapshotId:orphanReconciliation.snapshotId,executionAccountId:accountId}),
+            readMarket:(symbol,expiration,strike,underlying)=>readOrphanMarketEvidence(master.alpaca,{symbol,expiration,strike,underlying}),
+            readChainInFlight:(chainId)=>readManagementChainInFlight(pool,accountId,chainId),
+            persistAuthority:(rows)=>new PostgresOrphanManagementAuthorityStore(pool).persist(rows),
+            publishManagementPlans:(decision,plans,createdAt)=>new PostgresMasterPaperActionPlanStore(pool).publishManagementPlans(decision,plans,createdAt)});
+        const orphans=orphanAccountId===null||reconciliation.dataQuality!=='GOOD'
+          ? {mode:orphanMode,items:[],blockingCode:null,published:0} : await runOrphans(orphanAccountId);
         const states = await managementStore.assembleAndPersistOpenChains(
           master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,candidateDiscovery,
           // SELL_STOCK executable evidence: one bounded Alpaca IEX stock quote read per underlying holding shares.
           (symbol)=>fetchLatestStockQuote(master.alpaca,symbol,'iex'),
         );
-        if (states.length === 0) return skipped('NO_OPEN_THETA_CHAINS');
+        if (states.length === 0) return orphans.blockingCode===null ? skipped('NO_OPEN_THETA_CHAINS') : degraded(orphans.blockingCode, retryAt);
         // Persist research-only profit-preservation and strategy-switching
         // evidence before the production policy boundary is evaluated. This
         // collector has no conversion path to ManagementPolicyEvidence and
@@ -618,6 +638,7 @@ export async function runAutonomousRuntimeCycle(
           }
         }
         if (firstChainBlocker !== null) return degraded(firstChainBlocker, retryAt);
+        if (orphans.blockingCode !== null) return degraded(orphans.blockingCode, retryAt);
         if (states.some((state) => state.hardBlockers.length > 0)) {
           return degraded('MANAGEMENT_HARD_BLOCKERS_PRESENT', retryAt);
         }

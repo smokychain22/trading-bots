@@ -1,54 +1,104 @@
 # THETA broker-confirmed orphan position recovery
 
-Status: SOURCE ONLY. The pure module is complete and tested. It is not wired into the runtime, and the mode defaults to `OFF`.
+Status: SOURCE ONLY, wired in the default read-only `OBSERVE` mode. Not deployed.
 
 ## Problem (2026-10-07)
 
-A THETA `SELL_TO_OPEN` filled at the broker, but the `SHORT_PUT_OPEN` lifecycle application was rejected by the schema-069 CHECK (23514).
+A THETA `SELL_TO_OPEN` filled at the broker, but its `SHORT_PUT_OPEN` lifecycle application was rejected by the schema-069 CHECK (23514).
 
 - The chain stayed `WAIT` with zero option legs.
-- The management loader reads DB chains only and excludes a `WAIT` chain that has no legs, no lots and only terminal intents.
-- Result: a real short put had no management owner.
+- The management loader excluded it, so a real short put had no management owner.
+
+The same shape follows from any registration failure: a schema bug, a DB commit failure, or a worker crash between the fill and its registration.
 
 Classification: `BROKER_CONFIRMED_POSITION_LIFECYCLE_REGISTRATION_BLOCKED`.
 
-## Module
+## One authority, no second executor
 
-The module is `src/execution/broker-orphan-position-recovery.ts`. It provides four functions.
+The orphan path feeds the existing sovereign management authority. It does not use a parallel executor, and it never calls Alpaca directly.
 
-**`classifyBrokerConfirmedOrphan(position, lineages)`**
+| Step | Code |
+| --- | --- |
+| Classify broker truth against THETA lineage | `classifyBrokerConfirmedOrphan` (pure) |
+| Decide HOLD or CLOSE_RISK | `decideOrphanRiskAction`: no owner policy means `HOLD` |
+| Governed authority rows | `buildOrphanManagementAuthority` + `PostgresOrphanManagementAuthorityStore` |
+| Plan | `buildOrphanRiskClosePlan`: one whole-position `CLOSE_CSP` |
+| Decision + publication | `buildOrphanManagementDecisionDraft` → `PostgresMasterPaperActionPlanStore.publishManagementPlans` (unchanged) |
+| Execution | The normal dispatch / PaperOrderCoordinator path: quote refresh, 150 s mutation fence, 30 s plan window, claim, `verifyBeforeSubmit` |
+| Bookkeeping | `applyConfirmedFillLifecycle`: `SHORT_PUT_OPEN`, then `OPTION_CLOSE`, in one cycle |
 
-- **Input:** an exact broker position from a GOOD reconciliation snapshot.
-- **Match rule:** exactly one THETA lineage must match on every field: symbol, `OPEN_CSP` / SELL / `sell_to_open`, intent FILLED, broker order FILLED, fill quantity equal to the broker quantity, fill price within 0.005 of the broker average entry, chain `WAIT` / WHEEL / open, the same chain and decision, no open option leg, no applied lifecycle, and no in-flight order.
-- **Output on a match:** a frozen, content-hashed representation whose permitted actions are exactly `HOLD` and `CLOSE_RISK`, with `HOLD` as the default.
-- **Otherwise:** a typed refusal (`ORPHAN_*`). An unexplained position is never adopted.
+**Authority rows**
 
-**`decideOrphanRiskAction(rep, market, policy)`**
+- The input snapshot records `lifecycle_state=WAIT` and `input_json.inputKind=BROKER_CONFIRMED_ORPHAN`.
+- The frontier selects exactly `HOLD` or `CLOSE_FULL`.
+- IDs are content-derived, and the inserts are `ON CONFLICT DO NOTHING` with a read-back. A replay maps to the same rows.
+- The writer refuses with `ORPHAN_CHAIN_NO_LONGER_WAIT` once the lifecycle owns the chain.
 
-- With no owner policy it returns `HOLD` with `ORPHAN_RISK_CLOSE_POLICY_NOT_CONFIGURED`. It never invents a threshold.
-- The triggers are an ask multiple of entry, spot within a fraction of the strike, and maximum DTE.
-- If a trigger fires but no fresh, valid quote is available, it returns `HOLD` with `ORPHAN_CLOSE_REQUIRED_QUOTE_NOT_FRESH`. A close is never priced blind and is never a market order.
+**Publication**
 
-**`buildOrphanRiskClosePlan(input)`**
+- The plan uses the same authority reference as normal management (`management:<frontier>:CLOSE_FULL`), so every existing `publishManagementPlans` check applies unchanged: frontier selection, policy lineage, input snapshot, account and group shape.
+- At claim time, `managementDecisionIsCurrent` (chain still `WAIT`) supersedes an orphan plan as soon as the lifecycle takes over.
 
-- **Output:** one `ApprovedMasterPaperActionPlan`: `CLOSE_CSP`, MANAGEMENT authority, the whole broker quantity, and the economic boundary set to the current ask (the adaptive limit starts at the bid).
-- **Structural refusals:** a sell or open side, a roll action, contract substitution, a quantity above or below the broker position, a tampered representation, a directive/representation mismatch, a decision window longer than the management plan window (30 s), a kill switch, and invalid IDs.
+**Protecting the normal loader**
 
-**`parseOrphanRecoveryMode`**
+- The normal loader never treats an orphan snapshot as its predecessor (it filters on `inputKind`). Shadow-management code that reads `previous.context` is therefore never handed an orphan-shaped row.
 
-- Values are `OFF` (default), `OBSERVE` and `CLOSE_RISK_CERTIFIED`. Any unknown value maps to `OFF`.
+## Generic identity
 
-## Proven (no submit)
+Exact recovery needs the full identity, including the broker position itself:
 
-The tests are in `tests/broker-orphan-position-recovery.test.ts`. They use the exact XLE lineage with synthetic IDs.
+- strategy branch;
+- candidate;
+- action plan;
+- order intent;
+- client order ID;
+- broker order ID;
+- contract and quantity.
 
-- A risk trigger produces a plan that passes `prepareMasterPaperAction` (the read-only half of the PaperOrderCoordinator handoff) as `READY_TO_SUBMIT`: buy, `buy_to_close`, qty 1, a limit inside the bid/ask, and only the exact contract quoted.
+**Outcomes**
 
-## Remaining before runtime use (not hotfix-ready before 070)
+- **Any member missing:** `RECONCILING` (`ORPHAN_LINEAGE_INCOMPLETE_RECONCILING`). Nothing is adopted or written.
+- **Contradictory evidence** (side, symbol, quantity, price or chain): `REFUSED` with a typed `ORPHAN_*` code.
+- **D native spreads:** `ORPHAN_STRATEGY_NOT_SUPPORTED`, because they have their own typed lifecycle.
 
-1. **Authority rows.** `PostgresMasterPaperActionPlanStore.publishManagement` requires a persisted `management_input_snapshot` and a `management_action_frontier` (selecting `CLOSE_FULL`) for the chain. The orphan path needs a governed writer for an orphan input snapshot and frontier (`lifecycle_state=WAIT`, which passes `managementDecisionIsCurrent`).
-2. **Close-fill lifecycle.** `routeConfirmedFillLifecycle(CLOSE_CSP)` needs an `optionLegId`, and an orphan has none. A close filled before 070 would reduce broker risk, but it would be lifecycle-unregistered too. After 070 the replay must apply `SHORT_PUT_OPEN` first, which creates the leg, and then `OPTION_CLOSE` resolving that leg. This ordering is not implemented.
-3. **Loader surfacing.** Management and reconciliation must call the classifier for unowned broker positions. In `OBSERVE` mode they emit the representation and the HOLD decision, with no broker action.
-4. **Owner policy.** `OrphanRiskClosePolicy` values must be owner-approved. There is no default.
+## Modes (`THETA_ORPHAN_RECOVERY_MODE`)
 
-**Before 070**, a genuine XLE risk event still has the existing manual-free option of applying migration 070 (which unblocks normal management). The orphan close should not be deployed mid-session without items 1 and 2.
+**`OBSERVE` (default)**
+
+- It runs one read-only SQL query for unowned short option positions in the GOOD reconciliation snapshot, plus one lineage query per such position.
+- It makes no market read. It writes no rows and places no orders.
+- The `POSITION_MANAGEMENT_SCAN` result becomes degraded with the typed code instead of `skipped`.
+- With zero orphans, the behaviour is identical to the prior release, apart from that one extra read.
+
+**`CLOSE_RISK_CERTIFIED`**
+
+- It makes one Alpaca market read per orphan: an exact-strike option snapshot plus the IEX underlying quote.
+- It persists the governed rows.
+- It publishes a close only when an owner trigger in `THETA_ORPHAN_RISK_CLOSE_POLICY_JSON` fires and the quote is fresh. There is no default threshold.
+- Any in-flight plan or order on the chain blocks a second close, so there is a single owner across restarts.
+
+**`OFF`** disables the read entirely.
+
+## Close-before-registration bookkeeping
+
+Fill rows are replayed in intent-creation order, so the open is applied first. That open creates the deterministic leg `option-leg:<open intent>`.
+
+A pass that newly applies an open and still has unresolved facts runs exactly one more pass. `OPTION_CLOSE` then resolves against that leg within the same cycle.
+
+**Idempotency**
+
+- Applications are keyed by evidence key, the leg ID is deterministic, and copy events are keyed by ID.
+- `tests/orphan-open-close-convergence.test.ts` drives the real orchestrator, lifecycle store and copy planner over an in-memory emulation. It proves:
+  - exactly one `SHORT_PUT_OPEN` and one `OPTION_CLOSE`;
+  - one leg (the premium is recorded once);
+  - realized P&L = credit − debit;
+  - two copy events;
+  - pure duplicates on three later replays.
+
+**Capital release** follows broker truth (account exposure reads broker positions) and terminal plans or intents. Nothing extra is booked.
+
+## Remaining before `CLOSE_RISK_CERTIFIED` may be enabled
+
+1. **Owner trigger values** for `THETA_ORPHAN_RISK_CLOSE_POLICY_JSON`.
+2. **A DB-level end-to-end test** against `TEST_DATABASE_URL`: orphan → authority rows → publish → claim → `verifyBeforeSubmit`. The SQL-validity test is written and skips without a database.
+3. **Exact-SHA CI and an observed `OBSERVE` cycle in Production**, before any certification.

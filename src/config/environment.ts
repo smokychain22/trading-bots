@@ -59,6 +59,11 @@ const environmentSchema = z.object({
   FOLLOWER_PAPER_EXECUTION_ENABLED: safeFlag,
   PAPER_PAUSE_NEW_ORDERS: booleanFlag('true'),
   PAPER_EVIDENCE_RISK_CAP: z.coerce.number().int().nonnegative().default(1),
+  // Broker-confirmed orphan positions (lifecycle registration failed). OBSERVE = read-only report, no rows, no orders.
+  THETA_ORPHAN_RECOVERY_MODE: z.preprocess((value) => value === '' || value === undefined ? undefined : value,
+    z.enum(['OFF', 'OBSERVE', 'CLOSE_RISK_CERTIFIED']).default('OBSERVE')),
+  // Owner-approved orphan risk-close triggers (JSON). Absent or invalid means HOLD; there is no default threshold.
+  THETA_ORPHAN_RISK_CLOSE_POLICY_JSON: z.preprocess((value) => value === '' ? undefined : value, z.string().optional()),
   THETA_AUTONOMOUS_WORKER_ENABLED: safeFlag,
   THETA_RUNTIME_MODE: z.enum(['MASTER_THETA_PAPER', 'THETA_SHADOW_ONLY']).default('MASTER_THETA_PAPER'),
   THETA_WORKER_HOST_TYPE: z.enum(['WINDOWS_AUTOSTART', 'CONTAINER']).default('WINDOWS_AUTOSTART'),
