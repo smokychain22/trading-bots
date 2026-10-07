@@ -28,7 +28,7 @@ function acceptedInput(ids: { intent: string; account: string; client: string })
   };
 }
 
-async function seed(client: PoolClient, scope: Record<string, unknown>, extraNewRiskPlans = 0) {
+async function seed(client: PoolClient, scope: Record<string, unknown>, extraNewRiskPlans = 0, canaryStatus = 'FILLED') {
   const ids = { intent: randomUUID(), account: randomUUID(), client: `theta-test-${randomUUID()}`,
     authorization: randomUUID(), plan: randomUUID(), decision: randomUUID(), order: randomUUID() };
   // Foreign-key triggers are disabled for seeding only: this test exercises the
@@ -46,9 +46,9 @@ async function seed(client: PoolClient, scope: Record<string, unknown>, extraNew
   [ids.account, createHash('sha256').update(ids.account).digest('hex')]);
   await client.query(`INSERT INTO trade.order_intent(order_intent_id,decision_id,client_order_id,status,instrument_type,side,
     quantity,execution_account_id,position_intent,canonical_quantity,paper_evidence_quantity)
-    VALUES($1,$2,$3,'FILLED','OPTION','sell',1,$4,'SELL_TO_OPEN',1,1)`, [ids.intent, ids.decision, ids.client, ids.account]);
-  await client.query(`INSERT INTO trade.broker_order(broker_order_id,order_intent_id,provider_order_id,broker_status)
-    VALUES($1,$2,$3,'filled')`, [ids.order, ids.intent, `test-provider-order-${ids.order}`]);
+    VALUES($1,$2,$3,$5,'OPTION','sell',1,$4,'SELL_TO_OPEN',1,1)`, [ids.intent, ids.decision, ids.client, ids.account, canaryStatus]);
+  await client.query(`INSERT INTO trade.broker_order(broker_order_id,order_intent_id,provider_order_id,broker_status,created_at)
+    VALUES($1,$2,$3,$4,now()-interval '1 minute')`, [ids.order, ids.intent, `test-provider-order-${ids.order}`, canaryStatus.toLowerCase()]);
   const insertPlan = async (id: string, intentId: string | null) => client.query(`INSERT INTO trade.master_paper_action_plan(
     action_plan_id,decision_id,execution_account_id,plan_version,status,plan_json,content_hash,not_before,action_group_id,
     leg_sequence,authority_kind,execution_order_intent_id,created_at,updated_at) VALUES($1,$2,$3,'test','TERMINAL','{}'::jsonb,$4,now(),$5,1,'NEW_RISK',$6,now(),now())`,
@@ -165,6 +165,46 @@ test('real disposable PostgreSQL: accepted first canary promotes to autonomous M
       assert.equal(await isAutonomousMasterPaperAccepted(reopened), true);
       assert.equal((await new PostgresPaperExecutionAuthorizationStore(reopened).current()).pauseNewOrders, false);
     } finally { await reopened.end(); }
+  } finally {
+    try { await cleanup(admin); } finally { admin.release(); await pool.end(); }
+  }
+});
+
+test('real disposable PostgreSQL: a zero-fill EXPIRED canary never re-opens by itself; the governed re-arm opens exactly one more canary, which can then be accepted', {
+  skip: !dedicatedDatabase,
+}, async () => {
+  const url = new URL(process.env.TEST_DATABASE_URL ?? '');
+  assert.ok(['127.0.0.1', 'localhost', ''].includes(url.hostname), 'Disposable local database only');
+  const pool = new Pool({ connectionString: url.toString(), max: 4 });
+  const admin = await pool.connect();
+  try {
+    await cleanup(admin);
+    const expired = await seed(admin, ownerScope, 0, 'EXPIRED');
+    const store = new PostgresPaperExecutionAuthorizationStore(pool);
+    const runtime = new PostgresRuntimeCycleStore(pool);
+    assert.equal(await runtime.firstCanarySubmissionAvailable(), false, 'no automatic retry after an unfilled canary');
+    const waiting = await reconcileFirstCanaryAcceptance({ pool, broker: neverBroker as never, executionAccountId: expired.account, asOf: at });
+    assert.equal(waiting.state, 'UNFILLED_REARM_REQUIRED', 'named, never a silent LOCKED gate; the broker is not touched');
+    // even if the automatic lock never persisted, an unfilled canary does not reopen the lane and does not re-pause on its own
+    await admin.query(`UPDATE ops.paper_execution_control SET pause_new_orders=false WHERE singleton=true`);
+    assert.equal(await runtime.firstCanarySubmissionAvailable(), false, 'pause lifted by something other than the governed activation: still locked');
+    assert.equal(await store.lockNewRiskAfterFirstCanary(at), false, 'a zero-fill canary is not a used canary');
+
+    // re-arm: the governed owner-authority activation writes exactly this control state
+    await admin.query(`UPDATE ops.paper_execution_control SET pause_new_orders=false,changed_by='OWNER_DIRECTIVE_FIRST_PAPER_CANARY',
+      changed_at=now() WHERE singleton=true`);
+    assert.equal(await runtime.firstCanarySubmissionAvailable(), true, 'the governed re-arm opens the single-canary lane once');
+    assert.equal((await reconcileFirstCanaryAcceptance({ pool, broker: neverBroker as never, executionAccountId: expired.account, asOf: at })).state, 'NO_CANARY');
+
+    // the re-armed canary is submitted: the lane closes again and the relock fires on it, not on the old expired order
+    const second = await seed(admin, ownerScope);
+    await admin.query(`UPDATE ops.paper_execution_control SET pause_new_orders=false,changed_by='OWNER_DIRECTIVE_FIRST_PAPER_CANARY',
+      changed_at=now()-interval '2 minutes' WHERE singleton=true`);
+    assert.equal(await runtime.firstCanarySubmissionAvailable(), false, 'a newer order after the re-arm closes the lane');
+    assert.equal(await store.lockNewRiskAfterFirstCanary(at), true);
+    const control = await store.activateAutonomousPaperAfterAcceptedCanary({ acceptance: buildFirstCanaryAcceptanceReceipt(acceptedInput(second)), activatedAt: at });
+    assert.equal(control.pauseNewOrders, false, 'the earlier zero-fill canary does not break the single-canary identity');
+    assert.equal(await runtime.firstCanarySubmissionAvailable(), true);
   } finally {
     try { await cleanup(admin); } finally { admin.release(); await pool.end(); }
   }

@@ -30,16 +30,20 @@ test('new-risk runtime accepts only a persisted qualified execution quote author
 test('first Paper canary is available only before any broker order has been persisted', async () => {
   const emptyStore = new PostgresRuntimeCycleStore({
     query: async (sql: string) => {
-      assert.match(sql, /count\(\*\)::int AS count FROM trade\.broker_order/);
-      return { rows: [{ count: 0 }], rowCount: 1 };
+      assert.match(sql, /count\(\*\)::int AS count,[\s\S]*FROM trade\.broker_order bo$/);
+      return { rows: [{ count: 0, consumed: 0, owner_rearmed: false }], rowCount: 1 };
     },
   } as unknown as Pool);
-  const usedStore = new PostgresRuntimeCycleStore({
-    query: async () => ({ rows: [{ count: 1 }], rowCount: 1 }),
+  const store = (row: Record<string, unknown>) => new PostgresRuntimeCycleStore({
+    query: async (sql: string) => (/operator_audit_event/.test(sql) ? { rows: [{ accepted: false }], rowCount: 1 } : { rows: [row], rowCount: 1 }),
   } as unknown as Pool);
 
   assert.equal(await emptyStore.firstCanarySubmissionAvailable(), true);
-  assert.equal(await usedStore.firstCanarySubmissionAvailable(), false);
+  assert.equal(await store({ count: 1, consumed: 1, owner_rearmed: true }).firstCanarySubmissionAvailable(), false, 'a used canary stays used');
+  assert.equal(await store({ count: 1, consumed: 0, owner_rearmed: false }).firstCanarySubmissionAvailable(), false,
+    'a zero-fill canary never reopens the lane without the governed activation');
+  assert.equal(await store({ count: 1, consumed: 0, owner_rearmed: true }).firstCanarySubmissionAvailable(), true, 'governed activation re-armed after a zero-fill canary');
+  assert.equal(await store({ count: 1 }).firstCanarySubmissionAvailable(), false, 'missing aggregates are UNKNOWN, never an open lane');
 });
 
 test('serverless runtime scopes keep management and evidence bounded without dropping reconciliation', () => {

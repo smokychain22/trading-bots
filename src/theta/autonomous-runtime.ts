@@ -46,7 +46,7 @@ import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.
 import { PostgresP2EEvidenceStore } from './p2e-evidence-store.js';
 import { PostgresOperatorControlStore } from '../customer/operator-control.js';
 import {
-  isAutonomousMasterPaperAccepted, PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl,
+  isAutonomousMasterPaperAccepted, PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl, unfilledTerminalBrokerOrderSql,
 } from '../execution/paper-execution-authorization.js';
 import { createPaperBootstrapManagementPolicyProvider } from './paper-bootstrap-management-policy.js';
 import { ProductionPaperManagementCandidateSource } from './production-paper-management-candidate-source.js';
@@ -264,10 +264,19 @@ export class PostgresRuntimeCycleStore {
   /** True before the first broker order, and permanently true once the first
    * canary has been fully accepted. A prior order alone must never keep the
    * Master Paper lane locked forever; only an accepted-canary audit record lifts
-   * the single-canary lane, and it removes nothing but that lane. */
+   * the single-canary lane, and it removes nothing but that lane.
+   * A canary that ended CANCELED/EXPIRED with zero fills created no exposure; the lane reopens for it only after
+   * the governed owner-authority activation (FIRST_PAPER_CANARY_ACTIVATE, which re-checks every activation gate) wrote a control state newer than every prior broker order. It never reopens by itself, even if the automatic lock failed to persist. */
   async firstCanarySubmissionAvailable():Promise<boolean>{
-    const result=await this.pool.query(`SELECT count(*)::int AS count FROM trade.broker_order`);
-    if(Number(result.rows[0]?.count??0)===0)return true;
+    const result=await this.pool.query(`SELECT count(*)::int AS count,
+      count(*) FILTER (WHERE NOT ${unfilledTerminalBrokerOrderSql('bo')})::int AS consumed,
+      EXISTS(SELECT 1 FROM ops.paper_execution_control pec WHERE pec.singleton=true
+        AND pec.changed_by='OWNER_DIRECTIVE_FIRST_PAPER_CANARY'
+        AND pec.changed_at>(SELECT max(x.created_at) FROM trade.broker_order x)) AS owner_rearmed
+      FROM trade.broker_order bo`);
+    const row=result.rows[0] as {count?:unknown;consumed?:unknown;owner_rearmed?:unknown}|undefined;
+    if(Number(row?.count??Number.NaN)===0)return true;
+    if(Number(row?.consumed??Number.NaN)===0&&row?.owner_rearmed===true)return true;
     return isAutonomousMasterPaperAccepted(this.pool);
   }
 
@@ -628,6 +637,8 @@ export async function runAutonomousRuntimeCycle(
           const canary=await reconcileFirstCanaryAcceptance({pool,broker:master.executionBroker,
             executionAccountId:master.executionAccountId,asOf:reconciliation.observedAt});
           if(canary.state==='FAILED')return degraded(canary.receipt?.blockers[0]??'FIRST_CANARY_ACCEPTANCE_FAILED',retryAt);
+          // an unfilled canary is not a fault, but new risk stays locked until the governed activation re-arms: name it instead of a silent LOCKED gate
+          if(canary.state==='UNFILLED_REARM_REQUIRED')return degraded('FIRST_CANARY_UNFILLED_REARM_REQUIRED',retryAt);
         }
         return lifecycle.unresolved>0||fills.unresolved>0 ? degraded('BROKER_LIFECYCLE_FACTS_UNRESOLVED',retryAt) : succeeded();
       }

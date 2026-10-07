@@ -2,7 +2,8 @@ import type { Pool } from 'pg';
 import type { PaperBrokerAdapter,BrokerOrderSnapshot } from './broker.js';
 import { buildFirstCanaryAcceptanceReceipt,type CanaryBrokerState,
   type FirstCanaryAcceptanceReceipt } from './first-canary-acceptance.js';
-import { isAutonomousMasterPaperAccepted,PostgresPaperExecutionAuthorizationStore,type PersistedPaperExecutionControl } from './paper-execution-authorization.js';
+import { isAutonomousMasterPaperAccepted,PostgresPaperExecutionAuthorizationStore,unfilledTerminalBrokerOrderSql,
+  type PersistedPaperExecutionControl } from './paper-execution-authorization.js';
 import { economicIdentitySeed, generateClientOrderId } from '../theta/order-intent-state.js';
 import type { Evidence } from '../theta/first-paper-order-readiness.js';
 import { masterPaperActionPlanSchema,type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
@@ -11,7 +12,9 @@ type Row=Record<string,unknown>;
 const good=<T>(value:T,source:string,asOf:string):Evidence<T>=>({state:'GOOD',value,source,asOf});
 const invalid=<T>(source:string,asOf:string):Evidence<T>=>({state:'INVALID',value:null,source,asOf});
 
-export type FirstCanaryRuntimeAcceptanceState='NO_CANARY'|'IN_PROGRESS'|'FAILED'|'AUTONOMOUS_PAPER_ACTIVE';
+/** UNFILLED_REARM_REQUIRED: every canary so far ended CANCELED/EXPIRED with zero fills (no exposure, nothing to accept). New risk stays
+ * locked; only the governed owner-authority activation (FIRST_PAPER_CANARY_ACTIVATE, which re-checks every activation gate) re-arms exactly one more canary. The lane never reopens by itself. */
+export type FirstCanaryRuntimeAcceptanceState='NO_CANARY'|'IN_PROGRESS'|'FAILED'|'UNFILLED_REARM_REQUIRED'|'AUTONOMOUS_PAPER_ACTIVE';
 export interface FirstCanaryRuntimeAcceptanceResult{
   readonly state:FirstCanaryRuntimeAcceptanceState;
   readonly receipt:FirstCanaryAcceptanceReceipt|null;
@@ -69,9 +72,18 @@ export async function reconcileFirstCanaryAcceptance(input:{readonly pool:Pool;r
     JOIN LATERAL(SELECT x.* FROM trade.broker_order x WHERE x.order_intent_id=oi.order_intent_id
       ORDER BY x.created_at DESC,x.broker_order_id DESC LIMIT 1) bo ON true
     CROSS JOIN ops.paper_execution_control pec
-    WHERE p.authority_kind='NEW_RISK' AND oi.execution_account_id=$1
+    WHERE p.authority_kind='NEW_RISK' AND oi.execution_account_id=$1 AND NOT ${unfilledTerminalBrokerOrderSql('bo')}
     ORDER BY p.created_at,p.action_plan_id LIMIT 2`,[input.executionAccountId]);
-  if(result.rowCount===0)return {state:'NO_CANARY',receipt:null,control:null};
+  if(result.rowCount===0){
+    // only zero-fill CANCELED/EXPIRED canaries (or none): re-armed by the governed activation after the last one -> waiting for the next canary
+    const unfilled=await input.pool.query(`SELECT count(*)::int AS unfilled,
+      EXISTS(SELECT 1 FROM ops.paper_execution_control pec WHERE pec.singleton=true AND pec.changed_by='OWNER_DIRECTIVE_FIRST_PAPER_CANARY'
+        AND pec.changed_at>(SELECT max(x.created_at) FROM trade.broker_order x)) AS owner_rearmed
+      FROM trade.broker_order bo JOIN trade.order_intent oi USING(order_intent_id)
+      WHERE oi.execution_account_id=$1 AND ${unfilledTerminalBrokerOrderSql('bo')}`,[input.executionAccountId]);
+    const row=unfilled.rows[0] as {unfilled?:unknown;owner_rearmed?:unknown}|undefined;
+    return {state:Number(row?.unfilled??0)>0&&row?.owner_rearmed!==true?'UNFILLED_REARM_REQUIRED':'NO_CANARY',receipt:null,control:null};
+  }
   if((result.rowCount??0)!==1)throw new Error('FIRST_CANARY_MULTIPLE_LOCAL_BROKER_ORDERS');
   const row=result.rows[0] as Row;
   // The post-submit relock is persisted best-effort; a transient failure there

@@ -118,3 +118,13 @@ test('accepted-canary runtime wiring is read-only until its governed database tr
   assert.doesNotMatch(evaluator,/\.submitOrder\(|\.replaceOrder\(|\.cancelOrder\(/);
   assert.match(evaluator,/activateAutonomousPaperAfterAcceptedCanary/);
 });
+
+test('the governed activation may re-arm a canary that ended with zero fills, but only up to the bounded limit; a used (filled) canary is never re-armed', () => {
+  const valid=activation();
+  assert.deepEqual(firstPaperCanaryActivationBlockers({...valid,database:{...valid.database,unfilledCanaryCount:2}}),[],
+    'zero-fill CANCELED/EXPIRED canaries do not count as a used canary');
+  assert.ok(firstPaperCanaryActivationBlockers({...valid,database:{...valid.database,unfilledCanaryCount:3}})
+    .includes('FIRST_CANARY_UNFILLED_REARM_LIMIT_REACHED'));
+  assert.ok(firstPaperCanaryActivationBlockers({...valid,database:{...valid.database,priorBrokerOrderCount:1,unfilledCanaryCount:0}})
+    .includes('FIRST_CANARY_ALREADY_USED'));
+});

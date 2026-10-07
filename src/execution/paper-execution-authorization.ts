@@ -10,6 +10,19 @@ export const fullPaperExecutionLockConfirmation = 'LOCK_ALL_THETA_PAPER_EXECUTIO
 export const firstPaperCanaryQuantity = 1 as const;
 export const ownerMasterPaperAutonomySource = 'OWNER_DIRECTIVE_2026_10_01_MASTER_PAPER_AUTONOMY' as const;
 export const autonomousMasterPaperAuditAction = 'ACTIVATE_AUTONOMOUS_MASTER_PAPER' as const;
+/** How many zero-fill canaries the governed activation may re-arm before the lane stays used (a canary that never fills is a pricing/liquidity
+ * finding, not something to retry indefinitely). Re-arming happens only through activateFirstPaperCanary, which re-checks zero broker
+ * positions, zero open orders, no active intent, an open confirmed session, a fresh complete scan and quote authority. */
+export const maximumUnfilledCanaryRearms = 3 as const;
+
+/** SQL predicate over a `trade.broker_order` alias: the order ended CANCELED/EXPIRED locally and no fill was ever recorded for its intent. Only
+ * such an order leaves the one-canary lane unused: it created no exposure, no TCA and nothing to accept. Anything else (filled, partial,
+ * rejected, working, or a status not yet reconciled) consumes the lane, so an unreconciled order is always treated as used. */
+export function unfilledTerminalBrokerOrderSql(alias:string):string{
+  return `(EXISTS(SELECT 1 FROM trade.order_intent uti WHERE uti.order_intent_id=${alias}.order_intent_id AND uti.status IN ('CANCELED','EXPIRED'))
+    AND NOT EXISTS(SELECT 1 FROM trade.fill uf JOIN trade.broker_order ubo ON ubo.broker_order_id=uf.broker_order_id
+      WHERE ubo.order_intent_id=${alias}.order_intent_id))`;
+}
 
 /** The one durable, restart-safe record that a first Paper canary was fully
  * accepted. It is an immutable audit row written inside the same transaction as
@@ -71,6 +84,8 @@ export interface FirstPaperCanaryDatabaseEvidence {
   readonly managementAuthorized:boolean;
   readonly followerExecutionEnabled:boolean;
   readonly priorBrokerOrderCount:number;
+  /** prior canary orders that ended CANCELED/EXPIRED with zero fills; they do not count as a used canary, up to the re-arm limit */
+  readonly unfilledCanaryCount?:number;
   readonly activeIntentCount:number;
   readonly masterCount:number;
   readonly masterSelfCopyCount:number;
@@ -102,6 +117,7 @@ export function firstPaperCanaryActivationBlockers(input:{readonly activatedAt:s
   if(runtime.brokerOpenOrderCount!==0)blockers.push('FIRST_CANARY_REQUIRES_ZERO_OPEN_ORDERS');
   if(runtime.brokerLocalOnlyIntentCount!==0)blockers.push('UNRECONCILED_LOCAL_ORDER_INTENT');
   if(database.priorBrokerOrderCount!==0)blockers.push('FIRST_CANARY_ALREADY_USED');
+  if((database.unfilledCanaryCount??0)>=maximumUnfilledCanaryRearms)blockers.push('FIRST_CANARY_UNFILLED_REARM_LIMIT_REACHED');
   if(database.activeIntentCount!==0)blockers.push('ACTIVE_ORDER_INTENT_PRESENT');
   if(database.masterCount!==1)blockers.push('MASTER_ACCOUNT_ROLE_INVALID');
   if(database.masterSelfCopyCount!==0)blockers.push('MASTER_SELF_COPY_INVARIANT_FAILED');
@@ -261,7 +277,8 @@ export class PostgresPaperExecutionAuthorizationStore{
       await client.query(`SELECT pg_advisory_xact_lock(hashtext('theta-master-paper-authorization'))`);
       const state=await client.query(`SELECT
         pec.pause_new_orders,pec.master_execution_enabled,pec.follower_execution_enabled,pec.authorization_event_id,
-        (SELECT count(*)::int FROM trade.broker_order) AS broker_order_count,
+        (SELECT count(*)::int FROM trade.broker_order bo WHERE NOT ${unfilledTerminalBrokerOrderSql('bo')}) AS broker_order_count,
+        (SELECT count(*)::int FROM trade.broker_order bo WHERE ${unfilledTerminalBrokerOrderSql('bo')}) AS unfilled_canary_count,
         (SELECT count(*)::int FROM trade.order_intent WHERE status NOT IN
           ('FILLED','CANCELED','REJECTED','EXPIRED')) AS active_intent_count,
         (SELECT count(*)::int FROM copy.follower_account WHERE account_role='MASTER_THETA_PAPER'
@@ -286,7 +303,8 @@ export class PostgresPaperExecutionAuthorizationStore{
       const row=state.rows[0] as Record<string,unknown>;
       // An absent/non-numeric aggregate is UNKNOWN evidence, never "zero prior orders / zero active intents": a renamed column or a
       // driver returning null must block activation instead of clearing the blockers below.
-      const counts={brokerOrder:exactNonNegativeInteger(row.broker_order_count),activeIntent:exactNonNegativeInteger(row.active_intent_count),
+      const counts={brokerOrder:exactNonNegativeInteger(row.broker_order_count),unfilledCanary:exactNonNegativeInteger(row.unfilled_canary_count),
+        activeIntent:exactNonNegativeInteger(row.active_intent_count),
         master:exactNonNegativeInteger(row.master_count),masterSelfCopy:exactNonNegativeInteger(row.master_self_copy_count)};
       const priorBrokerOrderCount=counts.brokerOrder??0;
       const unknownCounts=Object.values(counts).some((value)=>value===null);
@@ -294,7 +312,7 @@ export class PostgresPaperExecutionAuthorizationStore{
       const migrationHead=typeof row.migration_head==='string'?row.migration_head:null;
       const blockers=firstPaperCanaryActivationBlockers({activatedAt:input.activatedAt,runtime:input.evidence,database:{
         managementAuthorized:row.master_execution_enabled===true&&row.authorization_event_id!=null,
-        followerExecutionEnabled:row.follower_execution_enabled===true,priorBrokerOrderCount,
+        followerExecutionEnabled:row.follower_execution_enabled===true,priorBrokerOrderCount,unfilledCanaryCount:counts.unfilledCanary??0,
         activeIntentCount:counts.activeIntent??0,masterCount:counts.master??0,
         masterSelfCopyCount:counts.masterSelfCopy??0,quoteReady:row.quote_ready===true,
         latestCompleteScanAt,migrationHead,requiredSchemaBaselinePresent:row.required_schema_baseline_present===true,
@@ -342,7 +360,7 @@ export class PostgresPaperExecutionAuthorizationStore{
     const result=await this.pool.query(`UPDATE ops.paper_execution_control pec
       SET pause_new_orders=true,changed_by='AUTOMATIC_FIRST_CANARY_LOCK',changed_at=$1
       WHERE pec.singleton=true AND pec.pause_new_orders=false
-        AND EXISTS(SELECT 1 FROM trade.broker_order)
+        AND EXISTS(SELECT 1 FROM trade.broker_order bo WHERE NOT ${unfilledTerminalBrokerOrderSql('bo')})
         AND NOT EXISTS(SELECT 1 FROM copy.operator_audit_event
           WHERE action='ACTIVATE_AUTONOMOUS_MASTER_PAPER' AND result='ACCEPTED')
         AND EXISTS(SELECT 1 FROM ops.paper_execution_authorization_event pae
@@ -370,7 +388,9 @@ export class PostgresPaperExecutionAuthorizationStore{
         pec.follower_execution_enabled,pec.authorization_event_id::text,
         pae.authorization_scope_json,
         (SELECT count(DISTINCT p.execution_order_intent_id)::int FROM trade.master_paper_action_plan p
-          WHERE p.authority_kind='NEW_RISK' AND p.execution_order_intent_id IS NOT NULL) AS broker_order_count,
+          WHERE p.authority_kind='NEW_RISK' AND p.execution_order_intent_id IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM trade.broker_order bo WHERE bo.order_intent_id=p.execution_order_intent_id
+              AND ${unfilledTerminalBrokerOrderSql('bo')})) AS broker_order_count,
         EXISTS(SELECT 1 FROM trade.order_intent oi JOIN trade.broker_order bo USING(order_intent_id)
           WHERE oi.order_intent_id=$1 AND oi.execution_account_id=$2 AND oi.client_order_id=$3
             AND oi.quantity=${firstPaperCanaryQuantity} AND oi.status='FILLED') AS accepted_order_exists
