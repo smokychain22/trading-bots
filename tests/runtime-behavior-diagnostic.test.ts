@@ -71,3 +71,14 @@ test('mixed candidate populations are rejected before they can create contradict
     /RUNTIME_BEHAVIOR_DIAGNOSTIC_COUNTS_INVALID/,
   );
 });
+
+test('FALSE-WAIT DETECTOR: a selected candidate with no plan and no recorded reason is flagged as wiring paralysis, never masked as a risk WAIT', () => {
+  const suspected = classifyRuntimeBehavior(input({ feasibleCandidateCount: 2, selectedCandidateCount: 1, aegisVetoCount: 3, quantityZeroCount: 4 }));
+  assert.equal(suspected.waitClassification, 'POSSIBLE_LOGIC_PARALYSIS');
+  assert.ok(suspected.reasonCodes.includes('FALSE_WAIT_SUSPECTED:SELECTED_CANDIDATE_WITHOUT_PLAN_OR_REASON'));
+  const explained = classifyRuntimeBehavior(input({ feasibleCandidateCount: 2, selectedCandidateCount: 1, aegisVetoCount: 3,
+    actionPlanBlockers: ['TLT:ENTRY_SAFETY_POLICY_NOT_CLEARED'] }));
+  assert.notEqual(explained.waitClassification, 'POSSIBLE_LOGIC_PARALYSIS', 'a recorded leaf reason is a classified WAIT, not a suspect');
+  assert.ok(!explained.reasonCodes.some((code) => code.startsWith('FALSE_WAIT_SUSPECTED')));
+  assert.equal(classifyRuntimeBehavior(input({ selectedCandidateCount: 1, actionPlansReady: 1, feasibleCandidateCount: 1 })).waitClassification, 'ACTION_READY');
+});

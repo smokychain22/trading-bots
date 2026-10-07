@@ -260,7 +260,12 @@ export function classifyRuntimeBehavior(input: RuntimeBehaviorDiagnosticInput): 
   const overtradingState: OvertradingState = input.actionPlansReady === 0 ? 'NO_NEW_ACTION'
     : input.actionPlansReady === 1 ? 'SINGLE_BOUNDED_ACTION' : 'MULTIPLE_ACTION_PLANS_SAME_SCAN';
   let waitClassification: WaitClassification;
+  // FALSE-WAIT DETECTOR (diagnostic only, never an order): a candidate was selected but no plan exists and no leaf reason was recorded for
+  // why. Every legitimate path records its reason (plan blockers, the selected-candidate loss detector), so this is broken wiring, and it
+  // must not be masked by a risk/quote label computed from OTHER candidates.
+  const falseWaitSuspected = input.actionPlansReady === 0 && input.selectedCandidateCount > 0 && input.actionPlanBlockers.length === 0;
   if (input.actionPlansReady > 0) waitClassification = 'ACTION_READY';
+  else if (falseWaitSuspected) waitClassification = 'POSSIBLE_LOGIC_PARALYSIS';
   else if (input.providerBlockers.length > 0 || (input.completeness !== 'COMPLETE' && input.completeness !== 'DATA_INSUFFICIENT')) waitClassification = 'DATA_WAIT';
   else if (input.completeness === 'DATA_INSUFFICIENT' || input.candidateCount === 0) waitClassification = 'NO_OPPORTUNITY';
   else if (blockers.some(quoteBlocker)) waitClassification = 'QUOTE_WAIT';
@@ -272,6 +277,7 @@ export function classifyRuntimeBehavior(input: RuntimeBehaviorDiagnosticInput): 
 
   const reasonCodes = [
     `WAIT_CLASSIFICATION_${waitClassification}`,
+    ...(falseWaitSuspected ? ['FALSE_WAIT_SUSPECTED:SELECTED_CANDIDATE_WITHOUT_PLAN_OR_REASON'] : []),
     `OVERTRADING_STATE_${overtradingState}`,
     ...input.globalWaitReasons,
     ...blockers,
