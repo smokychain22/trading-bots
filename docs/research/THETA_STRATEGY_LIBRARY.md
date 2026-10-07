@@ -23,6 +23,7 @@ authority:
 | Market regime | `strategy-intelligence/market-regime.ts` is attached to every reached decision receipt and archive-persistence tested. | Thresholds are implementation inference, not empirical policy. |
 | Edge hypothesis | `strategy-edge-receipt.ts` persists candidate-scoped mechanism, payer, current evidence and falsification rules. | Edge strength and confidence stay null until calibrated outcomes exist. |
 | Q replay | `research/q-policy-replay/*` compares current and challenger entry/management policies with PIT-safe costs and walk-forward splits. | The bounded SPY replay is research evidence, not a promotion artifact. |
+| Source replication | `research/source-replication/*` now contains executable research contracts for earnings volatility, gamma scalping, iron condors, box spreads, precommitted hero-zero ladders, butterflies, calendars, diagonals, backspreads, and directional debit structures. | These modules have deterministic source tests only. Historical provider runs, independent outcomes, OOS validation, and promotion remain absent. |
 | Generic orphan recovery | `broker-orphan-position-recovery.ts` is wired into management observation and recognizes persisted Production intent case-insensitively. | Mutation remains governed and Production deployment is separate. |
 
 The named strike and expiry optimization capability is implemented through the branch economic ranking pass over every
@@ -53,6 +54,7 @@ must never become Production thresholds (item 104).
 | Adjustment / profit lock | `adjustment-proposals.ts` | **MATH_PROVEN**, 5 tests. Adjustments are modelled as close + open, with realized P&L that cannot change afterwards. Every variant gets a leg-direction check, and a naked short call can never be created. The verdict is IMPROVES only against a stated objective and a capital limit. EV is UNKNOWN. |
 | MarketRegimeReceipt + forward evidence | `market-regime.ts` | **IMPLEMENTATION_INFERENCE** thresholds (`theta-regime-thresholds-v0-unvalidated`), 7 tests. The forward evaluator is point-in-time by construction, with a tamper test. |
 | Strategy economics receipt | `src/theta/strategy-economics.ts` (parent branch) | SHADOW. |
+| Premium-source replication | `src/research/source-replication/*` | **SOURCE_COMPLETE / RESEARCH_ONLY**. Exact executable-quote and path math is implemented with fail-closed PIT, policy, cost, and geometry checks. No module can authorize execution or claim empirical profitability. |
 
 Still incomplete: an empirically qualified IV-rank history, a calibrated expected-move model, and promotion-grade
 performance evidence. The current expected-move and volatility inputs remain typed partial evidence where provider or
@@ -173,7 +175,7 @@ Columns:
 | Losing position into a butterfly | Long C100 + 2×(−C105) + C110 | Floor −$300 becomes **+$240** in fixture (price-dependent) | Early assignment on the shorts | 3-strike fill | MATH_PROVEN only for the stated prices |
 | Calendar hedge on a short call | −C100 front + C100 back | Unbounded loss becomes **bounded** | Term-structure inversion, front assignment | Cross-expiry fill | MATH_PROVEN with BS back-leg valuation |
 | Margin reduction | Any | **UNDETERMINED**: no broker margin model | — | — | Needs broker requirements |
-| Gamma scalping profits | Long gamma + hedging | Not evaluated: needs the research simulator with costs | — | — | Not started |
+| Gamma scalping profits | Long gamma + governed hedge algorithm | Simulator now decomposes option mark, hedge P&L, gamma, theta, vega, residual and transaction costs | Hedge frequency and IV/RV relationship remain unvalidated | Repeated underlying hedges and option entry/exit costs | SOURCE_COMPLETE; empirically unproven |
 
 A non-negative expiry payoff is never a statement about path risk, and path risk never voids a proven expiry floor.
 
