@@ -129,6 +129,12 @@ export interface CandidatePolicyEvidence {
   readonly policyId: string;
   /** TRAIN + VALIDATION metrics only; selection never reads OOS. */
   readonly inSample: PolicyMetrics;
+  /**
+   * The same policy's in-sample metrics under execution stresses (2x modeled spread, adverse trade prints). A policy is
+   * eligible only if its expectancy stays positive under every supplied stress: a policy whose apparent edge exists only at
+   * favourable daily trade prints (or that "never lost" in-sample) must not be chosen.
+   */
+  readonly inSampleStress?: readonly PolicyMetrics[];
 }
 
 export type ProfileName = 'CONSERVATIVE' | 'BALANCED' | 'AGGRESSIVE';
@@ -147,6 +153,7 @@ const quantile = (values: readonly number[], q: number): number => {
  */
 export function chooseProfiles(evidence: readonly CandidatePolicyEvidence[], minN = 20): readonly ProfileChoice[] {
   const pool = evidence.filter((e) => e.inSample.n >= minN && (e.inSample.expectancy ?? 0) > 0
+    && (e.inSampleStress ?? []).every((m) => m.n >= minN && (m.expectancy ?? 0) > 0)
     && e.inSample.expectedShortfall5Roc !== null && e.inSample.maxDrawdownRocUnits !== null && e.inSample.returnPerCapitalDay !== null);
   if (pool.length === 0) return (['CONSERVATIVE', 'BALANCED', 'AGGRESSIVE'] as const).map((profile) => ({ profile, policyId: null, rule: 'NO_ELIGIBLE_POLICY' }));
   const es = pool.map((e) => e.inSample.expectedShortfall5Roc as number), dd = pool.map((e) => e.inSample.maxDrawdownRocUnits as number);

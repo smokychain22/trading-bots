@@ -305,14 +305,16 @@ export function simulateExit(input: {
     if (p.premiumMultiple !== undefined && debitPs >= p.premiumMultiple * creditPs) return finish('PREMIUM_MULTIPLE', debitPs, half, modelPriced, false);
     if (p.deltaAbove !== undefined && delta !== null && Math.abs(delta) > p.deltaAbove) return finish('DELTA_ABOVE', debitPs, half, modelPriced, false);
     if (p.belowBreakeven === true && spot < breakeven) return finish('BELOW_BREAKEVEN', debitPs, half, modelPriced, false);
-    if (p.profitCapture !== undefined && capture >= p.profitCapture) return finish('PROFIT_CAPTURE', debitPs, half, modelPriced, false);
-    if (p.dynamic !== undefined && lastIv !== null) {
+    // Profit-taking needs a real traded print: a constant-IV model price decays by theta alone and would fake captures.
+    // Model prices are used only for risk and time exits (labelled modelPricedExit).
+    if (p.profitCapture !== undefined && !modelPriced && capture >= p.profitCapture) return finish('PROFIT_CAPTURE', debitPs, half, modelPriced, false);
+    if (p.dynamic !== undefined && lastIv !== null && !modelPriced) {
       const tail = Math.max(0, K - spot * Math.exp(-2 * lastIv * Math.sqrt(t))) - debitPs;
       const ratio = tail > 0 ? debitPs / tail : Number.POSITIVE_INFINITY;
       if (capture >= p.dynamic.hardCapture || (capture >= p.dynamic.minCapture && ratio < p.dynamic.tailRatio))
         return finish('DYNAMIC_REMAINING_REWARD', debitPs, half, modelPriced, false);
     }
-    if (p.currentManagement === true && dte <= 5 && debitPs <= 0.10 * creditPs) return finish('CURRENT_MANAGEMENT', debitPs, half, modelPriced, false);
+    if (p.currentManagement === true && !modelPriced && dte <= 5 && debitPs <= 0.10 * creditPs) return finish('CURRENT_MANAGEMENT', debitPs, half, modelPriced, false);
     if (p.dteExit !== undefined && dte <= p.dteExit) return finish('DTE_EXIT', debitPs, half, modelPriced, false);
     if (p.timeFraction !== undefined && calendarDays(input.entryDate, date) >= p.timeFraction * c.dte) return finish('TIME_EXIT', debitPs, half, modelPriced, false);
   }

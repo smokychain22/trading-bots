@@ -142,3 +142,25 @@ test('profile selection reads only in-sample evidence; OOS outcomes cannot influ
   assert.ok(choices.every((c) => c.policyId === 'P1'));
   assert.ok(chooseProfiles([{ policyId: 'P1', inSample: computePolicyMetrics(good.slice(0, 5)) }]).every((c) => c.policyId === null));
 });
+
+test('profit capture never fires on a model-priced (no-trade) day: theta at constant IV cannot fake a capture', () => {
+  // Bars only on the entry day: every later day is model-priced; FIXED_25 must not close before expiry.
+  const c = contract('XYZ_P95', 95, expiry, optionBars(hUp, 0, 1, () => 1.0));
+  const cand = candidateFor(hUp, c, 0);
+  const r = simulateExit({ underlying: hUp, contract: c, candidate: cand, entryDate: hUp.dates[0] as string, policy: { id: 'F25', profitCapture: 0.25 }, assumptions: A, regime: 'X' });
+  assert.equal(r.state === 'CLOSED' && r.episode.exitReason, 'EXPIRED_OTM');
+  // A risk/time exit may still use a model price, and is labelled.
+  const t = simulateExit({ underlying: hUp, contract: c, candidate: cand, entryDate: hUp.dates[0] as string, policy: { id: 'DTE', dteExit: 21 }, assumptions: A, regime: 'X' });
+  assert.equal(t.state === 'CLOSED' && t.episode.modelPricedExit, true);
+});
+
+test('the stress gate rejects a policy whose in-sample edge disappears under execution stress', () => {
+  const ep = (i: number, pnl: number) => ({ underlying: 'XYZ', symbol: `S${i}`, entryDate: `2024-0${1 + (i % 9)}-0${1 + (i % 9)}`,
+    exitDate: `2024-0${1 + (i % 9)}-1${i % 9}`, exitReason: 'EXPIRED_OTM' as const, pnl, capital: 1000, holdDays: 10, capitalDays: 10_000,
+    roc: pnl / 1000, assigned: false, modelPricedExit: false, modeledSlippage: 0,
+    features: { absDelta: 0.2, iv: 0.3, dte: 40, cushionSigmas: 1, regime: 'X' } });
+  const base = computePolicyMetrics(Array.from({ length: 25 }, (_, i) => ep(i, 10)));
+  const stressedNegative = computePolicyMetrics(Array.from({ length: 25 }, (_, i) => ep(i, i % 2 === 0 ? -30 : 10)));
+  assert.ok(chooseProfiles([{ policyId: 'FRAGILE', inSample: base, inSampleStress: [stressedNegative] }]).every((c) => c.policyId === null));
+  assert.ok(chooseProfiles([{ policyId: 'ROBUST', inSample: base, inSampleStress: [base] }]).every((c) => c.policyId === 'ROBUST'));
+});

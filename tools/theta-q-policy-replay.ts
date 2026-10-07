@@ -254,36 +254,74 @@ const compact = (m: PolicyMetrics) => ({ n: m.n, winRate: m.winRate, wilson95: m
   es5Roc: m.expectedShortfall5Roc, maxDDRoc: m.maxDrawdownRocUnits, totalPnl: m.totalPnl, annualizedRocOnCapitalDays: m.annualizedReturnOnCapitalDays,
   assignmentRate: m.assignmentRate, avgHoldDays: m.averageHoldDays, slippage: m.modeledSlippageTotal, modelPricedExits: m.modelPricedExitCount });
 
-function rollingWalkForward(combos: readonly ComboResult[]): Record<string, unknown> {
-  // Expanding window: for each quarter from 2025-03, choose profiles on episodes EXITED before the quarter, evaluate in it.
-  const quarters: [string, string][] = [];
-  for (let start = '2025-03-01'; start <= dataEnd;) { const end = addDays(addDays(start, 92).slice(0, 8) + '01', -1); quarters.push([start, end]); start = addDays(end, 1); }
+const quarterStarts = (() => {
+  const out: string[] = [];
+  for (let start = '2025-03-01'; start <= dataEnd;) { out.push(start); const next = addDays(start, 92).slice(0, 8) + '01'; start = next; }
+  return out;
+})();
+const quarterEnd = (start: string): string => addDays(addDays(start, 92).slice(0, 8) + '01', -1);
+const comboKey = (c: { readonly selection: string; readonly exit: string }) => `${c.selection}|${c.exit}`;
+
+/** Compact selection evidence for one combo: in-sample metrics and, per quarter, metrics on outcomes known before it. */
+interface SelectionSummary { readonly inSample: PolicyMetrics; readonly beforeQuarter: Readonly<Record<string, PolicyMetrics>> }
+const summarize = (episodes: readonly Episode[]): SelectionSummary => ({
+  inSample: computePolicyMetrics(inSampleOf(episodes)),
+  beforeQuarter: Object.fromEntries(quarterStarts.map((q) => [q, computePolicyMetrics(episodes.filter((e) => e.exitDate < q))])),
+});
+
+function rollingWalkForward(combos: readonly ComboResult[], base: ReadonlyMap<string, SelectionSummary>,
+  stresses: readonly ReadonlyMap<string, SelectionSummary>[]): Record<string, unknown> {
+  // Expanding window: for each quarter from 2025-03, choose profiles on outcomes EXITED before the quarter (base and
+  // stressed), evaluate the chosen policy only on entries inside the quarter.
   const pools = combos.filter((c) => c.kind === 'PROFILE');
   const out: Record<string, Episode[]> = { CONSERVATIVE: [], BALANCED: [], AGGRESSIVE: [] };
   const picks: unknown[] = [];
-  for (const [start, end] of quarters) {
-    const evidence = pools.map((c) => ({ policyId: `${c.selection}|${c.exit}`, inSample: computePolicyMetrics(c.episodes.filter((e) => e.exitDate < start)) }));
+  for (const start of quarterStarts) {
+    const end = quarterEnd(start);
+    const evidence = pools.map((c) => {
+      const k = comboKey(c);
+      return { policyId: k, inSample: (base.get(k) as SelectionSummary).beforeQuarter[start] as PolicyMetrics,
+        inSampleStress: stresses.map((s) => (s.get(k) as SelectionSummary).beforeQuarter[start] as PolicyMetrics) };
+    });
     const choices = chooseProfiles(evidence);
     picks.push({ quarter: start, choices: choices.map((x) => [x.profile, x.policyId]) });
     for (const choice of choices) {
       if (choice.policyId === null) continue;
-      const combo = pools.find((c) => `${c.selection}|${c.exit}` === choice.policyId) as ComboResult;
+      const combo = pools.find((c) => comboKey(c) === choice.policyId) as ComboResult;
       (out[choice.profile] as Episode[]).push(...combo.episodes.filter((e) => e.entryDate >= start && e.entryDate <= end));
     }
   }
-  return { method: 'EXPANDING_WINDOW_QUARTERLY_OUTCOMES_KNOWN_BEFORE_QUARTER', picks,
+  return { method: 'EXPANDING_WINDOW_QUARTERLY_OUTCOMES_KNOWN_BEFORE_QUARTER_STRESS_GATED', picks,
     results: Object.fromEntries(Object.entries(out).map(([k, v]) => [k, compact(computePolicyMetrics(v))])) };
 }
 
 function universeReport(name: string, names: readonly string[], equity: number | null): Record<string, unknown> {
   const a = assumptions(equity, false);
   const combos = runUniverse(names, a);
-  const byKey = new Map(combos.map((c) => [`${c.selection}|${c.exit}`, c]));
-  const profileEvidence = combos.filter((c) => c.kind === 'PROFILE').map((c) => ({ policyId: `${c.selection}|${c.exit}`, inSample: computePolicyMetrics(inSampleOf(c.episodes)) }));
+  const byKey = new Map(combos.map((c) => [comboKey(c), c]));
+  const baseSummary = new Map(combos.map((c) => [comboKey(c), summarize(c.episodes)]));
+  // Stress runs: keep only compact summaries plus OOS/full metrics (episodes are dropped immediately).
+  const stressRun = (aa: ReplayAssumptions) => {
+    const summaries = new Map<string, SelectionSummary>(), oos = new Map<string, unknown>();
+    for (const c of runUniverse(names, aa)) {
+      summaries.set(comboKey(c), summarize(c.episodes));
+      oos.set(comboKey(c), { full: compact(computePolicyMetrics(c.episodes)), oos: compact(computePolicyMetrics(oosOf(c.episodes))) });
+    }
+    return { summaries, oos };
+  };
+  const spread = stressRun(assumptions(equity, true));
+  const prints = stressRun(assumptions(equity, false, 'ADVERSE_EXTREME'));
+  const profileEvidence = combos.filter((c) => c.kind === 'PROFILE').map((c) => {
+    const k = comboKey(c);
+    return { policyId: k, inSample: (baseSummary.get(k) as SelectionSummary).inSample,
+      inSampleStress: [(spread.summaries.get(k) as SelectionSummary).inSample, (prints.summaries.get(k) as SelectionSummary).inSample] };
+  });
   const choices = chooseProfiles(profileEvidence);
+  const stressRejected = profileEvidence.filter((e) => e.inSample.n >= 20 && (e.inSample.expectancy ?? 0) > 0
+    && !e.inSampleStress.every((m) => m.n >= 20 && (m.expectancy ?? 0) > 0)).length;
   const keyCombos = ['CURRENT_Q_EMULATION|CURRENT_MGMT_EMULATION', 'CURRENT_Q_EMULATION|HOLD_TO_EXPIRY', 'CURRENT_Q_EMULATION|FIXED_50',
     'ECONOMIC_Q|CURRENT_MGMT_EMULATION', 'ECONOMIC_Q|HOLD_TO_EXPIRY', 'ECONOMIC_Q|FIXED_50', 'ECONOMIC_Q|FIXED_50+RISK_2X', 'ECONOMIC_Q|DYNAMIC+RISK_2X',
-    ...choices.flatMap((c) => c.policyId === null ? [] : [c.policyId])];
+    ...new Set(choices.flatMap((c) => c.policyId === null ? [] : [c.policyId]))];
   const table = (filter: (eps: readonly Episode[]) => readonly Episode[]) => Object.fromEntries(keyCombos.map((k) => {
     const c = byKey.get(k); return [k, c === undefined ? null : compact(computePolicyMetrics(filter(c.episodes)))]; }));
   const baselineExits = Object.fromEntries(['CURRENT_Q_EMULATION', 'ECONOMIC_Q'].map((sel) => [sel, Object.fromEntries(exitPolicies.map((e) => {
@@ -293,29 +331,25 @@ function universeReport(name: string, names: readonly string[], equity: number |
   }))]));
   const surface = Object.fromEntries(['HOLD_TO_EXPIRY', 'FIXED_50', 'FIXED_50+RISK_2X', 'CURRENT_MGMT_EMULATION'].map((exit) => [exit,
     combos.filter((c) => c.kind === 'PROFILE' && c.exit === exit && c.selection.endsWith('_Rnone')).map((c) => {
-      const m = computePolicyMetrics(inSampleOf(c.episodes));
-      return { profile: c.selection, n: m.n, expectancy: m.expectancy, annRoc: m.annualizedReturnOnCapitalDays, es5Roc: m.expectedShortfall5Roc, maxDDRoc: m.maxDrawdownRocUnits, winRate: m.winRate };
+      const m = (baseSummary.get(comboKey(c)) as SelectionSummary).inSample;
+      const ps = (prints.summaries.get(comboKey(c)) as SelectionSummary).inSample;
+      return { profile: c.selection, n: m.n, expectancy: m.expectancy, annRoc: m.annualizedReturnOnCapitalDays, es5Roc: m.expectedShortfall5Roc,
+        maxDDRoc: m.maxDrawdownRocUnits, winRate: m.winRate, adversePrintExpectancy: ps.expectancy };
     })]));
-  const buckets = Object.fromEntries(keyCombos.slice(0, 6).concat(choices.flatMap((c) => c.policyId === null ? [] : [c.policyId])).map((k) => {
+  const buckets = Object.fromEntries(keyCombos.map((k) => {
     const c = byKey.get(k); if (c === undefined) return [k, null];
-    return [k, Object.fromEntries(Object.entries(bucketKeys).map(([name, fn]) => [name, Object.fromEntries(Object.entries(bucketize(c.episodes, fn)).map(([b, m]) => [b, compact(m)]))]))];
+    return [k, Object.fromEntries(Object.entries(bucketKeys).map(([bn, fn]) => [bn, Object.fromEntries(Object.entries(bucketize(c.episodes, fn)).map(([b, m]) => [b, compact(m)]))]))];
   }));
-  // Spread stress (2x half-spread) on the key combos only.
-  const stressCombos = runUniverse(names, assumptions(equity, true), (s) => s.kind !== 'PROFILE' || keyCombos.some((k) => k.startsWith(`${s.id}|`)),
-    (id) => keyCombos.some((k) => k.endsWith(`|${id}`)));
-  const stress = Object.fromEntries(keyCombos.map((k) => { const c = stressCombos.find((x) => `${x.selection}|${x.exit}` === k);
-    return [k, c === undefined ? null : { full: compact(computePolicyMetrics(c.episodes)), oos: compact(computePolicyMetrics(oosOf(c.episodes))) }]; }));
-  // Trade-print stress: open at the day's LOW, buy back at the day's HIGH (base spread model on top).
-  const priceCombos = runUniverse(names, assumptions(equity, false, 'ADVERSE_EXTREME'), (s) => s.kind !== 'PROFILE' || keyCombos.some((k) => k.startsWith(`${s.id}|`)),
-    (id) => keyCombos.some((k) => k.endsWith(`|${id}`)));
-  const priceStress = Object.fromEntries(keyCombos.map((k) => { const c = priceCombos.find((x) => `${x.selection}|${x.exit}` === k);
-    return [k, c === undefined ? null : { full: compact(computePolicyMetrics(c.episodes)), oos: compact(computePolicyMetrics(oosOf(c.episodes))) }]; }));
   const curr = byKey.get('CURRENT_Q_EMULATION|HOLD_TO_EXPIRY') as ComboResult;
   return { universe: name, underlyings: names, capitalMode: equity === null ? 'UNCONSTRAINED_PER_CONTRACT' : `EQUITY_ASSUMPTION_${equity}_HARD_TICKER_CAP_${a.hardTickerCapPct}`,
     coverage: { decisionsConsideredCurrentQHold: curr.decisions, episodesCurrentQHold: curr.episodes.length, censoredCurrentQHold: curr.censored,
-      waitsCurrentQHold: curr.waits, corporateActionExcluded: curr.excluded },
+      waitsCurrentQHold: curr.waits, corporateActionExcluded: curr.excluded, policiesEvaluated: combos.length,
+      profilePoliciesRejectedByStressGate: stressRejected },
     profileChoices: choices, inSampleKey: table(inSampleOf), oosKey: table(oosOf), fullKey: table((e) => e),
-    rollingWalkForward: rollingWalkForward(combos), baselineExits, sensitivitySurfaceInSample: surface, buckets, spreadStress: stress, tradePrintStress: priceStress };
+    rollingWalkForward: rollingWalkForward(combos, baseSummary, [spread.summaries, prints.summaries]), baselineExits,
+    sensitivitySurfaceInSample: surface, buckets,
+    spreadStress: Object.fromEntries(keyCombos.map((k) => [k, spread.oos.get(k) ?? null])),
+    tradePrintStress: Object.fromEntries(keyCombos.map((k) => [k, prints.oos.get(k) ?? null])) };
 }
 
 const report = {
