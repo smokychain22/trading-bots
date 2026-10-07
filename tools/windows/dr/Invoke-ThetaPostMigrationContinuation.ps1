@@ -5,6 +5,11 @@ param(
   [string]$RollbackArchiveSha256='ba534c155eb0c96cfe3a79d1fee74772357831c3c40782e863e32f649703a604',
   [string]$RecoveryGateReceiptPath='.theta-local-worker\receipts\database-recovery-gate-latest.json'
 )
+# DEPRECATED (2026-10-07): this was the one-off continuation for the 067 checkpoint incident (it pins schema 067 and a 064 rollback
+# anchor and validates .env.local, a NON-Production database). It must never run again. The governed path is
+# Invoke-ThetaProductionMigration.ps1, which runs the storage audit and stability soak against the migrated (process-target) database and
+# takes the verified post-migration backup itself. Kept only as the audited record of that incident.
+throw 'DEPRECATED_067_ERA_POST_MIGRATION_CONTINUATION: use tools/windows/dr/Invoke-ThetaProductionMigration.ps1'
 . (Join-Path $PSScriptRoot 'ThetaBackup.Common.ps1')
 . (Join-Path $PSScriptRoot 'ThetaTime.Common.ps1')
 . (Join-Path $PSScriptRoot '..\ThetaProcess.Common.ps1')

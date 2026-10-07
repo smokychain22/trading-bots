@@ -128,6 +128,7 @@ foreach ($required in @('theta-post-migration-resume-preflight','duration-second
   if ($resume -notmatch [regex]::Escape($required)) { throw "POST_MIGRATION_RESUME_GUARD_MISSING:$required" }
 }
 if ($resume -match 'database-migrate\.mjs|migrations[\\/].*06[5-7]_') { throw 'POST_MIGRATION_RESUME_REAPPLIES_MIGRATIONS' }
+if ($resume -notmatch "throw 'DEPRECATED_067_ERA_POST_MIGRATION_CONTINUATION") { throw 'STALE_067_CONTINUATION_NOT_FAIL_CLOSED' }
 
 $backupPath = Join-Path $PSScriptRoot '..\..\tools\windows\dr\Backup-Theta.ps1'
 $backupSource = Get-Content -Raw -LiteralPath $backupPath
