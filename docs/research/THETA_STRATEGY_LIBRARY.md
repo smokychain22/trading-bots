@@ -3,6 +3,32 @@
 Status: RESEARCH / SHADOW. Nothing here grants Paper or broker authority. No strategy below is broker-enabled by this
 document.
 
+## Current integration truth, 2026-10-08
+
+The gap audit later in this document is retained as a historical baseline from commit `35057dc2`. It is not current
+source truth. The controlled integration branch has since closed these source-level gaps without changing Production
+authority:
+
+| Capability | Current source truth | Remaining limit |
+| --- | --- | --- |
+| Q broad economics | `q-economic-funnel.ts` evaluates every structurally eligible put before the bounded finalist set and records excluded economic leaders. | Selection remains shadow until governed evidence supports promotion. |
+| Q/H/D independent ranking | `branch-economic-shadow.ts` ranks each branch across strikes and expiries with the shared risk-constrained economics engine. | Expected after-cost EV remains uncalibrated. |
+| Q vs D | `canonical-shadow-comparison.ts` compares same-underlying, same-expiration Q/H/D structures on one-lot deterministic economics and preserves WAIT opportunity cost as unknown. | There is no calibrated common-horizon profitability winner. |
+| Q management | `management-economics/q-management.ts` compares the configured management alternatives with explicit repricing and costs. | Challenger choice is research-only pending resolved episodes. |
+| H management | `management-economics/h-management.ts` adds gamma, move-speed and short-DTE early-warning evidence and preserves the no-roll rule. | Independent outcome evidence is absent. |
+| D management | `management-economics/d-management.ts` treats the spread as one two-leg economic position. | Real spread episodes and fill calibration are absent. |
+| C opportunity cost | `management-economics/covered-call-utility.ts` can prefer `HOLD_SHARES_NO_CC` when forfeited upside dominates premium. | Utility weights remain shadow and unvalidated. |
+| Whole-chain accounting | `management-economics/episode-accounting.ts` keeps Q, assignment, stock, C and exit in one episode. | Real resolved complete-chain sample size is insufficient. |
+| Entry price | `management-economics/entry-price-engine.ts` produces non-submittable price bounds from candidate economics. | No Production repricing policy is promoted. |
+| Market regime | `strategy-intelligence/market-regime.ts` is attached to every reached decision receipt and archive-persistence tested. | Thresholds are implementation inference, not empirical policy. |
+| Edge hypothesis | `strategy-edge-receipt.ts` persists candidate-scoped mechanism, payer, current evidence and falsification rules. | Edge strength and confidence stay null until calibrated outcomes exist. |
+| Q replay | `research/q-policy-replay/*` compares current and challenger entry/management policies with PIT-safe costs and walk-forward splits. | The bounded SPY replay is research evidence, not a promotion artifact. |
+| Generic orphan recovery | `broker-orphan-position-recovery.ts` is wired into management observation and recognizes persisted Production intent case-insensitively. | Mutation remains governed and Production deployment is separate. |
+
+The named strike and expiry optimization capability is implemented through the branch economic ranking pass over every
+candidate combination. Creating a second optimizer with separate math would duplicate authority. The missing item is
+empirical promotion of that shared ranker, not another source module.
+
 ## Provenance labels
 
 | Label | Meaning |
@@ -28,8 +54,9 @@ must never become Production thresholds (item 104).
 | MarketRegimeReceipt + forward evidence | `market-regime.ts` | **IMPLEMENTATION_INFERENCE** thresholds (`theta-regime-thresholds-v0-unvalidated`), 7 tests. The forward evaluator is point-in-time by construction, with a tamper test. |
 | Strategy economics receipt | `src/theta/strategy-economics.ts` (parent branch) | SHADOW. |
 
-Not built yet: the strike and expiry optimizers (stage-2 economic ranking is the parent workstream), a volatility
-engine with IV-rank history, an expected-move engine, the management-contract store, and the dashboard.
+Still incomplete: an empirically qualified IV-rank history, a calibrated expected-move model, and promotion-grade
+performance evidence. The current expected-move and volatility inputs remain typed partial evidence where provider or
+historical semantics are incomplete.
 
 ## Mapping onto existing THETA identities (no duplicate engines)
 
@@ -150,7 +177,10 @@ Columns:
 
 A non-negative expiry payoff is never a statement about path risk, and path risk never voids a proven expiry floor.
 
-## THETA gap audit (item 136; code inspected on this branch)
+## Historical THETA gap audit at commit `35057dc2` (item 136)
+
+The rows below explain what the integration work fixed. Use the current integration table above and the live call graph
+for present truth. Do not reopen a row merely because its historical finding remains recorded here.
 
 Classes: MISSING, PARTIAL, CORRECT, WRONG_WIRING, NOT_APPLICABLE.
 
