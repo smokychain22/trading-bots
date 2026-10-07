@@ -109,3 +109,47 @@ diverge, and whether the economic order was applied. In `SHADOW` the selection i
    capital-day, assignment rate and slippage. Policy changes only after walk-forward and out-of-sample validation.
 
 `PROFITABILITY_STATUS = NOT_YET_PROVEN`.
+
+## Update: risk-constrained ranking, funnel receipt, branch shadow (same session)
+
+- `rankEconomically` (method `risk-constrained-pareto-v1`) orders candidates in this sequence:
+  1. hurdle verdict;
+  2. required-evidence completeness (missing risk evidence never improves rank);
+  3. calibrated EV, when one exists;
+  4. Pareto rank over a per-class vector;
+  5. risk-adjusted tie-break;
+  6. ID, only on an exact economic tie.
+
+  The per-class vectors are:
+  - **Q:** yield/day, cushion in σ, reward-to-stress, spread;
+  - **H:** cushion in σ first;
+  - **D:** credit / max loss.
+
+  Annualized ROC is never a key. Every row records the key that separated it from the next row.
+- **Stress.** Scenarios are a 5% gap, −2σ and −3σ, all using one underlying-level scenario volatility (the nearest-ATM put
+  IV). All three are required. A package with no modeled loss is unrankable on reward-to-stress, never infinitely good.
+- **`q-economic-funnel.ts`.** Every Q decision receipt carries:
+  - per-stage counts;
+  - an economic ranking of every hard-filter survivor;
+  - the economic top-K compared with the structural shortlist.
+- **`branch-economic-shadow.ts`.** Every canonical frontier carries the Q/H/D economic best next to the structural best.
+  D is priced on both legs.
+
+### Real XLE decision chain (recovered from the cycle archive)
+
+| Stage | Count |
+| --- | --- |
+| Q-window puts | 124 |
+| Quoted | 93 |
+| In the delta band | 48 |
+| Liquidity-valid | 11 |
+| Capital-valid | 11 |
+
+- All 11 survivors are economically evaluated, and all 11 are Pareto-efficient.
+- The actual 63P delta was −0.37 (57P: −0.09).
+- **Economic order, no hurdle:** 64P > 63P > … > 57P (#9).
+- **Interpretation.** On one expiry, more premium always comes with less cushion. With fairly priced options and no
+  calibrated EV, a risk-adjusted ratio prefers nearer-the-money strikes. Choosing a strike is therefore a risk preference.
+  It needs an owner risk hurdle (e.g. a minimum cushion in σ) or a calibrated EV.
+- This is why ENFORCED requires a risk hurdle **and** owner-approved validation evidence. Without both, it downgrades to
+  SHADOW.
