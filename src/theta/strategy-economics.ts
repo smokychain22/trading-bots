@@ -453,15 +453,22 @@ export function economicRankingForCspCandidates(
   config: EconomicRankingConfig,
 ): { readonly ranking: { readonly contractVersion: string; readonly mode: EconomicsGateMode; readonly orderedCandidateIds: readonly string[]; readonly basis: readonly string[] };
   readonly evaluations: readonly EconomicGateEvaluation[] } {
+  // Without calibrated EV, return per capital-day mostly measures how much risk is sold (the 2026-10-07 live shadow scan
+  // ranked the highest-|delta| CSPs and 1-3%-OTM narrow spreads first). The order may only select when the owner has
+  // configured at least one risk hurdle that bounds that; otherwise ENFORCED is downgraded to SHADOW.
+  const riskBounded = config.policy !== null && [config.policy.minBreakevenCushionPct, config.policy.minRewardToStressRisk,
+    config.policy.maxStressLossUsd].some((value) => value !== null && value !== undefined);
+  const mode: EconomicsGateMode = config.mode === 'ENFORCED' && !riskBounded ? 'SHADOW' : config.mode;
   const rows = candidates.map(({ candidateId, contract }) => {
     const receipt = cspEconomicsReceipt(candidateId, contract, config);
-    const evaluation = evaluateEconomicHurdles(receipt, config.policy, config.mode);
+    const evaluation = evaluateEconomicHurdles(receipt, config.policy, mode);
     return { receipt, verdict: evaluation.verdict, evaluation };
   });
   const ordered = rows.toSorted(economicCandidateOrder);
   return {
-    ranking: { contractVersion: strategyEconomicsContractVersion, mode: config.mode,
-      orderedCandidateIds: ordered.map((row) => row.receipt.candidateId), basis: economicRankingBasis },
+    ranking: { contractVersion: strategyEconomicsContractVersion, mode,
+      orderedCandidateIds: ordered.map((row) => row.receipt.candidateId),
+      basis: mode === config.mode ? economicRankingBasis : [...economicRankingBasis, 'ENFORCEMENT_DOWNGRADED_NO_RISK_HURDLE_CONFIGURED'] },
     evaluations: ordered.map((row) => row.evaluation),
   };
 }

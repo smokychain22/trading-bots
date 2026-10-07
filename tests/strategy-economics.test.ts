@@ -144,9 +144,18 @@ test('SHADOW economic ranking records the divergence and leaves the Production s
   }, { legacy: 'XLE261120P00057000', economic: 'XLE261120P00063000', diverges: true, applied: false });
 });
 
-test('ENFORCED economic ranking replaces only the ID tie-break; quantity and eligibility are untouched', () => {
+test('ENFORCED without a configured risk hurdle is downgraded to SHADOW (yield alone sells the most risk)', () => {
   const { ranking } = economicRankingForCspCandidates([xle57, xle63].map((c) => ({ candidateId: c.optionSymbol, contract: c })),
     { ...config, mode: 'ENFORCED', policy: null });
+  assert.equal(ranking.mode, 'SHADOW');
+  assert.ok(ranking.basis.includes('ENFORCEMENT_DOWNGRADED_NO_RISK_HURDLE_CONFIGURED'));
+  assert.equal(assembleNewRiskDecision(decisionInput({ economicRanking: ranking })).selectedCandidateId, 'XLE261120P00057000');
+});
+
+test('ENFORCED economic ranking replaces only the ID tie-break; quantity and eligibility are untouched', () => {
+  const { ranking } = economicRankingForCspCandidates([xle57, xle63].map((c) => ({ candidateId: c.optionSymbol, contract: c })),
+    { ...config, mode: 'ENFORCED', policy: { policyVersion: 't', maxStressLossUsd: 1_000_000 } });
+  assert.equal(ranking.mode, 'ENFORCED');
   const decision = assembleNewRiskDecision(decisionInput({ economicRanking: ranking }));
   assert.equal(decision.selectedCandidateId, 'XLE261120P00063000');
   assert.equal(decision.quantity, 1);
