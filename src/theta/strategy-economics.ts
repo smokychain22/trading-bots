@@ -74,6 +74,13 @@ export interface StrategyEconomicsInput {
   readonly eventInWindow: boolean | null;
   /** Adverse underlying gap applied for the stress loss (decimal, e.g. 0.05). */
   readonly stressGapPct: number;
+  /**
+   * Underlying-level annualized volatility for the -2 sigma scenario and cushion-in-sigmas, shared by every candidate on
+   * the underlying (so skew-rich OTM legs are not stressed harder than nearer strikes). Null falls back to the short leg's
+   * own IV, and the provenance says so.
+   */
+  readonly scenarioVolatility?: number | null;
+  readonly scenarioVolatilityProvenance?: string;
   /** Annual opportunity-cost rate on committed capital (decimal); null = NOT CONFIGURED. */
   readonly opportunityCostAnnualRate: number | null;
 }
@@ -96,6 +103,8 @@ export interface StrategyEconomicsReceipt {
   readonly breakeven: EconomicValue;
   readonly distanceToStrikePct: EconomicValue;
   readonly distanceToBreakevenPct: EconomicValue;
+  /** ln(spot / breakeven) in units of the short leg's implied move to expiry (IV x sqrt(DTE/365)). */
+  readonly breakevenCushionSigmas: EconomicValue;
   readonly returnOnCapital: EconomicValue;
   readonly annualizedReturnOnCapital: EconomicValue;
   readonly returnPerCapitalDay: EconomicValue;
@@ -167,6 +176,12 @@ export function buildStrategyEconomicsReceipt(input: StrategyEconomicsInput): St
   const distanceToBreakeven = spot === null || breakevenValue === null ? unknown(spot === null ? 'SPOT_UNKNOWN' : 'CREDIT_UNKNOWN_OR_NON_POSITIVE')
     : known(round((spot - breakevenValue) / spot), 'SPOT_MINUS_BREAKEVEN_OVER_SPOT');
 
+  const sharedScenarioVol = finite(input.scenarioVolatility) && input.scenarioVolatility > 0 ? input.scenarioVolatility : null;
+  const ivForSigma = sharedScenarioVol ?? (finite(shortLeg.iv) && shortLeg.iv > 0 ? shortLeg.iv : null);
+  const scenarioProvenance = sharedScenarioVol !== null ? (input.scenarioVolatilityProvenance ?? 'UNDERLYING_SCENARIO_VOL') : 'SHORT_LEG_IV_FALLBACK';
+  const cushionSigmas = spot === null || breakevenValue === null || breakevenValue <= 0 ? unknown(spot === null ? 'SPOT_UNKNOWN' : 'CREDIT_UNKNOWN_OR_NON_POSITIVE')
+    : ivForSigma === null ? unknown('SCENARIO_VOLATILITY_UNKNOWN') : dte <= 0 ? unknown('DTE_NOT_POSITIVE')
+      : known(round(Math.log(spot / breakevenValue) / (ivForSigma * Math.sqrt(dte / 365)), 6), `LN_SPOT_OVER_BREAKEVEN_OVER_SIGMA_TO_EXPIRY:${scenarioProvenance}`);
   const capitalKnown = valueOf(capital);
   const roc = profitBasis === null || capitalKnown === null ? unknown('PROFIT_OR_CAPITAL_UNKNOWN')
     : known(round(profitBasis / capitalKnown, 8), `${profitProvenance}_OVER_CAPITAL`);
@@ -202,10 +217,10 @@ export function buildStrategyEconomicsReceipt(input: StrategyEconomicsInput): St
   const stressValue = spot === null ? null : packageLossAt(spot * (1 - input.stressGapPct));
   const stressLoss = stressValue === null ? unknown(spot === null ? 'SPOT_UNKNOWN' : 'CREDIT_UNKNOWN_OR_NON_POSITIVE')
     : known(round(stressValue, 4), `EXPIRY_INTRINSIC_AFTER_${input.stressGapPct}_GAP`);
-  const twoSigmaValue = spot === null || iv === null || dte <= 0 ? null
-    : packageLossAt(spot * Math.exp(-2 * iv * Math.sqrt(dte / 365)));
-  const twoSigma = twoSigmaValue === null ? unknown(spot === null ? 'SPOT_UNKNOWN' : iv === null ? 'SHORT_LEG_IV_UNKNOWN' : 'DTE_OR_CREDIT_INVALID')
-    : known(round(twoSigmaValue, 4), 'EXPIRY_INTRINSIC_AT_MINUS_TWO_IMPLIED_SIGMA');
+  const twoSigmaValue = spot === null || ivForSigma === null || dte <= 0 ? null
+    : packageLossAt(spot * Math.exp(-2 * ivForSigma * Math.sqrt(dte / 365)));
+  const twoSigma = twoSigmaValue === null ? unknown(spot === null ? 'SPOT_UNKNOWN' : ivForSigma === null ? 'SCENARIO_VOLATILITY_UNKNOWN' : 'DTE_OR_CREDIT_INVALID')
+    : known(round(twoSigmaValue, 4), `EXPIRY_INTRINSIC_AT_MINUS_TWO_SIGMA:${scenarioProvenance}`);
   // Reward-to-stress uses the larger of the two adverse scenarios as the denominator, and needs BOTH: dropping an
   // unknown scenario would silently flatter exactly the candidates with missing IV.
   const worstStress = finite(stressValue) && finite(twoSigmaValue) ? Math.max(stressValue, twoSigmaValue) : null;
@@ -226,7 +241,7 @@ export function buildStrategyEconomicsReceipt(input: StrategyEconomicsInput): St
     underlying: input.underlying, expiration: input.expiration, dte, creditBasis: input.creditBasis,
     grossCreditUsd: grossCredit, netCreditUsd: netCredit, spreadWidthUsd: spreadWidth,
     capitalRequiredUsd: capital, maxProfitUsd: maxProfit, maxLossUsd: maxLoss, breakeven,
-    distanceToStrikePct: distanceToStrike, distanceToBreakevenPct: distanceToBreakeven,
+    distanceToStrikePct: distanceToStrike, distanceToBreakevenPct: distanceToBreakeven, breakevenCushionSigmas: cushionSigmas,
     returnOnCapital: roc, annualizedReturnOnCapital: annualized, returnPerCapitalDay: perDay,
     rewardToMaxLoss, bidAskSpreadPct, ivMinusRealizedVol: ivMinusRv, ivRank,
     assignmentProbabilityProxy: assignmentProxy, stressLossUsd: stressLoss, impliedTwoSigmaMoveLossUsd: twoSigma,
@@ -376,42 +391,157 @@ export function diagnoseLowCapitalEfficiency(receipt: StrategyEconomicsReceipt, 
 
 // ---------------------------------------------------------------------------
 // Economic ranking among ALREADY risk-feasible candidates.
+//
+// RISK_CONSTRAINED_PARETO_V1 (shadow research method, not validated):
+//  1. hurdle verdict (owner policy) -- constraints first;
+//  2. completeness: a candidate missing REQUIRED risk evidence ranks after every
+//     complete candidate (missing risk evidence can never improve rank);
+//  3. calibrated EV per capital-day, when an EV model exists (none today);
+//  4. Pareto rank within the strategy class over its objective vector;
+//  5. class tie-break keys (risk-adjusted first), then spread;
+//  6. candidate ID only when every economic key is exactly equal.
+// Annualized ROC is never a ranking key (it rewards selling risk and short DTE).
 // ---------------------------------------------------------------------------
 
-const verdictRank: Record<EconomicVerdict, number> = { PASS: 0, NOT_CONFIGURED: 1, UNDETERMINED: 2, FAIL: 3 };
-const descendingKnown = (a: EconomicValue, b: EconomicValue): number => {
-  const left = valueOf(a); const right = valueOf(b);
-  if (left !== null && right !== null) return right - left;
-  if (left !== null) return -1;
-  if (right !== null) return 1;
-  return 0;
+export const economicRankingMethodVersion = 'risk-constrained-pareto-v1' as const;
+
+type Objective = { readonly name: string; readonly value: (r: StrategyEconomicsReceipt) => EconomicValue; readonly direction: 'MAX' | 'MIN' };
+const objectivesByClass: Record<EconomicsStrategyClass, readonly Objective[]> = {
+  // Q: income per capital-day, cushion in implied moves, reward per unit of tail loss, execution friction.
+  THETA_CONVENTIONAL: [
+    { name: 'returnPerCapitalDay', value: (r) => r.returnPerCapitalDay, direction: 'MAX' },
+    { name: 'breakevenCushionSigmas', value: (r) => r.breakevenCushionSigmas, direction: 'MAX' },
+    { name: 'rewardToStressRisk', value: (r) => r.rewardToStressRisk, direction: 'MAX' },
+    { name: 'bidAskSpreadPct', value: (r) => r.bidAskSpreadPct, direction: 'MIN' },
+  ],
+  // H: short DTE -- distance in implied moves and tail reward dominate; yield is per day, never annualized.
+  THETA_HOLD_STRIKE: [
+    { name: 'breakevenCushionSigmas', value: (r) => r.breakevenCushionSigmas, direction: 'MAX' },
+    { name: 'rewardToStressRisk', value: (r) => r.rewardToStressRisk, direction: 'MAX' },
+    { name: 'returnPerCapitalDay', value: (r) => r.returnPerCapitalDay, direction: 'MAX' },
+    { name: 'bidAskSpreadPct', value: (r) => r.bidAskSpreadPct, direction: 'MIN' },
+  ],
+  // D: credit per unit of defined max loss, cushion, tail reward, worst-leg friction.
+  THETA_DEFINED_RISK: [
+    { name: 'rewardToMaxLoss', value: (r) => r.rewardToMaxLoss, direction: 'MAX' },
+    { name: 'breakevenCushionSigmas', value: (r) => r.breakevenCushionSigmas, direction: 'MAX' },
+    { name: 'rewardToStressRisk', value: (r) => r.rewardToStressRisk, direction: 'MAX' },
+    { name: 'bidAskSpreadPct', value: (r) => r.bidAskSpreadPct, direction: 'MIN' },
+  ],
+};
+const tieBreakByClass: Record<EconomicsStrategyClass, readonly string[]> = {
+  THETA_CONVENTIONAL: ['rewardToStressRisk', 'breakevenCushionSigmas', 'returnPerCapitalDay', 'bidAskSpreadPct'],
+  THETA_HOLD_STRIKE: ['breakevenCushionSigmas', 'rewardToStressRisk', 'returnPerCapitalDay', 'bidAskSpreadPct'],
+  THETA_DEFINED_RISK: ['rewardToStressRisk', 'breakevenCushionSigmas', 'rewardToMaxLoss', 'bidAskSpreadPct'],
 };
 
-export const economicRankingBasis = [
-  'HURDLE_VERDICT', 'EXPECTED_VALUE_PER_CAPITAL_DAY_WHEN_CALIBRATED', 'RETURN_PER_CAPITAL_DAY_AFTER_MODELED_COSTS',
-  'REWARD_TO_STRESS_RISK', 'BREAKEVEN_CUSHION', 'CANDIDATE_ID_LAST_RESORT',
-] as const;
-
-/**
- * Deterministic economic order for candidates that ALREADY passed structure,
- * AEGIS and sizing. Constraint-first (hurdle verdict), then reward per unit of
- * capital-time, then reward per unit of stress risk, then cushion. The
- * candidate ID is only the last resort for an exact economic tie -- never the
- * de-facto selector it was for the 2026-10-07 XLE fill.
- */
-export function economicCandidateOrder(
-  a: { readonly receipt: StrategyEconomicsReceipt; readonly verdict: EconomicVerdict },
-  b: { readonly receipt: StrategyEconomicsReceipt; readonly verdict: EconomicVerdict },
-): number {
-  const ev = (r: StrategyEconomicsReceipt): EconomicValue => r.expectedValueUsd.state === 'KNOWN' && r.capitalRequiredUsd.state === 'KNOWN' && r.dte > 0
-    ? known(r.expectedValueUsd.value / r.capitalRequiredUsd.value / r.dte, 'EV_PER_CAPITAL_DAY') : unknown('EV_MODEL_NOT_EMPIRICALLY_READY');
-  return verdictRank[a.verdict] - verdictRank[b.verdict]
-    || descendingKnown(ev(a.receipt), ev(b.receipt))
-    || descendingKnown(a.receipt.returnPerCapitalDay, b.receipt.returnPerCapitalDay)
-    || descendingKnown(a.receipt.rewardToStressRisk, b.receipt.rewardToStressRisk)
-    || descendingKnown(a.receipt.distanceToBreakevenPct, b.receipt.distanceToBreakevenPct)
-    || a.receipt.candidateId.localeCompare(b.receipt.candidateId);
+/** Evidence a candidate of this class must have for its rank to mean anything. */
+export function requiredEconomicUnknowns(receipt: StrategyEconomicsReceipt): readonly string[] {
+  const required: [string, EconomicValue][] = [
+    ['capitalRequiredUsd', receipt.capitalRequiredUsd], ['maxProfitUsd', receipt.maxProfitUsd], ['maxLossUsd', receipt.maxLossUsd],
+    ['breakeven', receipt.breakeven], ['assignmentProbabilityProxy', receipt.assignmentProbabilityProxy],
+    ['stressLossUsd', receipt.stressLossUsd], ['impliedTwoSigmaMoveLossUsd', receipt.impliedTwoSigmaMoveLossUsd],
+    ...objectivesByClass[receipt.strategyClass].map((o): [string, EconomicValue] => [o.name, o.value(receipt)]),
+  ];
+  const missing = new Set(required.filter(([, v]) => v.state === 'UNKNOWN'
+    && !(v.reason === 'NO_STRESS_LOSS_IN_MODELED_SCENARIOS')).map(([name]) => name));
+  return [...missing].sort();
 }
+
+const verdictRank: Record<EconomicVerdict, number> = { PASS: 0, NOT_CONFIGURED: 1, UNDETERMINED: 2, FAIL: 3 };
+// A candidate with no modeled stress loss has unbounded reward-to-stress: rank it as +Infinity, explicitly.
+const objectiveValue = (o: Objective, r: StrategyEconomicsReceipt): number | null => {
+  const v = o.value(r);
+  if (v.state === 'KNOWN') return o.direction === 'MAX' ? v.value : -v.value;
+  return o.name === 'rewardToStressRisk' && v.reason === 'NO_STRESS_LOSS_IN_MODELED_SCENARIOS' ? Number.POSITIVE_INFINITY : null;
+};
+
+export interface EconomicRankRow {
+  readonly receipt: StrategyEconomicsReceipt;
+  readonly verdict: EconomicVerdict;
+}
+export interface RankedEconomicRow extends EconomicRankRow {
+  readonly rank: number;
+  readonly paretoRank: number | null;
+  readonly requiredUnknowns: readonly string[];
+  readonly decidedBy: string;
+}
+
+/** Orders rows of ONE strategy class. Deterministic; never consults the ID before every economic key is exactly equal. */
+export function rankEconomically(rows: readonly EconomicRankRow[]): readonly RankedEconomicRow[] {
+  if (rows.length === 0) return [];
+  const cls = rows[0]?.receipt.strategyClass as EconomicsStrategyClass;
+  if (rows.some((row) => row.receipt.strategyClass !== cls)) throw new Error('ECONOMIC_RANKING_MIXED_STRATEGY_CLASSES');
+  const objectives = objectivesByClass[cls];
+  const enriched = rows.map((row) => {
+    const requiredUnknowns = requiredEconomicUnknowns(row.receipt);
+    return { ...row, requiredUnknowns, vector: objectives.map((o) => objectiveValue(o, row.receipt)) };
+  });
+  const complete = enriched.filter((row) => row.requiredUnknowns.length === 0);
+  const dominates = (a: readonly (number | null)[], b: readonly (number | null)[]): boolean => {
+    let better = false;
+    for (let i = 0; i < a.length; i++) {
+      const x = a[i] as number; const y = b[i] as number;
+      if (x < y) return false;
+      if (x > y) better = true;
+    }
+    return better;
+  };
+  const paretoRankOf = new Map<string, number>();
+  for (const row of complete) {
+    paretoRankOf.set(row.receipt.candidateId, 1 + complete.filter((other) => other !== row && verdictRank[other.verdict] === verdictRank[row.verdict]
+      && dominates(other.vector, row.vector)).length);
+  }
+  const ev = (r: StrategyEconomicsReceipt): number | null => r.expectedValueUsd.state === 'KNOWN' && r.capitalRequiredUsd.state === 'KNOWN' && r.dte > 0
+    ? r.expectedValueUsd.value / r.capitalRequiredUsd.value / r.dte : null;
+  const keyNames = tieBreakByClass[cls];
+  const keyIndex = keyNames.map((name) => objectives.findIndex((o) => o.name === name));
+  type Row = typeof enriched[number];
+  const reasons = new Map<string, string>();
+  const compare = (a: Row, b: Row): number => {
+    const steps: [string, number][] = [
+      ['HURDLE_VERDICT', verdictRank[a.verdict] - verdictRank[b.verdict]],
+      ['REQUIRED_EVIDENCE_COMPLETE', (a.requiredUnknowns.length === 0 ? 0 : 1) - (b.requiredUnknowns.length === 0 ? 0 : 1)],
+      ['CALIBRATED_EV_PER_CAPITAL_DAY', (() => { const x = ev(a.receipt); const y = ev(b.receipt);
+        return x !== null && y !== null ? y - x : x !== null ? -1 : y !== null ? 1 : 0; })()],
+      ['PARETO_RANK', (paretoRankOf.get(a.receipt.candidateId) ?? Number.MAX_SAFE_INTEGER) - (paretoRankOf.get(b.receipt.candidateId) ?? Number.MAX_SAFE_INTEGER)],
+      ...keyIndex.map((index, k): [string, number] => {
+        const x = a.vector[index] ?? null; const y = b.vector[index] ?? null;
+        return [`TIE_BREAK_${keyNames[k] as string}`, x !== null && y !== null ? (y === x ? 0 : y > x ? 1 : -1) : x !== null ? -1 : y !== null ? 1 : 0];
+      }),
+      ['EXACT_ECONOMIC_TIE_CANDIDATE_ID', a.receipt.candidateId.localeCompare(b.receipt.candidateId)],
+    ];
+    for (const [, value] of steps) if (value !== 0) return value;
+    return 0;
+  };
+  const ordered = enriched.toSorted(compare);
+  ordered.forEach((row, index) => {
+    const next = ordered[index + 1];
+    if (next === undefined) return;
+    // Record which key separated each row from the one below it (persisted "why #1 beat #2").
+    reasons.set(row.receipt.candidateId, separatingKey(row, next));
+  });
+  function separatingKey(a: Row, b: Row): string {
+    if (verdictRank[a.verdict] !== verdictRank[b.verdict]) return 'HURDLE_VERDICT';
+    if ((a.requiredUnknowns.length === 0) !== (b.requiredUnknowns.length === 0)) return 'REQUIRED_EVIDENCE_COMPLETE';
+    const x = ev(a.receipt); const y = ev(b.receipt);
+    if (x !== y) return 'CALIBRATED_EV_PER_CAPITAL_DAY';
+    if ((paretoRankOf.get(a.receipt.candidateId) ?? -1) !== (paretoRankOf.get(b.receipt.candidateId) ?? -1)) return 'PARETO_RANK';
+    for (let k = 0; k < keyIndex.length; k++) {
+      const i = keyIndex[k] as number;
+      if ((a.vector[i] ?? null) !== (b.vector[i] ?? null)) return `TIE_BREAK_${keyNames[k] as string}`;
+    }
+    return 'EXACT_ECONOMIC_TIE_CANDIDATE_ID';
+  }
+  return ordered.map((row, index) => ({ receipt: row.receipt, verdict: row.verdict, rank: index + 1,
+    paretoRank: paretoRankOf.get(row.receipt.candidateId) ?? null, requiredUnknowns: row.requiredUnknowns,
+    decidedBy: reasons.get(row.receipt.candidateId) ?? 'LAST' }));
+}
+
+export const economicRankingBasis = [
+  'HURDLE_VERDICT', 'REQUIRED_EVIDENCE_COMPLETE', 'CALIBRATED_EV_PER_CAPITAL_DAY_WHEN_AVAILABLE',
+  `PARETO_RANK_${economicRankingMethodVersion}`, 'CLASS_RISK_ADJUSTED_TIE_BREAK', 'CANDIDATE_ID_ONLY_ON_EXACT_ECONOMIC_TIE',
+] as const;
 
 // ---------------------------------------------------------------------------
 // Adapter: single-leg CSP candidates (Q/H) -> precomputed economic order for
@@ -433,6 +563,13 @@ export interface EconomicRankingConfig {
   readonly openingCostPerContractUsd: number | null;
   readonly stressGapPct: number;
   readonly opportunityCostAnnualRate: number | null;
+  /** Shared -2 sigma scenario volatility; the ranking adapter derives it from the nearest-ATM put when absent. */
+  readonly scenarioVolatility?: number | null;
+  /**
+   * ENFORCED additionally requires recorded evidence: historical + walk-forward validation, Paper shadow evidence and
+   * owner approval. Without it ENFORCED is downgraded to SHADOW.
+   */
+  readonly enforcementCertification?: { readonly ownerApproved: true; readonly validationEvidenceIds: readonly string[] } | null;
 }
 
 export function cspEconomicsReceipt(candidateId: string, contract: CspContractEvidence, config: Omit<EconomicRankingConfig, 'mode' | 'policy'>): StrategyEconomicsReceipt {
@@ -445,30 +582,46 @@ export function cspEconomicsReceipt(candidateId: string, contract: CspContractEv
     openingCostsUsd: config.openingCostPerContractUsd, openingCostProvenance: 'MODELED_OPENING_COST_PER_CONTRACT',
     realizedVolatility: null, ivRank: null, eventInWindow: null, stressGapPct: config.stressGapPct,
     opportunityCostAnnualRate: config.opportunityCostAnnualRate,
+    scenarioVolatility: config.scenarioVolatility ?? null, scenarioVolatilityProvenance: 'NEAREST_ATM_PUT_IV_ON_UNDERLYING',
   });
+}
+
+/** IV of the put with |delta| nearest 0.50 among the evidence (ties: nearer strike to spot, then symbol); null when none. */
+export function nearestAtmPutIv(contracts: readonly CspContractEvidence[]): number | null {
+  const usable = contracts.filter((c) => finite(c.delta) && finite(c.iv) && (c.iv as number) > 0);
+  const best = usable.toSorted((a, b) => Math.abs(Math.abs(a.delta as number) - 0.5) - Math.abs(Math.abs(b.delta as number) - 0.5)
+    || Math.abs(a.strike - (a.underlyingReferencePrice ?? a.strike)) - Math.abs(b.strike - (b.underlyingReferencePrice ?? b.strike))
+    || a.optionSymbol.localeCompare(b.optionSymbol))[0];
+  return best?.iv ?? null;
 }
 
 export function economicRankingForCspCandidates(
   candidates: readonly { readonly candidateId: string; readonly contract: CspContractEvidence }[],
   config: EconomicRankingConfig,
 ): { readonly ranking: { readonly contractVersion: string; readonly mode: EconomicsGateMode; readonly orderedCandidateIds: readonly string[]; readonly basis: readonly string[] };
-  readonly evaluations: readonly EconomicGateEvaluation[] } {
+  readonly evaluations: readonly EconomicGateEvaluation[]; readonly ranked: readonly RankedEconomicRow[] } {
   // Without calibrated EV, return per capital-day mostly measures how much risk is sold (the 2026-10-07 live shadow scan
   // ranked the highest-|delta| CSPs and 1-3%-OTM narrow spreads first). The order may only select when the owner has
   // configured at least one risk hurdle that bounds that; otherwise ENFORCED is downgraded to SHADOW.
   const riskBounded = config.policy !== null && [config.policy.minBreakevenCushionPct, config.policy.minRewardToStressRisk,
     config.policy.maxStressLossUsd].some((value) => value !== null && value !== undefined);
-  const mode: EconomicsGateMode = config.mode === 'ENFORCED' && !riskBounded ? 'SHADOW' : config.mode;
+  const certified = config.enforcementCertification?.ownerApproved === true
+    && config.enforcementCertification.validationEvidenceIds.length > 0;
+  const mode: EconomicsGateMode = config.mode === 'ENFORCED' && !(riskBounded && certified) ? 'SHADOW' : config.mode;
+  const scenarioVolatility = config.scenarioVolatility ?? nearestAtmPutIv(candidates.map((c) => c.contract));
   const rows = candidates.map(({ candidateId, contract }) => {
-    const receipt = cspEconomicsReceipt(candidateId, contract, config);
+    const receipt = cspEconomicsReceipt(candidateId, contract, { ...config, scenarioVolatility });
     const evaluation = evaluateEconomicHurdles(receipt, config.policy, mode);
     return { receipt, verdict: evaluation.verdict, evaluation };
   });
-  const ordered = rows.toSorted(economicCandidateOrder);
+  const evaluations = new Map(rows.map((row) => [row.receipt.candidateId, row.evaluation]));
+  const ordered = rankEconomically(rows.map(({ receipt, verdict }) => ({ receipt, verdict })));
   return {
     ranking: { contractVersion: strategyEconomicsContractVersion, mode,
       orderedCandidateIds: ordered.map((row) => row.receipt.candidateId),
-      basis: mode === config.mode ? economicRankingBasis : [...economicRankingBasis, 'ENFORCEMENT_DOWNGRADED_NO_RISK_HURDLE_CONFIGURED'] },
-    evaluations: ordered.map((row) => row.evaluation),
+      basis: mode === config.mode ? economicRankingBasis : [...economicRankingBasis,
+        riskBounded ? 'ENFORCEMENT_DOWNGRADED_NOT_CERTIFIED' : 'ENFORCEMENT_DOWNGRADED_NO_RISK_HURDLE_CONFIGURED'] },
+    evaluations: ordered.map((row) => evaluations.get(row.receipt.candidateId) as EconomicGateEvaluation),
+    ranked: ordered,
   };
 }
