@@ -477,7 +477,7 @@ export function projectCanonicalFrontierForPostgres(frontier: CanonicalStrategyF
       ...adaptive,
       storageState: 'FULL_STATE_IN_COMPRESSED_CYCLE_ARCHIVE',
       fullStateHash: hash(canonicalJson(adaptive)),
-      strategyEdgeReceipts: boundedEdgeReceiptProjection(adaptive.strategyEdgeReceipts, keep),
+      strategyEdgeReceipts: boundedEdgeReceiptProjection(adaptive.strategyEdgeReceipts ?? [], keep),
       shadowComparison: {
         ...adaptive.shadowComparison,
         cohorts: adaptive.shadowComparison.cohorts.map((cohort) => ({
