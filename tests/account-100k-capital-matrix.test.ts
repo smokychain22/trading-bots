@@ -66,3 +66,16 @@ test('Case D: an existing open short put on the same underlying consumes its cap
   assert.equal(unevidenced.state, 'UNKNOWN');
   assert.notEqual(unevidenced.accountFeasible, true);
 });
+
+test('Case 5: a partially filled opening order reserves the filled position plus only the REMAINING working quantity (no double reservation)', () => {
+  const now = '2026-10-07T14:00:00.000Z';
+  const filledLeg = { symbol: 'TLT261113P00076000', quantity: -1, assetClass: 'us_option', side: 'short', marketValue: -150, costBasis: -180, avgEntryPrice: 1.8 } as never;
+  const partialOrder = { orderId: 'o-1', clientOrderId: 'c-1', symbol: 'TLT261113P00076000', side: 'sell', positionIntent: 'sell_to_open',
+    quantity: 2, filledQuantity: 1, limitPrice: 1.8, status: 'partially_filled', submittedAt: now, receivedAt: now } as never;
+  const exposure = deriveAccountExposure({ accountStatus: 'ACTIVE', equity: 100_000, cash: 100_000, buyingPower: 400_000, optionsBuyingPower: 100_000,
+    optionsApprovedLevel: 3, optionsTradingLevel: 3, tradingBlocked: false, transfersBlocked: false, maskedAccountId: '****', receivedAt: now },
+  [filledLeg], [partialOrder], 100);
+  assert.equal(exposure.cspCollateralRequired, 7_600, 'the filled contract once, as a position');
+  assert.equal(exposure.pendingOpeningCapitalAtRisk, 7_600, 'only the one contract still working');
+  assert.equal(exposure.exposureByUnderlying.TLT, 15_200, '2 contracts total, never 3');
+});
