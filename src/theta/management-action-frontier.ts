@@ -360,6 +360,39 @@ export interface DefinedRiskManagementProposal {
 
 const DEFINED_RISK_ACTIONS: readonly ManagementFrontierAction[] = ['HOLD', 'CLOSE_FULL', 'EMERGENCY_RISK_REDUCTION'];
 
+export type DefinedRiskEmergencyKind = 'UNHEDGED_SHORT_PUT' | 'SHORT_STOCK_FROM_LONG_EXERCISE' | 'BROKER_LEDGER_LEG_DIVERGENCE' | 'UNCLASSIFIED_EMERGENCY';
+
+export interface DefinedRiskEmergencyPlan {
+  readonly kind: DefinedRiskEmergencyKind;
+  /** the risk-REDUCING broker action an operator should take; never an order this revision sends by itself */
+  readonly operatorAction: 'BUY_TO_CLOSE_UNHEDGED_SHORT_PUT_WITH_LIMIT' | 'BUY_TO_COVER_SHORT_STOCK_WITH_LIMIT' | 'RECONCILE_BROKER_TRUTH_BEFORE_ANY_ORDER';
+  readonly autonomy: 'ESCALATION_ONLY';
+  readonly autonomyReason: string;
+}
+
+/**
+ * Typed emergency plan for a spread whose approved structure no longer exists. Each state maps to the one action that reduces risk without
+ * creating new risk. Autonomous execution is NOT certified for any of them (an automated single-leg emergency order needs its own governed
+ * order path, idempotency and restart tests), so every plan is ESCALATION_ONLY: the decision persists, new risk is blocked, and an operator
+ * performs the named action. Broker/ledger divergence is never "fixed" by an order: broker truth is reconciled first.
+ */
+export function definedRiskEmergencyPlan(reasons: readonly string[]): DefinedRiskEmergencyPlan {
+  const notCertified = 'AUTOMATED_SINGLE_LEG_EMERGENCY_ORDER_PATH_NOT_CERTIFIED';
+  if (reasons.includes('SHORT_STOCK_FROM_LONG_LEG_EXERCISE_WITHOUT_ASSIGNMENT')) {
+    return { kind: 'SHORT_STOCK_FROM_LONG_EXERCISE', operatorAction: 'BUY_TO_COVER_SHORT_STOCK_WITH_LIMIT', autonomy: 'ESCALATION_ONLY', autonomyReason: notCertified };
+  }
+  if (reasons.includes('LEG_TRUTH_INCONSISTENT') || reasons.includes('DIVERGED_STATE_NOT_AUTO_RESOLVABLE')
+    || (reasons.includes('LEDGER_BROKER_LEG_MISMATCH') && !reasons.includes('BROKER_SHOWS_UNHEDGED_SHORT_PUT'))) {
+    return { kind: 'BROKER_LEDGER_LEG_DIVERGENCE', operatorAction: 'RECONCILE_BROKER_TRUTH_BEFORE_ANY_ORDER', autonomy: 'ESCALATION_ONLY',
+      autonomyReason: 'BROKER_TRUTH_MUST_BE_RECONCILED_BEFORE_ANY_ORDER' };
+  }
+  if (reasons.includes('NAKED_SHORT_PUT_EXPOSURE') || reasons.includes('BROKER_SHOWS_UNHEDGED_SHORT_PUT')) {
+    return { kind: 'UNHEDGED_SHORT_PUT', operatorAction: 'BUY_TO_CLOSE_UNHEDGED_SHORT_PUT_WITH_LIMIT', autonomy: 'ESCALATION_ONLY', autonomyReason: notCertified };
+  }
+  return { kind: 'UNCLASSIFIED_EMERGENCY', operatorAction: 'RECONCILE_BROKER_TRUTH_BEFORE_ANY_ORDER', autonomy: 'ESCALATION_ONLY',
+    autonomyReason: 'EMERGENCY_STATE_NOT_CLASSIFIED' };
+}
+
 /**
  * v3 frontier for a DEFINED_RISK_OPEN spread. The same sovereign authority as the Wheel frontier: the producer proposes, this function
  * enumerates HOLD / CLOSE_FULL / EMERGENCY_RISK_REDUCTION with their feasibility and selects exactly one (or none, loudly), and only the
@@ -393,7 +426,11 @@ export function buildDefinedRiskManagementActionFrontier(proposal: DefinedRiskMa
     return { action, requiredOptionPositionIntents: action === 'CLOSE_FULL' ? ['BUY_TO_CLOSE', 'SELL_TO_CLOSE'] : action === 'EMERGENCY_RISK_REDUCTION' ? ['BUY_TO_CLOSE'] : [],
       feasibility, expectedFutureValue: null, certainEconomicPnl: null, downsideTailEstimate: null, incrementalCapitalDays: null, executionCostRisk: null,
       opportunityCost: null, assignmentInventoryConsequence: null, uncertainty: null, utility: null, executionEvidence: null,
-      reasons: action === 'EMERGENCY_RISK_REDUCTION' && emergency ? ['ESCALATION_ONLY_NO_AUTOMATED_ORDER', ...proposal.reasons]
+      reasons: action === 'EMERGENCY_RISK_REDUCTION' && emergency ? (() => {
+        const plan = definedRiskEmergencyPlan(proposal.reasons);
+        return ['ESCALATION_ONLY_NO_AUTOMATED_ORDER', `D_EMERGENCY_KIND:${plan.kind}`, `OPERATOR_ACTION:${plan.operatorAction}`,
+          `AUTONOMY:${plan.autonomy}:${plan.autonomyReason}`, ...proposal.reasons];
+      })()
         : action === 'HOLD' && emergency ? ['HOLD_IS_NOT_A_VALID_ANSWER_TO_AN_UNHEDGED_SHORT'] : [],
       blockers: feasibility === 'FEASIBLE' ? [] : blockers };
   };

@@ -80,3 +80,21 @@ test('AUTHORITY: the D runner executes only the v3 frontier selection, and only 
   assert.match(runner, /const closeSelected = frontier\.selectedAction === 'CLOSE_FULL';/);
   assert.doesNotMatch(runner, /decision\.action === 'CLOSE_FULL'/, 'the producer\'s proposal must never trigger a close on its own');
 });
+
+test('D emergency plan is typed per state, names the one risk-reducing operator action, and stays ESCALATION_ONLY (no automated order)', async () => {
+  const { definedRiskEmergencyPlan } = await import('../src/theta/management-action-frontier.js');
+  assert.deepEqual(definedRiskEmergencyPlan(['NAKED_SHORT_PUT_EXPOSURE']), { kind: 'UNHEDGED_SHORT_PUT', operatorAction: 'BUY_TO_CLOSE_UNHEDGED_SHORT_PUT_WITH_LIMIT',
+    autonomy: 'ESCALATION_ONLY', autonomyReason: 'AUTOMATED_SINGLE_LEG_EMERGENCY_ORDER_PATH_NOT_CERTIFIED' });
+  assert.equal(definedRiskEmergencyPlan(['BROKER_SHOWS_UNHEDGED_SHORT_PUT', 'LEDGER_BROKER_LEG_MISMATCH']).kind, 'UNHEDGED_SHORT_PUT');
+  assert.equal(definedRiskEmergencyPlan(['SHORT_STOCK_FROM_LONG_LEG_EXERCISE_WITHOUT_ASSIGNMENT']).operatorAction, 'BUY_TO_COVER_SHORT_STOCK_WITH_LIMIT');
+  for (const reasons of [['LEG_TRUTH_INCONSISTENT'], ['DIVERGED_STATE_NOT_AUTO_RESOLVABLE'], ['LEDGER_BROKER_LEG_MISMATCH']]) {
+    assert.equal(definedRiskEmergencyPlan(reasons).operatorAction, 'RECONCILE_BROKER_TRUTH_BEFORE_ANY_ORDER', 'divergence is reconciled, never traded through');
+  }
+  assert.equal(definedRiskEmergencyPlan(['SOMETHING_NEW']).kind, 'UNCLASSIFIED_EMERGENCY');
+  const frontier = buildDefinedRiskManagementActionFrontier(proposal({ proposedAction: 'EMERGENCY_RISK_REDUCTION', positionState: 'DIVERGED_EMERGENCY',
+    nakedShortContracts: 1, reasons: ['NAKED_SHORT_PUT_EXPOSURE'] }));
+  const emergency = frontier.actions.find((action) => action.action === 'EMERGENCY_RISK_REDUCTION');
+  assert.ok(emergency?.reasons.includes('D_EMERGENCY_KIND:UNHEDGED_SHORT_PUT'));
+  assert.ok(emergency?.reasons.includes('OPERATOR_ACTION:BUY_TO_CLOSE_UNHEDGED_SHORT_PUT_WITH_LIMIT'));
+  assert.equal(emergency?.executionEvidence, null, 'no executable order is attached');
+});
