@@ -2,7 +2,7 @@
 // strategy / strategy version / regime, built on the existing R8 receipt (src/research/r8-performance-analytics.ts) so the
 // metric definitions stay single-sourced. PROFITABILITY_STATUS is NOT_YET_PROVEN until the documented evidence threshold.
 
-import { buildR8PerformanceReceipt, type R8EpisodeEvidence, type R8PerformanceReceipt } from '../../research/r8-performance-analytics.js';
+import { buildR8PerformanceReceipt, type R8EpisodeEvidence, type R8PerformanceReceipt } from './r8-performance-analytics.js';
 
 export const performanceAnalyticsVersion = 'theta-performance-analytics-v1' as const;
 

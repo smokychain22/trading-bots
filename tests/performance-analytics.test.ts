@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildPerformanceDashboard, profitabilityStatus, type PerformanceEpisode } from '../src/theta/performance-analytics/performance-analytics.js';
-import { loadPerformanceEpisodes, performanceEpisodeFromRow, performanceEpisodeSql } from '../src/theta/performance-analytics/postgres-performance-source.js';
+import { buildPerformanceDashboard, profitabilityStatus, type PerformanceEpisode } from '../src/research/performance-analytics-dashboard.js';
+import { loadPerformanceEpisodes, performanceEpisodeFromRow, performanceEpisodeSql } from '../src/research/postgres-performance-source.js';
 
 const ep = (i: number, pnl: number | null, over: Partial<PerformanceEpisode> = {}): PerformanceEpisode => ({
   episodeId: `e${i}`, strategy: 'THETA_CONVENTIONAL', strategyVersion: 'v1', regime: 'MODERATE_UP', openedAt: new Date(Date.UTC(2026, 0, 1 + i)).toISOString(),

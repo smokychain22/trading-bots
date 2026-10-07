@@ -4,7 +4,7 @@
 // (strike x multiplier x quantity); capital-days = that collateral x chain days (labelled approximation).
 
 import type { Pool } from 'pg';
-import type { PerformanceEpisode } from './performance-analytics.js';
+import type { PerformanceEpisode } from './performance-analytics-dashboard.js';
 
 export const performanceEpisodeSql = `SELECT ec.chain_id::text AS episode_id, ec.chain_kind, ec.opened_at, ec.closed_at,
   (SELECT d.strategy_branch FROM trade.order_intent oi JOIN trade.decision d ON d.decision_id = oi.decision_id
