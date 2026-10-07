@@ -46,3 +46,28 @@ test('a malformed order row is reported by endpoint, row index and schema path/c
   assert.equal(failure.code, 'ALPACA_ORDERS_MALFORMED_RESPONSE_HTTP_200');
   assert.match(failure.detail, /Shape: row\[1\] order_class:invalid_value\./);
 });
+
+test('PARSER SHAPE AUDIT: a single-leg option order parses in every status Alpaca reports; an mleg parent parses with both legs', () => {
+  const option = (patch: Record<string, unknown>) => simpleEquity({ symbol: 'TLT261113P00076000', asset_class: 'us_option', order_class: 'simple', type: 'limit',
+    order_type: 'limit', side: 'sell', position_intent: 'sell_to_open', qty: '1', filled_qty: '0', filled_avg_price: null, limit_price: '1.80', ...patch });
+  for (const status of ['new', 'accepted', 'pending_new', 'partially_filled', 'canceled', 'expired', 'rejected', 'pending_cancel', 'replaced', 'done_for_day']) {
+    const parsed = parseBrokerOrder(option({ status, ...(status === 'partially_filled' ? { qty: '2', filled_qty: '1', filled_avg_price: '1.80' } : {}) }));
+    assert.equal(parsed.status, status);
+    assert.equal(parsed.orderClass, null);
+  }
+  assert.equal(parseBrokerOrder(option({ status: 'filled', filled_qty: '1', filled_avg_price: '1.80' })).filledQty, 1);
+  const leg = (symbol: string, side: 'sell' | 'buy', intent: string) => ({ id: `leg-${symbol}`, symbol, side, position_intent: intent, ratio_qty: '1',
+    qty: '1', filled_qty: '0', filled_avg_price: null, status: 'new', order_class: 'mleg', asset_class: 'us_option' });
+  const mleg = parseBrokerOrder(simpleEquity({ symbol: '', asset_class: '', order_class: 'mleg', type: 'limit', side: null, position_intent: null, qty: '1',
+    filled_qty: '0', filled_avg_price: null, limit_price: '-1.30', status: 'new',
+    legs: [leg('TLT261113P00076000', 'sell', 'sell_to_open'), leg('TLT261113P00071000', 'buy', 'buy_to_open')] }));
+  assert.equal(mleg.orderClass, 'mleg');
+  assert.equal(mleg.legs?.length, 2);
+  assert.equal(mleg.limitPrice, -1.3, 'an mleg credit is negative, never rejected as an invalid single-leg price');
+});
+
+test('a single-leg order with an empty or null symbol/side still fails closed (the mleg tolerance never weakens single-leg identity)', () => {
+  assert.throws(() => parseBrokerOrder(simpleEquity({ symbol: '' })), /single-leg order without symbol or side/);
+  assert.throws(() => parseBrokerOrder(simpleEquity({ side: null })), /single-leg order without symbol or side/);
+  assert.throws(() => parseBrokerOrder(simpleEquity({ side: '' })), /single-leg order without symbol or side/);
+});

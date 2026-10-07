@@ -142,11 +142,14 @@ const rawOrderLegSchema = z.object({
 const rawOrderSchema = z.object({
   id: providerIdentitySchema,
   client_order_id: providerIdentitySchema,
-  symbol: providerIdentitySchema.optional(),
+  // An mleg parent's top-level symbol/side may be empty or null (the package lives in its legs). A single-leg order still requires both:
+  // the check below rejects an empty or missing value for it. A strict schema here would crash reconciliation on the first native spread,
+  // the same failure class as Release A's historical simple orders.
+  symbol: z.union([providerIdentitySchema, z.literal('')]).nullable().optional(),
   qty: strictNumericProviderField,
   filled_qty: strictNumericProviderField,
   filled_avg_price: strictNumericProviderField.nullable().optional(),
-  side: z.enum(['buy', 'sell']).optional(),
+  side: z.enum(['buy', 'sell', '']).nullable().optional(),
   position_intent: z.enum(['buy_to_open', 'buy_to_close', 'sell_to_open', 'sell_to_close']).nullable().optional(),
   status: providerIdentitySchema,
   limit_price: strictNumericProviderField.nullable().optional(),
@@ -231,12 +234,14 @@ export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
   if (isMultiLeg && (legs === undefined || legs.length < 2 || legs.length > 4)) {
     throw new Error('Alpaca returned an invalid multi-leg parent order.');
   }
-  if (!isMultiLeg && (order.symbol === undefined || order.side === undefined)) {
+  const singleLegSymbol = order.symbol === null || order.symbol === undefined || order.symbol === '' ? undefined : order.symbol;
+  const singleLegSide = order.side === 'buy' || order.side === 'sell' ? order.side : undefined;
+  if (!isMultiLeg && (singleLegSymbol === undefined || singleLegSide === undefined)) {
     throw new Error('Alpaca returned a single-leg order without symbol or side.');
   }
   const symbol = isMultiLeg ? multiLegPackageIdentity(legs as readonly Pick<BrokerOrderLegSnapshot, 'symbol' | 'side' | 'ratioQty' | 'positionIntent'>[])
-    : order.symbol as string;
-  const side = isMultiLeg ? ((legs as readonly BrokerOrderLegSnapshot[])[0]?.side ?? 'sell') : order.side as 'buy' | 'sell';
+    : singleLegSymbol as string;
+  const side = isMultiLeg ? ((legs as readonly BrokerOrderLegSnapshot[])[0]?.side ?? 'sell') : singleLegSide as 'buy' | 'sell';
   return {
     id: order.id,
     clientOrderId: order.client_order_id,
