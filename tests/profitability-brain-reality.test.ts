@@ -37,6 +37,8 @@ test('router applicability and adaptive economic switching remain separate capab
     'L3_DETERMINISTIC_TESTED');
   assert.equal(receipt.methods.find((item) => item.methodId === 'ENTRY_MODEL_PROMOTION_SEAM')?.level,
     'L3_DETERMINISTIC_TESTED');
+  assert.equal(receipt.methods.find((item) => item.methodId === 'CANDIDATE_EDGE_HYPOTHESIS_RECEIPT')?.level,
+    'L6_RUNTIME_REACHABLE');
 });
 
 test('V12 matrix covers each real strategy once and keeps D locked and non-authoritative', () => {
