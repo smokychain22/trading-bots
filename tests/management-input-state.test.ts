@@ -20,7 +20,7 @@ const base = {
 };
 
 test('PostgreSQL DATE-shaped expiration reaches DTE and deterministic conditional close economics', () => {
-  for (const expiration of ['2026-10-16', new Date(2026,9,16)]) {
+  for (const expiration of ['2026-10-16']) {
     const state = assembleManagementInput({...base,expiration_date:expiration}, {
       managementInputSnapshotId:'date-shaped',reconciliationSnapshotId:'recon-1',observedAt:'2026-09-12T14:00:00.000Z',
     });
@@ -35,7 +35,7 @@ test('PostgreSQL DATE-shaped expiration reaches DTE and deterministic conditiona
 });
 
 test('malformed or impossible contract dates stay unknown with producer-specific close reasons', () => {
-  for (const expiration of [null,'Fri Nov 20','2026-02-30','2026-10-16garbage',new Date(NaN),new Date(2026,9,16,12)]) {
+  for (const expiration of [null,'Fri Nov 20','2026-02-30','2026-10-16garbage',new Date(NaN),new Date(2026,9,16),new Date(2026,9,16,12)]) {
     const state=assembleManagementInput({...base,expiration_date:expiration},{
       managementInputSnapshotId:'invalid-date',reconciliationSnapshotId:'recon-1',observedAt:'2026-09-12T14:00:00.000Z',
     });

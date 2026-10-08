@@ -84,6 +84,9 @@ test('current reconciliation defects and infrastructure failures are refusals or
   const f=fixture();
   assert.equal((await produceRuntimePlanCapitalObservation({...f.input,reconciliation:{...reconciliation,localOnlyIntentCount:1}})).state,'BLOCKED');
   assert.equal(f.paths.length,0);
+  assert.equal((await produceRuntimePlanCapitalObservation({...f.input,
+    reconciliation:{...reconciliation,capitalReconciliationBlockedCount:1}})).state,'BLOCKED');
+  assert.equal(f.paths.length,0,'a persisted capital incident cannot appear as cleared capacity');
   const failure=Object.assign(Error('synthetic'),{code:'EAI_AGAIN'});
   await assert.rejects(produceRuntimePlanCapitalObservation({...f.input,pool:{query:async()=>{throw failure;}} as unknown as Pool}),e=>e===failure);
 });

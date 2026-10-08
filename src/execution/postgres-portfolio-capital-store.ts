@@ -246,10 +246,16 @@ export class PostgresPortfolioCapitalStore {
    * a qualified envelope reflects them. UNKNOWN/PARTIAL/CANCEL_PENDING are
    * never terminal evidence. No broker callback alone closes a position. */
   async reconcileTerminal(raw: CapitalTerminalEvidence): Promise<void> {
+    await withRuntimePostgresTransaction(this.pool, client => this.reconcileTerminalInTransaction(client, raw));
+  }
+
+  /** The canonical broker reconciliation uses its existing transaction after
+   * durable broker-order and fill persistence. Never acquire another client or
+   * commit a capital release independently of those facts. */
+  async reconcileTerminalInTransaction(client: PoolClient, raw: CapitalTerminalEvidence): Promise<void> {
     const input = terminalEvidenceSchema.parse(raw);
     const evidencePayload = payload(input);
     const { status, filledQuantity } = input.brokerOrder;
-    await withRuntimePostgresTransaction(this.pool, async client => {
       const accountHash = await this.lock(client,input.executionAccountId);
       const hash = capitalContentHash(input);
       const event = await client.query('SELECT content_hash FROM trade.capital_reservation_event WHERE event_id=$1',[input.eventId]);
@@ -285,6 +291,5 @@ export class PostgresPortfolioCapitalStore {
         WHERE reservation_id=$1`,[input.reservationId,filledQuantity,input.observedAt]);
       await client.query(`INSERT INTO trade.capital_reservation_event(event_id,reservation_id,observed_at,content_hash,evidence_json)
         VALUES($1,$2,$3,$4,$5)`,[input.eventId,input.reservationId,input.observedAt,hash,evidencePayload]);
-    });
   }
 }

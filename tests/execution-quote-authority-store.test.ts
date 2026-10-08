@@ -68,7 +68,10 @@ test('serverless runtime scopes keep management and evidence bounded without dro
 
 test('a durable READY plan reaches the canonical handoff before scan post-processing consumes its window',()=>{
   const scanSource=readFileSync('src/research/production-shadow-runtime.ts','utf8');
-  const enqueueAt=scanSource.indexOf('new PostgresMasterPaperActionPlanStore(memberPool).enqueue');
+  const enqueueAt=scanSource.indexOf('await enqueueObservedMasterPaperPlan({pool:memberPool');
+  const boundarySource=readFileSync('src/execution/observed-master-paper-plan.ts','utf8');
+  assert.match(boundarySource,/new PostgresMasterPaperActionPlanStore\(pool\)\.enqueueWithDisposition/,
+    'observed enqueue delegates to the existing canonical atomic store');
   const callbackAt=scanSource.indexOf('await input.onActionPlanEnqueued?.(assembled.plan.actionPlanId)',enqueueAt);
   const scanPersistenceAt=scanSource.indexOf('await evidenceStore.saveScan(scan,persisted)',callbackAt);
   assert.ok(enqueueAt>=0&&callbackAt>enqueueAt&&scanPersistenceAt>callbackAt,

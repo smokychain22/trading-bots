@@ -232,18 +232,12 @@ const numeric = (value: unknown): number | null => {
 
 const text = (value: unknown): string | null => value == null ? null : String(value);
 
-// PostgreSQL DATE has no timezone. pg's default DATE parser constructs local
-// midnight, so ISO conversion can shift its calendar day on non-UTC hosts.
-// The production query returns DATE as text. Retain the parser's calendar
-// components for legacy/injected rows, never a truncated Date.toString().
+// PostgreSQL DATE has no timezone. The production query returns DATE as text.
+// A Date object has lost the SQL calendar/type boundary and may depend on the
+// driver's timezone. Refuse it instead of consulting a host clock or guessing.
 function contractExpirationDate(value: unknown): string | null {
-  let date: string;
-  if (value instanceof Date) {
-    if (!Number.isFinite(value.getTime()) || value.getHours() !== 0 || value.getMinutes() !== 0
-      || value.getSeconds() !== 0 || value.getMilliseconds() !== 0) return null;
-    date = `${value.getFullYear().toString().padStart(4,'0')}-${(value.getMonth()+1).toString().padStart(2,'0')}-${value.getDate().toString().padStart(2,'0')}`;
-  } else if (typeof value === 'string') date = value;
-  else return null;
+  if (typeof value !== 'string') return null;
+  const date = value;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   const ms = Date.parse(`${date}T00:00:00.000Z`);
   return Number.isFinite(ms) && new Date(ms).toISOString().slice(0,10) === date ? date : null;

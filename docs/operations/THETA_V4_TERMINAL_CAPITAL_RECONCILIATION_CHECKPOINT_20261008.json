@@ -1,0 +1,55 @@
+{
+  "version":"theta-v4-terminal-capital-reconciliation-checkpoint-v1",
+  "classification":"TESTED_SOURCE_ONLY",
+  "baseSha":"1243caad9fc4d7ca833125e65cea25cf6c274edc",
+  "baseExactCi":{
+    "run":37789989736,"result":"FAIL","node":{"passed":4504,"failed":6,"skipped":86},
+    "failures":["stale immediate-enqueue source assertion","stale execution-lane source assertion","Phase-2 source-bound evidence stale","Phase-3 source-bound evidence stale","Phase-4 source-bound evidence stale","DATE fallback used local-clock APIs forbidden by the time-chaos invariant"],
+    "laterJobs":"Python and database jobs were skipped after Node failed, not passed.",
+    "scope":"This failed run remains failed. Corrections below require new exact-SHA CI. No performance bound was changed."
+  },
+  "rootCause":"The terminal reservation primitive existed without a canonical broker reconciliation caller. Consequently a verified canceled remainder was never transferred through the same order/fill persistence transaction. The first runtime-capital checkpoint also retained an unnecessary timezone-dependent Date fallback and stale source-bound receipts.",
+  "implemented":[
+    "Canonical matched broker orders carry their complete GET-only response into the existing reconciliation store. Complete broker-read receipt time is captured separately from the cycle start and persisted in immutable reconciliation evidence.",
+    "On schema 071, reconciliation locks the physical account before order/claim rows, matching the allocator lock order. It records broker orders and immutable fills, then invokes reconcileTerminalInTransaction on the SAME checked-out client. No extra pool, nested acquisition, provider await, independent capital commit or broker mutation occurs.",
+    "A qualified terminal simple opening order releases only canceled/rejected/expired unfilled units. Cumulative fills must equal the immutable ledger. Fully filled obligations remain reserved. Exact physical account, client/order identity, contract, side, position intent, quantity and receipt time must agree.",
+    "Pending cancellation, ambiguous responses, replacement uncertainty and native package parents retain capital. A native parent quantity cannot prove leg-level risk clearance. Unsupported or conflicting evidence persists a typed capital quarantine without discarding otherwise valid management observations.",
+    "Only enumerated capital refusals are handled through a savepoint. Unknown/database failures propagate and roll back the transaction. Resolved capital incidents retain their history and are marked resolved only after successful ledger verification.",
+    "Reconciliation returns the actual unresolved account-scoped capital incident count. The runtime account observation producer refuses new entry allocation while that count is nonzero. Broker data quality and management monitoring are not mislabeled as strategy WAIT or blanket-disabled.",
+    "Management now accepts only strict SQL DATE text. Untyped driver Date values remain explicitly unqualified instead of consulting host calendar APIs. Production SQL already casts expiration_date to text. The previous legacy-Date compatibility claim is superseded by this stricter boundary.",
+    "Immediate handoff and dedicated execution-lane tests now trace the observed enqueue adapter through the SAME canonical store. They still assert ordering, the dedicated pool and the sole handoff authority.",
+    "Phase-2/3/4 source-bound receipts were regenerated through their canonical executed-test tools, not by replacing hashes manually. These prove reviewed source behavior only, not current-worker or profitability maturity."
+  ],
+  "validation":{
+    "combinedFocused":{"passed":188,"failed":0,"skipped":0},
+    "canonicalPhase2Evidence":{"passed":609,"failed":0},
+    "canonicalPhase3Evidence":{"passed":264,"failed":0,"skipped":0},
+    "canonicalPhase4Evidence":{"passed":228,"failed":0,"skipped":0},
+    "finalDisposablePostgres":{"passed":12,"failed":0,"skipped":0,"schema":"071","transactions":"REAL","brokerInputs":"SYNTHETIC","productionDatabaseAccess":false},
+    "transactionCases":["pending cancellation retains all claims","missing fill quarantines without losing management snapshots","local account readiness loss retains claims and monitoring","verified partial cancellation releases only unfilled units","duplicate workers and fills remain idempotent","wrong contract/side refuses","replacement uncertainty retains claims","native parent retains claims","outer transaction rollback","account-isolated concurrent Q/H/D allocation","real runtime adapter through native plan/intent binding"],
+    "checks":{"typecheck":"PASS","lint":"PASS","build":"PASS","security":"PASS_ZERO_FINDINGS","storagePolicy":"PASS_ZERO_FINDINGS"},
+    "developmentFailures":"An intermediate receipt-count block was inserted in the wrong method and caught by typecheck. An initially incomplete DATE-negative fixture was caught by ledger aggregate validation. Both were corrected before this checkpoint. The original failed CI is preserved separately.",
+    "fullNewSourceRemoteCi":"NOT_RUN_REQUIRES_APPROVAL_TO_PUSH_THIS_COMMIT",
+    "reticle":"SKIPPED_BACKEND_WITH_NO_UI_SURFACE",
+    "localPostgres":"STOPPED"
+  },
+  "sourceFiles":["src/execution/broker-reconciliation-worker.ts","src/execution/postgres-portfolio-capital-store.ts","src/execution/runtime-plan-capital-observation.ts","src/theta/management-input-state.ts"],
+  "tests":["tests/db/capital-broker-reconciliation.test.ts","tests/db/portfolio-capital-reservation.test.ts","tests/db/strategy-selection-persistence.test.ts","tests/db/runtime-plan-capital-observation.test.ts","tests/db/management-candidate-sql.test.ts","tests/management-input-state.test.ts","tests/runtime-plan-capital-observation.test.ts","tests/execution-quote-authority-store.test.ts","tests/oct5-tlt-mutation-window-regression.test.ts","tests/phase4-time-chaos.test.ts"],
+  "dependentIntegration":"broker GET -> canonical match -> order/fill transaction -> ledger-backed terminal claim reconciliation -> durable quarantine/resolution -> runtime account producer -> existing atomic plan/intent store",
+  "remainingMandatoryIntegration":[
+    "Qualified native held-leg, assignment/exercise and stock inventory producer and capital transfer/release.",
+    "Filled-lot reflection and exact broker buying-power attribution. Aggregate buying power alone does not identify an individual debit.",
+    "Qualified multi-underlying group source and concurrent aggregate AEGIS reassessment through the existing risk authority.",
+    "Account-wide economically ordered frontier, safe unsubmitted-plan expiration, replacements and completed-position release.",
+    "Final exact-SHA CI, governed schema compatibility/release approval and natural deployed-worker management/capital proof."
+  ],
+  "productionWiringComplete":false,
+  "migration071Ready":false,
+  "deployment":false,
+  "workerChanged":false,
+  "executionControlsChanged":false,
+  "brokerMutations":0,
+  "liveAuthorization":"NOT_GRANTED",
+  "profitability":"EMPIRICALLY_UNPROVEN",
+  "handoff":{"owner":"CODEX","review":"Account lock ordering, transaction/savepoint boundaries, exact terminal identity, no native or filled-obligation clearance, management continuation, source-only maturity","nextSourceSlice":"Qualified native inventory and broker-reflection producer; aggregate AEGIS and sovereign ordered frontier remain mandatory."}
+}

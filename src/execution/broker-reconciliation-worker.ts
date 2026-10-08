@@ -7,6 +7,8 @@ import type { ReadOnlyPaperBroker } from './read-only-paper-broker.js';
 import { isValidOrderIntentTransition, type OrderIntentState } from '../theta/order-intent-state.js';
 import { brokerOrderIntentState } from './broker-order-state.js';
 import { buildReconciledAccountCapital, type ReconciledAccountCapital } from './reconciled-account-capital.js';
+import { capitalReservationRequired } from './plan-capital-binding.js';
+import { PostgresPortfolioCapitalStore, type CapitalTerminalEvidence } from './postgres-portfolio-capital-store.js';
 import {
   classifyBrokerFactBatch,
   type BrokerFactBatchSummary,
@@ -58,6 +60,7 @@ export interface BrokerPositionEvidence {
 }
 
 export interface ReconciledBrokerOrder {
+  readonly capitalOrderEvidence?: BrokerOrderSnapshot;
   readonly orderIntentId: string;
   readonly providerOrderId: string;
   readonly providerOrderIdHash: string;
@@ -68,6 +71,7 @@ export interface ReconciledBrokerOrder {
 export { brokerOrderIntentState } from './broker-order-state.js';
 
 export interface BrokerReconciliationSnapshotInput {
+  readonly brokerEvidenceReceivedAt?: string;
   readonly accountCapitalObservation?: ReconciledAccountCapital;
   readonly snapshotId: string;
   readonly connectionId: string;
@@ -95,10 +99,11 @@ export interface BrokerReconciliationStore {
     readonly unmatched: readonly BrokerOrderSnapshot[];
     readonly missingLocalIntentIds: readonly string[];
   }>;
-  persist(input: BrokerReconciliationSnapshotInput): Promise<void>;
+  persist(input: BrokerReconciliationSnapshotInput): Promise<void | { capitalReconciliationBlockedCount: number }>;
 }
 
 export interface BrokerReconciliationResult {
+  readonly capitalReconciliationBlockedCount?: number;
   readonly snapshotId: string;
   readonly correlationId: string;
   readonly accountStatus: string | null;
@@ -263,6 +268,7 @@ export async function runReadOnlyBrokerReconciliation(input: {
     input.broker.getClock?.() ?? Promise.resolve(null),
     input.broker.getCalendar?.(marketDate, marketDate) ?? Promise.resolve(null),
   ]);
+  const brokerEvidenceReceivedAt = input.now();
   const positions = rawPositions.map(safePosition).sort((a, b) => a.symbol.localeCompare(b.symbol));
   const orders = [...allOrders].sort((a, b) => a.id.localeCompare(b.id));
   const sortedActivities = [...activities].sort((a, b) => a.id.localeCompare(b.id));
@@ -295,6 +301,7 @@ export async function runReadOnlyBrokerReconciliation(input: {
     accountHash: providerAccountRefHash, snapshotId, requestedAt: observedAt, receivedAt: accountReceivedAt,
   });
   const payloadHash = sha256(canonicalJson({
+    brokerEvidenceReceivedAt,
     accountCapitalObservation,
     account: { status: account.status ?? null }, positions, orders: orders.map((order) => ({
       idHash: sha256(order.id), clientOrderIdHash: sha256(order.clientOrderId), status: order.status,
@@ -302,10 +309,10 @@ export async function runReadOnlyBrokerReconciliation(input: {
     })), activities: sortedActivities.map((activity) => ({ idHash: sha256(activity.id), type: activity.activityType })),
     marketClock, calendarSessions,
   }));
-  await input.store.persist({
+  const persisted = await input.store.persist({
     snapshotId, connectionId: input.connectionId, correlationId: input.correlationId,
     providerAccountRefHash, accountStatus: account.status ?? null,
-    marketClock, calendarSessions, accountCapitalObservation,
+    marketClock, calendarSessions, accountCapitalObservation, brokerEvidenceReceivedAt,
     positionCount: positions.length, openOrderCount: orders.filter((order) => !isTerminalOrderStatus(order.status)).length,
     activityCount: sortedActivities.length, positions, activities: sortedActivities, matchedOrders: matches.matched,
     missingLocalIntentIds: matches.missingLocalIntentIds, unmatchedFacts, factImpactSummary, observedAt, payloadHash,
@@ -315,6 +322,7 @@ export async function runReadOnlyBrokerReconciliation(input: {
   const dataQuality = account.status != null && marketClock?.timestamp != null
     && marketClock.isOpen != null && calendarSessions !== null ? 'GOOD' : 'UNKNOWN';
   return {
+    ...(persisted === undefined ? {} : {capitalReconciliationBlockedCount:persisted.capitalReconciliationBlockedCount}),
     snapshotId, correlationId: input.correlationId, accountStatus: account.status ?? null,
     positionCount: positions.length,
     openOrderCount: orders.filter((order) => !isTerminalOrderStatus(order.status)).length,
@@ -361,6 +369,7 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
       const orderIntentId = byProvider.get(order.id) ?? byClient.get(order.clientOrderId);
       if (orderIntentId === undefined) unmatched.push(order);
       else matched.push({
+        capitalOrderEvidence: order,
         orderIntentId, providerOrderId: order.id, providerOrderIdHash: sha256(order.id),
         brokerStatus: order.status, brokerIntentState: brokerOrderIntentState(order),
       });
@@ -373,8 +382,17 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
     return { matched, unmatched, missingLocalIntentIds };
   }
 
-  async persist(input: BrokerReconciliationSnapshotInput): Promise<void> {
-    await withRuntimePostgresTransaction(this.pool, async (client) => {
+  async persist(input: BrokerReconciliationSnapshotInput): Promise<{ capitalReconciliationBlockedCount: number }> {
+    return withRuntimePostgresTransaction(this.pool, async (client) => {
+      const capitalRequired = await capitalReservationRequired(client);
+      if (capitalRequired) {
+        // Match the allocator lock order: account row, physical-account lock,
+        // then order/claim rows. Holding an intent first can deadlock against a
+        // concurrent plan/intent handoff holding the account lock.
+        await client.query(`SELECT execution_account_id FROM trade.execution_account
+          WHERE provider_account_ref_hash=$1 AND environment='PAPER' FOR SHARE`, [input.providerAccountRefHash]);
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`capital:${input.providerAccountRefHash}`]);
+      }
       await client.query(
         `INSERT INTO trade.broker_reconciliation_snapshot(
           reconciliation_snapshot_id,connection_id,correlation_id,environment,broker_host,account_status,
@@ -388,6 +406,7 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
             && input.marketClock.isOpen != null && input.calendarSessions !== null ? 'GOOD' : 'UNKNOWN',
           input.payloadHash,
           JSON.stringify({
+            brokerEvidenceReceivedAt: input.brokerEvidenceReceivedAt ?? null,
             accountCapitalObservation: input.accountCapitalObservation ?? null,
             localOnlyIntentCount: input.missingLocalIntentIds.length,
             brokerFactImpactSummary: input.factImpactSummary,
@@ -446,6 +465,7 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
       }
       for (const order of input.matchedOrders) await this.recordMatchedOrder(client, input, order);
       for (const activity of input.activities) await this.recordBrokerFill(client,input,activity);
+      if (capitalRequired) for (const order of input.matchedOrders) await this.reconcileCapital(client,input,order);
       for (const orderIntentId of input.missingLocalIntentIds) {
         await client.query(
           `INSERT INTO trade.reconciliation_event(order_intent_id,state,detected_at,detail_json)
@@ -455,7 +475,89 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
           [orderIntentId, input.observedAt, JSON.stringify({ reconciliationSnapshotId: input.snapshotId })],
         );
       }
+      if (!capitalRequired) return {capitalReconciliationBlockedCount:0};
+      const incidents = await client.query(`SELECT count(DISTINCT i.order_intent_id)::integer AS n
+        FROM trade.reconciliation_event re JOIN trade.order_intent i USING(order_intent_id)
+        JOIN trade.execution_account ea USING(execution_account_id)
+        WHERE ea.provider_account_ref_hash=$1 AND re.state='QUARANTINED' AND re.resolved_at IS NULL
+          AND re.detail_json->>'reason' LIKE 'CAPITAL_%'`,[input.providerAccountRefHash]);
+      const count = incidents.rows[0]?.n;
+      if (!Number.isSafeInteger(count) || count < 0) throw new Error('CAPITAL_RECONCILIATION_COUNT_UNKNOWN');
+      return {capitalReconciliationBlockedCount:count as number};
     });
+  }
+
+  private async reconcileCapital(client: PoolClient, input: BrokerReconciliationSnapshotInput,
+    order: ReconciledBrokerOrder): Promise<void> {
+    const claims = await client.query(`SELECT r.reservation_id,r.execution_account_id,
+        i.broker_symbol,i.side::text,i.position_intent::text
+      FROM trade.capital_reservation r JOIN trade.execution_account ea USING(execution_account_id)
+      JOIN trade.order_intent i ON i.order_intent_id=r.order_intent_id
+      WHERE r.order_intent_id=$1 AND r.provider_account_ref_hash=$2
+        AND ea.provider_account_ref_hash=$2 AND ea.environment='PAPER'`,
+    [order.orderIntentId,input.providerAccountRefHash]);
+    if (claims.rows.length === 0) return;
+    const raw = order.capitalOrderEvidence;
+    // Partial/pending/ambiguous orders retain all claims. Only a complete
+    // terminal GET response may reach the ledger-backed release primitive.
+    if (!['FILLED','CANCELED','REJECTED','EXPIRED'].includes(order.brokerIntentState ?? '')) return;
+    let reason: string | null = null;
+    if (claims.rows.length !== 1 || raw === undefined) reason = 'CAPITAL_TERMINAL_EVIDENCE_MISSING';
+    else if (input.brokerEvidenceReceivedAt === undefined || !Number.isFinite(Date.parse(input.brokerEvidenceReceivedAt))
+      || Date.parse(input.brokerEvidenceReceivedAt) < Date.parse(input.observedAt))
+      reason = 'CAPITAL_TERMINAL_RECEIPT_TIME_UNQUALIFIED';
+    else if (raw.orderClass === 'mleg' || (raw.legs?.length ?? 0) > 0) reason = 'CAPITAL_PACKAGE_RECONCILIATION_REQUIRED';
+    else if (!['filled','canceled','rejected','expired'].includes(raw.status.toLowerCase()))
+      reason = 'CAPITAL_TERMINAL_STATUS_UNQUALIFIED';
+    else if (raw.symbol !== claims.rows[0].broker_symbol || raw.side !== claims.rows[0].side
+      || raw.positionIntent !== String(claims.rows[0].position_intent).toLowerCase())
+      reason = 'CAPITAL_TERMINAL_CONTRACT_OR_SIDE_CONFLICT';
+    else if (raw.id !== order.providerOrderId || raw.clientOrderId.length === 0
+      || raw.replaces !== null || raw.replacedBy !== null
+      || !Number.isSafeInteger(raw.qty) || raw.qty <= 0 || !Number.isSafeInteger(raw.filledQty)
+      || raw.filledQty < 0 || raw.filledQty > raw.qty) reason = 'CAPITAL_TERMINAL_EVIDENCE_INVALID';
+    if (reason === null && raw !== undefined) {
+      const claim = claims.rows[0];
+      const evidence: CapitalTerminalEvidence = {
+        eventId: deterministicFillUuid(`capital:${input.snapshotId}:${claim.reservation_id}`),
+        executionAccountId:String(claim.execution_account_id),reservationId:String(claim.reservation_id),
+        observedAt:input.brokerEvidenceReceivedAt as string,brokerOrder:{id:raw.id,clientOrderId:raw.clientOrderId,
+          quantity:raw.qty,filledQuantity:raw.filledQty,status:order.brokerIntentState as CapitalTerminalEvidence['brokerOrder']['status'],
+          source:'ALPACA_PAPER_GET',responseHash:sha256(canonicalJson(raw))},
+      };
+      await client.query('SAVEPOINT capital_terminal_reconcile');
+      try {
+        await new PostgresPortfolioCapitalStore(this.pool).reconcileTerminalInTransaction(client,evidence);
+        await client.query(`UPDATE trade.reconciliation_event SET resolved_at=$2
+          WHERE order_intent_id=$1 AND state='QUARANTINED' AND resolved_at IS NULL
+            AND detail_json->>'reason'=ANY($3::text[])`,[order.orderIntentId,evidence.observedAt,[
+          'CAPITAL_TERMINAL_EVIDENCE_MISSING','CAPITAL_PACKAGE_RECONCILIATION_REQUIRED',
+          'CAPITAL_TERMINAL_RECEIPT_TIME_UNQUALIFIED',
+          'CAPITAL_ACCOUNT_UNAVAILABLE',
+          'CAPITAL_TERMINAL_STATUS_UNQUALIFIED','CAPITAL_TERMINAL_CONTRACT_OR_SIDE_CONFLICT',
+          'CAPITAL_TERMINAL_EVIDENCE_INVALID','CAPITAL_TERMINAL_LEDGER_MISMATCH',
+          'CAPITAL_TERMINAL_QUANTITY_OR_TIME_INVALID','CAPITAL_RECONCILIATION_IDEMPOTENCY_CONFLICT',
+        ]]);
+        await client.query('RELEASE SAVEPOINT capital_terminal_reconcile');
+      } catch (error) {
+        // A proven unsupported or mismatched ledger retains capital and a
+        // durable incident without discarding position-management evidence.
+        // Infrastructure/unknown failures still abort the transaction.
+        if (!(error instanceof Error) || ![
+          'CAPITAL_ACCOUNT_UNAVAILABLE',
+          'CAPITAL_TERMINAL_LEDGER_MISMATCH','CAPITAL_PACKAGE_RECONCILIATION_REQUIRED',
+          'CAPITAL_TERMINAL_QUANTITY_OR_TIME_INVALID','CAPITAL_RECONCILIATION_IDEMPOTENCY_CONFLICT',
+        ].includes(error.message)) throw error;
+        await client.query('ROLLBACK TO SAVEPOINT capital_terminal_reconcile');
+        await client.query('RELEASE SAVEPOINT capital_terminal_reconcile');
+        reason = error.message;
+      }
+    }
+    if (reason !== null) await client.query(`INSERT INTO trade.reconciliation_event(order_intent_id,state,detected_at,detail_json)
+      SELECT $1,'QUARANTINED',$2,$3::jsonb WHERE NOT EXISTS (SELECT 1 FROM trade.reconciliation_event
+        WHERE order_intent_id=$1 AND state='QUARANTINED' AND resolved_at IS NULL
+          AND detail_json->>'reason'=$4)`,
+    [order.orderIntentId,input.observedAt,JSON.stringify({reconciliationSnapshotId:input.snapshotId,reason}),reason]);
   }
 
   private async recordBrokerFill(client:PoolClient,input:BrokerReconciliationSnapshotInput,activity:BrokerActivity):Promise<void> {

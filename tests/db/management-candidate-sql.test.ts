@@ -46,8 +46,8 @@ test('real PostgreSQL DATE and JSONB reconciliation survive restart-shaped loadi
     [JSON.stringify({accountCapitalObservation})])).rows[0];
     assert.ok(row.raw_date instanceof Date,'characterize pg DATE parser, not a string fixture');
     assert.equal(row.expiration_date,'2026-10-16');
-    for (const expiration of [row.raw_date,row.expiration_date]) {
-      const state=assembleManagementInput({...row,expiration_date:expiration,physical_account_hash:accountHash,
+    for (const expiration of [row.expiration_date]) {
+      const inputRow={...row,expiration_date:expiration,physical_account_hash:accountHash,
         chain_id:'chain',lifecycle_state:'CSP_OPEN',underlying_id:'underlying',underlying:'AAPL',
         option_leg_id:'leg',option_contract_id:'contract',quantity:'1',entry_credit_debit:'200',
         contract_symbol:'AAPL261016P00200000',option_type:'PUT',strike:'200',multiplier:'100',
@@ -57,8 +57,11 @@ test('real PostgreSQL DATE and JSONB reconciliation survive restart-shaped loadi
         reconciliation_quality:'GOOD',broker_option_symbol:'AAPL261016P00200000',broker_option_quantity:'1',
         broker_option_side:'short',broker_option_asset_class:'us_option',broker_option_observed_at:at,
         ledger_option_contract_quantity:'1',snapshot_json:{underlyingState:{last:205},
-          marketSession:{isOpen:true},riskState:{newRiskState:'ALLOW_FULL'},eventState:{state:'CLEAR'}}},
-      {managementInputSnapshotId:randomUUID(),reconciliationSnapshotId:'recon-date-json',observedAt:at});
+          marketSession:{isOpen:true},riskState:{newRiskState:'ALLOW_FULL'},eventState:{state:'CLEAR'}}};
+      const stamp={managementInputSnapshotId:randomUUID(),reconciliationSnapshotId:'recon-date-json',observedAt:at};
+      const state=assembleManagementInput(inputRow,stamp);
+      const untyped=assembleManagementInput({...inputRow,expiration_date:row.raw_date},stamp);
+      assert.equal(untyped.contract.expiration,null,'an untyped driver Date is not a qualified calendar date');
       assert.equal(state.market.dte,4,'existing DTE policy includes the expiration-session close');
       assert.equal(state.account.optionsBuyingPower,84300.25);
       assert.ok(!state.hardBlockers.includes('BROKER_DATA_STALE'));

@@ -82,7 +82,10 @@ test('Execution connection lane: authorized-symbol DB work and the handoff use a
   assert.match(runtime, /new PostgresPaperOrderStore\(executionPool,master\.executionAccountId\)/);
   const scan = readFileSync(new URL('../src/research/production-shadow-runtime.ts', import.meta.url), 'utf8');
   assert.match(scan, /const lanePool=\(symbol:string\):Pool=>input\.priorityPool!==undefined&&brokerAuthoritySymbols\.has\(symbol\)\?input\.priorityPool:input\.pool;/);
-  assert.match(scan, /new PostgresMasterPaperActionPlanStore\(memberPool\)\.enqueue/);
+  assert.match(scan, /enqueueObservedMasterPaperPlan\(\{pool:memberPool/);
+  const binding = readFileSync(new URL('../src/execution/observed-master-paper-plan.ts', import.meta.url), 'utf8');
+  assert.match(binding, /new PostgresMasterPaperActionPlanStore\(pool\)\.enqueueWithDisposition/,
+    'the observed boundary forwards the execution lane to the canonical store');
 });
 
 // SELECTED-CANDIDATE / ACTION-READY LOSS DETECTOR: a broker-authorized selected candidate that reaches no plan, a READY plan that is not
