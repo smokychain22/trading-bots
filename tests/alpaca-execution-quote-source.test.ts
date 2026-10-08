@@ -80,3 +80,26 @@ test('pre-submit quote refuses ambiguous identity and incomplete provider pages'
     (error:unknown)=>error instanceof AlpacaProviderError&&error.errorClass==='MALFORMED_RESPONSE');
   assert.ok(requests >= 2 && requests <= 3);
 });
+
+test('Paper quote sources never fill or accept mismatched provider contract identity from the plan', async () => {
+  for (const contractChange of [
+    {underlying_symbol:undefined}, {underlying_symbol:null}, {underlying_symbol:'XLE'},
+    {expiration_date:'2026-10-16'}, {strike_price:'501'},
+  ]) {
+    const fetchImpl = (async (input:RequestInfo|URL) => {
+      const url=new URL(String(input));
+      if(url.pathname==='/v2/options/contracts')return Response.json({option_contracts:[{
+        symbol:'SPY261009P00500000',strike_price:'500',expiration_date:'2026-10-09',size:'100',tradable:true,
+        underlying_symbol:'SPY',style:'american',...contractChange,
+        deliverables:[{type:'equity',symbol:'SPY',amount:'100',allocation_percentage:'100'}],
+      }],next_page_token:null});
+      return Response.json({snapshots:{
+        SPY261009P00500000:{latestQuote:{bp:0.11,ap:0.12,t:'2026-10-01T14:30:00Z'}},
+      },next_page_token:null});
+    }) as typeof fetch;
+    for (const source of [new AlpacaExecutionQuoteSource(config(fetchImpl)),
+      new AlpacaIndicativeOptionQuoteSource(config(fetchImpl))]) {
+      assert.equal(await source.getCurrentQuote(plan(),'2026-10-01T14:30:01Z'),null);
+    }
+  }
+});

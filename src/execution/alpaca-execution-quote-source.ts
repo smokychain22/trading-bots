@@ -62,9 +62,11 @@ export class AlpacaExecutionQuoteSource implements ExecutionOptionQuoteSource {
     const quote=result.snapshots.get(plan.symbol);
     const listing=contracts.items.find((item)=>item.symbol===plan.symbol);
     if(quote===undefined||quote.bid===null||quote.ask===null||listing===undefined||listing.multiplier===null
-      ||listing.tradable!==true||listing.exerciseStyle==null)return null;
+      ||listing.tradable!==true||listing.exerciseStyle==null||listing.underlyingSymbol!==plan.underlying
+      ||listing.expirationDate!==filter.expirationDateGte||listing.strikePrice!==filter.strikePriceGte
+      ||listing.optionType!==plan.optionType)return null;
     return {contractVersion:executionOptionQuoteContractVersion,contractId:plan.symbol,providerContractId:plan.symbol,
-      optionIdentity:{underlying:listing.underlyingSymbol??plan.underlying,optionSymbol:listing.symbol,
+      optionIdentity:{underlying:listing.underlyingSymbol,optionSymbol:listing.symbol,
         expiration:listing.expirationDate,strike:listing.strikePrice,optionType:listing.optionType,
         multiplier:listing.multiplier,contractTradable:listing.tradable,exerciseStyle:listing.exerciseStyle,
         deliverableClassification:classifyDeliverable(listing,plan.underlying)},
@@ -102,9 +104,11 @@ export class AlpacaIndicativeOptionQuoteSource implements ExecutionOptionQuoteSo
     const quote=result.snapshots.get(plan.symbol);
     const listing=contracts.items.find((item)=>item.symbol===plan.symbol);
     if(quote===undefined||quote.bid===null||quote.ask===null||listing===undefined||listing.multiplier===null
-      ||listing.tradable!==true||listing.exerciseStyle==null)return null;
+      ||listing.tradable!==true||listing.exerciseStyle==null||listing.underlyingSymbol!==plan.underlying
+      ||listing.expirationDate!==filter.expirationDateGte||listing.strikePrice!==filter.strikePriceGte
+      ||listing.optionType!==plan.optionType)return null;
     return {contractVersion:executionOptionQuoteContractVersion,contractId:plan.symbol,providerContractId:plan.symbol,
-      optionIdentity:{underlying:listing.underlyingSymbol??plan.underlying,optionSymbol:listing.symbol,
+      optionIdentity:{underlying:listing.underlyingSymbol,optionSymbol:listing.symbol,
         expiration:listing.expirationDate,strike:listing.strikePrice,optionType:listing.optionType,
         multiplier:listing.multiplier,contractTradable:listing.tradable,exerciseStyle:listing.exerciseStyle,
         deliverableClassification:classifyDeliverable(listing,plan.underlying)},
