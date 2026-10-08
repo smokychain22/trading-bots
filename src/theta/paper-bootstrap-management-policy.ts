@@ -1121,6 +1121,10 @@ export function evaluatePaperBootstrapManagementPolicy(
   const executableFraction = executableRemainingValueFraction(state, currentMark);
   const analyticalFraction = analyticalRemainingValueFraction(state, analyticalMark);
   const dte = daysToExpiration(state);
+  // HOLD is the safe no-order fallback, not a complete close comparison
+  // when the current option's DTE is unknown.
+  if ((state.lifecycleState === 'CSP_OPEN' || state.lifecycleState === 'CC_OPEN')
+    && state.contract.contracts !== null && state.contract.contracts > 0 && dte === null) return null;
   const capital = capitalCommitted(state);
   // Computed once per state, shared by every action -- the SAME thesis
   // read is never re-derived per action, so a HOLD/CLOSE/ROLL comparison

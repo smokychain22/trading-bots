@@ -229,7 +229,18 @@ const numeric = (value: unknown): number | null => {
   return Number.isFinite(result) ? result : null;
 };
 
-const text = (value: unknown): string | null => value == null ? null : String(value);
+const text = (value: unknown): string | null => {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+  return value == null ? null : String(value);
+};
+
+// PostgreSQL DATE is calendar data. Select it as text before it reaches pg,
+// then reject malformed or timezone-dependent representations here.
+function contractExpirationDate(value: unknown): string | null {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const ms = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0,10) === value ? value : null;
+}
 
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -381,13 +392,14 @@ export function assembleManagementInput(row: Row, input: {
   const ledgerComplete = row.unknown_closed_leg_pnl !== true && row.has_stock_lots !== true;
   const wholeChainPnl = ledgerComplete && (!hasOpenOption || optionMark !== null) && stockMtm !== null && fees !== null
     ? realizedOptionPnl + (optionMark ?? 0) + realizedStockPnl + stockMtm + dividends - fees : null;
-  const expiration = text(row.expiration_date)?.slice(0, 10) ?? null;
+  const expiration = contractExpirationDate(row.expiration_date);
   const spot = stockMark ?? numeric(snapshot.underlyingState && object(snapshot.underlyingState).last);
   const strike = numeric(row.strike);
   const lifecycleState = String(row.lifecycle_state) as ThetaLifecycleState;
   const assignmentApplicable = lifecycleState === 'CSP_OPEN' && hasOpenOption && text(row.option_type) === 'PUT';
-  const accountAgeForCapacity = row.account_as_of == null ? NaN
-    : Date.parse(input.observedAt) - Date.parse(String(row.account_as_of));
+  const accountAsOfForCapacity = text(row.account_as_of);
+  const accountAgeForCapacity = accountAsOfForCapacity === null ? NaN
+    : Date.parse(input.observedAt) - Date.parse(accountAsOfForCapacity);
   const accountFreshForCapacity = Number.isFinite(accountAgeForCapacity)
     && accountAgeForCapacity >= 0 && accountAgeForCapacity <= 180_000;
   const optionsBuyingPower = numeric(row.options_buying_power);
@@ -619,7 +631,7 @@ export class PostgresManagementInputStore {
         original_entry.decided_at AS original_decided_at,original_entry.entry_thesis AS original_entry_thesis,
         original_entry.strategy_branch AS original_strategy_branch,
         ol.option_leg_id,ol.remaining_quantity AS quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
-        oc.strike,oc.expiration_date,oc.multiplier,
+        oc.strike,oc.expiration_date::text AS expiration_date,oc.multiplier,
         oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.retrieved_at AS quote_retrieved_at,oq.feed,oq.quality AS quote_quality,
         totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,acct.account_ledger_shares,
         totals.realized_stock_pnl,totals.dividends,totals.fees,totals.unknown_fill_fees,totals.unknown_closed_leg_pnl,totals.has_stock_lots,

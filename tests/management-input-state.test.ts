@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assembleManagementInput, diffManagementInputs } from '../src/theta/management-input-state.js';
 import { buildManagementActionFrontier } from '../src/theta/management-action-frontier.js';
+import { evaluatePaperBootstrapManagementPolicy } from '../src/theta/paper-bootstrap-management-policy.js';
 
 const base = {
   chain_id: 'chain-1', lifecycle_state: 'CSP_OPEN', underlying_id:'underlying-1', underlying: 'AAPL',
@@ -16,6 +17,38 @@ const base = {
     portfolioExposure: { concentration: 0.1, sectorCorrelation: 0.2 }, expertPriorState: { state: 'GOOD' } },
   broker_position: null,
 };
+
+test('PostgreSQL calendar DATE text yields a real DTE and malformed expiration leaves a typed system hold',()=>{
+  const options={managementInputSnapshotId:'date-test',reconciliationSnapshotId:'recon',observedAt:'2026-09-12T14:00:00.000Z'};
+  const good=assembleManagementInput(base,options);
+  assert.equal(good.contract.expiration,'2026-10-16');
+  assert.equal(good.market.dte,35);
+  for(const expiration of ['Fri Nov 20','2026-02-30','2026-10-16garbage',new Date('2026-10-16T00:00:00Z')]){
+    const bad=assembleManagementInput({...base,expiration_date:expiration},options);
+    assert.equal(bad.contract.expiration,null);
+    assert.equal(bad.market.dte,null);
+    const policy=evaluatePaperBootstrapManagementPolicy(bad);
+    assert.equal(policy,null);
+    const frontier=buildManagementActionFrontier(bad,policy);
+    assert.equal(frontier.selectedAction,'HOLD');
+    assert.equal(frontier.decisionState,'SYSTEM_HOLD_MISSING_EVIDENCE');
+    assert.ok(frontier.reasonCodes.includes('MANAGEMENT_DTE_UNAVAILABLE_FROM_CONTRACT_EXPIRATION'));
+  }
+});
+
+test('pg TIMESTAMPTZ retains milliseconds for quote truth and assignment capacity',()=>{
+  const at='2026-10-16T20:01:00.000Z';
+  const row={...base,quote_as_of:new Date(at),account_as_of:new Date(at),reconciliation_quality:'GOOD',
+    broker_option_symbol:base.contract_symbol,broker_option_quantity:'1',broker_option_side:'short',
+    broker_option_asset_class:'us_option',broker_option_observed_at:new Date(at),ledger_option_contract_quantity:'1'};
+  const options={managementInputSnapshotId:'timestamp-test',reconciliationSnapshotId:'recon',observedAt:at};
+  const current=assembleManagementInput(row,options);
+  assert.equal(current.market.quoteTimestamp,at);
+  assert.equal(current.context.assignmentCapacity,3);
+  const future=assembleManagementInput({...row,account_as_of:new Date('2026-10-16T20:01:00.500Z')},options);
+  assert.equal(future.context.assignmentCapacity,null);
+  assert.equal(future.context.assignmentCapacityEvidence.reason,'ACCOUNT_EVIDENCE_STALE_OR_MISSING');
+});
 
 test('management assembly uses executable ask for a short option and preserves whole-chain loss', () => {
   const state = assembleManagementInput(base, {
