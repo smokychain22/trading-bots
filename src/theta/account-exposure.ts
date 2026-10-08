@@ -214,12 +214,19 @@ export function deriveAccountExposure(
         optionQuantityUnknown = true;
         continue;
       }
-      const side: ClassifiedOptionPosition['side'] = position.side === 'short' || quantity < 0 ? 'SHORT' : 'LONG';
+      const brokerSide = position.side?.toLowerCase();
+      if ((brokerSide !== 'short' && brokerSide !== 'long') || (brokerSide === 'long' && quantity < 0)) {
+        unclassifiedPositionSymbols.push(position.symbol);
+        optionQuantityUnknown = true;
+        continue;
+      }
+      const side: ClassifiedOptionPosition['side'] = brokerSide === 'short' ? 'SHORT' : 'LONG';
       optionPositions.push({ symbol: position.symbol, parsed, quantity, side, marketValue: position.marketValue,
         unrealizedPl: position.unrealizedPl, multiplier: positionMultiplier });
     } else if (position.assetClass === 'us_equity') {
       if (position.marketValue === null || !Number.isFinite(position.marketValue) || position.marketValue < 0
-        || position.side === 'short') {
+        || position.side?.toLowerCase() !== 'long' || position.quantity === null
+        || !Number.isFinite(position.quantity) || position.quantity < 0) {
         unclassifiedPositionSymbols.push(position.symbol);
         stockInventoryValue = null; // one UNKNOWN stock value poisons the total -- never understate
       } else if (stockInventoryValue !== null) {

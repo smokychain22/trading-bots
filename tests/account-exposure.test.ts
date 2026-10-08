@@ -62,6 +62,21 @@ test('unclassifiable position quantity or asset never becomes zero portfolio exp
   }
 });
 
+test('missing or contradictory broker side never creates known option or share capacity', () => {
+  for (const side of [null, 'invalid', 'long']) {
+    const exposure = deriveAccountExposure(account(), [position({ assetClass: 'us_option',
+      symbol: 'SPY261009P00500000', quantity: side === 'long' ? -1 : 1, side })], []);
+    assert.equal(exposure.cspCollateralRequired, null);
+    assert.equal(exposure.portfolioCapitalAtRiskPct, null);
+    assert.deepEqual(exposure.unclassifiedPositionSymbols, ['SPY261009P00500000']);
+  }
+  for (const p of [position({ side: null }), position({ quantity: -10, side: 'long' })]) {
+    const exposure = deriveAccountExposure(account(), [p], []);
+    assert.equal(exposure.stockInventoryValue, null);
+    assert.equal(exposure.portfolioCapitalAtRiskPct, null);
+  }
+});
+
 test('long option marks count as current capital at risk without inventing a short-leg hedge offset', () => {
   const exposure = deriveAccountExposure(account(), [position({ assetClass: 'us_option',
     symbol: 'SPY261009P00500000', quantity: 1, marketValue: 1200, side: 'long' })], []);
