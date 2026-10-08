@@ -87,6 +87,21 @@ test('a missing or stale provider quote cannot be mislabeled as a valid empty re
   assert.equal(classifyEmptyManagementLattice([{symbol:'A',reason:'SAME_AS_CURRENT_CONTRACT'}]),'VALID_EMPTY');
 });
 
+test('unknown stock quantity cannot qualify a covered-call candidate',()=>{
+  const listing=contract({symbol:'AAPL261023C00210000',strikePrice:210,optionType:'CALL'});
+  const result=qualifyManagementContractLattice({subject:{...subject,lifecycleState:'RECOVERY_WAIT',
+    currentContractSymbol:null,currentContractId:null,currentMultiplier:null,optionQuantity:null,stockShares:Number.NaN},
+  contracts:[listing],snapshots:new Map([[listing.symbol,snapshot()]]),receivedAt:at});
+  assert.equal(result.quotes.length,0);
+  assert.deepEqual(result.rejections.map(item=>item.reason),['STOCK_QUANTITY_UNQUALIFIED']);
+  assert.equal(classifyEmptyManagementLattice(result.rejections),'PARTIAL_COVERAGE');
+  const undercoveredRoll=qualifyManagementContractLattice({subject:{...subject,lifecycleState:'CC_OPEN',
+    currentOptionType:'CALL',optionQuantity:2,stockShares:100},
+  contracts:[listing],snapshots:new Map([[listing.symbol,snapshot()]]),receivedAt:at});
+  assert.equal(undercoveredRoll.quotes.length,0);
+  assert.deepEqual(undercoveredRoll.rejections.map(item=>item.reason),['INSUFFICIENT_COVERED_SHARES']);
+});
+
 test('an open option with unknown ledger quantity is incomplete management evidence, not a valid empty lattice',async()=>{
   for(const lifecycleState of ['CSP_OPEN','CC_OPEN']){
     const row={chain_id:'chain-1',underlying_id:'underlying-1',underlying:'AAPL',lifecycle_state:lifecycleState,

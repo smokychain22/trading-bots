@@ -90,8 +90,12 @@ export function qualifyManagementContractLattice(input:{
     }
     if((subject.lifecycleState==='RECOVERY_WAIT'||subject.lifecycleState==='STOCK_HELD')
       && contract.optionType!=='CALL'){reject('COVERED_CALL_TYPE_INVALID');continue;}
-    if((subject.lifecycleState==='RECOVERY_WAIT'||subject.lifecycleState==='STOCK_HELD')
-      && Math.floor(subject.stockShares/contract.multiplier)<1){reject('INSUFFICIENT_COVERED_SHARES');continue;}
+    if(contract.optionType==='CALL' && ['CC_OPEN','RECOVERY_WAIT','STOCK_HELD'].includes(subject.lifecycleState)){
+      if(!Number.isSafeInteger(subject.stockShares)||subject.stockShares<0){reject('STOCK_QUANTITY_UNQUALIFIED');continue;}
+      const requiredContracts=subject.lifecycleState==='CC_OPEN'?subject.optionQuantity:1;
+      if(!finitePositiveInteger(requiredContracts)){reject('OPEN_OPTION_QUANTITY_UNQUALIFIED');continue;}
+      if(Math.floor(subject.stockShares/contract.multiplier)<requiredContracts){reject('INSUFFICIENT_COVERED_SHARES');continue;}
+    }
     const snapshot=snapshots.get(contract.symbol);
     if(snapshot===undefined){reject('QUOTE_MISSING');continue;}
     if(snapshot.bid===null||!Number.isFinite(snapshot.bid)||snapshot.bid<=0){reject('BID_MISSING_OR_INVALID');continue;}
@@ -116,7 +120,8 @@ export function classifyEmptyManagementLattice(rejections:readonly ManagementCan
   if(rejections.length===0)return 'VALID_EMPTY';
   if(rejections.every((item)=>item.reason==='QUOTE_STALE_OR_FUTURE'))return 'STALE';
   if(rejections.some((item)=>['QUOTE_MISSING','BID_MISSING_OR_INVALID','ASK_MISSING_OR_INVALID',
-    'QUOTE_TIMESTAMP_MISSING_OR_INVALID','QUOTE_STALE_OR_FUTURE'].includes(item.reason)))return 'PARTIAL_COVERAGE';
+    'QUOTE_TIMESTAMP_MISSING_OR_INVALID','QUOTE_STALE_OR_FUTURE',
+    'STOCK_QUANTITY_UNQUALIFIED','OPEN_OPTION_QUANTITY_UNQUALIFIED'].includes(item.reason)))return 'PARTIAL_COVERAGE';
   if(rejections.some((item)=>['CONTRACT_IDENTITY_INVALID','BROKER_TRADABILITY_NOT_CONFIRMED',
     'MULTIPLIER_MISSING_OR_INVALID','MULTIPLIER_MISMATCH','QUOTE_CROSSED',
     'BROKER_CONTRACT_TERMS_UNVERIFIED','STANDARD_DELIVERABLE_UNVERIFIED'].includes(item.reason)))return 'INVALID';
