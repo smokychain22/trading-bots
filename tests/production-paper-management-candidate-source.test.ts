@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyEmptyManagementLattice, qualifyManagementContractLattice, type OpenManagementCandidateSubject } from
+import { ProductionPaperManagementCandidateSource, classifyEmptyManagementLattice,
+  qualifyManagementContractLattice, type OpenManagementCandidateSubject } from
   '../src/theta/production-paper-management-candidate-source.js';
 import type { AlpacaOptionContractListing, AlpacaOptionSnapshot } from '../src/theta/option-chain-ingestion.js';
+import type { Pool } from 'pg';
 
 const at='2026-09-22T14:00:00.000Z';
 const subject:OpenManagementCandidateSubject={chainId:'chain-1',underlyingId:'underlying-1',underlying:'AAPL',
@@ -83,4 +85,20 @@ test('a missing or stale provider quote cannot be mislabeled as a valid empty re
   assert.equal(classifyEmptyManagementLattice([{symbol:'A',reason:'QUOTE_STALE_OR_FUTURE'}]),'STALE');
   assert.equal(classifyEmptyManagementLattice([{symbol:'A',reason:'BROKER_TRADABILITY_NOT_CONFIRMED'}]),'INVALID');
   assert.equal(classifyEmptyManagementLattice([{symbol:'A',reason:'SAME_AS_CURRENT_CONTRACT'}]),'VALID_EMPTY');
+});
+
+test('an open option with unknown ledger quantity is incomplete management evidence, not a valid empty lattice',async()=>{
+  for(const lifecycleState of ['CSP_OPEN','CC_OPEN']){
+    const row={chain_id:'chain-1',underlying_id:'underlying-1',underlying:'AAPL',lifecycle_state:lifecycleState,
+      current_contract_symbol:subject.currentContractSymbol,current_contract_id:subject.currentContractId,
+      current_option_type:lifecycleState==='CC_OPEN'?'CALL':'PUT',current_expiration:subject.currentExpiration,
+      current_multiplier:100,option_quantity:null,stock_shares:lifecycleState==='CC_OPEN'?100:0};
+    const pool={query:async()=>({rows:[row]})} as unknown as Pool;
+    const fetchImpl=(async()=>{throw new Error('provider must not be called for an unqualified subject');}) as typeof fetch;
+    const reader=new ProductionPaperManagementCandidateSource(pool,{tradingApiBase:'https://paper-api.alpaca.markets',
+      marketDataApiBase:'https://data.alpaca.markets',apiKey:'synthetic',apiSecret:'synthetic',fetchImpl});
+    const result=(await reader.discover('connection-1','reconciliation-1')).get('chain-1');
+    assert.equal(result?.state,'PARTIAL_COVERAGE');
+    assert.equal(result?.reason,'OPEN_OPTION_QUANTITY_UNQUALIFIED');
+  }
 });
