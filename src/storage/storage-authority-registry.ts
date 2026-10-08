@@ -139,6 +139,9 @@ export function classifyPostgresRelation(schema: string, relation: string): {
   const qualified = `${schema}.${relation}`.toLowerCase();
   const schemaName = schema.toLowerCase();
   const relationName = relation.toLowerCase();
+  if (schemaName === 'trade' && ['capital_envelope', 'capital_reservation'].includes(relationName)) {
+    return { classification: 'CANONICAL_TRADING_STATE', rationale: 'Account-wide capital claims and their immutable budget evidence are operational truth.' };
+  }
   if (schemaName === 'trade' && researchHeavyTradeRelations.has(relationName)) {
     return { classification: 'RESEARCH_HISTORY', rationale: 'High-volume candidate/counterfactual history, portable after verified archive.' };
   }

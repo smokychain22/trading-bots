@@ -12,8 +12,10 @@
   "profitability": "EMPIRICALLY_UNPROVEN",
   "completionRule": "These are V4 phases, not the earlier similarly numbered closure registers. Executed source tests do not confer current-worker, empirical, or broker-authorized maturity.",
   "certifiedStartingHead": "f90076db8bc5314981d2f1c4e9d1bdb3a69f9017",
+  "capitalCheckpointStartingHead": "c6c7f26ab4843341d4e68a62334ce8c9b504caab",
+  "capitalCheckpoint": "docs/operations/THETA_V4_CAPITAL_CHECKPOINT_20261008.json",
   "continuationReleaseState": "BLOCKED_WITH_EXACT_REASON",
-  "continuationReleaseBlockers": ["CURRENT_POSITION_DATABASE_LINEAGE_NOT_VERIFIED_POSTGRES_EAI_AGAIN", "ACCOUNT_WIDE_ATOMIC_CAPITAL_RESERVATION_NOT_IMPLEMENTED", "OWNER_GOVERNED_RELEASE_REVIEW_REQUIRED"],
+  "continuationReleaseBlockers": ["CURRENT_POSITION_CLOSE_EXECUTION_MARKET_NOT_QUALIFIED", "CURRENT_POSITION_FILL_FEES_UNKNOWN", "ACCOUNT_WIDE_CAPITAL_ENVELOPE_PRODUCER_AND_PRODUCTION_HANDOFF_NOT_WIRED", "NATIVE_SPREAD_RESERVATION_TERMINAL_RECONCILIATION_NOT_WIRED", "SCHEMA_071_NOT_ACTIVATED_OR_RUNTIME_APPROVED", "OWNER_GOVERNED_RELEASE_REVIEW_REQUIRED"],
   "continuationValidation": {
     "classification": "TESTED_SOURCE_ONLY",
     "nodeSuite": { "passed": 4478, "skipped": 76, "failed": 0, "scope": "Full continuation suite before the final spread-ownership and read-completion integration review changes; those changes have additional focused tests and require exact-commit CI." },
@@ -34,8 +36,8 @@
       "implementedThisWave": ["Six-state read-only Paper authority classifier with current worker binding", "Canonical management frontier timestamp in runtime truth", "Malformed broker/fill/count/timestamp rejection in restricted orphan recovery", "Only typed chain-local lifecycle evidence rejections may become unresolved; infrastructure and idempotency failures propagate", "Orphan snapshot and option-leg ownership are scoped to the exact execution account", "Missing order-intent lineage remains a visible refusal without adoption authority", "Future heartbeat and unavailable schema cannot certify healthy runtime"],
       "source": ["src/theta/paper-runtime-authority-truth.ts", "tools/theta-runtime-truth.ts", "src/execution/broker-orphan-position-recovery.ts", "src/execution/postgres-broker-orphan-recovery.ts", "src/execution/postgres-broker-fill-lifecycle-orchestrator.ts", "src/theta/postgres-lifecycle-application-store.ts", "src/theta/runtime-system-truth.ts"],
       "tests": ["tests/paper-runtime-authority-truth.test.ts", "tests/runtime-system-truth.test.ts", "tests/broker-orphan-position-recovery.test.ts", "tests/broker-orphan-recovery-runtime.test.ts", "tests/orphan-open-close-convergence.test.ts", "tests/db/orphan-account-ownership.test.ts", "tests/db/lifecycle-application.test.ts", "tests/db/defined-risk-position-lifecycle.test.ts"],
-      "runtimeEvidence": "Existing worker health and authenticated Paper GETs observed. Direct local database query returned EAI_AGAIN. No new schema, lease, lineage or risk-reducing-close proof is inferred from that failure.",
-      "remaining": ["Fresh database-backed schema, authorization and position-to-chain lineage proof", "Current managed position close-route evidence", "Governed release acceptance of the integrated source"]
+      "runtimeEvidence": "2026-10-08 bounded installed-worker-environment reads succeeded at schema 070. Current Alpaca account identity was matched to its execution-account hash. The observed position has matching decision, action plan, broker order, fill, open chain and option leg, plus a current management frontier. Full private evidence stays Git-ignored. Fees are null and the close frontier reports EXECUTION_MARKET_NOT_QUALIFIED, so full exit-path certification is not claimed.",
+      "remaining": ["Complete fee and whole-chain accounting evidence", "Qualified current-position risk-reducing close-route evidence without submission", "Governed release acceptance of the integrated source"]
     },
     {
       "phase": 2,
@@ -58,12 +60,12 @@
     {
       "phase": 4,
       "state": "IN_PROGRESS",
-      "implementedThisWave": [],
-      "source": ["src/theta/capital-budget-evidence.ts", "src/theta/canonical-strategy-frontier.ts", "src/execution/paper-order-coordinator.ts"],
-      "tests": ["tests/canonical-strategy-frontier.test.ts"],
-      "runtimeEvidence": "No new allocator certification. Existing capital evidence explicitly does not claim to be a portfolio allocator.",
-      "provenSourceGap": { "state": "BLOCKED_WITH_EXACT_REASON", "reason": "ACCOUNT_WIDE_ATOMIC_CAPITAL_RESERVATION_NOT_IMPLEMENTED", "evidence": ["PostgresMasterPaperActionPlanStore.enqueueWithDisposition uses contract-scoped entry advisory locks and same-contract in-flight deduplication, not account-wide reservations", "PostgresPaperOrderStore persists intents and execution evidence without a shared capital reservation boundary", "CapitalBudgetEvidence labels strategy capital and extra cash reserve NOT_CONFIGURED instead of inventing thresholds"], "requiredIntegration": ["Reuse canonical sizing/AEGIS capacities and current account exposure", "Reserve against one account envelope atomically with canonical plan/intent persistence", "Retain commitments through ambiguous submission and partial fills", "Use one PaperOrderCoordinator and preserve all strategy release gates", "Prove concurrent distinct-contract Q/H/D proposals, reconciliation transfer and restart idempotency in disposable PostgreSQL"], "productionAuthorityGranted": false },
-      "remaining": ["Trace complete current account envelope and outstanding commitments", "Prove or implement atomic cross-strategy reservations and ambiguity release rules", "Concurrent proposal and aggregate exposure acceptance"]
+      "implementedThisWave": ["TESTED_SOURCE_ONLY account-hash advisory transaction boundary", "Exact decimal shared-budget admission without changing canonical quantity", "Immutable envelope/event evidence and idempotent claims by request and decision", "Ordered Q/H/D batch admission plus adversarial concurrent transaction tests", "Intent binding and partial-cancel retention requiring matching broker cumulative quantity and local fills", "Ambiguous submissions, missing fills and native package reconciliation gaps retain reservations", "Bounded inline payloads and canonical storage classification"],
+      "source": ["src/execution/portfolio-capital-reservation.ts", "src/execution/postgres-portfolio-capital-store.ts", "migrations/071_account_capital_reservations.sql", "src/storage/storage-authority-registry.ts"],
+      "tests": ["tests/portfolio-capital-reservation.test.ts", "tests/db/portfolio-capital-reservation.test.ts", "tests/sql/071_capital_reservation_invariants.sql", "tests/lifecycle-event-kind-schema-parity.test.ts"],
+      "runtimeEvidence": "TESTED_SOURCE_ONLY. Real PostgreSQL transactions ran only in a disposable localhost database with synthetic account/envelope/proposal evidence. No Production producer or consumer calls the reservation store yet. Schema 071 was not applied to Production and remains outside the runtime compatibility ceiling. No live allocation certification is claimed.",
+      "provenSourceGap": { "state": "BLOCKED_WITH_EXACT_REASON", "reason": "CANONICAL_ENVELOPE_AND_RESERVATION_LIFECYCLE_INTEGRATION_PENDING", "evidence": ["Existing plan-store locking is contract-scoped, not account-wide", "Existing intent persistence does not require a reservation", "CapitalBudgetEvidence is candidate-specific explanation, not a shared account envelope", "Native spread release needs leg-level completion, assignment and remaining-leg truth, never only parent fill count"], "requiredIntegration": ["Produce one qualified current account envelope from canonical risk policy and broker exposure, including per-dimension reflected commitments", "Persist reservations atomically with the selected sovereign plans and intents", "Reconcile pending, partial, terminal and position-close/assignment claims without double-counting", "Complete native spread reconciliation before releasing package commitments", "Preserve one PaperOrderCoordinator and all existing release gates", "Govern schema compatibility and migration/deployment only after all consumers are wired and tested"], "productionAuthorityGranted": false },
+      "remaining": ["Qualified envelope producer and reflected-commitment loader", "Atomic Production plan/intent handoff", "Native spread and assignment/position-close reservation lifecycle", "Unsubmitted-plan cancellation and expiry proof", "Natural current-worker proof after governed release"]
     },
     {
       "phase": 5,
@@ -71,7 +73,7 @@
       "implementedThisWave": ["Restricted orphan recovery boundary hardened without granting new authority"],
       "source": ["src/theta/paper-bootstrap-management-policy.ts", "src/theta/entry-thesis-receipt.ts", "src/theta/management-action-frontier.ts", "src/execution/management-order-repricing.ts"],
       "tests": ["tests/paper-bootstrap-management-policy.test.ts", "tests/management-whole-chain-wiring.test.ts", "tests/entry-thesis-receipt.test.ts", "tests/broker-orphan-position-recovery.test.ts"],
-      "runtimeEvidence": "Existing managed Paper position observed through GET only. No management action submitted or claimed in this wave.",
+      "runtimeEvidence": "Current position-to-intent-to-chain ownership and current HOLD frontier were verified with account-bound database reads. The current CLOSE_FULL candidate has EXECUTION_MARKET_NOT_QUALIFIED and no execution evidence. No close was submitted or certified. The Q/H entry thesis reaches the management input loader, but a thesis explanation is not a complete five-strategy entry management contract.",
       "remaining": ["Reconcile V4 ManagementContract requirements with existing entry thesis and canonical management inputs", "Five-strategy early-close and ambiguity lifecycle matrix", "Real current-position risk-reducing route proof"]
     },
     {

@@ -20,11 +20,11 @@ test('every lifecycle event kind the runtime emits is allowed by the latest life
   assert.deepEqual(missing, [], `${latest.file} must allow every emitted lifecycle event kind`);
 });
 
-test('070 is deploy-then-migrate: this runtime accepts 069 and 070, and 070 is the newest migration', () => {
+test('070 remains the runtime ceiling while the unactivated capital-reservation migration is reviewed', () => {
   assert.equal(runtimeSchemaMinimum, '069_multi_leg_order_durability', 'the runtime still runs on the current Production schema');
   assert.equal(runtimeSchemaMaximum, '070_lifecycle_short_put_open_event');
   const newest = readdirSync('migrations').filter((file) => file.endsWith('.sql')).sort().at(-1);
-  assert.equal(newest, '070_lifecycle_short_put_open_event.sql');
+  assert.equal(newest, '071_account_capital_reservations.sql');
   const sql = readFileSync('migrations/070_lifecycle_short_put_open_event.sql', 'utf8');
   assert.match(sql, /^BEGIN;/);
   assert.match(sql, /INSERT INTO core\.schema_migration\(version,checksum\)\s+VALUES\('070_lifecycle_short_put_open_event'/);

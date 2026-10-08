@@ -1,0 +1,100 @@
+{
+  "version": "theta-v4-capital-checkpoint-v1",
+  "owner": "CODEX",
+  "phase": "V4_SHARED_CAPITAL_TRANSACTION_BOUNDARY",
+  "startingSourceSha": "c6c7f26ab4843341d4e68a62334ce8c9b504caab",
+  "classification": "TESTED_SOURCE_ONLY",
+  "productionAllocationClosure": false,
+  "rootCause": "Existing plan deduplication locks exact contracts and order intents deduplicate requests. Distinct Q/H/D proposals have no shared account-wide reservation transaction, so those mechanisms alone cannot prevent aggregate capital reuse.",
+  "implemented": [
+    "One PostgreSQL transaction lock keyed by physical broker-account hash",
+    "Immutable account envelope identity with monotonic observation time and same-observation budget conflict rejection",
+    "Exact 8-decimal money arithmetic across account, broker, portfolio, assignment, ticker, sector and correlation dimensions",
+    "Canonical quantity ceiling, no independent sizing or economic ranking",
+    "Sovereign-ordered batch admission with multiple affordable proposals allowed",
+    "Unique account/request and account/decision claims with restart replay",
+    "Atomic composition API for reservation and intent binding",
+    "Partial-cancel release limited to unfilled units after matching broker GET evidence and persisted fill quantities",
+    "No timeout-based release of ambiguous, expired, missing-fill or unqualified native-package commitments",
+    "Inline storage budget, immutable audit events and protected reservation identity"
+  ],
+  "dependentIntegrationState": {
+    "postgresTransactionWrapper": "REUSED",
+    "canonicalJsonHashing": "REUSED",
+    "executionAccountIdentity": "DATABASE_BOUND",
+    "orderIntentAndFillLedger": "BOUND_BY_STORE_API_AND_DATABASE_TESTS",
+    "storageClassification": "WIRED",
+    "brokerExecutor": "UNCHANGED_ONE_EXISTING_COORDINATOR",
+    "productionPlanProducer": "NOT_WIRED",
+    "productionIntentConsumer": "NOT_WIRED",
+    "qualifiedSharedAccountEnvelopeProducer": "NOT_WIRED",
+    "brokerReflectedCommitmentLoader": "NOT_WIRED",
+    "nativeSpreadAssignmentAndPositionCloseReconciliation": "NOT_WIRED"
+  },
+  "migration": {
+    "file": "migrations/071_account_capital_reservations.sql",
+    "appliedTo": "DISPOSABLE_LOCAL_POSTGRESQL_ONLY",
+    "productionApplied": false,
+    "runtimeCompatibilityCeiling": "070_lifecycle_short_put_open_event",
+    "productionAdmission": "BLOCKED_WITH_EXACT_REASON",
+    "reason": "Do not apply 071 or release allocation authority before qualified producers, all plan/intent consumers, terminal lifecycle reconciliation and governed migration/deployment compatibility are completed. The existing runtime fails closed on schema 071."
+  },
+  "databaseProofScope": {
+    "database": "DISPOSABLE_LOCAL_POSTGRESQL_16",
+    "syntheticInputs": true,
+    "transactionsAndAdvisoryLocks": "REAL",
+    "concurrentPoolClients": 3,
+    "qhdIllustration": {"Q":15000,"H":7000,"D":3000,"unit":"USD","approvedPolicy":false},
+    "shared24000": "TWO_ADMITTED_ONE_BLOCKED_AGGREGATE_WITHIN_ENVELOPE",
+    "ordered25000": "ALL_THREE_ADMITTED_ADDITIONAL_EXCESS_BLOCKED",
+    "economicPriority": "CALLER_SOVEREIGN_ORDER_ONLY_CONCURRENT_ARRIVAL_ORDER_IS_NOT_ECONOMIC_SELECTION",
+    "covered": ["concurrent distinct proposals","six concurrent duplicate requests","same decision with a new request ID","rollback before commit","new-pool restart replay","stale and conflicting envelopes","stale quotes","ambiguous intent","missing fill","partial canceled quantity","duplicate fill identity","terminal event replay/conflict","immutable evidence and reservation quantity ceiling"],
+    "fixtureBoundary": "Unrelated synthetic upstream decision and contract foreign keys are bypassed only while creating the intent fixture. Reservation transactions, binding, uniqueness, event immutability and reconciliation execute with normal database constraints. No Production account or broker endpoint is used."
+  },
+  "managementContractMap": {
+    "entryThesisProducer": "src/theta/new-risk-orchestrator.ts -> buildEntryThesisReceipt",
+    "entryThesisPersistence": "trade.decision.receipt_json subordinate/legacy canonical receipt",
+    "entryThesisConsumer": "src/theta/management-input-state.ts -> loadManagementEntryThesis",
+    "frontier": "trade.management_input_snapshot -> trade.management_action_frontier -> publishManagementPlans -> PaperOrderCoordinator",
+    "existingEntryThesisScope": "Q_AND_H_EXPLANATORY_LINEAGE_WITH_HASH_AND_PIT_CHECKS",
+    "notCertified": ["Every eligible five-strategy entry has a complete persisted profit/risk/time/assignment/expiry/restart management contract","Defined-risk entry thesis and reservation release follow all native leg transitions","Current live close route is executable"],
+    "decision": "No duplicate management contract or second executor added. Complete authoritative entry-to-management binding in the next integration slice."
+  },
+  "runtimeEvidence": {
+    "classification": "VERIFIED",
+    "scope": "BOUNDED_READ_ONLY_ACCOUNT_IDENTITY_AND_POSITION_LINEAGE_CHECK_ONLY",
+    "privateEvidence": ".theta-local-worker/receipts/v4-capital-position-lineage-20261008.json",
+    "privateEvidenceCommitted": false,
+    "limitations": ["Current fill fees remain unknown","Current close frontier reports EXECUTION_MARKET_NOT_QUALIFIED","No order/close route invoked","No current-worker reservation proof"]
+  },
+  "validation": {
+    "state":"TESTED_SOURCE_ONLY",
+    "focusedCapital":{"passed":8,"failed":0,"skipped":0},
+    "fullNode":{"passed":4484,"failed":0,"skipped":79,"evidence":".ci-test-evidence/v4-capital-node-suite-final.jsonl"},
+    "fullPython":{"passed":1358,"failed":0},
+    "browser":{"passed":23,"failed":0},
+    "windowsSafetyScripts":{"passed":10,"failed":0},
+    "disposableDatabase":{"passed":45,"skipped":31,"scope":"44 tests passed on the capital scratch database. The customer test refused that database name, then passed separately on its required freshly created disposable database. Both used PostgreSQL 16 and all migrations through 071. Dedicated fault/rollback/checkpoint environments were not supplied and their tests remain skipped."},
+    "migration071Invariants":"PASS",
+    "checks":["typecheck","lint","build","security scan: zero findings","Git storage policy: PASS","git diff --check"],
+    "initialRunFailuresResolved":["Selected Python interpreter lacked DuckDB. Retested with installed Python 3.12 and DuckDB 1.5.5.","Schema parity test assumed 070 was the newest file. Updated it to distinguish reviewed migration 071 from the unchanged deployed/runtime compatibility ceiling."],
+    "exactShaCi":"NOT_RUN_FOR_THIS_CHECKPOINT",
+    "remotePush":"OWNER_APPROVAL_REQUIRED"
+  },
+  "remainingSourceWork": [
+    "Compile a common net account envelope from existing canonical risk policy and current broker exposure, without inventing strategy budgets or opportunity reserves",
+    "Prove per-dimension intersections between internal claims and broker-reflected positions/pending orders",
+    "Use reservation and plan/intent persistence in the same canonical transaction and remove all new-risk bypasses",
+    "Wire broker terminal and complete native-spread/assignment/position-close reconciliation with restart evidence",
+    "Prove safe cancellation/expiry of never-submitted plans without releasing ambiguous orders",
+    "Bound rejected-envelope observation retention before enabling continuous Production collection",
+    "Run the integrated lifecycle and race matrix before any release"
+  ],
+  "reviewFocus": ["account lock ordering","reflection evidence provenance","native package retention","authoritative policy dimensions","ambiguous submission retention","source-only versus deployed truth"],
+  "nextAction": "Build the qualified envelope/reflection producer and compose it into the existing sovereign plan/intent transaction. Do not deploy this component-only checkpoint.",
+  "brokerMutations": 0,
+  "workerChanged": false,
+  "executionControlsChanged": false,
+  "mergeOrDeploymentPerformed": false,
+  "profitability": "EMPIRICALLY_UNPROVEN"
+}
