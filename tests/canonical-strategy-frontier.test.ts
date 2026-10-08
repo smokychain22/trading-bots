@@ -674,6 +674,20 @@ test('unknown stock quantity keeps recovery and covered-call branches visible bu
   }
 });
 
+test('missing short-call commitment evidence cannot free all shares for a covered call', () => {
+  const call = contract({ optionType: 'CALL', optionSymbol: 'AAPL261016C00210000', occSymbol: 'AAPL261016C00210000',
+    strike: 210, delta: 0.25 });
+  const result = buildCanonicalStrategyFrontier({
+    ...base, contracts: [call], routing: routing([]),
+    stock: { underlying: 'AAPL', shares: 100, currentPrice: 200,
+      brokerCostBasisPerShare: 205, wholeChainEconomicBasisPerShare: 202 },
+  });
+  const candidate = result.branches.find((item) => item.branch === 'THETA_CC')?.candidates[0];
+  assert.ok(candidate?.hardBlockers.includes('COVERED_CALL_COMMITMENT_UNKNOWN'));
+  assert.equal(candidate?.sizing.quantity,0);
+  assert.equal(candidate?.executionAuthorized,false);
+});
+
 test('covered-call quantity never exceeds floor(shares/multiplier): 0, 99, 100, 101, 199, 200, 250 shares', () => {
   const call = contract({ optionType: 'CALL', optionSymbol: 'AAPL261016C00210000', occSymbol: 'AAPL261016C00210000',
     strike: 210, delta: 0.25 });
@@ -681,7 +695,8 @@ test('covered-call quantity never exceeds floor(shares/multiplier): 0, 99, 100, 
   for (const [shares, maxContracts] of expectedMax) {
     const result = buildCanonicalStrategyFrontier({
       ...base, contracts: [call], routing: routing([]),
-      stock: { underlying: 'AAPL', shares, currentPrice: 200, brokerCostBasisPerShare: 205, wholeChainEconomicBasisPerShare: 202 },
+      stock: { underlying: 'AAPL', shares, currentPrice: 200, brokerCostBasisPerShare: 205,
+        wholeChainEconomicBasisPerShare: 202, committedShortCallContracts: 0 },
     });
     const candidates = result.branches.find((item) => item.branch === 'THETA_CC')?.candidates ?? [];
     if (shares === 0) { assert.equal(candidates.some((candidate) => candidate.sizing.quantity > 0), false); continue; }

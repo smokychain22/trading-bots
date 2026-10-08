@@ -940,9 +940,9 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
   const evidence = commonEvidence(contract, input, candidateId);
   if (candidateAegisState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
   const grossCoveredQty = stock.shares === null ? null : Math.floor(stock.shares / contract.multiplier);
-  const committedUnknown = stock.committedShortCallContracts === null;
-  const coveredQty = stock.committedShortCallContracts === undefined ? grossCoveredQty
-    : coveredCallContractCapacity(stock.shares, stock.committedShortCallContracts, 0, contract.multiplier);
+  const committedUnknown = stock.committedShortCallContracts === null || stock.committedShortCallContracts === undefined;
+  const coveredQty = coveredCallContractCapacity(stock.shares, stock.committedShortCallContracts ?? null,
+    0, contract.multiplier);
   if (stock.shares === null) evidence.hardBlockers.push('STOCK_QUANTITY_UNKNOWN');
   else if (committedUnknown) evidence.hardBlockers.push('COVERED_CALL_COMMITMENT_UNKNOWN');
   else if (coveredQty === null) evidence.hardBlockers.push('COVERED_CALL_CAPACITY_INVALID');
