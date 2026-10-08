@@ -8,12 +8,28 @@ const recoveryConfig = {
   functions: { 'api/recover-master.js': { maxDuration: 120, includeFiles: '{dist/**,recovery-permit.json}' } },
 };
 
+/** Vercel deploy's machine result is stdout. Its stderr progress may contain
+ * other URLs, including suggested alias commands. Never select a host from
+ * merged streams or choose the first URL from an ambiguous result. */
+export function recoveryDeploymentHost(stdout: string): string {
+  const value = stdout.trim();
+  if (!/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(value))
+    throw new Error('RECOVERY_DEPLOYMENT_HOST_UNCONFIRMED');
+  return new URL(value).host;
+}
+
 /** Plan only. Vercel loads local config before applying --cwd, so both the
  * actual child cwd and explicit config must point at the isolated artifact.
  * The caller still proves CI, platform protection, project identity and locks. */
 export function recoveryDeploymentInvocation(input: {
   repository: string; privateOutput: string; scope: string;
+  systemAliasState: 'ABSENT_VERIFIED' | 'PRESENT' | 'UNKNOWN';
 }): { cwd: string; args: string[] } {
+  // --skip-domain only disables custom-domain promotion. The platform still
+  // assigns its system staging alias. Never overwrite a pre-existing alias
+  // under an authorization that requires every existing mapping preserved.
+  if (input.systemAliasState !== 'ABSENT_VERIFIED')
+    throw new Error('RECOVERY_CLI_SYSTEM_ALIAS_ISOLATION_UNPROVED');
   const repository = realpathSync(input.repository), output = realpathSync(input.privateOutput);
   if (output === repository || output.startsWith(repository + sep))
     throw new Error('RECOVERY_OUTPUT_MUST_BE_OUTSIDE_REPOSITORY');

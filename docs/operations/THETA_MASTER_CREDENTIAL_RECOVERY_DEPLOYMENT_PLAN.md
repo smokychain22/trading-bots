@@ -137,5 +137,17 @@ Preserve bounded private failure diagnostics, identify and remove only the owned
 failed recovery deployment, and re-prove all gates after correcting tooling.
 Never infer that staging success authorizes a credential-request replay.
 
+Operationally verified limitation: --skip-domain disables custom-domain
+promotion, but still assigned the system staging alias in this project. Strict
+preservation of every pre-existing alias therefore cannot be claimed. The
+CLI invocation planner rejects PRESENT or UNKNOWN system-alias state. The
+2026-10-08 temporary mapping was rolled back to its exact prior destination and
+the isolated recovery deployment removed before any credential invocation.
+Do not use this path again without a supported alias-preserving mechanism or
+an explicit owner exception permitting that narrow temporary reassignment and
+compensating rollback. Never broaden this to normal Production promotion.
+Official [staged-deployment scope](https://vercel.com/docs/cli/alias) specifically
+describes skipping custom domain assignment.
+
 Reticle is skipped because these are backend, private packaging and CLI changes
 with no deployed UI surface. This is not deployed endpoint verification.
