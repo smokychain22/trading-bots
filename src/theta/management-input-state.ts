@@ -428,10 +428,11 @@ export function assembleManagementInput(row: Row, input: {
   const accountFreshForCapacity = Number.isFinite(accountAgeForCapacity)
     && accountAgeForCapacity >= 0 && accountAgeForCapacity <= 180_000;
   const optionsBuyingPower = numeric(row.options_buying_power);
-  const buyingPower = numeric(row.buying_power);
-  const availableCapitalSource = optionsBuyingPower !== null ? 'OPTIONS_BUYING_POWER'
-    : buyingPower !== null ? 'BUYING_POWER' : null;
-  const availableCapital = optionsBuyingPower ?? buyingPower;
+  // Prospective secured-option assignment uses the free options capacity
+  // reported by the broker. Generic buying_power can be a different margin
+  // envelope and cannot fill a missing options-specific observation.
+  const availableCapitalSource = optionsBuyingPower !== null ? 'OPTIONS_BUYING_POWER' : null;
+  const availableCapital = optionsBuyingPower;
   const rawCollateral = strike !== null && multiplier !== null ? strike * multiplier : null;
   const collateralPerContract = rawCollateral !== null && Number.isFinite(rawCollateral) && rawCollateral > 0
     ? rawCollateral : null;
@@ -465,7 +466,8 @@ export function assembleManagementInput(row: Row, input: {
   else if (brokerEvidenceInvalid) assignmentCapacityReason = 'BROKER_OPTION_POSITION_EVIDENCE_INVALID';
   else if (ledgerOpenLotsForContract === null || !Number.isSafeInteger(ledgerOpenLotsForContract)) {
     assignmentCapacityReason = 'OPEN_CONTRACT_AGGREGATE_UNAVAILABLE';
-  } else if (assignmentCapacity === null) assignmentCapacityReason = 'ACCOUNT_OR_CONTRACT_EVIDENCE_INVALID';
+  } else if (optionsBuyingPower === null) assignmentCapacityReason = 'OPTIONS_BUYING_POWER_UNAVAILABLE';
+  else if (assignmentCapacity === null) assignmentCapacityReason = 'ACCOUNT_OR_CONTRACT_EVIDENCE_INVALID';
   else if (!brokerShortPutConfirmed) assignmentCapacityReason = 'BROKER_SHORT_PUT_NOT_CONFIRMED';
   const assignmentCapacityEvidence: ManagementAssignmentCapacityEvidence = {
     state: !assignmentApplicable ? 'NOT_APPLICABLE' : assignmentCapacity === null ? 'UNKNOWN' : 'KNOWN',

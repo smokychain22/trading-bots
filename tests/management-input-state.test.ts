@@ -289,6 +289,12 @@ test('known insufficient assignment lots block, while unavailable or stale broke
   assert.equal(unknown.context.assignmentCapacityEvidence.state,'UNKNOWN');
   assert.ok(buildManagementActionFrontier(unknown).actions.find((action)=>action.action==='ACCEPT_ASSIGNMENT')
     ?.blockers.includes('ASSIGNMENT_CAPACITY_UNKNOWN'));
+  const genericOnly = assemble({options_buying_power:null,buying_power:'999999'});
+  assert.equal(genericOnly.context.assignmentCapacity,null,
+    'generic margin buying power cannot replace missing free options buying power for secured assignment');
+  assert.equal(genericOnly.context.assignmentCapacityEvidence.availableCapitalSource,null);
+  assert.equal(genericOnly.context.assignmentCapacityEvidence.availableCapital,null);
+  assert.equal(genericOnly.context.assignmentCapacityEvidence.reason,'OPTIONS_BUYING_POWER_UNAVAILABLE');
   const stale = assemble({account_as_of:'2026-10-16T19:00:00.000Z'});
   assert.equal(stale.context.assignmentCapacityEvidence.reason,'ACCOUNT_EVIDENCE_STALE_OR_MISSING');
   assert.equal(stale.context.assignmentCapacity,null);
