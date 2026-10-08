@@ -1,0 +1,80 @@
+{
+  "version": "dot-lab-canonical-consumer-checkpoint-v1",
+  "baseSha": "2cb0d470f473132e80d44c2a2c051765e525afee",
+  "qualification": "TESTED_SOURCE_ONLY",
+  "approvedPush": {
+    "result": "FAST_FORWARD_NO_FORCE",
+    "remoteHead": "2cb0d470f473132e80d44c2a2c051765e525afee",
+    "exactCiRun": "37809506163",
+    "exactCiResult": "FAIL",
+    "passedStages": ["dependency installation", "lint", "typecheck"],
+    "failedStage": "Node suite",
+    "failedAssertions": [
+      "proposal-consumer authority role missing",
+      "lab ledger pool application identity missing",
+      "lab ledger pool owner classification missing"
+    ],
+    "downstreamCertification": "SKIPPED_NOT_PROVEN"
+  },
+  "implemented": [
+    "Canonical Q/A/C sealed-T0 research consumer with exact baseline/version/hash and immutable receipt",
+    "Private proposer-only canonical evaluation endpoint with unchanged bounded body size",
+    "Account/snapshot/PIT-bound A/C inventory including known covered-call commitments",
+    "T0 parser preserves committedShortCallContracts including explicit null and legacy absence",
+    "Unsupported models, policies and lattice semantics remain explicit blockers",
+    "Private canonical performance endpoint and MCP tool with unknown-fee and opening/closing-fill rejection",
+    "Account-scoped intent-backed strategy decisions and chain-scoped management feedback",
+    "Exact-ref GitHub cloud read challenge that cannot self-certify Dot origin",
+    "Explicit lab pool application identity, lifetime, shutdown ownership and one-connection budget"
+  ],
+  "validation": {
+    "focusedFinal": { "passed": 41, "failed": 0 },
+    "t0Suite": { "passed": 14, "failed": 0 },
+    "disposablePostgres": { "passed": 1, "failed": 0, "fixtures": "SYNTHETIC_ROLLED_BACK", "cluster": "STOPPED" },
+    "fullNodeInitial": { "passed": 4547, "failed": 3, "skipped": 85, "result": "FAIL_PRESERVED" },
+    "fullNodeFailures": [
+      "Phase-2 source evidence stale after authority-map change",
+      "Phase-3 source evidence stale after T0/authority-map change",
+      "Unchanged stress timing budget: 5514 ms exceeded 5449 ms under suite load"
+    ],
+    "phase2EvidenceReexecution": { "passed": 609, "failed": 0, "requirements": 21 },
+    "phase3EvidenceReexecution": { "passed": 264, "failed": 0, "requirements": 13 },
+    "acceptanceAndIsolatedStress": { "passed": 5, "failed": 0, "scalingExponent": 0.91, "thresholdsChanged": false },
+    "python": { "passed": 1358, "failed": 0 },
+    "browser": { "passed": 23, "failed": 0, "workers": 1 },
+    "windowsSafetyScripts": { "passed": 10, "failed": 0 },
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "build": "PASS",
+    "reticle": "NOT_APPLICABLE_BACKEND_NO_UI_CHANGE",
+    "newExactShaCi": "REQUIRES_FRESH_PUSH_APPROVAL"
+  },
+  "historicalFailuresPreserved": [
+    "Approved 2cb0d470 exact-SHA CI failed. No downstream stage is relabeled PASS.",
+    "Initial synthetic Q/A/C fixtures omitted full router and normalized-contract fields. Fixtures corrected without changing schema requirements.",
+    "Initial narrowing fixture was outside the incumbent Q window. Revised fixture tests two in-window contracts without changing policy.",
+    "Full local Node run remains failed. Fresh executed phase artifacts and isolated unchanged timing test are separate component-scoped evidence.",
+    "Earlier V4 local timing and ledger fixture incidents remain in historical receipts."
+  ],
+  "remainingIntegrationGates": [
+    "Fresh owner approval to push the new commit and exact-SHA CI",
+    "GitHub plugin is available but not installed, owner account linking required",
+    "Actual Dot cloud invocation of the pinned non-sensitive proposal",
+    "Authenticated private MCP tunnel, correct organization/workspace associations and runtime permission",
+    "Registered isolated canonical Dot ledger and actual private account-backed feedback",
+    "Account-scoped producer for unsubmitted rejected opportunities",
+    "Native partial-leg/exercise lifecycle completeness, costs, capital-days and complete strategy attribution",
+    "Isolated canonical reservation-to-intent, coordinator and managed-experiment wiring",
+    "Separate bounded Paper experiment approval and governed release"
+  ],
+  "paperExperimentReady": false,
+  "profitability": "EMPIRICALLY_UNPROVEN",
+  "brokerMutations": 0,
+  "ordersSubmitted": 0,
+  "workerChanged": false,
+  "productionDatabaseChanged": false,
+  "migration": false,
+  "deployment": false,
+  "liveAuthorization": "NOT_GRANTED",
+  "privateTradingDataCommitted": false
+}

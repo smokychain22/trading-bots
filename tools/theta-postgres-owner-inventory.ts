@@ -9,6 +9,7 @@ const walk=(dir:string):string[]=>readdirSync(dir,{withFileTypes:true}).flatMap(
   e.isDirectory()?walk(resolve(dir,e.name)):/\.(ts|mjs|js)$/.test(e.name)?[resolve(dir,e.name)]:[]);
 const rows:Record<string,unknown>[]=[];
 const runtimeOwners:Record<string,{lifetime:string;releaseOwner:string;concurrency:string}>={
+ 'src/lab/main.ts':{lifetime:'ISOLATED_LAB_PROCESS',releaseOwner:'explicit lab shutdown or startup error closes owned ledger pool; reader clients release in finally',concurrency:'1 shared read-only connection per explicit lab process; never inherits Production configuration'},
  'src/customer/api.ts':{lifetime:'REQUEST_OWNED',releaseOwner:'optionomics qualification finally pool.end',concurrency:'1 connection per explicit qualification request'},
  'src/customer/customer-store.ts':{lifetime:'PROCESS_SINGLETON',releaseOwner:'process lifecycle; transactional clients use canonical wrapper',concurrency:'2 connections shared by customer stores per process'},
  'src/customer/database-readiness.ts':{lifetime:'REQUEST_OWNED',releaseOwner:'checkDatabaseReadiness finally pool.end',concurrency:'1 per sequential status helper'},

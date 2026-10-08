@@ -33,10 +33,10 @@ test('real disposable PostgreSQL validates account-scoped ledger SQL, fees, mult
       VALUES($1,$2,$3,'CLOSED','2026-10-01T12:00Z','2026-10-07T12:00Z')`, [chain, randomUUID(), randomUUID()]);
     await client.query(`INSERT INTO market.option_contract(option_contract_id,contract_symbol,underlying_id,option_type,strike,
       expiration_date,multiplier,status) VALUES($1,$2,$3,'PUT',57,'2026-11-20',100,'active')`, [contract, randomUUID(), randomUUID()]);
-    await client.query(`INSERT INTO trade.order_intent(order_intent_id,chain_id,execution_account_id,client_order_id,status,
+    await client.query(`INSERT INTO trade.order_intent(order_intent_id,chain_id,execution_account_id,client_order_id,status,option_contract_id,
       instrument_type,side,position_intent,quantity,canonical_quantity,paper_evidence_quantity,created_at)
-      VALUES($1,$2,$3,$4,'FILLED','OPTION','sell','SELL_TO_OPEN',1,1,1,'2026-10-01T12:00Z')`,
-    [intent, chain, identity.executionAccountId, randomUUID()]);
+      VALUES($1,$2,$3,$4,'FILLED',$5,'OPTION','sell','SELL_TO_OPEN',1,1,1,'2026-10-01T12:00Z')`,
+    [intent, chain, identity.executionAccountId, randomUUID(), contract]);
     await client.query(`INSERT INTO trade.broker_order(broker_order_id,order_intent_id,provider_order_id) VALUES($1,$2,$3)`,
     [broker, intent, randomUUID()]);
     await client.query(`INSERT INTO trade.fill(broker_order_id,provider_fill_id,quantity,price_per_share,filled_at,fees)

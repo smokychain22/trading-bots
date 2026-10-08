@@ -82,6 +82,25 @@ const realCycleInput: CanonicalStrategyFrontierInput = {
   },
 };
 
+test('T0 preserves covered-share commitments, including unknown, through canonical replay', () => {
+  for (const committedShortCallContracts of [undefined, null, 0, 1, 2]) {
+    const input: CanonicalStrategyFrontierInput = { ...realCycleInput,
+      stock: { underlying: 'AAPL', shares: 200, currentPrice: 200,
+        brokerCostBasisPerShare: 190, wholeChainEconomicBasisPerShare: 190,
+        ...(committedShortCallContracts === undefined ? {} : { committedShortCallContracts }) },
+      routing: routing(['THETA_C', 'THETA_A']),
+      contracts: [contract({ optionType: 'CALL', optionSymbol: 'AAPL261016C00210000',
+        occSymbol: 'AAPL261016C00210000', strike: 210, delta: 0.22 })] };
+    const bundle = buildT0ReplayBundle(input);
+    assert.equal(bundle.stock?.committedShortCallContracts, committedShortCallContracts);
+    assert.equal(replayFromT0Bundle(bundle).contentHash, buildCanonicalStrategyFrontier(input).contentHash);
+    const tampered = structuredClone(bundle);
+    assert.ok(tampered.stock);
+    tampered.stock.committedShortCallContracts = 3;
+    assert.throws(() => replayFromT0Bundle(tampered), /HASH_MISMATCH/);
+  }
+});
+
 test('buildT0ReplayBundle captures exactly buildCanonicalStrategyFrontier\'s real input fields, round-trip validated by the same zod schemas the production types use', () => {
   const bundle = buildT0ReplayBundle(realCycleInput);
   assert.equal(bundle.contracts.length, 1);

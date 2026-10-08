@@ -12,7 +12,7 @@ const at = '2026-10-08T15:00:00.000Z';
 const identity: DotLabIdentity = { version: 'dot-strategy-lab-v1', providerAccountId: randomUUID(),
   executionAccountId: randomUUID(), workspaceId: randomUUID(), accountNumber: 'SYNTHETIC', confirmedAt: at,
   environment: 'PAPER', brokerExecutionEnabled: false, workerEnabled: false };
-function fixture(options: { wrongAccount?: boolean; mixed?: boolean; unknownFees?: boolean; missingClose?: boolean; stockWithoutClose?: boolean; failure?: boolean; rollbackFailure?: boolean } = {}) {
+function fixture(options: { wrongAccount?: boolean; mixed?: boolean; unknownFees?: boolean; missingOpen?: boolean; missingClose?: boolean; stockWithoutClose?: boolean; failure?: boolean; rollbackFailure?: boolean } = {}) {
   let released = 0, destroyed = false; const calls: { sql: string; params: unknown[] }[] = [];
   const chain = randomUUID();
   const query = async (sql: string, params: unknown[] = []) => {
@@ -25,7 +25,9 @@ function fixture(options: { wrongAccount?: boolean; mixed?: boolean; unknownFees
     if (sql.includes('FROM trade.economic_chain')) return { rows: [{ chain_id: chain, closed_at: '2026-10-08 14:00:00+00' }] };
     if (sql.includes('FROM trade.fill')) return { rows: [{ chain_id: chain, provider_fill_id: 'synthetic-fill', provider_order_id: 'synthetic-order',
       option_contract_id: 'synthetic-contract', position_intent: options.missingClose ? 'SELL_TO_OPEN' : 'BUY_TO_CLOSE',
-      quantity: '1', filled_at: at, fees: options.unknownFees ? null : '1' }] };
+      quantity: '1', filled_at: at, fees: options.unknownFees ? null : '1' },
+      ...(!options.missingOpen ? [{ chain_id: chain, provider_fill_id: 'synthetic-entry-fill', provider_order_id: 'synthetic-entry-order',
+        option_contract_id: 'synthetic-contract', position_intent: 'SELL_TO_OPEN', quantity: '1', filled_at: at, fees: '0' }] : [])] };
     if (sql.includes('FROM trade.option_leg')) return { rows: [{ chain_id: chain, closed_at: at, realized_pnl: '100',
       option_contract_id: 'synthetic-contract', side: 'SHORT', quantity: '1', close_reason: 'BTC_CLOSE' }] };
     if (sql.includes('FROM trade.stock_lot')) return { rows: options.stockWithoutClose
@@ -54,10 +56,36 @@ test('unknown fees remain blocked and never become fee-free actual profits', asy
   assert.equal(receipt.outcomes[0]?.resolution.state, 'BLOCKED');
   if (receipt.outcomes[0]?.resolution.state === 'BLOCKED') assert.ok(receipt.outcomes[0].resolution.reasons.includes('EXECUTION_FEES_UNKNOWN'));
 });
+
+test('private performance sums only canonical fee-qualified closed chains, unknown fees remain null', async () => {
+  const known = await fixture().reader.performance(at);
+  assert.equal(known.afterCostPnl, 99);
+  assert.equal(known.resolvedChainCount, 1);
+  assert.equal(known.profitability, 'EMPIRICALLY_UNPROVEN');
+  const unknown = await fixture({ unknownFees: true }).reader.performance(at);
+  assert.equal(unknown.afterCostPnl, null);
+  assert.equal(unknown.resolvedChainCount, 0);
+  assert.equal(unknown.unresolvedChainCount, 1);
+});
+
+test('decision and management reads retain exact account/chain scope and explicitly bound rejection coverage', async () => {
+  const item = fixture(); const receipt = await item.reader.read(at);
+  const decision = item.calls.find(call => call.sql.includes('FROM trade.decision'));
+  assert.ok(decision?.sql.includes('oi.execution_account_id=$1'));
+  assert.equal(decision?.params[0], identity.executionAccountId);
+  const management = item.calls.find(call => call.sql.includes('FROM trade.management_action_frontier'));
+  assert.ok(management?.sql.includes('chain_id=ANY($1::uuid[])'));
+  assert.ok(receipt.rejectionCoverage.includes('UNSUBMITTED_OPPORTUNITIES_REQUIRE_ACCOUNT_SCOPED_PRODUCER'));
+});
 test('a locally closed leg without an actual broker close fill cannot become a resolved Paper outcome', async () => {
   const receipt = await fixture({ missingClose: true }).reader.read(at);
   assert.equal(receipt.outcomes[0]?.resolution.state, 'BLOCKED');
   assert.equal(receipt.outcomes[0]?.closeEvidenceComplete, false);
+});
+test('a closing fill cannot certify actual performance without a matched broker opening fill', async () => {
+  const receipt = await fixture({ missingOpen: true }).reader.performance(at);
+  assert.equal(receipt.afterCostPnl, null);
+  assert.equal(receipt.outcomes[0]?.optionEntryEvidenceComplete, false);
 });
 test('disposed stock without a broker-confirmed sale cannot certify whole-chain profit', async () => {
   const receipt = await fixture({ stockWithoutClose: true }).reader.read(at);
@@ -95,6 +123,8 @@ test('private MCP ledger read checks broker pin before and after import and pers
     const connected = new DotLabGateway(config, store, () => at, fixture().reader);
     const receipt = await callDotReadTool(connected, 'dot_ledger', {}) as { outcomes: unknown[] };
     assert.equal(requests, 2); assert.equal(receipt.outcomes.length, 1); assert.equal(store.list('OBSERVATION').length, 1);
+    const performance = await callDotReadTool(connected, 'dot_performance', {}) as { afterCostPnl: number };
+    assert.equal(performance.afterCostPnl, 99); assert.equal(requests, 4);
     await assert.rejects(callDotReadTool(connected, 'dot_ledger', { accountId: 'other' }));
   } finally { store.close(); }
 });

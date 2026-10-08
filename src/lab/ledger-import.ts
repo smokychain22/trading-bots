@@ -61,6 +61,17 @@ export class DotCanonicalLedgerReader {
         WHERE ar.execution_account_id=$1 AND ar.chain_id=ANY($2::uuid[]) LIMIT 501`, [this.identity.executionAccountId, chainIds]);
       const expirations = await query(`SELECT ee.option_leg_id,ee.expired_at::text,ee.itm FROM trade.expiration_event ee
         JOIN trade.option_leg ol USING(option_leg_id) WHERE ol.chain_id=ANY($1::uuid[]) LIMIT 501`, [chainIds]);
+      // Decision ownership is proved by this account's intent, never by symbol,
+      // workspace resemblance, or a caller-supplied strategy label.
+      const decisions = await query(`SELECT DISTINCT d.decision_id,d.strategy_branch,d.action_code,d.quantity::text,
+        d.status,d.decided_at::text,sv.semantic_version AS strategy_version
+        FROM trade.decision d JOIN trade.order_intent oi USING(decision_id)
+        JOIN trade.fusion_snapshot fs USING(fusion_snapshot_id)
+        JOIN core.strategy_version sv USING(strategy_version_id)
+        WHERE oi.execution_account_id=$1 AND oi.created_at<=$2 LIMIT 501`, [this.identity.executionAccountId, asOf]);
+      const management = await query(`SELECT management_action_frontier_id,chain_id,observed_at::text,
+        selected_action,decision_state,reason_codes_json,content_hash
+        FROM trade.management_action_frontier WHERE chain_id=ANY($1::uuid[]) LIMIT 501`, [chainIds]);
       // Present-day reads cannot be represented as a historical snapshot.
       const clock = await client.query('SELECT clock_timestamp()::text AS observed_at');
       const observedAt = z.string().datetime({ offset: true }).parse(new Date(String(clock.rows[0].observed_at)).toISOString());
@@ -109,6 +120,15 @@ export class DotCanonicalLedgerReader {
           return sharesSold !== null && sharesRequired !== null && sharesRequired > 0 && sharesSold >= sharesRequired;
         });
         const closeEvidenceComplete = optionCloseEvidenceComplete && stockCloseEvidenceComplete;
+        const optionEntryEvidenceComplete = chainLegs.every(leg => {
+          const entryFills = chainFills.filter(fill => fill.option_contract_id === leg.option_contract_id
+            && fill.position_intent === (leg.side === 'SHORT' ? 'SELL_TO_OPEN' : 'BUY_TO_OPEN')
+            && fill.provider_fill_id !== null && fill.provider_order_id !== null && knownTime(fill.filled_at));
+          const filledQuantity = sum(entryFills, 'quantity');
+          const requiredQuantity = sum(chainLegs.filter(other => other.option_contract_id === leg.option_contract_id
+            && other.side === leg.side), 'quantity');
+          return filledQuantity !== null && requiredQuantity !== null && requiredQuantity > 0 && filledQuantity >= requiredQuantity;
+        });
         const resolution = resolveWholeChainOutcome({ chainId: String(chain.chain_id),
           closedAt: closeTime?.toISOString() ?? null, evidenceAvailableAt: observedAt,
           allOptionLegsResolved: chainLegs.every(row => row.closed_at !== null && row.realized_pnl !== null),
@@ -116,9 +136,11 @@ export class DotCanonicalLedgerReader {
           executionFeesKnown: feeKnown, economicFactCount: chainLegs.length + chainStock.length,
           optionRealizedPnl: sum(chainLegs, 'realized_pnl'), stockRealizedPnl: sum(chainStock, 'realized_pnl'),
           dividends: sum(own(dividends), 'amount'), fees: feeKnown ? ledgerFees : null });
-        return { chainId: chain.chain_id, closeEvidenceComplete,
-          resolution: closeEvidenceComplete ? resolution : { state: 'BLOCKED' as const,
-            reasons: [...(resolution.state === 'BLOCKED' ? resolution.reasons : []), 'CANONICAL_BROKER_CLOSE_PROOF_INCOMPLETE'] } };
+        return { chainId: chain.chain_id, closeEvidenceComplete, optionEntryEvidenceComplete,
+          resolution: closeEvidenceComplete && optionEntryEvidenceComplete ? resolution : { state: 'BLOCKED' as const,
+            reasons: [...(resolution.state === 'BLOCKED' ? resolution.reasons : []),
+              ...(!closeEvidenceComplete ? ['CANONICAL_BROKER_CLOSE_PROOF_INCOMPLETE'] : []),
+              ...(!optionEntryEvidenceComplete ? ['CANONICAL_BROKER_ENTRY_PROOF_INCOMPLETE'] : [])] } };
       });
       await client.query('COMMIT');
       const receipt = { version: 'dot-canonical-ledger-import-v1', providerAccountId: this.identity.providerAccountId,
@@ -126,12 +148,32 @@ export class DotCanonicalLedgerReader {
         sourceShaQualification: 'READER_SOURCE_NOT_DEPLOYMENT_PROOF', requestedAsOf: asOf, observedAt,
         temporalQualification: 'CURRENT_LEDGER_NOT_HISTORICAL_PIT', orders: orders.rows, chains, fills, legs, stock,
         brokerQualification: 'CANONICAL_LEDGER_NOT_FRESH_BROKER_RECONCILIATION',
-        fees, dividends, assignments, expirations, outcomes, truthClass: 'BROKER_ACTUAL', brokerAuthority: false,
+        fees, dividends, assignments, expirations, decisions, management, outcomes,
+        rejectionCoverage: 'INTENT_BACKED_ONLY_UNSUBMITTED_OPPORTUNITIES_REQUIRE_ACCOUNT_SCOPED_PRODUCER',
+        truthClass: 'BROKER_ACTUAL', brokerAuthority: false,
         profitability: 'EMPIRICALLY_UNPROVEN' };
       return { ...receipt, contentHash: canonicalHash(receipt) };
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch { destroyClient = true; }
       throw error;
     } finally { client.release(destroyClient); }
+  }
+
+  async performance(asOf: string) {
+    const ledger = await this.read(asOf);
+    const resolved = ledger.outcomes.filter(item => item.resolution.state === 'RESOLVED');
+    const pnl = resolved.flatMap(item => item.resolution.state === 'RESOLVED' ? [item.resolution.wholeChainNetPnl] : []);
+    const afterCostPnl = pnl.length === 0 ? null : pnl.reduce((total, value) => total + value, 0);
+    if (afterCostPnl !== null && !Number.isFinite(afterCostPnl)) throw new Error('DOT_PERFORMANCE_NONFINITE');
+    const receipt = { version: 'dot-canonical-performance-v1',
+      providerAccountId: ledger.providerAccountId, executionAccountId: ledger.executionAccountId,
+      observedAt: ledger.observedAt, ledgerContentHash: ledger.contentHash,
+      state: resolved.length > 0 ? 'QUALIFIED_CANONICAL_CLOSED_CHAINS' : 'NO_QUALIFIED_CLOSED_CHAINS',
+      resolvedChainCount: resolved.length, unresolvedChainCount: ledger.outcomes.length - resolved.length,
+      afterCostPnl, outcomes: ledger.outcomes, decisions: ledger.decisions, management: ledger.management,
+      truthClass: 'BROKER_ACTUAL', brokerQualification: ledger.brokerQualification,
+      temporalQualification: ledger.temporalQualification, rejectionCoverage: ledger.rejectionCoverage,
+      profitability: 'EMPIRICALLY_UNPROVEN', brokerAuthority: false };
+    return { ...receipt, contentHash: canonicalHash(receipt) };
   }
 }

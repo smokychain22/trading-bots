@@ -33,6 +33,19 @@ export class DotLabGateway {
       observationId: randomUUID(), receivedAt: this.now(), data: receipt });
     return receipt;
   }
+  async performance() {
+    if (!this.ledgerReader) return { state: 'CANONICAL_LAB_LIFECYCLE_IMPORT_NOT_CONNECTED',
+      afterCostPnl: null, profitability: 'EMPIRICALLY_UNPROVEN' };
+    if (this.ledgerReader.identity.providerAccountId !== this.store.identity.providerAccountId
+      || this.ledgerReader.identity.executionAccountId !== this.store.identity.executionAccountId
+      || this.ledgerReader.identity.workspaceId !== this.store.identity.workspaceId) throw new Error('DOT_LEDGER_ACCOUNT_BINDING_INVALID');
+    await this.account();
+    const receipt = await this.ledgerReader.performance(this.now());
+    await this.account();
+    this.store.saveObservation({ providerAccountId: this.store.identity.providerAccountId,
+      observationId: randomUUID(), receivedAt: this.now(), data: receipt });
+    return receipt;
+  }
   async account() {
     const evidence = await fetchMasterAccountEvidence(this.provider, this.now);
     if (evidence.providerAccountId !== this.store.identity.providerAccountId) throw new Error('DOT_BROKER_ACCOUNT_MISMATCH');

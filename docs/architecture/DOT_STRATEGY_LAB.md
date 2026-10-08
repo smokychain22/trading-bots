@@ -53,6 +53,28 @@ Foundation `fd144cc333c38e658c8c77fed1afbcaa1b345ea8` passed exact-SHA CI run `3
 
 `src/lab/proposal-consumer.ts` connects validated H/D drafts to the existing research generators. Implemented configuration changes are bounded DTE narrowing and point-in-time numeric research rules. Evidence must match the decision snapshot and source evidence IDs, be available before the decision, and remain valid. Missing, stale, unqualified or future data block evaluation. Changed model references, delta buckets, option type, action sets or unsupported lattice expansion remain explicit blockers. Q and stock-inventory branches still require their canonical consumer integration. Registry defaults and Production selection remain unchanged.
 
+### Canonical Q/A/C continuation
+
+`src/lab/canonical-proposal-consumer.ts` now consumes sealed T0 through `replayFromT0Bundle` for Q/A/C. The private proposer-only `POST /v1/research/canonical` route invokes it and persists the versioned research receipt. Reader tokens cannot invoke this route. The existing 16 KiB HTTP body bound remains in force. Large historical bundles are not accepted through this endpoint.
+
+Q and C can narrow the incumbent DTE window and apply qualified research filters. A retains its existing inventory-management lattice. Unsupported model, ownership, management or lattice semantics block explicitly. The adapter retains canonical quantities, ranks, economics and rejection reasons without selecting a new executable winner. A/C require account-bound, snapshot-bound, point-in-time inventory with known covered-call commitments. This is modeled research, not a fresh broker reconciliation or experiment authorization. Planned holding periods and profit-taking challengers still use the separate offline exit comparison.
+
+T0 now preserves `committedShortCallContracts`, including explicit null. Previously the parser dropped that field and could invalidate covered-share replay. Existing bundles without the field retain their legacy behavior. Historical failed evidence is not rewritten or promoted by this fix.
+
+### Private performance continuation
+
+`dot_performance` and authenticated `/v1/performance` use the injected canonical ledger reader. After-cost P&L includes only resolved chains with matched broker opening/closing evidence and known, reconciled fees. An unavailable reader or zero qualified closed chains leaves P&L null. Account-scoped intent-backed decisions and management frontiers are retained. Unsubmitted rejected opportunities still require an account-scoped producer. Native partial-leg/exercise completeness, slippage attribution, capital-days, final strategy attribution and empirical competence remain separate unfinished gates. Current ledger reads are not historical PIT or fresh broker reconciliation.
+
+### Cloud read challenge
+
+`research/dot-proposals/cloud-read-challenge.json` pins a non-sensitive H proposal to the already-pushed exact commit. Dot must fetch that path/ref through its own GitHub connection and return the proposal with the challenge ID. `verifyDotCloudReadResponse` verifies versioned content but deliberately does not certify the caller's environment. A real Dot connector invocation is required for cloud proof.
+
+The current plugin inventory reports GitHub available but not installed. The owner must complete account linking in ChatGPT, then give Dot repository access. No credentials or private trading evidence should enter this exchange. [Official Dot connection guidance](https://learn.chatgpt.com/docs/dots/computers-and-apps) and [Secure MCP Tunnel requirements](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) govern the private bridge. No tunnel, runtime key, organization/workspace association or actual Dot invocation has been provisioned or demonstrated by this checkpoint.
+
+### Preserved CI incident
+
+Exact review commit `2cb0d470f473132e80d44c2a2c051765e525afee` was pushed without force. CI `37809506163` failed on authority-role inventory, pool application identity and pool-owner inventory. Downstream build, database, browser, Python and Windows stages were skipped. Local corrections declare the adapters research-only, the ledger display-only, and the optional lab pool an explicit isolated one-connection read-only owner. No test threshold is weakened. The corrected new checkpoint requires fresh push approval and its own exact-SHA CI.
+
 `persistDotExitComparison` uses the existing full 17-policy offline profit-taking replay with the proposed elapsed holding horizon. It retains every policy trial and explicitly marks estimated exits as modeled, never actual fills or empirical promotion. This is separate from authorizing a Production management rule.
 
 `src/lab/ledger-import.ts` reads one bounded repeatable-read, read-only canonical snapshot. It verifies the registered execution account's Paper environment and exact provider UUID hash, rejects mixed-account chains, and exposes account-scoped orders, fills, option legs, stock, fee events, dividends, assignment reconciliation and whole-chain resolutions. Unknown fees or unmatched fill/ledger fees remain unresolved. It reuses `resolveWholeChainOutcome`. Current ledger reads cannot be presented as historical PIT or fresh broker reconciliation. Reader SHA is source metadata, not deployment proof.

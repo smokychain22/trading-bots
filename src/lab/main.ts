@@ -53,6 +53,7 @@ export function startDotLab(args: readonly string[]) {
       if (!['postgres:', 'postgresql:'].includes(url.protocol) || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
         || url.search || url.hash) throw new Error('DOT_ISOLATED_LOCAL_LEDGER_CONFIGURATION_REQUIRED');
       ledgerPool = new Pool({ connectionString: config.connectionString, max: 1, min: 0,
+        application_name: 'dot_lab_isolated_read_only_ledger',
         connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000,
         options: '-c default_transaction_read_only=on -c statement_timeout=5000' });
       ledgerPool.on('error', () => { /* No raw pg errors, URLs or credentials in protocol output. */ });

@@ -58,6 +58,11 @@ const thetaClass: Readonly<Record<string, ProducerClass>> = {
 };
 
 function classify(relative: string): ProducerClass | null {
+  // Explicitly reviewed adapters reuse canonical generators/replay and cannot
+  // allocate, persist order intents or submit. New lab decision modules still trip this audit.
+  if (['src/lab/proposal-consumer.ts', 'src/lab/canonical-proposal-consumer.ts'].includes(relative)) return 'RESEARCH';
+  // Account-pinned read-only import of existing decisions and management actions.
+  if (relative === 'src/lab/ledger-import.ts') return 'DISPLAY';
   if (relative.startsWith('src/theta/')) return thetaClass[path.basename(relative)] ?? null;
   if (relative.startsWith('src/research/') || relative.startsWith('bots/theta/quant/research/')) return 'RESEARCH';
   if (relative.startsWith('src/operations/')) return 'DISPLAY';

@@ -91,6 +91,7 @@ const paperEntryDecisionSchema = thetaQDecisionSchema.extend({
 const stockSchema = z.object({
   underlying: z.string().min(1), shares: z.number().nullable(), currentPrice: z.number().nullable(),
   brokerCostBasisPerShare: z.number().nullable(), wholeChainEconomicBasisPerShare: z.number().nullable(),
+  committedShortCallContracts: z.number().int().nonnegative().nullable().optional(),
 }).nullable();
 
 const optionalQuantityCap = z.number().int().nonnegative().nullable().optional();

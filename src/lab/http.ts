@@ -6,6 +6,7 @@ import { validateDotProposal } from './contracts.js';
 import type { DotLabGateway } from './gateway.js';
 import { dotMcpReply } from './mcp.js';
 import { exportDotPrivateObservation } from './private-export.js';
+import { persistDotCanonicalProposal } from './canonical-proposal-consumer.js';
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const time = Date.parse(`${value}T00:00:00Z`);
@@ -37,7 +38,8 @@ export function createDotLabApp(gateway: DotLabGateway, tokens: DotLabTokens) {
     const hash = digest(match[1]);
     const scope = timingSafeEqual(hash, proposer) ? 'PROPOSER' : timingSafeEqual(hash, reader) ? 'READER' : null;
     if (scope === null) { response.status(401).json({ error: 'DOT_AUTH_REQUIRED' }); return; }
-    if (request.method !== 'GET' && !(request.method === 'POST' && request.path === '/v1/proposals' && scope === 'PROPOSER')
+    if (request.method !== 'GET' && !(request.method === 'POST'
+      && ['/v1/proposals', '/v1/research/canonical'].includes(request.path) && scope === 'PROPOSER')
       && !(request.method === 'POST' && request.path === '/mcp')) {
       response.status(403).json({ error: 'DOT_OPERATION_FORBIDDEN' }); return;
     }
@@ -78,14 +80,17 @@ export function createDotLabApp(gateway: DotLabGateway, tokens: DotLabTokens) {
     const storageHash = gateway.store.saveProposal(proposal, new Date().toISOString());
     response.status(201).json({ proposal, storageHash, activation: 'NOT_AUTHORIZED', brokerAuthority: false });
   });
+  app.post('/v1/research/canonical', (request, response) => {
+    const input = z.object({ proposal: z.unknown(), t0: z.unknown(), features: z.unknown(),
+      sourceEvidenceIds: z.array(z.string().min(1)).min(1).max(100), inventory: z.unknown() }).strict().parse(request.body);
+    response.json(persistDotCanonicalProposal(gateway.store, input.proposal, input.t0,
+      input.features, input.sourceEvidenceIds, input.inventory));
+  });
   app.get('/v1/receipts', (_request, response) => response.json(gateway.store.list('OBSERVATION')));
   app.get('/v1/private-export', (_request, response) => response.json(exportDotPrivateObservation(gateway.store)));
   app.get('/v1/experiments', (_request, response) => response.json(gateway.store.list('EXPERIMENT')));
   app.get('/v1/ledger', async (_request, response) => response.json(await gateway.ledger()));
-  app.get('/v1/performance', (_request, response) => response.json({
-    state: 'CANONICAL_LAB_LIFECYCLE_IMPORT_NOT_CONNECTED', afterCostPnl: null, profitability: 'EMPIRICALLY_UNPROVEN',
-    reason: 'Broker equity and position marks cannot substitute for a resolved, fee-qualified whole-chain ledger.',
-  }));
+  app.get('/v1/performance', async (_request, response) => response.json(await gateway.performance()));
   app.use((_request, response) => response.status(404).json({ error: 'DOT_ROUTE_NOT_FOUND' }));
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
     void _next; // Express recognizes error middleware by its four-argument arity.

@@ -15,7 +15,9 @@ const featureSchema = z.object({ feature: thetaFeatureFamily, value: z.number().
 
 /** A research adapter over existing generators. It cannot allocate, create an intent or execute.
  * Unsupported model references stay blocked instead of pretending their rules were evaluated. */
-export function evaluateDotShadowProposal(raw: unknown, input: ShadowStrategyOrchestratorInput, features: unknown) {
+export function qualifyDotProposal(raw: unknown, input: {
+  decisionTimestamp: string; routing: { timestamp: string; snapshotId: string }; sourceEvidenceIds: readonly string[];
+}, features: unknown) {
   const proposal = validateDotProposal(raw);
   const evidence = z.array(featureSchema).max(30).parse(features);
   if (new Set(evidence.map(item => item.feature)).size !== evidence.length) throw new Error('DOT_DUPLICATE_FEATURE_EVIDENCE');
@@ -50,10 +52,15 @@ export function evaluateDotShadowProposal(raw: unknown, input: ShadowStrategyOrc
     return { index, feature: rule.feature, state: !qualified ? 'UNAVAILABLE' : pass ? 'PASS' : 'REJECT',
       evidenceId: value?.evidenceId ?? null, value: number };
   });
-  const branch = proposal.strategy.branch;
-  const family = branch === 'THETA_HOLD_STRIKE' ? 'THETA_H' : branch === 'THETA_DEFINED_RISK' ? 'THETA_D' : null;
   const blockers = [...unsupported.map(field => `UNSUPPORTED_CONFIGURATION:${field}`),
     ...rules.filter(rule => rule.state !== 'PASS').map(rule => `RESEARCH_RULE_${rule.state}:${rule.index}`)];
+  return { proposal, baseline, evidence, rules, blockers };
+}
+
+export function evaluateDotShadowProposal(raw: unknown, input: ShadowStrategyOrchestratorInput, features: unknown) {
+  const { proposal, evidence, rules, blockers } = qualifyDotProposal(raw, input, features);
+  const branch = proposal.strategy.branch;
+  const family = branch === 'THETA_HOLD_STRIKE' ? 'THETA_H' : branch === 'THETA_DEFINED_RISK' ? 'THETA_D' : null;
   if (family === null) blockers.push('CANONICAL_Q_OR_INVENTORY_MANAGEMENT_CONSUMER_REQUIRED');
   else if (!eligibleFamilies(input.routing).includes(family)) blockers.push('ROUTER_INELIGIBLE');
   if (family === 'THETA_H' && input.holdStrikeChain === null) blockers.push('MISSING_H_CHAIN');
