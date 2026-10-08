@@ -178,7 +178,9 @@ itRealPythonCodePath('a non-standard multiplier changes candidate economics and 
 });
 
 itRealPythonCodePath('one underlying producing zero feasible candidates does not break the combined frontier -- the other underlying still wins', async () => {
-  const ineligible = requestFor('SPY', { routerPortfolio: { lifecycleState: 'CSP_OPEN', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: false } });
+  // Pending execution excludes new risk. Stable existing exposure no longer
+  // suppresses independently funded proposals under the V4 routing contract.
+  const ineligible = requestFor('SPY', { routerPortfolio: { lifecycleState: 'ORDER_PENDING', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: false } });
   const eligible = requestFor('QQQ');
 
   const result = await runCrossSymbolEconomicFrontier(bridge(), 'snap-1', NOW, [ineligible, eligible]);
@@ -190,8 +192,8 @@ itRealPythonCodePath('one underlying producing zero feasible candidates does not
 });
 
 itRealPythonCodePath('every underlying producing zero feasible candidates fails closed rather than selecting arbitrarily', async () => {
-  const ineligibleA = requestFor('SPY', { routerPortfolio: { lifecycleState: 'CSP_OPEN', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: false } });
-  const ineligibleB = requestFor('QQQ', { routerPortfolio: { lifecycleState: 'CSP_OPEN', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: false } });
+  const ineligibleA = requestFor('SPY', { routerPortfolio: { lifecycleState: 'ORDER_PENDING', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: false } });
+  const ineligibleB = requestFor('QQQ', { routerPortfolio: { lifecycleState: 'ORDER_PENDING', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: false } });
 
   const result = await runCrossSymbolEconomicFrontier(bridge(), 'snap-1', NOW, [ineligibleA, ineligibleB]);
   assert.notEqual(result.failClosedReason, null);

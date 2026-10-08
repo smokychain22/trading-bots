@@ -1,5 +1,6 @@
 /** Runtime observations are separate from the source-controlled capability review. */
 import { runtimeSchemaMinimum } from './runtime-schema-compatibility.js';
+import type { PaperRuntimeAuthorityTruth } from './paper-runtime-authority-truth.js';
 export interface RuntimeTruthInputs {
   readonly sourceSha: string;
   readonly sourceDirty: boolean;
@@ -8,8 +9,7 @@ export interface RuntimeTruthInputs {
   readonly workerHeartbeat: string | null;
   readonly workerMode: string | null;
   readonly executionGate: string | null;
-  /** Database authority for an ACTIVE Paper gate. Null means it could not be verified. */
-  readonly autonomousPaperAuthorized?: boolean | null;
+  readonly paperAuthority?: PaperRuntimeAuthorityTruth | null;
   readonly migrationHead: string | null;
   readonly requiredMigrationPresent: boolean | null;
   readonly observedAt: string;
@@ -50,7 +50,8 @@ export function deriveRuntimeMismatches(input: RuntimeTruthInputs): RuntimeMisma
     mismatches.push('WORKER_STALE');
   if (input.workerMode !== null && input.workerMode !== 'MASTER_THETA_PAPER') mismatches.push('WORKER_MODE_UNEXPECTED');
   if (input.executionGate !== null && input.executionGate !== 'LOCKED'
-    && !(input.executionGate === 'ACTIVE' && input.autonomousPaperAuthorized === true))
+    && !(input.executionGate === 'ACTIVE' && input.paperAuthority?.state === 'AUTHORIZED_ACTIVE'
+      && input.paperAuthority.workerSha === input.workerSha))
     mismatches.push('EXECUTION_GATE_NOT_LOCKED');
   if (input.requiredMigrationPresent === false || (input.migrationHead !== null
     && input.migrationHead < runtimeSchemaMinimum)) mismatches.push('MIGRATION_MISMATCH');

@@ -7,6 +7,7 @@ import { isAutonomousMasterPaperAccepted, PostgresPaperExecutionAuthorizationSto
 import { reconcileFirstCanaryAcceptance } from '../../src/execution/postgres-first-canary-acceptance.js';
 import type { Evidence } from '../../src/theta/first-paper-order-readiness.js';
 import { PostgresRuntimeCycleStore } from '../../src/theta/autonomous-runtime.js';
+import { classifyPaperRuntimeAuthority, readPaperRuntimeAuthorityEvidence } from '../../src/theta/paper-runtime-authority-truth.js';
 
 const at = '2026-10-01T15:00:00.000Z';
 const good = <T>(value: T): Evidence<T> => ({ state: 'GOOD', value, source: 'DISPOSABLE_TEST', asOf: at });
@@ -152,6 +153,14 @@ test('real disposable PostgreSQL: accepted first canary promotes to autonomous M
     assert.equal(await runtime.firstCanarySubmissionAvailable(), true, 'canary lane lifted only after acceptance');
     assert.equal(await store.lockNewRiskAfterFirstCanary(at), false, 'the first-canary relock can never re-pause autonomous Paper');
     assert.equal((await store.current()).pauseNewOrders, false);
+    const authorityEvidence = await readPaperRuntimeAuthorityEvidence(pool);
+    const inspectedAt = new Date().toISOString();
+    const authority = classifyPaperRuntimeAuthority({ now: inspectedAt, maximumAgeMs: 300_000,
+      workerSha: 'a'.repeat(40), workerHeartbeat: inspectedAt, executionGate: 'ACTIVE', evidence: authorityEvidence });
+    assert.equal(authority.state, 'AUTHORIZED_ACTIVE', 'operator truth joins real schema authority without changing controls');
+    assert.equal(authority.follower, 'LOCKED');
+    assert.equal(authority.live, 'NOT_AUTHORIZED');
+    assert.equal(authority.brokerAuthority, false);
     const audit = await pool.query(`SELECT metadata_json FROM copy.operator_audit_event WHERE action='ACTIVATE_AUTONOMOUS_MASTER_PAPER'`);
     assert.equal(audit.rowCount, 1);
     assert.equal(audit.rows[0].metadata_json.liveMutationCount, 0);

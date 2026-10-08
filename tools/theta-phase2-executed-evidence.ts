@@ -15,7 +15,7 @@ const hashes=captureHashes();
 const environment={...process.env};
 for(const key of Object.keys(environment))if(/(?:^TEST_DATABASE_URL$|^THETA_.*TEST.*DATABASE|^THETA_RUNTIME_FAULT_DATABASE_URL$)/.test(key))delete environment[key];
 if(files.some(file=>!/^tests\/[a-z0-9-]+\.test\.ts$/.test(file)))throw new Error('OFFLINE_TEST_FILE_REQUIRED');
-const child=spawnSync(process.execPath,['--import','tsx','--test','--test-reporter=./tools/theta-test-evidence-reporter.mjs',...files],
+const child=spawnSync(process.execPath,['--import','tsx','--test','--test-concurrency=2','--test-reporter=./tools/theta-test-evidence-reporter.mjs',...files],
   {encoding:'utf8',timeout:240_000,maxBuffer:16*1024*1024,env:environment});
 const events:ExecutedTestEvent[]=child.stdout.split(/\r?\n/).filter(line=>line.startsWith('{')).map(line=>JSON.parse(line));
 if(JSON.stringify(hashes)!==JSON.stringify(captureHashes()))throw new Error('SOURCE_CHANGED_DURING_EVIDENCE_EXECUTION');
@@ -25,7 +25,7 @@ if(revision.status!==0||!/^[a-f0-9]{40}$/.test(revision.stdout.trim()))throw new
 const body={version:'theta-phase2-executed-evidence-v1',observedAt:new Date().toISOString(),
   checkoutHead:revision.stdout.trim(),identityAuthority:'PER_FILE_HASHES_INCLUDE_UNCOMMITTED_CHANGES',
   command:'node --import tsx tools/theta-phase2-executed-evidence.ts',
-  testCommand:[process.execPath,'--import','tsx','--test','--test-reporter=./tools/theta-test-evidence-reporter.mjs',...files].slice(1),
+  testCommand:[process.execPath,'--import','tsx','--test','--test-concurrency=2','--test-reporter=./tools/theta-test-evidence-reporter.mjs',...files].slice(1),
   executionSucceeded:child.status===0&&!child.error, results,
   passed:events.filter(event=>event.state==='PASS').length,failed:events.filter(event=>event.state==='FAIL').length,
   skipped:events.filter(event=>event.state==='SKIPPED'||event.state==='TODO').length,
@@ -39,7 +39,12 @@ const registerPath='docs/operations/THETA_PHASE2_COMPLETION_REGISTER.json';
 const register=JSON.parse(readFileSync(registerPath,'utf8'));
 for(const row of register.requirements){
   const result=results.find(result=>result.requirementId===row.ID);
-  if(!result||row.CLOSURE_STATE!=='CLOSED_ENGINEERING')continue;
+  // A failed invocation must be recoverable by actual re-execution, without
+  // promoting unreviewed rows or inheriting a global certificate.
+  const previouslyInvalidatedHere=row.CLOSURE_STATE==='EVIDENCE_INVALIDATED'
+    && row.TEST_RESULT?.command===body.command
+    && ['EXECUTED_REQUIREMENT_NOT_PROVEN','DISPOSABLE_DATABASE_EVIDENCE_STALE'].includes(row.BLOCKER_CLASS);
+  if(!result||(row.CLOSURE_STATE!=='CLOSED_ENGINEERING'&&!previouslyInvalidatedHere))continue;
   row.TEST_RESULT={...result,command:body.command,artifactPath:'docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json',artifactHash:receipt.artifactHash};
   if(!body.executionSucceeded||result.state!=='PASS'){
     row.CLOSURE_STATE=row.CURRENT_STATUS='EVIDENCE_INVALIDATED';
@@ -60,8 +65,11 @@ for(const row of register.requirements){
     if(!disposableCurrent){
       row.CLOSURE_STATE=row.CURRENT_STATUS='EVIDENCE_INVALIDATED';
       row.BLOCKER_CLASS='DISPOSABLE_DATABASE_EVIDENCE_STALE';
+      continue;
     }
   }
+  row.CLOSURE_STATE=row.CURRENT_STATUS='CLOSED_ENGINEERING';
+  row.BLOCKER_CLASS='NONE_ENGINEERING';
 }
 register.PHASE2_CODE_SOLVABLE_COMPLETE=register.requirements.filter((row:{CODE_SOLVABLE:boolean;CLOSURE_STATE:string})=>row.CODE_SOLVABLE&&row.CLOSURE_STATE==='CLOSED_ENGINEERING').length;
 register.PHASE2_CODE_SOLVABLE_REMAINING=register.PHASE2_CODE_SOLVABLE-register.PHASE2_CODE_SOLVABLE_COMPLETE;

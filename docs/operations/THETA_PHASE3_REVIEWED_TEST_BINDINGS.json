@@ -99,7 +99,7 @@
   },
   {
     "id": "3.5",
-    "reviewedBehavior": "Current broker reads override manual flat defaults. Failed reads remain unknown. Open CSP routes management instead of new entry. Router is applicability, not adaptive economic selection.",
+    "reviewedBehavior": "Current broker reads override manual flat defaults. Failed reads remain unknown. Stable existing exposure permits independent Q/H/D candidate evaluation alongside management, without bypassing economics, funding, AEGIS or execution authority. Pending orders still exclude new entries. Router is applicability, not adaptive economic selection.",
     "sources": [
       "src/theta/broker-router-portfolio.ts",
       "src/theta/theta-shadow-cycle.ts",
@@ -123,7 +123,8 @@
       {
         "file": "tests/new-risk-orchestrator.test.ts",
         "names": [
-          "an already-open CSP lifecycle routes THETA_Q ineligible and produces zero evaluated candidates"
+          "an already-open CSP lifecycle independently evaluates Q through candidate-bound AEGIS",
+          "an unsettled order still excludes new entry evaluation"
         ]
       }
     ]

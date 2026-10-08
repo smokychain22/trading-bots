@@ -1,5 +1,26 @@
 # THETA implementation board
 
+## V4 integration work, 2026-10-08
+
+The current six-phase directive is tracked separately in
+`THETA_V4_EXECUTION_REGISTER.json`. Earlier phase numbers and closed receipts
+below retain their original scope. They do not certify the larger V4 requirements.
+
+Work is isolated on `codex/theta-v4-integration`, preserving the inherited
+shadow-intelligence and T0-T5 source stack. The deployed main release is unchanged.
+This wave corrects runtime authority reporting, restricted orphan recovery
+validation, stable-exposure strategy applicability, bar finality, and horizon
+completeness. New intraday features remain shadow context. No risk thresholds,
+Paper controls, follower permissions or live authority changed.
+
+The direct local database read failed with `EAI_AGAIN` while the resident worker
+reported healthy. No restart was attempted and missing database evidence is not
+reported as strategy WAIT or current schema/lease/position-lineage proof.
+
+The V4 register deliberately keeps all six phases open. Portfolio reservation,
+complete management-contract coverage and natural current-release proofs still
+require work. Profitability remains empirically unproven.
+
 ## Phase-2 continuation and current-release proof, 2026-09-30
 
 This section supersedes the dated release-pending observation below. Phase 1

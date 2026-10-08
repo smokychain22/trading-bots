@@ -145,6 +145,8 @@ export function classifyBrokerConfirmedOrphan(position: BrokerConfirmedOptionPos
   if (position.reconciliationQuality !== 'GOOD' || !Number.isFinite(Date.parse(position.observedAt))) {
     return refuse('ORPHAN_BROKER_EVIDENCE_NOT_GOOD', position.reconciliationQuality);
   }
+  if (!Number.isFinite(position.averageEntryPricePerShare) || position.averageEntryPricePerShare <= 0)
+    return refuse('ORPHAN_BROKER_EVIDENCE_NOT_GOOD', 'ENTRY_PRICE_INVALID');
   const occ = parseOccOptionSymbol(position.symbol);
   if (occ === null) return refuse('ORPHAN_NOT_AN_OPTION_POSITION', position.symbol);
   // THETA only ever opens short puts on this path. A long or call position can never be a THETA CSP orphan.
@@ -159,6 +161,9 @@ export function classifyBrokerConfirmedOrphan(position: BrokerConfirmedOptionPos
   if (matching.length > 1) return refuse('ORPHAN_LINEAGE_AMBIGUOUS', String(matching.length));
   const lineage = matching[0] as OrphanThetaLineage;
   const intent = lineage.orderIntent;
+  if (!Number.isSafeInteger(lineage.openOptionLegCount) || lineage.openOptionLegCount < 0
+    || !Number.isSafeInteger(lineage.nonTerminalChainOrders) || lineage.nonTerminalChainOrders < 0)
+    return refuse('ORPHAN_LINEAGE_MISMATCH', 'LIFECYCLE_OR_IN_FLIGHT_COUNT_INVALID');
   if (lineage.lifecycleApplication.state === 'APPLIED' || lineage.openOptionLegCount > 0) {
     return refuse('ORPHAN_ALREADY_LIFECYCLE_OWNED');
   }
@@ -182,12 +187,17 @@ export function classifyBrokerConfirmedOrphan(position: BrokerConfirmedOptionPos
   }
   const filled = lineage.fills.reduce((sum, fill) => sum + fill.quantity, 0);
   if (!Number.isSafeInteger(intent.quantity) || intent.quantity !== contracts || lineage.brokerOrder.filledQuantity !== contracts
-    || filled !== contracts || lineage.fills.some((fill) => !(fill.quantity > 0))) {
+    || filled !== contracts || lineage.fills.some((fill) => !Number.isSafeInteger(fill.quantity) || fill.quantity <= 0)) {
     return refuse('ORPHAN_QUANTITY_MISMATCH', `broker=${contracts} intent=${intent.quantity} fills=${filled}`);
   }
   if (lineage.nonTerminalChainOrders > 0 || !terminalIntent.has(intent.status)) return refuse('ORPHAN_ORDER_IN_FLIGHT');
+  if (lineage.fills.some((fill) => !Number.isFinite(fill.pricePerShare) || fill.pricePerShare <= 0))
+    return refuse('ORPHAN_FILL_PRICE_MISMATCH', 'FILL_PRICE_INVALID');
+  if (lineage.fills.some((fill) => !Number.isFinite(Date.parse(fill.occurredAt))
+    || Date.parse(fill.occurredAt) > Date.parse(position.observedAt)))
+    return refuse('ORPHAN_LINEAGE_MISMATCH', 'FILL_TIMESTAMP_INVALID_OR_FUTURE');
   const entryPrice = lineage.fills.reduce((sum, fill) => sum + fill.quantity * fill.pricePerShare, 0) / filled;
-  if (!(entryPrice > 0) || Math.abs(entryPrice - position.averageEntryPricePerShare) > priceTolerance) {
+  if (!Number.isFinite(entryPrice) || !(entryPrice > 0) || Math.abs(entryPrice - position.averageEntryPricePerShare) > priceTolerance) {
     return refuse('ORPHAN_FILL_PRICE_MISMATCH', `${entryPrice}:${position.averageEntryPricePerShare}`);
   }
   if (!Number.isSafeInteger(lineage.multiplier) || lineage.multiplier <= 0) return refuse('ORPHAN_LINEAGE_MISMATCH', 'MULTIPLIER');

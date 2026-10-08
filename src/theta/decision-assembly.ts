@@ -1,4 +1,5 @@
 import type { NormalizedOptionContract } from './option-contract.js';
+import type { IntradayStructureReceipt } from './strategy-intelligence/intraday-structure.js';
 import type { AegisAssessmentResponse } from './aegis-contract.js';
 import type { SizingResultResponse } from './sizing-contract.js';
 import type { ExecutionQualityResponse } from './execution-quality-contract.js';
@@ -140,6 +141,7 @@ export interface NewRiskDecisionReceipt {
   readonly qEconomicFunnel?: QEconomicFunnelReceipt | { readonly state: 'FAILED'; readonly reasonCode: string };
   /** SHADOW MarketRegimeReceipt (strategy-intelligence/market-regime.ts); never selection authority. */
   readonly marketRegime?: MarketRegimeReceipt | { readonly state: 'FAILED'; readonly reasonCode: string };
+  readonly intradayStructure?: IntradayStructureReceipt;
 }
 
 const alternativeFrom = (c: CandidateFrontierResult): NewRiskAlternative => ({

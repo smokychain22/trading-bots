@@ -37,23 +37,23 @@ class RouterLifecycleApplicability(unittest.TestCase):
             self.assertNotIn(StrategyFamily.THETA_C, fams, lifecycle)
             self.assertNotIn(StrategyFamily.THETA_Q, fams, lifecycle)
 
-    def test_confirmed_stock_makes_a_and_c_applicable_and_never_q(self):
+    def test_confirmed_stock_makes_a_and_c_applicable_without_suppressing_q_proposals(self):
         for shares in (1.0, 99.0, 100.0, 250.0):
             fams = _route(LifecycleState.STOCK_HELD, shares)
             self.assertIn(StrategyFamily.THETA_A, fams)
             self.assertIn(StrategyFamily.THETA_C, fams)
-            self.assertNotIn(StrategyFamily.THETA_Q, fams, "Q is a fresh-entry family; stock inventory excludes it")
+            self.assertIn(StrategyFamily.THETA_Q, fams, "A proposal's funding is evaluated separately from existing inventory")
 
     def test_assignment_risk_makes_a_applicable_without_stock_but_never_c(self):
         fams = _route(LifecycleState.ASSIGNMENT_RISK, 0.0, open_option=True)
         self.assertIn(StrategyFamily.THETA_A, fams)
         self.assertNotIn(StrategyFamily.THETA_C, fams, "no covered calls before assignment actually happens")
 
-    def test_cc_open_state_keeps_r_and_c_but_not_q(self):
+    def test_cc_open_state_keeps_r_and_c_and_independent_q_proposals(self):
         fams = _route(LifecycleState.CC_OPEN, 100.0, open_option=True)
         self.assertIn(StrategyFamily.THETA_R, fams)
         self.assertIn(StrategyFamily.THETA_C, fams)
-        self.assertNotIn(StrategyFamily.THETA_Q, fams)
+        self.assertIn(StrategyFamily.THETA_Q, fams)
 
     def test_unknown_stock_or_lifecycle_excludes_everything_with_data_reason(self):
         for portfolio in (PortfolioContext(LifecycleState.STOCK_HELD, None, False, False),

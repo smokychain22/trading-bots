@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { IntradayStructureReceipt } from './strategy-intelligence/intraday-structure.js';
 import { invokeAndValidate, type PythonBridgeConfig, type ValidatedBridgeResult } from './python-bridge.js';
 import { parseOwnershipEvaluationResponse, type OwnershipEvaluationResponse } from './ownership-contract.js';
 import { parseRegimeSnapshotResponse, type RegimeSnapshotResponse } from './regime-contract.js';
@@ -328,6 +329,7 @@ export interface NewRiskOrchestrationRequest {
   readonly qEconomicFunnel?: QEconomicFunnelReceipt | { readonly state: 'FAILED'; readonly reasonCode: string };
   /** SHADOW MarketRegimeReceipt for the underlying; attached to the decision receipt unchanged, never selection authority. */
   readonly marketRegime?: MarketRegimeReceipt | { readonly state: 'FAILED'; readonly reasonCode: string };
+  readonly intradayStructure?: IntradayStructureReceipt;
 
   readonly ownershipPolicy: Record<string, unknown>;
   readonly ownershipInputs: Record<string, unknown>;
@@ -375,6 +377,7 @@ function attachShadowDecisionEvidence(
     ...receipt,
     ...(request.qEconomicFunnel === undefined ? {} : { qEconomicFunnel: request.qEconomicFunnel }),
     ...(request.marketRegime === undefined ? {} : { marketRegime: request.marketRegime }),
+    ...(request.intradayStructure === undefined ? {} : { intradayStructure: request.intradayStructure }),
   };
 }
 

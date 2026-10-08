@@ -54,6 +54,25 @@ test('insufficient history yields UNKNOWN fields, not defaults', () => {
   assert.equal(r.direction.state, 'UNKNOWN'); assert.equal(r.movement.state, 'UNKNOWN'); assert.equal(r.structure.state, 'UNKNOWN');
 });
 
+test('malformed bar inputs and order are rejected before regime math', () => {
+  const series = bars(50, () => 100);
+  for (const patch of [{ close: NaN }, { high: Infinity }, { close: 0 }, { low: 200 }, { volume: -1 }, { date: '2026-02-30' }])
+    assert.throws(() => buildMarketRegimeReceipt([{ ...(series[0] as DailyBar), ...patch }]), /MARKET_REGIME_BAR_INVALID/);
+  assert.throws(() => buildMarketRegimeReceipt([...series].reverse()), /MARKET_REGIME_BAR_ORDER_INVALID/);
+  assert.throws(() => buildMarketRegimeReceipt([series[0] as DailyBar, series[0] as DailyBar]), /MARKET_REGIME_BAR_ORDER_INVALID/);
+  assert.doesNotThrow(() => buildMarketRegimeReceipt(series.map(b => ({ ...b, volume: null }))));
+});
+
+test('invalid event distance never becomes no event and undefined correlation never becomes zero', () => {
+  const series = bars(50, () => 100, 0);
+  for (const eventInDays of [NaN, Infinity, -1]) {
+    const r = buildMarketRegimeReceipt(series, { eventInDays });
+    assert.deepEqual(r.event, { state: 'UNKNOWN', reason: 'EVENT_DISTANCE_INVALID' });
+  }
+  assert.deepEqual(buildMarketRegimeReceipt(series).evidence.lag1Autocorrelation,
+    { state: 'UNKNOWN', reason: 'ZERO_VARIANCE_AUTOCORRELATION_UNDEFINED' });
+});
+
 test('support/resistance: swing levels below/above the close with touches and distance', () => {
   const series = bars(120, (i) => 100 + 5 * Math.sin(i / 4), 0.001);
   const levels = supportResistance(series, 1);

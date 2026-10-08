@@ -139,6 +139,9 @@ test('expiry horizons are explicit shadow evidence and never become a profitabil
   assert.equal(horizon.currentPolicySelectedHorizon, 'T4');
   assert.equal(horizon.horizons[4]?.feasibleCount, 0);
   assert.equal(horizon.horizons[4]?.bestStrategy, null);
+  assert.equal(horizon.horizons[4]?.candidates[0]?.contractDte, 44);
+  assert.equal(horizon.horizons[4]?.candidates[0]?.plannedHoldingWindow, null);
+  assert.equal(horizon.horizons[4]?.candidates[0]?.underlying, source.underlying);
   assert.equal(horizon.bestCrossHorizonCandidateId, null);
   assert.equal(horizon.whyThisHorizon, 'CURRENT_SOVEREIGN_POLICY_SELECTION_NOT_CROSS_HORIZON_OPTIMALITY');
   assert.equal(horizon.basis, 'CONTRACT_EXPIRY_NOT_EXPECTED_HOLDING_PERIOD');
@@ -157,6 +160,14 @@ test('incomplete horizon enumeration cannot be called complete and WAIT does not
   assert.equal(receipt.timeHorizonReceipt.enumerationComplete, false);
   assert.equal(receipt.timeHorizonReceipt.currentPolicySelectedHorizon, null);
   assert.equal(receipt.timeHorizonReceipt.whyThisHorizon, 'NO_CURRENT_ENTRY_SELECTION');
+});
+
+test('an absent Q/H/D branch cannot vacuously certify complete horizon enumeration', () => {
+  const receipt = buildAdaptiveShadowDecisionReceipt({ frontier: { ...frontier(), branches: [] },
+    currentDecision: { actionCode: 'GLOBAL_WAIT', selectedCandidateRef: null, quantity: 0, strategyBranch: null } });
+  assert.equal(receipt.timeHorizonReceipt.enumerationComplete, false);
+  assert.equal(receipt.timeHorizonReceipt.missingBranches.length, 3);
+  assert.equal(receipt.timeHorizonReceipt.enumerationScope, 'OBSERVED_FRONTIER_NOT_EXHAUSTIVE_ALL_HORIZONS');
 });
 
 test('a current-policy WAIT is not presented as adaptive agreement without an adaptive policy', () => {

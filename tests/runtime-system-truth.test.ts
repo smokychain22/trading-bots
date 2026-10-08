@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { classifyPaperRuntimeAuthority } from '../src/theta/paper-runtime-authority-truth.js';
 import { deriveDatabaseRuntimeMismatches, deriveRuntimeMismatches, maximumWorkerHeartbeatAgeMs,
   type RuntimeTruthInputs } from '../src/theta/runtime-system-truth.js';
 
@@ -15,14 +16,21 @@ test('current locked release with schema 069 has no mismatch', () => {
 });
 
 test('an ACTIVE Paper gate is healthy only with durable autonomous authority', () => {
+  const paperAuthority = classifyPaperRuntimeAuthority({ now: healthy.observedAt, maximumAgeMs: 300_000,
+    workerSha: healthy.workerSha, workerHeartbeat: healthy.workerHeartbeat, executionGate: 'ACTIVE', evidence: {
+      observedAt: healthy.observedAt, controlChangedAt: healthy.observedAt, authorizationAt: healthy.observedAt,
+      masterEnabled: true, paused: false, followerEnabled: false, ownerPaperOnly: true,
+      autonomousScope: true, canaryAccepted: true, firstCanaryScope: true, liveAuthorized: false,
+      operatorPaused: false, emergencyLock: false,
+    } });
   assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
-    executionGate: 'ACTIVE', autonomousPaperAuthorized: true }), []);
-  for (const autonomousPaperAuthorized of [false, null, undefined]) {
+    executionGate: 'ACTIVE', paperAuthority }), []);
+  for (const paperAuthority of [null, undefined]) {
     assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
-      executionGate: 'ACTIVE', autonomousPaperAuthorized }), ['EXECUTION_GATE_NOT_LOCKED']);
+      executionGate: 'ACTIVE', paperAuthority }), ['EXECUTION_GATE_NOT_LOCKED']);
   }
   assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
-    executionGate: 'UNKNOWN', autonomousPaperAuthorized: true }), ['EXECUTION_GATE_NOT_LOCKED']);
+    executionGate: 'UNKNOWN', paperAuthority }), ['EXECUTION_GATE_NOT_LOCKED']);
 });
 
 test('schema 064 is explicitly incompatible with the current runtime', () => {

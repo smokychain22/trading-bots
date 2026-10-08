@@ -32,12 +32,22 @@ test('short put exposure is real but assignment imminence is not inferred', () =
   assert.equal(result.portfolio.assignmentImminent, null);
   assert.equal(result.origin, 'REAL_PROVIDER_UNKNOWN');
 });
-test('unclassified identity, missing quantity and mixed option exposure cannot become flat', () => {
+test('unclassified identity and missing quantity cannot become flat', () => {
   for (const item of [position({ quantity: null }), position({ assetClass: null }),
-    position({ symbol: 'broken', assetClass: 'us_option' }), position({ side: 'short', quantity: -100 }),
-    position({ symbol: 'SPY261016C00500000', assetClass: 'us_option', side: 'short', quantity: -1 })]) {
+    position({ symbol: 'broken', assetClass: 'us_option' }), position({ side: 'short', quantity: -100 })]) {
     assert.equal(deriveBrokerRouterPortfolio({ ...base, positions: [item] }).portfolio.lifecycleState, 'UNKNOWN');
   }
+});
+
+test('known option exposure permits evaluation without claiming coverage or a management chain', () => {
+  const positions = [position({ symbol: 'SPY261016C00500000', assetClass: 'us_option', side: 'short', quantity: -1 })];
+  const result = deriveBrokerRouterPortfolio({ ...base, positions });
+  assert.equal(result.portfolio.lifecycleState, 'EXPOSURE_PRESENT');
+  assert.equal(result.portfolio.openOptionExists, true);
+  assert.equal(result.portfolio.stockSharesHeld, 0);
+  assert.equal(result.portfolio.assignmentImminent, null);
+  assert.equal(deriveBrokerRouterPortfolio({ ...base, positions,
+    orders: [{ symbol: positions[0]?.symbol } as AlpacaOpenOrderSnapshot] }).portfolio.lifecycleState, 'ORDER_PENDING');
 });
 
 test('unparseable or adjusted open orders cannot prove absence of pending SPY exposure', () => {

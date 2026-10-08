@@ -155,6 +155,12 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   }
   if (url.includes('/v2/stocks/bars')) {
     if (!options.hasBars) return jsonResponse(200, { bars: {}, next_page_token: null });
+    if (new URL(url).searchParams.get('timeframe') === '1Min') {
+      return jsonResponse(200, { bars: { SPY: Array.from({ length: 90 }, (_, i) => ({
+        t: new Date(Date.parse(NOW) - (90 - i) * 60_000).toISOString(),
+        o: 500 + i / 10, h: 501 + i / 10, l: 499 + i / 10, c: 500 + i / 10, v: 100, vw: 500 + i / 10,
+      })) }, next_page_token: null });
+    }
     const bars = Array.from({ length: 65 }, (_, i) => ({ t: new Date(Date.parse(NOW) - (64 - i) * 86_400_000).toISOString(), o: 500 + i * 0.1, h: 501 + i * 0.1, l: 499 + i * 0.1, c: 500.1 + i * 0.1, v: 1_000_000 }));
     return jsonResponse(200, { bars: { SPY: bars }, next_page_token: null });
   }
@@ -241,6 +247,28 @@ itMockedProviderRealCodePath('Production broker router mode overrides manual def
   assert.ok(result.orchestration?.routing?.results.some(row => row.strategyFamily === 'THETA_Q' && row.eligible));
 });
 
+itMockedProviderRealCodePath('current broker put exposure reaches independent entry evaluation through the real Python router', async () => {
+  const regular = mockAlpacaFetch({ hasContracts: true, hasBars: true });
+  const fetchImpl: typeof fetch = (input, init) => String(input).includes('/v2/positions')
+    ? Promise.resolve(jsonResponse(200, [{ symbol: 'SPY261009P00500000', asset_class: 'us_option',
+      qty: '-1', side: 'short', avg_entry_price: '2', market_value: '-200', unrealized_pl: '0' }]))
+    : regular(input, init);
+  const config = baseConfig({ routerPortfolioSource: 'CURRENT_BROKER_READS',
+    alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl } });
+  const result = await runThetaShadowCycle({ ...config,
+    routerPolicy: { ...config.routerPolicy, thetaDGateSatisfied: true } });
+  const state = result.fusionSnapshot?.snapshot.positionState as Record<string, unknown>;
+  assert.equal((state.routerPortfolio as Record<string, unknown>).lifecycleState, 'CSP_OPEN');
+  const routing = result.orchestration?.routing?.results;
+  assert.ok(routing?.some(row => row.strategyFamily === 'THETA_Q' && row.eligible));
+  assert.ok(routing?.some(row => row.strategyFamily === 'THETA_D' && row.eligible));
+  assert.ok(routing?.some(row => row.strategyFamily === 'THETA_R' && row.eligible));
+  assert.ok(routing?.some(row => row.strategyFamily === 'THETA_C' && !row.eligible));
+  assert.ok(result.strategyFrontier?.branches.find(branch => branch.branch === 'THETA_CONVENTIONAL')?.candidates.length);
+  assert.equal(result.orchestration?.receipt.winningAction, 'PASS',
+    'routing eligibility alone must not bypass the fixture economic/funding constraints');
+});
+
 itMockedProviderRealCodePath('Production failed positions read persists unknown router state instead of the default flat account', async () => {
   const regular = mockAlpacaFetch({ hasContracts: true, hasBars: true });
   const fetchImpl: typeof fetch = (input, init) => String(input).includes('/v2/positions')
@@ -289,6 +317,12 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.equal(gapReceipt.state, 'READY');
   assert.equal(gapReceipt.stressGapDetected, false);
   const technical = regimeState.technicalFeatures as Record<string, unknown>;
+  const intraday = technical.intradayStructure as Record<string, unknown>;
+  assert.equal(intraday.version, 'theta-intraday-structure-shadow-v1');
+  assert.equal(intraday.closedMinuteCount, 90);
+  assert.equal(intraday.brokerAuthority, false);
+  assert.deepEqual(result.orchestration?.receipt.intradayStructure, intraday,
+    'snapshot evidence reaches the actual decision receipt for archive persistence');
   const technicalValues = technical.values as Record<string, unknown>;
   assert.equal(technical.contractVersion, 'theta-underlying-technical-features-v1');
   assert.equal(technical.provider, 'ALPACA');

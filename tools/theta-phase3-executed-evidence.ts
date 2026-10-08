@@ -18,7 +18,7 @@ const hashes = capture();
 const environment = { ...process.env };
 for (const key of Object.keys(environment)) if (/TEST.*DATABASE|DATABASE.*TEST/.test(key)) delete environment[key];
 if (files.some(file => !/^tests\/[a-z0-9-]+\.test\.ts$/.test(file))) throw new Error('OFFLINE_TEST_FILE_REQUIRED');
-const child = spawnSync(process.execPath, ['--import', 'tsx', '--test',
+const child = spawnSync(process.execPath, ['--import', 'tsx', '--test', '--test-concurrency=2',
   '--test-reporter=./tools/theta-test-evidence-reporter.mjs', ...files],
 { encoding: 'utf8', env: environment, timeout: 240_000, maxBuffer: 16 * 1024 * 1024 });
 const events: ExecutedTestEvent[] = child.stdout.split(/\r?\n/).filter(line => line.startsWith('{')).map(line => JSON.parse(line));

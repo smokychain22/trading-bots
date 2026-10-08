@@ -57,11 +57,36 @@ class LifecycleRoutingTests(unittest.TestCase):
         self.assertTrue(by_family[StrategyFamily.THETA_Q].eligible)
         self.assertFalse(by_family[StrategyFamily.THETA_R].eligible)
 
-    def test_csp_open_makes_theta_r_eligible_and_theta_q_ineligible(self):
-        results = route_strategies(_policy(), _portfolio(lifecycle_state=LifecycleState.CSP_OPEN), _market())
+    def test_existing_put_does_not_suppress_independent_entry_proposals(self):
+        results = route_strategies(_policy(theta_d_gate_satisfied=True),
+            _portfolio(lifecycle_state=LifecycleState.CSP_OPEN, open_option_exists=True, assignment_imminent=None), _market())
         by_family = {r.strategy_family: r for r in results}
         self.assertTrue(by_family[StrategyFamily.THETA_R].eligible)
-        self.assertFalse(by_family[StrategyFamily.THETA_Q].eligible)
+        for family in (StrategyFamily.THETA_Q, StrategyFamily.THETA_H, StrategyFamily.THETA_D):
+            self.assertTrue(by_family[family].eligible)
+
+    def test_stable_inventory_is_not_a_funding_decision(self):
+        for state in (LifecycleState.STOCK_HELD, LifecycleState.RECOVERY, LifecycleState.CC_OPEN, LifecycleState.EXPOSURE_PRESENT):
+            with self.subTest(state=state):
+                results = route_strategies(_policy(theta_d_gate_satisfied=True),
+                    _portfolio(lifecycle_state=state, stock_shares_held=100, open_option_exists=True), _market())
+                self.assertTrue(all(r.eligible for r in results if r.strategy_family in
+                    (StrategyFamily.THETA_Q, StrategyFamily.THETA_H, StrategyFamily.THETA_D)))
+
+    def test_unsettled_execution_and_assignment_risk_still_block_entries(self):
+        for state in (LifecycleState.ORDER_PENDING, LifecycleState.ROLL_PENDING,
+                      LifecycleState.UNKNOWN_SUBMISSION, LifecycleState.ASSIGNMENT_RISK):
+            with self.subTest(state=state):
+                results = route_strategies(_policy(theta_d_gate_satisfied=True), _portfolio(lifecycle_state=state), _market())
+                entries = [r for r in results if r.strategy_family in
+                    (StrategyFamily.THETA_Q, StrategyFamily.THETA_H, StrategyFamily.THETA_D)]
+                self.assertTrue(all(not r.eligible and r.reasons[0].code == 'UNSETTLED_ENTRY_STATE' for r in entries))
+
+    def test_known_imminent_assignment_still_blocks_new_risk(self):
+        results = route_strategies(_policy(theta_d_gate_satisfied=True),
+            _portfolio(lifecycle_state=LifecycleState.CSP_OPEN, open_option_exists=True, assignment_imminent=True), _market())
+        self.assertTrue(all(not r.eligible for r in results if r.strategy_family in
+            (StrategyFamily.THETA_Q, StrategyFamily.THETA_H, StrategyFamily.THETA_D)))
 
     def test_stock_held_makes_theta_a_and_theta_c_eligible(self):
         results = route_strategies(

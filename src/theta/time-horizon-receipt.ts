@@ -1,6 +1,6 @@
 import type { CanonicalStrategyFrontier, CanonicalFrontierCandidate } from './canonical-strategy-frontier.js';
 
-export const timeHorizonReceiptVersion = 'theta-time-horizon-shadow-v1' as const;
+export const timeHorizonReceiptVersion = 'theta-time-horizon-shadow-v2' as const;
 export type TimeHorizonCode = 'T0' | 'T1' | 'T2' | 'T3' | 'T4' | 'T5';
 const CODES: readonly TimeHorizonCode[] = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5'];
 const ENTRY_BRANCHES = new Set(['THETA_CONVENTIONAL', 'THETA_HOLD_STRIKE', 'THETA_DEFINED_RISK']);
@@ -14,8 +14,12 @@ export function expiryHorizon(dte: number | null): TimeHorizonCode | null {
 
 export interface TimeHorizonCandidateReference {
   readonly candidateId: string;
+  readonly underlying: string;
   readonly strategy: CanonicalFrontierCandidate['branch'];
   readonly dte: number;
+  readonly contractDte: number;
+  readonly plannedHoldingWindow: null;
+  readonly holdingWindowState: 'NOT_MODELED_BY_CONTRACT_EXPIRY';
   readonly riskFeasible: boolean;
   readonly quantity: number;
   readonly hardBlockers: readonly string[];
@@ -37,6 +41,8 @@ export interface TimeHorizonReceipt {
   }[];
   readonly unknownDteCandidateIds: readonly string[];
   readonly enumerationComplete: boolean;
+  readonly enumerationScope: 'OBSERVED_FRONTIER_NOT_EXHAUSTIVE_ALL_HORIZONS';
+  readonly missingBranches: readonly string[];
   readonly bestCrossHorizonCandidateId: null;
   readonly crossHorizonReason: 'EMPIRICAL_CROSS_HORIZON_UTILITY_NOT_READY';
   readonly currentPolicySelectedHorizon: TimeHorizonCode | null;
@@ -50,12 +56,14 @@ export function buildTimeHorizonReceipt(frontier: Pick<CanonicalStrategyFrontier
   'snapshotId' | 'timestamp' | 'branches' | 'selectedCandidateId'>): TimeHorizonReceipt {
   const branches = frontier.branches.filter((branch) => ENTRY_BRANCHES.has(branch.branch));
   const candidates = branches.flatMap((branch) => branch.candidates);
+  const missingBranches = [...ENTRY_BRANCHES].filter(name => !branches.some(b => b.branch === name)).sort();
   const unknownDteCandidateIds = candidates.filter((candidate) => expiryHorizon(candidate.dte) === null)
     .map((candidate) => candidate.candidateId).sort();
   const horizons = CODES.map((code) => {
     const references = candidates.filter((candidate) => expiryHorizon(candidate.dte) === code)
       .map((candidate): TimeHorizonCandidateReference => ({
-        candidateId: candidate.candidateId, strategy: candidate.branch, dte: candidate.dte as number,
+        candidateId: candidate.candidateId, underlying: candidate.underlying, strategy: candidate.branch, dte: candidate.dte as number,
+        contractDte: candidate.dte as number, plannedHoldingWindow: null, holdingWindowState: 'NOT_MODELED_BY_CONTRACT_EXPIRY',
         riskFeasible: candidate.riskFeasible, quantity: candidate.sizing.quantity,
         hardBlockers: [...candidate.hardBlockers].sort(),
       })).sort((left, right) => left.candidateId.localeCompare(right.candidateId));
@@ -71,8 +79,11 @@ export function buildTimeHorizonReceipt(frontier: Pick<CanonicalStrategyFrontier
   return {
     version: timeHorizonReceiptVersion, snapshotId: frontier.snapshotId, observedAt: frontier.timestamp,
     basis: 'CONTRACT_EXPIRY_NOT_EXPECTED_HOLDING_PERIOD', horizons, unknownDteCandidateIds,
-    enumerationComplete: branches.filter((branch) => branch.applicable)
-      .every((branch) => branch.evaluated && !branch.enumerationTruncated),
+    enumerationScope: 'OBSERVED_FRONTIER_NOT_EXHAUSTIVE_ALL_HORIZONS', missingBranches,
+    enumerationComplete: missingBranches.length === 0 && branches.length === ENTRY_BRANCHES.size
+      && branches.every((branch) => branch.applicable
+        ? branch.evaluated && branch.evaluationState === 'EVALUATED' && !branch.enumerationTruncated
+        : branch.evaluationState === 'NOT_APPLICABLE'),
     bestCrossHorizonCandidateId: null, crossHorizonReason: 'EMPIRICAL_CROSS_HORIZON_UTILITY_NOT_READY',
     currentPolicySelectedHorizon: selectedHorizon,
     whyThisHorizon: frontier.selectedCandidateId === null ? 'NO_CURRENT_ENTRY_SELECTION'

@@ -7,7 +7,7 @@
 
 export const marketRegimeVersion = 'theta-market-regime-research-v0' as const;
 
-export interface DailyBar { readonly date: string; readonly open: number; readonly high: number; readonly low: number; readonly close: number; readonly volume: number }
+export interface DailyBar { readonly date: string; readonly open: number; readonly high: number; readonly low: number; readonly close: number; readonly volume: number | null }
 
 export type Provenance = 'COMPUTED_FROM_DAILY_BARS' | 'SUPPLIED_PROVIDER_EVIDENCE' | 'IMPLEMENTATION_INFERENCE';
 export type Field<T> = { readonly state: 'KNOWN'; readonly value: T; readonly provenance: Provenance; readonly basis: string }
@@ -130,6 +130,16 @@ const opt = (value: number | null | undefined, basis: string): Field<number> =>
 
 /** Builds the receipt from bars that END at the decision instant (callers must never pass future bars). */
 export function buildMarketRegimeReceipt(bars: readonly DailyBar[], extra: OptionalRegimeEvidence = {}): MarketRegimeReceipt {
+  for (let i = 0; i < bars.length; i++) {
+    const b = bars[i] as DailyBar;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(b.date) || !Number.isFinite(Date.parse(b.date))
+      || new Date(b.date).toISOString().slice(0, 10) !== b.date
+      || ![b.open, b.high, b.low, b.close].every(v => Number.isFinite(v) && v > 0)
+      || b.high < Math.max(b.open, b.close, b.low) || b.low > Math.min(b.open, b.close)
+      || (b.volume !== null && (!Number.isFinite(b.volume) || b.volume < 0)))
+      throw new Error('MARKET_REGIME_BAR_INVALID');
+    if (i > 0 && (bars[i - 1] as DailyBar).date >= b.date) throw new Error('MARKET_REGIME_BAR_ORDER_INVALID');
+  }
   const P = regimeResearchParameters;
   const last = bars.at(-1);
   const closes = bars.map((b) => b.close);
@@ -162,7 +172,8 @@ export function buildMarketRegimeReceipt(bars: readonly DailyBar[], extra: Optio
     const r = logReturns(closes.slice(-41)); const a = r.slice(0, -1); const b = r.slice(1); const ma = mean(a); const mb = mean(b);
     const num = a.reduce((s, x, i) => s + (x - ma) * ((b[i] as number) - mb), 0);
     const den = Math.sqrt(a.reduce((s, x) => s + (x - ma) ** 2, 0) * b.reduce((s, x) => s + (x - mb) ** 2, 0));
-    ac = k(den === 0 ? 0 : num / den, 'COMPUTED_FROM_DAILY_BARS', 'LAG1_AUTOCORR_40D');
+    ac = den === 0 ? u('ZERO_VARIANCE_AUTOCORRELATION_UNDEFINED')
+      : k(num / den, 'COMPUTED_FROM_DAILY_BARS', 'LAG1_AUTOCORR_40D');
   }
   const levels = last === undefined ? u<readonly SupportResistanceLevel[]>('NO_BARS')
     : k<readonly SupportResistanceLevel[]>(supportResistance(bars, atrV), 'COMPUTED_FROM_DAILY_BARS', 'SWING_FRACTALS_CLUSTERED_BY_HALF_ATR');
@@ -181,7 +192,7 @@ export function buildMarketRegimeReceipt(bars: readonly DailyBar[], extra: Optio
     ratio >= P.movementRatio.breakout || (brokeRange && ratio >= P.movementRatio.fast) ? 'BREAKOUT'
       : ratio >= P.movementRatio.fast ? 'FAST' : ratio < P.movementRatio.compressed ? 'COMPRESSED' : ratio < P.movementRatio.slow ? 'SLOW' : 'NORMAL',
     'IMPLEMENTATION_INFERENCE', 'RV5_OVER_RV20_BANDS_PLUS_20D_RANGE_BREAK');
-  const ivChange = extra.ivChange5d ?? null;
+  const ivChange = typeof extra.ivChange5d === 'number' && Number.isFinite(extra.ivChange5d) ? extra.ivChange5d : null;
   const pct = val(rvPct);
   const volatility: Field<VolatilityState> = ratio === null && pct === null ? u('VOLATILITY_EVIDENCE_UNKNOWN') : k<VolatilityState>(
     (ratio !== null && ratio >= P.volChangeRatio.expanding) || (ivChange !== null && ivChange > 0.03) ? 'EXPANDING'
@@ -190,6 +201,7 @@ export function buildMarketRegimeReceipt(bars: readonly DailyBar[], extra: Optio
     'IMPLEMENTATION_INFERENCE', 'RV_RATIO_IV_CHANGE_RV_PERCENTILE');
   const eventIn = extra.eventInDays;
   const event = eventIn === undefined || eventIn === null ? u<'EVENT_IN_WINDOW' | 'NO_KNOWN_EVENT_IN_WINDOW'>('EVENT_CALENDAR_NOT_SUPPLIED')
+    : !Number.isFinite(eventIn) || eventIn < 0 ? u<'EVENT_IN_WINDOW' | 'NO_KNOWN_EVENT_IN_WINDOW'>('EVENT_DISTANCE_INVALID')
     : k(eventIn <= P.eventWindowDays ? 'EVENT_IN_WINDOW' as const : 'NO_KNOWN_EVENT_IN_WINDOW' as const, 'SUPPLIED_PROVIDER_EVIDENCE', `EVENT_WITHIN_${P.eventWindowDays}D`);
   const lv = val(levels) ?? [];
   const nearSup = lv.find((l) => l.kind === 'SUPPORT'); const nearRes = lv.find((l) => l.kind === 'RESISTANCE');

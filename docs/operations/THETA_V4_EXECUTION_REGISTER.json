@@ -1,0 +1,70 @@
+{
+  "version": "theta-v4-execution-register-v1",
+  "directive": "THETA_CODEX_V4_SIX_PHASE_ENGINEERING_PROFITABILITY_DIRECTIVE_2026-10-08",
+  "observedDate": "2026-10-08",
+  "integrationBranch": "codex/theta-v4-integration",
+  "baseMain": "bc7ffbd5c87595040d69ce165dbcded52885b893",
+  "inheritedSourceHead": "221eda2b0ce01e0394dbc4032748bbb77afbba27",
+  "runtimeTruthCherryPick": "324f3a68ed62ae586973e8b6a6c710638176ee5b",
+  "runtimeChangedByThisWave": false,
+  "brokerMutationsByThisWave": 0,
+  "liveMoneyAuthorized": false,
+  "profitability": "EMPIRICALLY_UNPROVEN",
+  "completionRule": "These are V4 phases, not the earlier similarly numbered closure registers. Executed source tests do not confer current-worker, empirical, or broker-authorized maturity.",
+  "phases": [
+    {
+      "phase": 1,
+      "state": "IN_PROGRESS",
+      "implementedThisWave": ["Six-state read-only Paper authority classifier with current worker binding", "Canonical management frontier timestamp in runtime truth", "Malformed broker/fill/count/timestamp rejection in restricted orphan recovery"],
+      "source": ["src/theta/paper-runtime-authority-truth.ts", "tools/theta-runtime-truth.ts", "src/execution/broker-orphan-position-recovery.ts"],
+      "tests": ["tests/paper-runtime-authority-truth.test.ts", "tests/runtime-system-truth.test.ts", "tests/broker-orphan-position-recovery.test.ts"],
+      "runtimeEvidence": "Existing worker health and authenticated Paper GETs observed. Direct local database query returned EAI_AGAIN. No new schema, lease, lineage or risk-reducing-close proof is inferred from that failure.",
+      "remaining": ["Fresh database-backed schema, authorization and position-to-chain lineage proof", "Current managed position close-route evidence", "Governed release acceptance of the integrated source"]
+    },
+    {
+      "phase": 2,
+      "state": "IN_PROGRESS",
+      "implementedThisWave": ["Bounded optional Alpaca IEX minute-bar producer", "Closed-bar EMA9/VWAP with request-time finality", "1/5/15/60 minute aggregation and gap-aware warmup", "Snapshot and actual decision-receipt wiring", "Daily malformed and future-session bar boundary", "T0-T5 missing-branch and holding-window truth"],
+      "source": ["src/theta/strategy-intelligence/intraday-structure.ts", "src/theta/strategy-intelligence/market-regime.ts", "src/theta/theta-shadow-cycle.ts", "src/theta/new-risk-orchestrator.ts", "src/theta/time-horizon-receipt.ts"],
+      "tests": ["tests/intraday-structure.test.ts", "tests/strategy-intelligence-regime.test.ts", "tests/theta-shadow-cycle.test.ts", "tests/adaptive-decision-brain.test.ts"],
+      "runtimeEvidence": "Mocked provider data exercised the real Python and TypeScript decision path. New intraday evidence is shadow context and has not run on the deployed worker.",
+      "remaining": ["Multi-session hourly warmup, since a single regular session cannot supply nine hourly bars", "Qualified VIX/current option-surface context and full snapshot coverage", "Strategy-specific planned holding windows and horizon utility", "Current-release natural session persistence proof"]
+    },
+    {
+      "phase": 3,
+      "state": "IN_PROGRESS",
+      "implementedThisWave": ["Stable, consistent broker exposure no longer suppresses every Q/H/D proposal", "Pending/ambiguous execution and known assignment risk still exclude new-risk enumeration", "Mixed known option legs are exposure, without inventing covered-call or spread lineage", "Router eligibility remains separate from economics, sizing and release-bound broker authority"],
+      "source": ["src/theta/broker-router-portfolio.ts", "bots/theta/quant/models/strategy_router.py", "src/theta/canonical-strategy-frontier.ts"],
+      "tests": ["tests/broker-router-portfolio.test.ts", "tests/new-risk-orchestrator.test.ts", "tests/theta-shadow-cycle.test.ts", "bots/theta/tests/quant/test_strategy_router.py", "bots/theta/tests/quant/test_phase2_hdac_router_h.py"],
+      "runtimeEvidence": "Deterministic cross-language tests only. No new Q/H/D release authority was granted.",
+      "remaining": ["Complete V4 five-strategy proposal and explanation matrix", "Candidate-bound management plans for each eligible branch", "Natural current-release independent branch evaluation"]
+    },
+    {
+      "phase": 4,
+      "state": "IN_PROGRESS",
+      "implementedThisWave": [],
+      "source": ["src/theta/capital-budget-evidence.ts", "src/theta/canonical-strategy-frontier.ts", "src/execution/paper-order-coordinator.ts"],
+      "tests": ["tests/canonical-strategy-frontier.test.ts"],
+      "runtimeEvidence": "No new allocator certification. Existing capital evidence explicitly does not claim to be a portfolio allocator.",
+      "remaining": ["Trace complete current account envelope and outstanding commitments", "Prove or implement atomic cross-strategy reservations and ambiguity release rules", "Concurrent proposal and aggregate exposure acceptance"]
+    },
+    {
+      "phase": 5,
+      "state": "IN_PROGRESS",
+      "implementedThisWave": ["Restricted orphan recovery boundary hardened without granting new authority"],
+      "source": ["src/theta/paper-bootstrap-management-policy.ts", "src/theta/entry-thesis-receipt.ts", "src/theta/management-action-frontier.ts", "src/execution/management-order-repricing.ts"],
+      "tests": ["tests/paper-bootstrap-management-policy.test.ts", "tests/management-whole-chain-wiring.test.ts", "tests/entry-thesis-receipt.test.ts", "tests/broker-orphan-position-recovery.test.ts"],
+      "runtimeEvidence": "Existing managed Paper position observed through GET only. No management action submitted or claimed in this wave.",
+      "remaining": ["Reconcile V4 ManagementContract requirements with existing entry thesis and canonical management inputs", "Five-strategy early-close and ambiguity lifecycle matrix", "Real current-position risk-reducing route proof"]
+    },
+    {
+      "phase": 6,
+      "state": "IN_PROGRESS",
+      "implementedThisWave": ["Review-branch source tests and bounded certification reruns"],
+      "source": ["src/research/whole-chain-outcome-builder.ts", "src/research/r8-performance-analytics.ts", "src/theta/whole-chain-economics.ts"],
+      "tests": ["tests/whole-chain-outcome-builder.test.ts", "tests/r8-performance-analytics.test.ts", "tests/whole-chain-properties.test.ts"],
+      "runtimeEvidence": "No empirical promotion. Existing research code and synthetic tests are not real profitability evidence.",
+      "remaining": ["Complete V4 requirement-to-executed-evidence coverage", "Exact-SHA integration CI and governed release review", "Real resolved Paper episodes, realistic costs and OOS evaluation", "Verified client daily report attribution"]
+    }
+  ]
+}

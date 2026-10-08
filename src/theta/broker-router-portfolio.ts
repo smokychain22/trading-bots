@@ -16,7 +16,7 @@ export function deriveBrokerRouterPortfolio(input: {
     portfolio: { lifecycleState: 'UNKNOWN', stockSharesHeld: null,
       openOptionExists: null, assignmentImminent: null },
     origin: 'REAL_PROVIDER_UNKNOWN' as const, reason, observedAt: input.observedAt,
-    version: 'broker-router-portfolio-v1',
+    version: 'broker-router-portfolio-v2',
   });
   if (!input.accountReady || !input.positionsReady || !input.ordersReady)
     return unknown('BROKER_PORTFOLIO_EVIDENCE_UNAVAILABLE');
@@ -40,16 +40,16 @@ export function deriveBrokerRouterPortfolio(input: {
     || parseOccOptionSymbol(o.symbol as string)?.underlying === input.underlying);
   const shortPuts = options.length > 0 && options.every(p => p.side === 'short'
     && parseOccOptionSymbol(p.symbol)?.optionType === 'PUT');
-  // Deliverable coverage cannot be proved from position symbol/quantity alone.
-  // Keep mixed/covered option lifecycle in the canonical management path.
-  if (options.length > 0 && !shortPuts) return unknown('CANONICAL_OPTION_LIFECYCLE_REQUIRED');
+  // Exact broker exposure is enough for candidate evaluation, not to infer a
+  // covered call or spread lifecycle. Management still uses canonical chains.
   return {
     portfolio: { lifecycleState: pending ? 'ORDER_PENDING' : shortPuts ? 'CSP_OPEN'
+      : options.length > 0 ? 'EXPOSURE_PRESENT'
       : shares > 0 ? 'STOCK_HELD' : 'CASH_AVAILABLE',
     stockSharesHeld: shares, openOptionExists: options.length > 0,
     assignmentImminent: options.length === 0 ? false : null },
     origin: options.length === 0 ? 'DERIVED_FROM_REAL' as const : 'REAL_PROVIDER_UNKNOWN' as const,
     reason: options.length === 0 ? 'BROKER_POSITION_AND_ORDER_READ_COMPLETE' : 'ASSIGNMENT_IMMINENCE_REQUIRES_MANAGEMENT_EVIDENCE',
-    observedAt: input.observedAt, version: 'broker-router-portfolio-v1',
+    observedAt: input.observedAt, version: 'broker-router-portfolio-v2',
   };
 }

@@ -74,6 +74,7 @@ import { wholeContractsAffordable } from './secured-contract-capacity.js';
 import { buildCycleQEntryFunnelSummary, type QEntryFunnelSummary } from './q-entry-funnel.js';
 import { buildQEconomicFunnelReceipt, type QEconomicFunnelReceipt } from './q-economic-funnel.js';
 import { buildMarketRegimeReceipt, type MarketRegimeReceipt } from './strategy-intelligence/market-regime.js';
+import { observeIntradayStructure } from './strategy-intelligence/intraday-structure.js';
 
 /** Distinguish unshortlisted chain contracts from missing Q finalist responses. */
 export function completeConventionalFrontierEvaluationCoverage(
@@ -1048,6 +1049,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const latestHistoryReceipt = [...historyBars]
     .filter((bar) => Number.isFinite(Date.parse(bar.receivedAt)))
     .toSorted((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt))[0] ?? null;
+  const intradayCalendar = calendar.find(session => session.date === marketDate);
+  const intradayStructure = await observeIntradayStructure({ alpaca: config.alpaca, underlying,
+    requestedAt: config.now(), now: config.now, calendarDate: intradayCalendar?.date,
+    marketOpen: clockEvidence.quality === 'GOOD' && clock?.isOpen === true,
+    sessionOpen: intradayCalendar?.open ?? null, sessionClose: intradayCalendar?.close ?? null });
   const technicalFeatureState: JsonValue = {
     contractVersion: 'theta-underlying-technical-features-v1',
     provider: 'ALPACA',
@@ -1062,6 +1068,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     barCount: historyBars.filter(bar => bar.timestamp.slice(0, 10) < marketDate).length,
     observedBarCount: historyBars.length,
     completedBarPolicy: 'PRIOR_SESSION_DAILY_BARS_ONLY',
+    intradayStructure: intradayStructure as unknown as JsonValue,
     values: {
       return1d: ret1d, return5d: ret5d, return20d: ret20d, return60d: ret60d,
       movingAverageRelative20d: ma20Rel, movingAverageRelative50d: ma50Rel,
@@ -2250,12 +2257,13 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   });
 
   try {
-    const completed = historyBars.filter((bar) => bar.timestamp.slice(0, 10) < decisionTime.slice(0, 10))
-      .map((bar) => ({ date: bar.timestamp.slice(0, 10), open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume ?? 0 }));
+    const completed = historyBars.filter((bar) => bar.timestamp.slice(0, 10) < marketDate)
+      .map((bar) => ({ date: bar.timestamp.slice(0, 10), open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume }));
     const atmIv = qEconomicFunnel !== null && 'scenarioVolatility' in qEconomicFunnel ? qEconomicFunnel.scenarioVolatility : null;
     marketRegime = completed.length === 0 ? null : buildMarketRegimeReceipt(completed, { iv: atmIv, eventInDays: null });
   } catch (error) {
-    marketRegime = { state: 'FAILED', reasonCode: `MARKET_REGIME_FAILED:${error instanceof Error ? error.constructor.name : 'UnknownThrowValue'}` };
+    marketRegime = { state: 'FAILED', reasonCode: error instanceof Error && /^MARKET_REGIME_[A-Z_]+$/.test(error.message)
+      ? error.message : `MARKET_REGIME_FAILED:${error instanceof Error ? error.constructor.name : 'UnknownThrowValue'}` };
   }
   const orchestrationStartedAt = Date.now();
   traceShadowStage(underlying, 'ORCHESTRATION_STARTED', { candidates: runtimeCandidates.length });
@@ -2275,6 +2283,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     policyVersion: config.policyVersion, modelVersions: config.modelVersions, requiredModelVersions: config.requiredModelVersions,
     ...(qEconomicFunnel === null ? {} : { qEconomicFunnel }),
     ...(marketRegime === null ? {} : { marketRegime }),
+    intradayStructure,
     ownershipPolicy: config.ownershipPolicy,
     ownershipInputs: {
       stockAvgVolume, optionOpenInterest: null, optionVolume: null, spreadPct: null,

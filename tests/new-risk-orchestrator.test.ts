@@ -670,15 +670,25 @@ itMockedProviderRealCodePath('CASH_AVAILABLE + acceptable ownership routes THETA
   assert.equal(thetaQ?.eligible, true);
 });
 
-itMockedProviderRealCodePath('an already-open CSP lifecycle routes THETA_Q ineligible and produces zero evaluated candidates', async () => {
+itMockedProviderRealCodePath('an already-open CSP lifecycle independently evaluates Q through candidate-bound AEGIS', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     routerPortfolio: { lifecycleState: 'CSP_OPEN', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: false },
   }));
   const thetaQ = result.routing?.results.find((r) => r.strategyFamily === 'THETA_Q');
-  assert.equal(thetaQ?.eligible, false);
+  assert.equal(thetaQ?.eligible, true);
+  assert.ok(result.thetaQ?.candidates.length);
+  assert.ok(result.aegis);
+  assert.ok(result.receipt.alternatives.length);
+  assert.equal(result.shadowOpportunities.some((e) => e.rejectionCategory === 'THETA_Q_INELIGIBLE'), false);
+});
+
+itMockedProviderRealCodePath('an unsettled order still excludes new entry evaluation', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    routerPortfolio: { lifecycleState: 'ORDER_PENDING', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: null },
+  }));
+  assert.equal(result.routing?.results.find(r => r.strategyFamily === 'THETA_Q')?.eligible, false);
   assert.equal(result.receipt.alternatives.length, 0);
-  assert.equal(result.receipt.winningAction, 'PASS');
-  assert.equal(result.shadowOpportunities.some((e) => e.rejectionCategory === 'THETA_Q_INELIGIBLE'), true);
+  assert.equal(result.receipt.quantity, 0);
 });
 
 itMockedProviderRealCodePath('an unknown model family in the allowlist fails the whole decision closed at that stage', async () => {

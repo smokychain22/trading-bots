@@ -149,6 +149,22 @@ test('(d) symbol / side / quantity / lineage mismatches refuse with typed codes'
   assert.equal(reason(position({ reconciliationQuality: 'DEGRADED' }), [lineage()]), 'ORPHAN_BROKER_EVIDENCE_NOT_GOOD');
 });
 
+test('malformed broker price, fills and lifecycle counts cannot manufacture orphan ownership', () => {
+  for (const averageEntryPricePerShare of [NaN, Infinity, -1, 0])
+    assert.equal(classifyBrokerConfirmedOrphan(position({ averageEntryPricePerShare }), [lineage()]).state, 'REFUSED');
+  for (const pricePerShare of [NaN, Infinity, -1, 0])
+    assert.equal(classifyBrokerConfirmedOrphan(position(), [lineage({ fills: [{ quantity: 1, pricePerShare, occurredAt: NOW }] })]).state, 'REFUSED');
+  for (const occurredAt of ['bad', '2026-10-08T00:00:00Z'])
+    assert.equal(classifyBrokerConfirmedOrphan(position(), [lineage({ fills: [{ quantity: 1, pricePerShare: 0.28, occurredAt }] })]).state, 'REFUSED');
+  for (const count of [NaN, -1, 0.5]) {
+    assert.equal(classifyBrokerConfirmedOrphan(position(), [lineage({ openOptionLegCount: count })]).state, 'REFUSED');
+    assert.equal(classifyBrokerConfirmedOrphan(position(), [lineage({ nonTerminalChainOrders: count })]).state, 'REFUSED');
+  }
+  assert.equal(classifyBrokerConfirmedOrphan(position(), [lineage({ fills: [
+    { quantity: 0.5, pricePerShare: 0.28, occurredAt: NOW }, { quantity: 0.5, pricePerShare: 0.28, occurredAt: NOW },
+  ] })]).state, 'REFUSED');
+});
+
 test('persisted enum casing for SELL_TO_OPEN is accepted without weakening side semantics', () => {
   const classified = classifyBrokerConfirmedOrphan(position(), [lineage({}, { side: 'sell', positionIntent: 'SELL_TO_OPEN' })]);
   assert.equal(classified.state, 'ORPHAN_CONFIRMED');

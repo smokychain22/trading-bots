@@ -43,6 +43,7 @@ class LifecycleState(str, Enum):
     STOCK_HELD = "STOCK_HELD"
     RECOVERY = "RECOVERY"
     CC_OPEN = "CC_OPEN"
+    EXPOSURE_PRESENT = "EXPOSURE_PRESENT"  # broker-known legs, no invented chain/deliverable coverage
     ROLL_PENDING = "ROLL_PENDING"
     ORDER_PENDING = "ORDER_PENDING"
     UNKNOWN_SUBMISSION = "UNKNOWN_SUBMISSION"
@@ -214,13 +215,28 @@ def route_strategies(
         results.append(_ineligible(StrategyFamily.THETA_C, EligibilityState.INELIGIBLE_STRUCTURE,
                                     "NO_CONFIRMED_STOCK", "Covered calls require confirmed owned shares.", policy))
 
-    # THETA-Q / THETA-H: only relevant to fresh entries -- i.e. cash
-    # available and no conflicting existing exposure on this chain.
-    entry_relevant = lifecycle == LifecycleState.CASH_AVAILABLE and not portfolio.open_option_exists and portfolio.stock_shares_held == 0
+    # Candidate evaluation is independent of existing stable exposure. Actual
+    # funding, concentration, reservations, and release-bound Paper authority
+    # remain downstream requirements. Inventory must not suppress every new
+    # proposal before those requirements can be measured. Pending/ambiguous
+    # execution and known assignment risk still block new-risk enumeration.
+    consistent_inventory = (
+        (lifecycle != LifecycleState.CASH_AVAILABLE or
+         (portfolio.open_option_exists is False and portfolio.stock_shares_held == 0))
+        and (lifecycle not in (LifecycleState.STOCK_HELD, LifecycleState.RECOVERY, LifecycleState.CC_OPEN)
+             or stock_confirmed)
+        and (lifecycle not in (LifecycleState.CSP_OPEN, LifecycleState.CC_OPEN, LifecycleState.EXPOSURE_PRESENT)
+             or portfolio.open_option_exists is True)
+    )
+    entry_relevant = consistent_inventory and lifecycle in (
+        LifecycleState.CASH_AVAILABLE, LifecycleState.CSP_OPEN,
+        LifecycleState.STOCK_HELD, LifecycleState.RECOVERY,
+        LifecycleState.CC_OPEN, LifecycleState.EXPOSURE_PRESENT,
+    ) and portfolio.assignment_imminent is not True
     if not entry_relevant:
         for family in (StrategyFamily.THETA_Q, StrategyFamily.THETA_H, StrategyFamily.THETA_D):
             results.append(_ineligible(family, EligibilityState.INELIGIBLE_STATE,
-                                        "NOT_A_FRESH_ENTRY_STATE", f"lifecycle_state={lifecycle.value}", policy))
+                                        "UNSETTLED_ENTRY_STATE", f"lifecycle_state={lifecycle.value}; assignment_imminent={portfolio.assignment_imminent}", policy))
     else:
         if market.ownership_acceptable is None:
             # Unknown ownership is soft evidence for the conventional

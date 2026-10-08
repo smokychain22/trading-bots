@@ -6,6 +6,9 @@ import { deriveDatabaseRuntimeMismatches,
   deriveRuntimeMismatches } from '../src/theta/runtime-system-truth.js';
 import { canonicalSystemTruthRegister } from '../src/theta/canonical-system-truth.js';
 import { assessRuntimeSchemaCompatibility } from '../src/theta/runtime-schema-compatibility.js';
+import { classifyPaperRuntimeAuthority, readPaperRuntimeAuthorityEvidence,
+  type PaperRuntimeAuthorityEvidence } from '../src/theta/paper-runtime-authority-truth.js';
+import { maximumWorkerHeartbeatAgeMs } from '../src/theta/runtime-system-truth.js';
 
 const observedAt = new Date().toISOString();
 const sourceGitOptions = { encoding: 'utf8' as const, maxBuffer: 1024 * 1024,
@@ -64,7 +67,7 @@ let workerSha: string | null = null;
 let workerHeartbeat: string | null = null;
 let workerMode: string | null = null;
 let executionGate: string | null = null;
-let autonomousPaperAuthorized: boolean | null = null;
+let paperAuthorityEvidence: PaperRuntimeAuthorityEvidence | null = null;
 let workerState: string | null = null;
 let workerProviderHealth: { alpaca: string; optionomics: string; database: string } | null = null;
 let latestReconciliation: { at: string | null; dataQuality: string | null;
@@ -116,15 +119,7 @@ if (pool) {
         optionomics: String(row.optionomics_health), database: String(row.database_health) };
     }
     databaseEvidenceStage = 'PAPER_EXECUTION_AUTHORITY';
-    const paperAuthority = await pool.query(`SELECT pec.pause_new_orders,pec.master_execution_enabled,
-      pec.follower_execution_enabled,pec.authorization_event_id IS NOT NULL AS authorization_present,
-      EXISTS(SELECT 1 FROM copy.operator_audit_event
-        WHERE action='ACTIVATE_AUTONOMOUS_MASTER_PAPER' AND result='ACCEPTED') AS canary_accepted
-      FROM ops.paper_execution_control pec WHERE pec.singleton=true`);
-    const control = paperAuthority.rows[0];
-    autonomousPaperAuthorized = control ? control.pause_new_orders === false
-      && control.master_execution_enabled === true && control.follower_execution_enabled === false
-      && control.authorization_present === true && control.canary_accepted === true : false;
+    paperAuthorityEvidence = await readPaperRuntimeAuthorityEvidence(pool);
     databaseEvidenceStage = 'BROKER_RECONCILIATION';
     const rec = await pool.query(`SELECT observed_at,data_quality,position_count,open_order_count,
       detail_json #>> '{brokerFactImpactSummary,entryBlockingFactCount}' AS blocking_facts
@@ -139,7 +134,7 @@ if (pool) {
       (SELECT max(decision_time) FROM trade.fusion_snapshot) AS evidence,
       (SELECT max(generated_at) FROM trade.candidate_set) AS candidate,
       (SELECT max(decided_at) FROM trade.decision WHERE aegis_action IS NOT NULL) AS aegis,
-      (SELECT max(decided_at) FROM trade.management_decision) AS management,
+      (SELECT max(observed_at) FROM trade.management_action_frontier) AS management,
       (SELECT max(submitted_at) FROM trade.broker_order) AS submitted`);
     latestEvidenceCycle = iso(cycles.rows[0]?.evidence);
     latestCandidateCycle = iso(cycles.rows[0]?.candidate);
@@ -272,7 +267,8 @@ if (pool) {
 if (paperBrokerConfigured) {
   const [account, clock, positions, orders, calendar] = await Promise.all([
     brokerGet('/v2/account'), brokerGet('/v2/clock'), brokerGet('/v2/positions'),
-    brokerGet('/v2/orders?status=open&limit=100'), brokerGet('/v2/calendar?start=2026-09-23&end=2026-09-23'),
+    brokerGet('/v2/orders?status=open&limit=100'),
+    brokerGet(`/v2/calendar?start=${observedAt.slice(0, 10)}&end=${observedAt.slice(0, 10)}`),
   ]);
   broker.accountHttpStatus = account.status; broker.clockHttpStatus = clock.status;
   broker.positionsHttpStatus = positions.status; broker.ordersHttpStatus = orders.status;
@@ -283,8 +279,11 @@ if (paperBrokerConfigured) {
   broker.openOrders = Array.isArray(orders.body) ? orders.body.length : null;
 }
 
+const paperAuthority = classifyPaperRuntimeAuthority({ now: new Date().toISOString(),
+  maximumAgeMs: maximumWorkerHeartbeatAgeMs, workerSha, workerHeartbeat, executionGate,
+  evidence: paperAuthorityEvidence });
 const mismatches = deriveRuntimeMismatches({ sourceSha, sourceDirty, workerSha, activeWorkerLeases,
-  workerHeartbeat, workerMode, executionGate, autonomousPaperAuthorized,
+  workerHeartbeat, workerMode, executionGate, paperAuthority,
   migrationHead, requiredMigrationPresent, observedAt });
 mismatches.push(...deriveDatabaseRuntimeMismatches({
   databaseReachable: databaseReachable && !databaseConnectionFailed,
@@ -296,7 +295,10 @@ const databaseSchemaCompatibility = assessRuntimeSchemaCompatibility({
 const receipt = {
   schemaVersion: 'theta-runtime-system-truth-v1', observedAt, sourceSha, sourceDirty,
   workerSha, workerLeaseId, workerLeaseState, activeWorkerLeases, workerHeartbeat,
-  workerMode, workerState, executionGate, autonomousPaperAuthorized,
+  workerMode, workerState, executionGate, paperAuthority,
+  autonomousPaperAuthorized: ['UNKNOWN_CONTROL', 'STALE_AUTHORITY'].includes(paperAuthority.state)
+    ? null : paperAuthority.state === 'AUTHORIZED_ACTIVE',
+  persistedFollowerGate: paperAuthority.follower, persistedLiveAuthority: paperAuthority.live,
   followerGate: environment.FOLLOWER_PAPER_EXECUTION_ENABLED ? 'ENABLED_LOCAL_CONFIG_UNSAFE' : 'LOCKED_LOCAL_CONFIG',
   liveMoney: 'NOT_AUTHORIZED', masterPaperExecutionLocalConfig: environment.MASTER_PAPER_EXECUTION_ENABLED,
   paperPauseNewOrdersLocalConfig: environment.PAPER_PAUSE_NEW_ORDERS,
@@ -309,7 +311,7 @@ const receipt = {
   latestReconciliationState: latestReconciliation, latestEvidenceCycle, latestCandidateCycle,
   latestAegisCycle,
   latestAegisCycleSemantics: 'LATEST_PERSISTED_DECISION_WITH_AEGIS_ACTION',
-  latestManagementCycle, lastOrderSubmissionObserved,
+  latestManagementCycle, latestManagementCycleSource: 'trade.management_action_frontier', lastOrderSubmissionObserved,
   latestFailedRuntimeCycle,
   recentFunnel,
   currentUtcDaySeed,
@@ -320,5 +322,6 @@ const receipt = {
 };
 console.log(JSON.stringify(receipt));
 if (receipt.mismatches.length || receipt.alpacaAuth !== 'PASS'
+  || ['UNKNOWN_CONTROL', 'STALE_AUTHORITY', 'UNAUTHORIZED_ACTIVE'].includes(paperAuthority.state)
   || receipt.paperPauseNewOrdersLocalConfig !== true
   || receipt.followerGate !== 'LOCKED_LOCAL_CONFIG') process.exitCode = 1;
