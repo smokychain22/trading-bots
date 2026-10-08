@@ -14,12 +14,12 @@ This is a source-work checkpoint, not a Production certification. Keep the resid
 
 | ID | Work | State | Next evidence |
 | --- | --- | --- | --- |
-| O1 | Review the date/DTE fix and assemble a minimal cutover scope | IN_PROGRESS | Focused parser, SQL DATE, UTC and failure tests; diff against deployed SHA |
+| O1 | Review the date/DTE fix and assemble a minimal cutover scope | TESTED_SOURCE_ONLY | Isolated minimal hotfix branch `codex/theta-date-hotfix-review` at `822703ccc989edf3fd94371217673b1f5f5a72c1`, based on deployed `bc7ffbd5`; 99 focused management tests and TypeScript check pass. No deployment. |
 | O2 | Make missing-DTE management comparisons truthful | TESTED_SOURCE_ONLY | The bootstrap policy now declines a complete comparison when open CSP/CC DTE is unknown; frontier records a typed system hold. Reproduced failing test, then 102 focused tests and TypeScript check pass. |
 | O2a | Preserve subsecond account evidence timing for assignment capacity | TESTED_SOURCE_ONLY | Reproduced a 500 ms future `pg` timestamp gaining capacity after `String(Date)` dropped milliseconds; ISO conversion fixes it. Included in the 102 focused tests. |
 | O3 | Paper indicative quote qualification | TESTED_SOURCE_ONLY | Existing adapters explicitly select `feed='indicative'`. Nine focused tests pass, including new zero-bid buy-to-close, ask, time, identity, session and source-semantics boundaries. No OPRA change or paid feed. No natural open-session quote was certified overnight. |
-| O4 | Capital, AEGIS and lifecycle | TODO | Inspect authoritative consumers, fix only reproducible gaps with tests |
-| O5 | Runtime and release package | TODO | Bounded final validation, exact-SHA CI, deployment no-go/go evidence |
+| O4 | Capital, AEGIS and lifecycle | IN_PROGRESS | Existing schema-071 account observation, shared reservation, broker reflection and plan-intent stores reviewed. 25 focused source tests pass. Seven disposable-PostgreSQL tests skipped because no `TEST_DATABASE_URL`; Docker Desktop engine is not running. No claim of real DB concurrency proof this shift. |
+| O5 | Runtime and release package | IN_PROGRESS | Full Node run exposed stale Phase-3/4 executed-evidence hashes after source edits. Canonical underlying generator reran 264 and 228 reviewed cases, all passed, and regenerated per-file-hash certificates. Four certificate tests pass. Final local validation: Node 4,582 pass, 86 skipped, zero fail; Python 1,358 pass; browser 23 pass; ten Windows safety scripts pass; TypeScript check, lint, build, security scan (zero findings), Git storage policy and diff check pass. Exact-SHA CI and Production deployment approval remain. |
 | O6 | Dot PR #18 typed research handoff | REVIEWED_NO_MERGE | Draft H DTE 3-5 challenger. Current review source already has `researchDteConsistent` guard and tests from `f98f0ffb`. PR has zero qualified market observations/fills and no profitability proof. Research proposal remains disabled; exclude its temporary `vercel.json` safeguard from any future integration. |
 
 ## Read-only resident status
@@ -28,4 +28,4 @@ At 2026-10-08 22:42 UTC, the installed Windows status command reported one super
 
 ## Resume
 
-Run `git status --short --branch` in this repository. Continue O2 in `src/theta/paper-bootstrap-management-policy.ts` and `tests/management-input-state.test.ts`. Do not assume any source fix is deployed. Update this file after each completed vertical slice.
+Run `git status --short --branch` in this repository. Review the Phase-3/4 regenerated artifacts and commit this checkpoint, then fetch the review remote, verify fast-forward ancestry and absence of sensitive material, and push only the reviewed branch for exact-SHA CI. Continue O4 only for a specific reproducible capital or lifecycle defect. Do not assume any source fix is deployed. Update this file after each completed vertical slice.
