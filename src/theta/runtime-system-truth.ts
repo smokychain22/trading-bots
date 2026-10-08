@@ -8,6 +8,8 @@ export interface RuntimeTruthInputs {
   readonly workerHeartbeat: string | null;
   readonly workerMode: string | null;
   readonly executionGate: string | null;
+  /** Database authority for an ACTIVE Paper gate. Null means it could not be verified. */
+  readonly autonomousPaperAuthorized?: boolean | null;
   readonly migrationHead: string | null;
   readonly requiredMigrationPresent: boolean | null;
   readonly observedAt: string;
@@ -47,7 +49,9 @@ export function deriveRuntimeMismatches(input: RuntimeTruthInputs): RuntimeMisma
     && (!Number.isFinite(heartbeatAgeMs) || heartbeatAgeMs > maximumWorkerHeartbeatAgeMs)))
     mismatches.push('WORKER_STALE');
   if (input.workerMode !== null && input.workerMode !== 'MASTER_THETA_PAPER') mismatches.push('WORKER_MODE_UNEXPECTED');
-  if (input.executionGate !== null && input.executionGate !== 'LOCKED') mismatches.push('EXECUTION_GATE_NOT_LOCKED');
+  if (input.executionGate !== null && input.executionGate !== 'LOCKED'
+    && !(input.executionGate === 'ACTIVE' && input.autonomousPaperAuthorized === true))
+    mismatches.push('EXECUTION_GATE_NOT_LOCKED');
   if (input.requiredMigrationPresent === false || (input.migrationHead !== null
     && input.migrationHead < runtimeSchemaMinimum)) mismatches.push('MIGRATION_MISMATCH');
   return mismatches;

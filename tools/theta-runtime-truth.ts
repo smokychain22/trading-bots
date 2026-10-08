@@ -64,6 +64,7 @@ let workerSha: string | null = null;
 let workerHeartbeat: string | null = null;
 let workerMode: string | null = null;
 let executionGate: string | null = null;
+let autonomousPaperAuthorized: boolean | null = null;
 let workerState: string | null = null;
 let workerProviderHealth: { alpaca: string; optionomics: string; database: string } | null = null;
 let latestReconciliation: { at: string | null; dataQuality: string | null;
@@ -114,6 +115,16 @@ if (pool) {
       workerProviderHealth = { alpaca: String(row.alpaca_health),
         optionomics: String(row.optionomics_health), database: String(row.database_health) };
     }
+    databaseEvidenceStage = 'PAPER_EXECUTION_AUTHORITY';
+    const paperAuthority = await pool.query(`SELECT pec.pause_new_orders,pec.master_execution_enabled,
+      pec.follower_execution_enabled,pec.authorization_event_id IS NOT NULL AS authorization_present,
+      EXISTS(SELECT 1 FROM copy.operator_audit_event
+        WHERE action='ACTIVATE_AUTONOMOUS_MASTER_PAPER' AND result='ACCEPTED') AS canary_accepted
+      FROM ops.paper_execution_control pec WHERE pec.singleton=true`);
+    const control = paperAuthority.rows[0];
+    autonomousPaperAuthorized = control ? control.pause_new_orders === false
+      && control.master_execution_enabled === true && control.follower_execution_enabled === false
+      && control.authorization_present === true && control.canary_accepted === true : false;
     databaseEvidenceStage = 'BROKER_RECONCILIATION';
     const rec = await pool.query(`SELECT observed_at,data_quality,position_count,open_order_count,
       detail_json #>> '{brokerFactImpactSummary,entryBlockingFactCount}' AS blocking_facts
@@ -273,7 +284,8 @@ if (paperBrokerConfigured) {
 }
 
 const mismatches = deriveRuntimeMismatches({ sourceSha, sourceDirty, workerSha, activeWorkerLeases,
-  workerHeartbeat, workerMode, executionGate, migrationHead, requiredMigrationPresent, observedAt });
+  workerHeartbeat, workerMode, executionGate, autonomousPaperAuthorized,
+  migrationHead, requiredMigrationPresent, observedAt });
 mismatches.push(...deriveDatabaseRuntimeMismatches({
   databaseReachable: databaseReachable && !databaseConnectionFailed,
   databaseEvidenceComplete,
@@ -284,7 +296,7 @@ const databaseSchemaCompatibility = assessRuntimeSchemaCompatibility({
 const receipt = {
   schemaVersion: 'theta-runtime-system-truth-v1', observedAt, sourceSha, sourceDirty,
   workerSha, workerLeaseId, workerLeaseState, activeWorkerLeases, workerHeartbeat,
-  workerMode, workerState, executionGate,
+  workerMode, workerState, executionGate, autonomousPaperAuthorized,
   followerGate: environment.FOLLOWER_PAPER_EXECUTION_ENABLED ? 'ENABLED_LOCAL_CONFIG_UNSAFE' : 'LOCKED_LOCAL_CONFIG',
   liveMoney: 'NOT_AUTHORIZED', masterPaperExecutionLocalConfig: environment.MASTER_PAPER_EXECUTION_ENABLED,
   paperPauseNewOrdersLocalConfig: environment.PAPER_PAUSE_NEW_ORDERS,

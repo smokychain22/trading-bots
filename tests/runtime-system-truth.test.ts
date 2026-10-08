@@ -14,6 +14,17 @@ test('current locked release with schema 069 has no mismatch', () => {
   assert.deepEqual(deriveRuntimeMismatches(healthy), []);
 });
 
+test('an ACTIVE Paper gate is healthy only with durable autonomous authority', () => {
+  assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
+    executionGate: 'ACTIVE', autonomousPaperAuthorized: true }), []);
+  for (const autonomousPaperAuthorized of [false, null, undefined]) {
+    assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
+      executionGate: 'ACTIVE', autonomousPaperAuthorized }), ['EXECUTION_GATE_NOT_LOCKED']);
+  }
+  assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
+    executionGate: 'UNKNOWN', autonomousPaperAuthorized: true }), ['EXECUTION_GATE_NOT_LOCKED']);
+});
+
 test('schema 064 is explicitly incompatible with the current runtime', () => {
   assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
     migrationHead: '064_alpaca_corporate_action_observation', requiredMigrationPresent: false }),

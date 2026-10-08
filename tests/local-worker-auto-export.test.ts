@@ -194,6 +194,9 @@ test('non-owner supervisor cleanup cannot delete the active lease or overwrite h
 });
 
 test('Windows worker status never reports stale ONLINE health as current when the supervisor is not running',async()=>{
+  const startSource=await readFile('tools/windows/start-theta-local-worker.ps1','utf8');
+  assert.match(startSource,/executionGate='UNVERIFIED_CHECK_RUNTIME_TRUTH'/,
+    'task start cannot attest the remote Paper execution gate');
   const statusSource=await readFile('tools/windows/status-theta-local-worker.ps1','utf8');
   assert.match(statusSource,/taskRunning/);
   assert.match(statusSource,/BLOCKED_RUNTIME_SHA_MISMATCH/);
