@@ -1,0 +1,62 @@
+{
+  "schema": "dot-research-progress-v1",
+  "startedAt": "2026-10-08T22:38:00Z",
+  "checkpointAt": "2026-10-08T22:43:00Z",
+  "status": "IN_PROGRESS",
+  "researchOnly": true,
+  "brokerAuthority": false,
+  "productionChanges": false,
+  "pr": 18,
+  "prStateObserved": "DRAFT_UNMERGED",
+  "headAtStart": "48053140baa801da68bebfd6180f6b6f323f6ea8",
+  "completed": [
+    "Read the complete 123-line overnight research brief.",
+    "Verified existing authenticated browser access to draft PR 18; no new authentication.",
+    "Created a single experiment register and separated private episode audit from public generic research fixtures."
+  ],
+  "workstreams": [
+    {
+      "id": "XLE-E1",
+      "scope": "Evidence-qualified single-episode causal audit; private records excluded from public artifacts.",
+      "status": "IN_PROGRESS"
+    },
+    {
+      "id": "Q-M1",
+      "scope": "Generic put mark attribution non-identifiability and exact net-exit economics.",
+      "status": "IN_PROGRESS"
+    },
+    {
+      "id": "SOURCE-1",
+      "scope": "Frozen current source review, H DTE/date consistency and reusable Q/H/D/A/C interfaces.",
+      "status": "IN_PROGRESS"
+    },
+    {
+      "id": "DATA-1",
+      "scope": "Lawful bounded historical observations and strict option-data admission.",
+      "status": "IN_PROGRESS"
+    },
+    {
+      "id": "LIFECYCLE-1",
+      "scope": "New H exit, D close and A/C chain-level economic falsifiers.",
+      "status": "IN_PROGRESS"
+    },
+    {
+      "id": "INCUBATOR-1",
+      "scope": "GEX/VRP hypotheses and simple causal model baselines.",
+      "status": "IN_PROGRESS"
+    }
+  ],
+  "priorEvidencePreserved": {
+    "hAssertions": 78,
+    "hSyntheticScenarios": 12,
+    "laterDteConsistencyCalls": 2,
+    "qualifiedHistoricalOptionEpisodes": 0
+  },
+  "limits": [
+    "No prior synthetic suite is being repeated as new profitability evidence.",
+    "Published documents, model scenarios, observed market quotes and broker fills remain separate evidence classes.",
+    "Historical and after-cost out-of-sample expectancy remain unknown without qualified observations.",
+    "No workflow schedule activation, merge, account access, orders or paid service is authorized."
+  ],
+  "publicationPolicy": "Sanitized research files only; original private episode details remain outside this public repository."
+}
