@@ -100,6 +100,11 @@ test('unknown stock quantity cannot qualify a covered-call candidate',()=>{
   contracts:[listing],snapshots:new Map([[listing.symbol,snapshot()]]),receivedAt:at});
   assert.equal(undercoveredRoll.quotes.length,0);
   assert.deepEqual(undercoveredRoll.rejections.map(item=>item.reason),['INSUFFICIENT_COVERED_SHARES']);
+  const fractionalSurplus=qualifyManagementContractLattice({subject:{...subject,lifecycleState:'CC_OPEN',
+    currentOptionType:'CALL',optionQuantity:1,stockShares:100.5},
+  contracts:[listing],snapshots:new Map([[listing.symbol,snapshot()]]),receivedAt:at});
+  assert.equal(fractionalSurplus.quotes.length,0,'execution share reconciliation requires whole shares');
+  assert.deepEqual(fractionalSurplus.rejections.map(item=>item.reason),['STOCK_QUANTITY_UNQUALIFIED']);
 });
 
 test('an open option with unknown ledger quantity is incomplete management evidence, not a valid empty lattice',async()=>{
