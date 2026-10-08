@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { Pool } from 'pg';
+import { seedCapitalPlanForIntent } from '../helpers/capital-plan-fixture.js';
 import { PostgresPaperOrderStore } from '../../src/execution/postgres-paper-order-store.js';
 import { PostgresDefinedRiskPositionStore } from '../../src/execution/postgres-defined-risk-position-store.js';
 import { applyDefinedRiskBrokerFacts } from '../../src/execution/defined-risk-broker-facts.js';
@@ -18,6 +19,7 @@ async function filledSpread(pool: Pool, world: DefinedRiskWorld, positions: Post
   const chainId = randomUUID();
   await positions.ensureDefinedRiskChain({ chainId, botInstanceId: world.botInstanceId, underlyingId: world.underlyingId, openedAt: NOW });
   const intent = mlegIntent(world, chainId, false);
+  await seedCapitalPlanForIntent(pool,intent);
   await orders.insertIntent(intent);
   await positions.register(intent.orderIntentId);
   for (const [from, to] of [['READY', 'SUBMITTING'], ['SUBMITTING', 'SUBMITTED'], ['SUBMITTED', 'FILLED']] as const) await orders.transitionIntent(intent.orderIntentId, from, to);
@@ -35,7 +37,7 @@ test('broker-confirmed assignment / expiration activities become exact-leg event
   const pool = new Pool({ connectionString: url, max: 4, options: '-c session_replication_role=replica' });
   try {
     const world = await seedDefinedRiskWorld(pool);
-    const orders = new PostgresPaperOrderStore(pool), positions = new PostgresDefinedRiskPositionStore(pool), connectionId = randomUUID();
+    const orders = new PostgresPaperOrderStore(pool,undefined,()=>NOW), positions = new PostgresDefinedRiskPositionStore(pool), connectionId = randomUUID();
     const { chainId, intent } = await filledSpread(pool, world, positions, orders, 'facts');
 
     // nothing confirmed yet: a vanished leg or an expiration DATE is not an event
@@ -72,7 +74,7 @@ test('two spreads sharing a leg symbol: one broker activity is never consumed tw
   const pool = new Pool({ connectionString: url, max: 4, options: '-c session_replication_role=replica' });
   try {
     const world = await seedDefinedRiskWorld(pool);
-    const orders = new PostgresPaperOrderStore(pool), positions = new PostgresDefinedRiskPositionStore(pool), connectionId = randomUUID();
+    const orders = new PostgresPaperOrderStore(pool,undefined,()=>NOW), positions = new PostgresDefinedRiskPositionStore(pool), connectionId = randomUUID();
     const a = await filledSpread(pool, world, positions, orders, 'twin-a'), b = await filledSpread(pool, world, positions, orders, 'twin-b');
     await fact(pool, connectionId, 'single-assignment', 'OPASN', world.shortSymbol, 1, at(20));
     for (let cycle = 0; cycle < 3; cycle += 1) await applyDefinedRiskBrokerFacts(pool, { connectionId, observedAt: at(21 + cycle) });

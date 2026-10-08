@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { Pool } from 'pg';
+import { seedCapitalPlanForIntent } from '../helpers/capital-plan-fixture.js';
 import { PostgresPaperOrderStore } from '../../src/execution/postgres-paper-order-store.js';
 import { PostgresDefinedRiskLifecycleStore } from '../../src/execution/postgres-defined-risk-lifecycle-store.js';
 import { PostgresDefinedRiskPositionStore } from '../../src/execution/postgres-defined-risk-position-store.js';
@@ -21,7 +22,7 @@ async function withWorld(run: (ctx: { pool: Pool; world: DefinedRiskWorld; order
   const pool = new Pool({ connectionString: url, max: 4, options });
   try {
     const world = await seedDefinedRiskWorld(pool);
-    await run({ pool, world, orders: new PostgresPaperOrderStore(pool), positions: new PostgresDefinedRiskPositionStore(pool), events: new PostgresDefinedRiskLifecycleStore(pool),
+    await run({ pool, world, orders: new PostgresPaperOrderStore(pool,undefined,()=>NOW), positions: new PostgresDefinedRiskPositionStore(pool), events: new PostgresDefinedRiskLifecycleStore(pool),
       restarted: async () => { const fresh = new Pool({ connectionString: url, max: 2, options }); return { positions: new PostgresDefinedRiskPositionStore(fresh), close: () => fresh.end() }; } });
   } finally { await pool.end(); }
 }
@@ -30,6 +31,7 @@ async function openSpread(ctx: { pool: Pool; world: DefinedRiskWorld; orders: Po
   const chainId = randomUUID();
   await ctx.positions.ensureDefinedRiskChain({ chainId, botInstanceId: ctx.world.botInstanceId, underlyingId: ctx.world.underlyingId, openedAt: NOW });
   const intent = mlegIntent(ctx.world, chainId, false, quantity);
+  await seedCapitalPlanForIntent(ctx.pool,intent);
   await ctx.orders.insertIntent(intent);
   await ctx.positions.register(intent.orderIntentId);
   return { chainId, intent };
@@ -74,6 +76,7 @@ test('registration sweep: a D open becomes a managed position once the broker fi
     const chainId = randomUUID();
     await ctx.positions.ensureDefinedRiskChain({ chainId, botInstanceId: ctx.world.botInstanceId, underlyingId: ctx.world.underlyingId, openedAt: NOW });
     const intent = mlegIntent(ctx.world, chainId, false, 1);
+    await seedCapitalPlanForIntent(ctx.pool,intent);
     await ctx.orders.insertIntent(intent);
     await moveTo(ctx.orders, intent.orderIntentId, ['SUBMITTING', 'SUBMITTED']);
     assert.ok(!(await ctx.positions.registerFilledOpens(at(1))).includes(intent.orderIntentId), 'a working order with no fill is pending exposure, not a position');

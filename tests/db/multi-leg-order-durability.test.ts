@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { Pool } from 'pg';
+import { seedCapitalPlanForIntent } from '../helpers/capital-plan-fixture.js';
 import { PostgresPaperOrderStore } from '../../src/execution/postgres-paper-order-store.js';
 import { PostgresDefinedRiskLifecycleStore } from '../../src/execution/postgres-defined-risk-lifecycle-store.js';
 import type { DurableMultiLegOrderEvidence, PersistedPaperOrderIntent } from '../../src/execution/paper-order-coordinator.js';
@@ -50,7 +51,8 @@ test('multi-leg parent, legs, broker leg state, lifecycle events and accounting 
       executionEvidence: { quoteSource: 'ALPACA', quoteFeed: 'OPRA', quoteSemantics: 'CONSOLIDATED_NBBO', quoteAsOf: NOW, decisionExpiresAt: '2026-10-06T15:01:00.000Z', quoteContentHash: 'a'.repeat(64), aegisState: 'ALLOW_FULL' },
       authorizationEvidence: { executionTier: 'PAPER_EVIDENCE', canonicalQuantity: 1, paperEvidenceQuantity: 1, empiricalEconomicsReady: false, expectedAfterCostEv: null } };
 
-    const store = new PostgresPaperOrderStore(pool);
+    await seedCapitalPlanForIntent(pool,intent);
+    const store = new PostgresPaperOrderStore(pool,undefined,()=>NOW);
     await store.insertIntent(intent);
     // the parent has NO representative contract and NO single position intent; the exact legs are normalized child rows
     const parentRow = (await pool.query(`SELECT option_contract_id, position_intent, order_class, package_identity, credit_debit_direction FROM trade.order_intent WHERE order_intent_id=$1`, [orderIntentId])).rows[0];

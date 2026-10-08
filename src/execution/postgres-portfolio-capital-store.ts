@@ -3,8 +3,12 @@ import { z } from 'zod';
 import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import { assertInlinePayloadWithinPolicy } from '../storage/storage-dataset-policy.js';
 import { capitalAdmission, capitalContentHash, capitalEnvelopeSchema, capitalProposalSchema,
-  type CapitalCommitment, type CapitalEnvelope, type CapitalProposal } from './portfolio-capital-reservation.js';
+  moneyUnits, type CapitalCommitment, type CapitalEnvelope, type CapitalProposal } from './portfolio-capital-reservation.js';
 import { deriveQualifiedAccountEnvelope, type AccountCapitalInput, type AccountCapitalResult } from './qualified-account-capital.js';
+import { actionPlanContentHash } from './action-plan-integrity.js';
+import { assertCapitalIntentMatchesPlan, CapitalPlanAdmissionError, proposalForPlan, type PlanCapitalObservation } from './plan-capital-binding.js';
+import type { ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
+import type { PersistedPaperOrderIntent } from './paper-order-coordinator.js';
 
 type Admission = { reservationId: string; state: 'RESERVED' | 'REPLAY' | 'BLOCKED'; reasons: readonly string[] };
 type Row = Record<string, unknown>;
@@ -33,6 +37,62 @@ export type CapitalTerminalEvidence = z.infer<typeof terminalEvidenceSchema>;
  * reserveInTransaction to commit claims and canonical plans together. */
 export class PostgresPortfolioCapitalStore {
   constructor(private readonly pool: Pool, private readonly clock: () => string = () => new Date().toISOString()) {}
+
+  async reservePlanInTransaction(client: PoolClient, plan: ApprovedMasterPaperActionPlan,
+    observation: PlanCapitalObservation): Promise<void> {
+    // Contract/cost versions belong to the persisted decision, not whatever a
+    // worker currently calls its default cost model. No provider wait in tx.
+    const costs = await client.query(`SELECT cv.assumptions_json->>'totalModeledCostPerContract' AS cost
+      FROM trade.decision d JOIN trade.fusion_snapshot fs USING(fusion_snapshot_id)
+      JOIN core.cost_model_version cv USING(cost_model_version_id) WHERE d.decision_id=$1`, [plan.decisionId]);
+    const cost = costs.rows[0]?.cost;
+    if (typeof cost !== 'string') throw new Error('CAPITAL_DECISION_COST_EVIDENCE_MISSING');
+    const ids = plan.definedRisk?.legs.map(x => x.optionContractId) ?? [plan.optionContractId];
+    const contracts = await client.query(`SELECT option_contract_id::text,contract_symbol,strike::text,multiplier::text
+      FROM market.option_contract WHERE option_contract_id=ANY($1::uuid[]) AND underlying_id=$2 AND option_type='PUT'`,
+    [ids, plan.underlyingId]);
+    if (contracts.rows.length !== ids.length || contracts.rows.some(r => {
+      const evidence = observation.contracts.find(c => c.symbol === r.contract_symbol);
+      return !evidence || moneyUnits(String(evidence.multiplier)) !== moneyUnits(r.multiplier)
+        || moneyUnits(evidence.strike) !== moneyUnits(r.strike);
+    })) throw new Error('CAPITAL_PERSISTED_CONTRACT_MISMATCH');
+    const proposal = proposalForPlan(plan, observation, cost);
+    const result = await this.reserveQualifiedInTransaction(client, observation, [proposal]);
+    if (result.receipt.state === 'BLOCKED') throw new CapitalPlanAdmissionError(result.receipt.reasons);
+    const admission = result.admissions[0];
+    if (!admission || admission.state === 'BLOCKED') throw new CapitalPlanAdmissionError(admission?.reasons ?? []);
+  }
+
+  /** Called by the ONE durable order-intent store, in the insert transaction.
+   * Legacy/unbound opens cannot sneak around plan reservation on schema 071.
+   * Risk-reducing closes do not acquire an opening capital reservation. */
+  async bindPlanIntentInTransaction(client: PoolClient, intent: PersistedPaperOrderIntent): Promise<void> {
+    const accountHash = await this.lock(client, intent.executionAccountId);
+    const rows = await client.query(`SELECT r.reservation_id,r.proposal_json,r.content_hash,r.remaining_quantity,
+      r.order_intent_id,r.state,e.envelope_json,e.content_hash AS envelope_hash,p.plan_json,p.content_hash AS plan_hash,p.status AS plan_status
+      FROM trade.capital_reservation r JOIN trade.capital_envelope e USING(envelope_id)
+      JOIN trade.master_paper_action_plan p ON p.action_plan_id=r.reservation_id
+      WHERE r.provider_account_ref_hash=$1 AND r.execution_account_id=$2
+        AND r.proposal_json->>'decisionId'=$3 AND p.execution_account_id=r.execution_account_id
+      FOR UPDATE OF r`, [accountHash,intent.executionAccountId,intent.decisionId]);
+    const r = rows.rows[0];
+    if (rows.rows.length !== 1) throw new Error('CAPITAL_RESERVED_PLAN_REQUIRED');
+    const proposal = capitalProposalSchema.parse(r.proposal_json), envelope = capitalEnvelopeSchema.parse(r.envelope_json);
+    const plan = assertCapitalIntentMatchesPlan(intent,r.plan_json);
+    if (capitalContentHash(proposal) !== r.content_hash || capitalContentHash(envelope) !== r.envelope_hash
+      || envelope.qualification?.accountHash !== accountHash || actionPlanContentHash(plan) !== r.plan_hash
+      || proposal.authorityHash !== r.plan_hash || proposal.reservationId !== plan.actionPlanId
+      || proposal.decisionId !== plan.decisionId || proposal.candidateRef !== plan.candidateId
+      || proposal.strategy !== (plan.strategyBranch ?? 'THETA_CONVENTIONAL')
+      || proposal.quantity !== intent.request.qty || Number(r.remaining_quantity) !== intent.request.qty
+      || !['RESERVED','SUBMISSION_POSSIBLE'].includes(r.state)
+      || (r.order_intent_id !== null && r.order_intent_id !== intent.orderIntentId)
+      || !['READY','CLAIMED'].includes(r.plan_status)) throw new Error('CAPITAL_RESERVED_PLAN_INTEGRITY_INVALID');
+    const now = Date.parse(this.clock());
+    if (!Number.isFinite(now) || now < Date.parse(envelope.observedAt) || now >= Date.parse(envelope.expiresAt)
+      || now >= Date.parse(plan.decisionExpiresAt)) throw new Error('CAPITAL_INTENT_ENVELOPE_STALE');
+    await this.bindIntentInTransaction(client,intent.executionAccountId,proposal.reservationId,intent.orderIntentId);
+  }
 
   /** Composable producer -> database-lineage loader -> admission -> persistence.
    * Fetch broker observations BEFORE entering this transaction. Commitments are

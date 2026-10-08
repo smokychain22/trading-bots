@@ -6,6 +6,8 @@ import { masterPaperActionPlanSchema, masterPaperActionPlanVersion, type Approve
 import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import { verifyAegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
 import { actionPlanContentHash, managementDecisionIsCurrent, planIntegrityMismatch, planIntegrityRowFromAliases, planIntegritySelectColumns, verifyActionPlanRow } from './action-plan-integrity.js';
+import { capitalReservationRequired, type PlanCapitalObservation } from './plan-capital-binding.js';
+import { PostgresPortfolioCapitalStore } from './postgres-portfolio-capital-store.js';
 
 export const planNoLongerCurrent='PLAN_NO_LONGER_CURRENT' as const;
 const integrityColumns=planIntegritySelectColumns;
@@ -67,7 +69,7 @@ export async function readEquivalentEntryInFlight(client:{query:(text:string,val
 }
 
 export class PostgresMasterPaperActionPlanStore {
-  constructor(private readonly pool:Pool){}
+  constructor(private readonly pool:Pool, private readonly clock:()=>string=()=>new Date().toISOString()){}
 
   async enqueue(raw:ApprovedMasterPaperActionPlan,createdAt:string,chain?:{
     readonly botInstanceId:string;readonly underlyingId:string;
@@ -85,9 +87,10 @@ export class PostgresMasterPaperActionPlanStore {
    */
   async enqueueWithDisposition(raw:ApprovedMasterPaperActionPlan,createdAt:string,chain?:{
     readonly botInstanceId:string;readonly underlyingId:string;
-  }):Promise<{readonly inserted:boolean;readonly disposition:'ENQUEUED'|'REPLAY'|'EQUIVALENT_ENTRY_IN_FLIGHT';readonly conflictingIds:readonly string[]}>{
+  },capital?:PlanCapitalObservation):Promise<{readonly inserted:boolean;readonly disposition:'ENQUEUED'|'REPLAY'|'EQUIVALENT_ENTRY_IN_FLIGHT';readonly conflictingIds:readonly string[]}>{
     const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
     const contentHash=hash(plan);
+    let capitalRequired=false;
     return withRuntimePostgresTransaction(this.pool,async(client)=>{
       const evidence=await client.query(`SELECT d.decision_id,d.decision_kind,d.selected_candidate_id::text AS candidate_id,
         d.runtime_selected_candidate_ref,d.quantity::numeric AS quantity,d.aegis_action::text AS aegis_action,
@@ -148,6 +151,11 @@ export class PostgresMasterPaperActionPlanStore {
         if((inFlight.rowCount??0)>0)return {inserted:false,disposition:'EQUIVALENT_ENTRY_IN_FLIGHT' as const,
           conflictingIds:(inFlight.rows as Array<{id:string}>).map((item)=>item.id).sort()};
       }
+      capitalRequired=await capitalReservationRequired(client);
+      if(capitalRequired){
+        if(capital===undefined)throw new Error('CAPITAL_ACCOUNT_OBSERVATION_REQUIRED');
+        await new PostgresPortfolioCapitalStore(this.pool,this.clock).reservePlanInTransaction(client,plan,capital);
+      }
       if(chain!==undefined){
         if(chain.underlyingId!==plan.underlyingId)throw new Error('ACTION_PLAN_CHAIN_UNDERLYING_MISMATCH');
         // a spread lives on a DEFINED_RISK chain (Wheel loaders filter on chain_kind and can never manage it as a single leg)
@@ -161,8 +169,18 @@ export class PostgresMasterPaperActionPlanStore {
       const inserted=await this.insertPlan(client,plan,contentHash,createdAt);
       if(inserted)await this.event(plan.actionPlanId,'READY',createdAt,null,client);
       return {inserted,disposition:(inserted?'ENQUEUED':'REPLAY') as 'ENQUEUED'|'REPLAY',conflictingIds:[] as readonly string[]};
-    },{verifyCommitted:async(pool,outcome)=>outcome.disposition==='EQUIVALENT_ENTRY_IN_FLIGHT'
-      ?true:this.verifyPlanGroup(pool,[{plan,contentHash}])});
+    },{verifyCommitted:async(pool,outcome)=>{
+      if(outcome.disposition==='EQUIVALENT_ENTRY_IN_FLIGHT')return true;
+      if(!await this.verifyPlanGroup(pool,[{plan,contentHash}]))return false;
+      if(!capitalRequired)return true;
+      const saved=await withRuntimePostgresReadRetry(pool,client=>client.query(`SELECT content_hash,proposal_json FROM trade.capital_reservation
+        WHERE reservation_id=$1 AND execution_account_id=$2`,[plan.actionPlanId,plan.executionAccountId]));
+      const row=saved.value.rows[0];
+      if(!row)return false;
+      if(hash(row.proposal_json)!==row.content_hash||row.proposal_json.authorityHash!==contentHash)
+        throw new Error('CAPITAL_PLAN_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
   }
 
   /** Persist a selected management decision and all execution legs atomically.

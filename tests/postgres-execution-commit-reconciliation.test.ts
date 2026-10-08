@@ -62,6 +62,7 @@ const decisionRow={decision_id:plan.decisionId,decision_kind:'NEW_RISK',candidat
 function enqueueClients(mode:'MATCH'|'ABSENT'|'CONFLICT'):[ScriptedClient,ScriptedClient]{
   let contentHash='';
   const transaction=new ScriptedClient(async(sql,values)=>{
+    if(sql.includes('AS capital_required'))return {rows:[{capital_required:false}],rowCount:1};
     if(sql.includes('FROM trade.decision d'))return {rows:[decisionRow],rowCount:1};
     if(sql.includes('INSERT INTO trade.master_paper_action_plan(')){contentHash=String(values[5]);return {rows:[{action_plan_id:plan.actionPlanId}],rowCount:1};}
     if(sql==='COMMIT')throw {code:'08006'};

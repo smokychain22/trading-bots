@@ -15,7 +15,7 @@ export interface CycleWorld {
   readonly botId: string; readonly strategyId: string; readonly featureId: string; readonly riskId: string; readonly executionId: string; readonly costId: string; readonly accountSnapshotId: number;
 }
 
-export async function seedWorld(pool: Pool, at: string): Promise<CycleWorld> {
+export async function seedWorld(pool: Pool, at: string, costAssumptions:Record<string,unknown>={}): Promise<CycleWorld> {
   const workspaceId = randomUUID(), connectionId = randomUUID(), accountId = randomUUID(), botId = randomUUID();
   const strategyId = randomUUID(), featureId = randomUUID(), riskId = randomUUID(), executionId = randomUUID(), costId = randomUUID();
   await pool.query('INSERT INTO iam.workspace(workspace_id,name) VALUES($1,$2)', [workspaceId, `test-${workspaceId}`]);
@@ -25,7 +25,7 @@ export async function seedWorld(pool: Pool, at: string): Promise<CycleWorld> {
   await pool.query(`INSERT INTO core.feature_version(feature_version_id,semantic_version,definition_manifest_json,config_hash) VALUES($1,$2,'{}',$3)`, [featureId, `test-${featureId}`, hash(featureId)]);
   await pool.query(`INSERT INTO core.risk_limit_version(risk_limit_version_id,semantic_version,limits_json,config_hash,status) VALUES($1,$2,'{}',$3,'TEST')`, [riskId, `test-${riskId}`, hash(riskId)]);
   await pool.query(`INSERT INTO core.execution_version(execution_version_id,semantic_version,policy_json,config_hash,status) VALUES($1,$2,'{}',$3,'TEST')`, [executionId, `test-${executionId}`, hash(executionId)]);
-  await pool.query(`INSERT INTO core.cost_model_version(cost_model_version_id,semantic_version,assumptions_json,config_hash,status) VALUES($1,$2,'{}',$3,'TEST')`, [costId, `test-${costId}`, hash(costId)]);
+  await pool.query(`INSERT INTO core.cost_model_version(cost_model_version_id,semantic_version,assumptions_json,config_hash,status) VALUES($1,$2,$4,$3,'TEST')`, [costId, `test-${costId}`, hash(costId),JSON.stringify(costAssumptions)]);
   await pool.query(`INSERT INTO core.bot_instance(bot_instance_id,workspace_id,account_id,mode,strategy_version_id,risk_limit_version_id,execution_version_id,cost_model_version_id,feature_version_id) VALUES($1,$2,$3,'SHADOW',$4,$5,$6,$7,$8)`, [botId, workspaceId, accountId, strategyId, riskId, executionId, costId, featureId]);
   const snapshot = await pool.query(`INSERT INTO trade.account_snapshot(account_id,equity,cash,buying_power,options_buying_power,options_level,as_of,retrieved_at) VALUES($1,100000,50000,100000,50000,3,$2,$2) RETURNING account_snapshot_id`, [accountId, at]);
   return { botId, strategyId, featureId, riskId, executionId, costId, accountSnapshotId: Number(snapshot.rows[0].account_snapshot_id) };

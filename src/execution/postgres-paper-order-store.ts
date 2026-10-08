@@ -1,10 +1,12 @@
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
 import type { OrderIntentState } from '../theta/order-intent-state.js';
 import { assertValidOrderIntentTransition } from '../theta/order-intent-state.js';
 import type { BrokerOrderSnapshot } from './broker.js';
 import type { DurableMultiLegOrderEvidence, ExecutionAttemptRecord, PaperOrderStore, PersistedPaperOrderIntent } from './paper-order-coordinator.js';
 import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
+import { capitalReservationRequired } from './plan-capital-binding.js';
+import { PostgresPortfolioCapitalStore } from './postgres-portfolio-capital-store.js';
 
 const toIso = (value: unknown): string => value instanceof Date ? value.toISOString() : String(value);
 
@@ -34,9 +36,12 @@ const multiLegEvidenceFromRows=(parent:Record<string,unknown>,rows:readonly Reco
 };
 
 export class PostgresPaperOrderStore implements PaperOrderStore {
-  constructor(private readonly pool: Pool, private readonly executionAccountId?: string) {}
+  constructor(private readonly pool: Pool, private readonly executionAccountId?: string,
+    private readonly clock:()=>string=()=>new Date().toISOString()) {}
 
   async insertIntent(intent: PersistedPaperOrderIntent): Promise<void> {
+    if(this.executionAccountId!==undefined&&intent.executionAccountId!==this.executionAccountId)
+      throw new Error('ORDER_INTENT_ACCOUNT_SCOPE_MISMATCH');
     const instrumentType = intent.action === 'SELL_STOCK' ? 'STOCK' : 'OPTION';
     const multiLeg=intent.request.order_class==='mleg';
     if(intent.request.qty!==intent.authorizationEvidence.paperEvidenceQuantity||
@@ -55,6 +60,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
       throw new Error('STOCK_ORDER_EXECUTION_EVIDENCE_INVALID');
     }
     if(multiLeg&&intent.multiLegEvidence===undefined)throw new Error('MULTI_LEG_DURABLE_EVIDENCE_REQUIRED');
+    let capitalRequired=false;
     await withRuntimePostgresTransaction(this.pool,async(client)=>{
       await client.query(
       `INSERT INTO trade.order_intent
@@ -84,6 +90,14 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
           [intent.orderIntentId,leg.legIndex,leg.optionContractId,leg.providerContractId,leg.occSymbol,leg.optionType,
             leg.positionIntent,leg.ratioQuantity,leg.expiration,leg.strike,leg.multiplier,leg.deliverableIdentity]);
       }
+      // Schema 070 preserves the installed runtime. On 071 there is no
+      // optional caller flag and no per-strategy bypass. Roll-open also needs
+      // the shared boundary; closes remain available during capital outage.
+      capitalRequired=['OPEN_CSP','ROLL_CSP_OPEN','OPEN_DEFINED_RISK'].includes(intent.action)
+        &&await capitalReservationRequired(client);
+      if(capitalRequired){
+        await new PostgresPortfolioCapitalStore(this.pool,this.clock).bindPlanIntentInTransaction(client,intent);
+      }
     },{verifyCommitted:async(pool)=>{
       const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT client_order_id,status,
         decision_id::text,quantity::numeric,quote_content_hash,
@@ -97,12 +111,19 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
         ||row.quote_content_hash!==intent.executionEvidence.quoteContentHash
         ||Number(row.leg_count)!==(intent.multiLegEvidence?.legs.length??0))
         throw new Error('ORDER_INTENT_COMMIT_RECONCILIATION_CONFLICT');
+      if(capitalRequired){
+        const binding=await withRuntimePostgresReadRetry(pool,client=>client.query(`SELECT reservation_id FROM trade.capital_reservation
+          WHERE order_intent_id=$1 AND execution_account_id=$2 AND proposal_json->>'decisionId'=$3
+          AND (proposal_json->>'quantity')::numeric=$4 AND state='SUBMISSION_POSSIBLE' AND remaining_quantity=$4`,
+        [intent.orderIntentId,intent.executionAccountId,intent.decisionId,intent.request.qty]));
+        if(binding.value.rows.length!==1)throw new Error('CAPITAL_INTENT_COMMIT_RECONCILIATION_CONFLICT');
+      }
       return true;
     }});
   }
 
-  async getIntent(orderIntentId: string): Promise<PersistedPaperOrderIntent | null> {
-    const result = await this.pool.query(
+  async getIntent(orderIntentId: string, db:Pool|PoolClient=this.pool): Promise<PersistedPaperOrderIntent | null> {
+    const result = await db.query(
       `SELECT i.order_intent_id, i.execution_account_id, i.decision_id, i.client_order_id,
               i.status, i.broker_symbol, i.side, i.quantity, i.limit_price, i.time_in_force,
               i.theta_action, i.instrument_type, i.position_intent, i.intent_persisted_at,
@@ -115,8 +136,8 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
          SELECT provider_order_id FROM trade.broker_order
          WHERE order_intent_id = i.order_intent_id ORDER BY created_at DESC LIMIT 1
        ) b ON true
-       WHERE i.order_intent_id = $1`,
-      [orderIntentId],
+       WHERE i.order_intent_id = $1 AND ($2::uuid IS NULL OR i.execution_account_id=$2)`,
+      [orderIntentId,this.executionAccountId??null],
     );
     const row = result.rows[0] as Record<string, unknown> | undefined;
     if (row === undefined) return null;
@@ -130,7 +151,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
       || row.aegis_state === null || row.aegis_state === undefined) {
       throw new Error('ORDER_INTENT_EXECUTION_LINEAGE_MISSING');
     }
-    const legResult=await this.pool.query(`SELECT leg_index,option_contract_id::text,provider_contract_id,occ_symbol,
+    const legResult=await db.query(`SELECT leg_index,option_contract_id::text,provider_contract_id,occ_symbol,
       option_type,position_intent,ratio_quantity,to_char(expiration,'YYYY-MM-DD') AS expiration,strike,multiplier,deliverable_identity
       FROM trade.order_intent_leg WHERE order_intent_id=$1 ORDER BY leg_index`,[orderIntentId]);
     const multiLegEvidence=multiLegEvidenceFromRows(row,legResult.rows as Record<string,unknown>[]);
@@ -169,6 +190,18 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
   async transitionIntent(orderIntentId: string, from: OrderIntentState, to: OrderIntentState, providerOrderId: string | null = null): Promise<void> {
     assertValidOrderIntentTransition(from, to);
     await withRuntimePostgresTransaction(this.pool,async(client)=>{
+      // Recheck at the existing pre-POST state transition as well as insert.
+      // This covers restarted/pre-migration READY intents without blocking
+      // broker reads, ambiguity reconciliation, cancellation or closes. Use
+      // the SAME client, never a nested pool acquisition while holding a tx.
+      if(to==='SUBMITTING'){
+        const intent=await this.getIntent(orderIntentId,client);
+        if(intent===null)throw new Error('ORDER_INTENT_NOT_FOUND');
+        if(['OPEN_CSP','ROLL_CSP_OPEN','OPEN_DEFINED_RISK'].includes(intent.action)
+          &&await capitalReservationRequired(client)){
+          await new PostgresPortfolioCapitalStore(this.pool,this.clock).bindPlanIntentInTransaction(client,intent);
+        }
+      }
       const update = await client.query(
         `UPDATE trade.order_intent SET status = $3, updated_at = now()
          WHERE order_intent_id = $1 AND status = $2 RETURNING order_intent_id`,

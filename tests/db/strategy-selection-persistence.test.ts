@@ -11,6 +11,9 @@ import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from
 import { definedRiskOpenPackageIdentity } from '../../src/execution/defined-risk-paper-order.js';
 import type { CanonicalFrontierCandidate, CanonicalStrategyFrontier } from '../../src/theta/canonical-strategy-frontier.js';
 import { buildCycle, persistenceContext, seedWorld } from '../helpers/theta-cycle-fixture.js';
+import { capitalInput } from '../fixtures/qualified-account-capital.js';
+import { PostgresPaperOrderStore } from '../../src/execution/postgres-paper-order-store.js';
+import type { PersistedPaperOrderIntent } from '../../src/execution/paper-order-coordinator.js';
 
 // Real PostgreSQL: when the sovereign frontier selects H or D (from a governed receipt), the decision must persist a NON-NULL selected candidate (H: its exact
 // put; D: a two-leg candidate with no representative contract) and an AEGIS identity bound to THAT strategy's own assessment -- never Q's assessment of the same
@@ -92,7 +95,7 @@ test('D plan enqueue binds the persisted two-leg identity, a DEFINED_RISK chain 
   assert.ok(url && ['127.0.0.1', 'localhost'].includes(new URL(url).hostname), 'Disposable local database only');
   const pool = new pg.Pool({ connectionString: url, max: 4 });
   try {
-    const world = await seedWorld(pool, '2026-10-08T14:59:00.000Z');
+    const world = await seedWorld(pool, '2026-10-08T14:59:00.000Z',{totalModeledCostPerContract:'1.40'});
     const store = new PostgresThetaCycleStore(pool, {});
     const accountId = randomUUID();
     await pool.query(`INSERT INTO trade.execution_account(execution_account_id,account_kind,environment,provider_account_ref_hash,provider_account_ref_masked)
@@ -130,17 +133,65 @@ test('D plan enqueue binds the persisted two-leg identity, a DEFINED_RISK chain 
         killSwitchActive: false, decisionExpiresAt: '2026-10-08T15:30:00.000Z', pricingPolicy: { waitIntervalMs: 5000, maxAttempts: 3, concessionFractions: [0, 0.5, 1], tickSize: 0.01 },
         pricingAttempt: 0, previousLimit: null } as unknown as ApprovedMasterPaperActionPlan;
     };
-    const plans = new PostgresMasterPaperActionPlanStore(pool);
+    const plans = new PostgresMasterPaperActionPlanStore(pool,()=> '2026-10-08T15:10:02.000Z');
     const first = await persistD(10);
     const plan = planFor(first);
+    const pkg=plan.definedRisk;assert.ok(pkg);
+    const base=capitalInput(),accountHash=createHash('sha256').update(accountId).digest('hex');
+    const stamp={accountHash,snapshotId:randomUUID(),requestedAt:'2026-10-08T15:10:00.000Z',
+      receivedAt:'2026-10-08T15:10:01.000Z',contentHash:'a'.repeat(64)};
+    const {now:_,commitments:__,...capital}= {...base,executionAccountId:accountId,accountHash,
+      account:{...base.account,...stamp,equity:'1000000',cash:'1000000',optionsBuyingPower:'1000000'},
+      positions:{...base.positions,...stamp,rows:[]},orders:{...base.orders,...stamp,rows:[]},underlyings:['SPY'],
+      contracts:pkg.legs.map(l=>({symbol:l.occSymbol,strike:String(l.strike),multiplier:l.multiplier,
+        deliverable:'STANDARD' as const,evidenceHash:'c'.repeat(64)}))};
+    assert.ok(_);assert.deepEqual(__,[]);
     const chain = { botInstanceId: world.botId, underlyingId: plan.underlyingId };
     // a re-pointed package (the long leg swapped onto another real contract id) is rejected before anything is written
     await assert.rejects(plans.enqueueWithDisposition(planFor(first, (legs) => [legs[0] as PlanLeg, { ...(legs[1] as PlanLeg), optionContractId: (legs[0] as PlanLeg).optionContractId }]),
       '2026-10-08T15:10:01.000Z', chain), /ACTION_PLAN_DEFINED_RISK_LEG_LINEAGE_INVALID/);
-    const enqueued = await plans.enqueueWithDisposition(plan, '2026-10-08T15:10:01.000Z', chain);
+    await assert.rejects(plans.enqueueWithDisposition(plan,'2026-10-08T15:10:01.000Z',chain),/CAPITAL_ACCOUNT_OBSERVATION_REQUIRED/);
+    // A later plan/chain failure rolls back the earlier envelope/reservation.
+    await assert.rejects(plans.enqueueWithDisposition(plan,'2026-10-08T15:10:01.000Z',
+      {...chain,underlyingId:randomUUID()},capital),/ACTION_PLAN_CHAIN_UNDERLYING_MISMATCH/);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM trade.capital_reservation WHERE reservation_id=$1',[plan.actionPlanId])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM trade.capital_envelope WHERE envelope_id=$1',[capital.envelopeId])).rows[0].n,0);
+    const enqueued = await plans.enqueueWithDisposition(plan, '2026-10-08T15:10:01.000Z', chain,capital);
     assert.equal(enqueued.disposition, 'ENQUEUED');
     assert.equal((await pool.query('SELECT chain_kind FROM trade.economic_chain WHERE chain_id=$1', [plan.chainId])).rows[0]?.chain_kind, 'DEFINED_RISK');
-    assert.equal((await plans.enqueueWithDisposition(plan, '2026-10-08T15:10:02.000Z', chain)).disposition, 'REPLAY', 'idempotent replay');
+    assert.equal((await plans.enqueueWithDisposition(plan, '2026-10-08T15:10:02.000Z', chain,capital)).disposition, 'REPLAY', 'idempotent replay');
+    const orderId=randomUUID();
+    const intent:PersistedPaperOrderIntent={orderIntentId:orderId,executionAccountId:accountId,decisionId:plan.decisionId,
+      action:plan.action,status:'READY',persistedAt:'2026-10-08T15:10:03.000Z',brokerOrderId:null,
+      chainId:plan.chainId,optionContractId:null,underlyingId:plan.underlyingId,
+      request:{symbol:pkg.packageIdentity,qty:1,side:'sell',type:'limit',time_in_force:'day',limit_price:'-0.90',client_order_id:orderId,
+        order_class:'mleg',legs:pkg.legs.map(l=>({symbol:l.occSymbol,side:l.positionIntent==='sell_to_open'?'sell':'buy',ratio_qty:1,position_intent:l.positionIntent}))},
+      multiLegEvidence:{orderClass:'mleg',packageIdentity:pkg.packageIdentity,creditDebitDirection:'CREDIT',legs:pkg.legs},
+      executionEvidence:{quoteSource:'ALPACA',quoteFeed:'OPRA',quoteSemantics:'CONSOLIDATED_NBBO',quoteContentHash:'b'.repeat(64),
+        quoteAsOf:'2026-10-08T15:10:02.000Z',decisionExpiresAt:plan.decisionExpiresAt,aegisState:'ALLOW_FULL'},
+      authorizationEvidence:{executionTier:'PAPER_EVIDENCE',canonicalQuantity:1,paperEvidenceQuantity:1,empiricalEconomicsReady:false,expectedAfterCostEv:null}};
+    const orders=new PostgresPaperOrderStore(pool,accountId,()=>intent.persistedAt);
+    const stale=new PostgresPaperOrderStore(pool,accountId,()=> '2026-10-08T15:10:46.000Z');
+    await assert.rejects(stale.insertIntent(intent),/CAPITAL_INTENT_ENVELOPE_STALE/);
+    await assert.rejects(new PostgresPaperOrderStore(pool,randomUUID(),()=>intent.persistedAt).insertIntent(intent),/ORDER_INTENT_ACCOUNT_SCOPE_MISMATCH/);
+    const altered={...intent,orderIntentId:randomUUID(),request:{...intent.request,limit_price:'-0.01'}};
+    await assert.rejects(orders.insertIntent(altered),/CAPITAL_NATIVE_INTENT_PLAN_MISMATCH/);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM trade.order_intent WHERE order_intent_id=$1',[altered.orderIntentId])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT order_intent_id FROM trade.capital_reservation WHERE reservation_id=$1',[plan.actionPlanId])).rows[0].order_intent_id,null);
+    const duplicateWrites=await Promise.allSettled([orders.insertIntent(intent),orders.insertIntent(intent)]);
+    assert.equal(duplicateWrites.filter(x=>x.status==='fulfilled').length,1);
+    assert.equal(duplicateWrites.filter(x=>x.status==='rejected').length,1);
+    const binding=(await pool.query('SELECT order_intent_id,state,remaining_quantity FROM trade.capital_reservation WHERE reservation_id=$1',[plan.actionPlanId])).rows[0];
+    assert.deepEqual(binding,{order_intent_id:orderId,state:'SUBMISSION_POSSIBLE',remaining_quantity:1});
+    assert.equal((await new PostgresPaperOrderStore(pool,accountId).getIntent(orderId))?.request.qty,1,'restart reads exact native intent');
+    assert.equal(await new PostgresPaperOrderStore(pool,randomUUID()).getIntent(orderId),null,'another account cannot load the intent');
+    await assert.rejects(stale.transitionIntent(orderId,'READY','SUBMITTING'),/CAPITAL_INTENT_ENVELOPE_STALE/);
+    assert.equal((await orders.getIntent(orderId))?.status,'READY','failed pre-submit admission does not advance the intent');
+    const secondIntent={...intent,orderIntentId:randomUUID(),request:{...intent.request,client_order_id:randomUUID()}};
+    await assert.rejects(orders.insertIntent(secondIntent),/CAPITAL_RESERVED_PLAN_INTEGRITY_INVALID/);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM trade.order_intent WHERE decision_id=$1',[plan.decisionId])).rows[0].n,1);
+    await orders.transitionIntent(orderId,'READY','SUBMITTING');
+    assert.equal((await orders.getIntent(orderId))?.status,'SUBMITTING','the existing pre-POST boundary accepts a valid bound reservation');
     // the next scan re-selects the same spread under a NEW decision while the first plan is still in its window: held back, not a second spread
     const second = await persistD(11);
     const duplicate = planFor(second);
@@ -148,7 +199,7 @@ test('D plan enqueue binds the persisted two-leg identity, a DEFINED_RISK chain 
       'fixture shares a leg contract (no vacuous pass)');
     const held = await plans.enqueueWithDisposition(duplicate, '2026-10-08T15:11:01.000Z', { botInstanceId: world.botId, underlyingId: duplicate.underlyingId });
     assert.equal(held.disposition, 'EQUIVALENT_ENTRY_IN_FLIGHT');
-    assert.deepEqual(held.conflictingIds, [plan.actionPlanId]);
+    assert.deepEqual(held.conflictingIds, [plan.actionPlanId,orderId].sort());
     // a D plan can never ride an H decision (a single-leg candidate)
     const hold = await persistD(12, 'THETA_HOLD_STRIKE');
     await assert.rejects(plans.enqueueWithDisposition({ ...planFor(first), decisionId: hold.row.decision_id, candidateId: hold.row.candidate_id } as ApprovedMasterPaperActionPlan,
