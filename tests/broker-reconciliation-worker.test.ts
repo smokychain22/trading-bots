@@ -85,6 +85,22 @@ test('read-only reconciliation persists matched and EXTERNAL_OR_UNKNOWN facts wi
   assert.equal(JSON.stringify(store.persisted).includes('paper-account-owner'), false);
 });
 
+test('account capital GET is captured durably during reconciliation even without a new-risk scan',async()=>{
+  const adapter=broker(),store=new CaptureStore();
+  adapter.value.getAccount=async()=>({id:'paper-account-owner',status:'ACTIVE',equity:'100000.00000001',cash:'99000',
+    buying_power:'360000',options_buying_power:'90000',trading_blocked:false,account_blocked:false});
+  const result=await runReadOnlyBrokerReconciliation({broker:adapter.value,store,connectionId:'connection-1',
+    expectedProviderAccountRef:'paper-account-owner',correlationId:'capital-cycle',now:()=> '2026-09-11T14:32:00.000Z'});
+  const observation=store.persisted?.accountCapitalObservation;
+  assert.equal(observation?.state,'READY');
+  if(observation?.state!=='READY')throw new Error('CAPITAL_NOT_CAPTURED');
+  assert.equal(observation.account.snapshotId,result.snapshotId);
+  assert.equal(observation.account.optionsBuyingPower,'90000');
+  assert.equal(observation.account.equity,'100000.00000001');
+  assert.equal(JSON.stringify(observation).includes('paper-account-owner'),false);
+  assert.equal(adapter.mutationCalls(),0);
+});
+
 test('settled historical orders, fills, fees, and journals remain raw facts but do not block entry', async () => {
   const orders = [
     order({ id: 'historical-order-1', clientOrderId: 'historical-client-1', status: 'filled', filledQty: 1 }),

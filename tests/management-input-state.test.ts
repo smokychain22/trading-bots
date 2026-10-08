@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assembleManagementInput, diffManagementInputs } from '../src/theta/management-input-state.js';
 import { buildManagementActionFrontier } from '../src/theta/management-action-frontier.js';
+import { evaluatePaperBootstrapManagementPolicy } from '../src/theta/paper-bootstrap-management-policy.js';
+import { buildReconciledAccountCapital } from '../src/execution/reconciled-account-capital.js';
 
 const base = {
   chain_id: 'chain-1', lifecycle_state: 'CSP_OPEN', underlying_id:'underlying-1', underlying: 'AAPL',
@@ -16,6 +18,72 @@ const base = {
     portfolioExposure: { concentration: 0.1, sectorCorrelation: 0.2 }, expertPriorState: { state: 'GOOD' } },
   broker_position: null,
 };
+
+test('PostgreSQL DATE-shaped expiration reaches DTE and deterministic conditional close economics', () => {
+  for (const expiration of ['2026-10-16', new Date(2026,9,16)]) {
+    const state = assembleManagementInput({...base,expiration_date:expiration}, {
+      managementInputSnapshotId:'date-shaped',reconciliationSnapshotId:'recon-1',observedAt:'2026-09-12T14:00:00.000Z',
+    });
+    assert.equal(state.contract.expiration,'2026-10-16');
+    assert.equal(state.market.dte,35);
+    const close = evaluatePaperBootstrapManagementPolicy(state)?.actionValues.find(a=>a.action==='CLOSE_FULL');
+    assert.ok(close);
+    assert.ok(!close.reasons.includes('DETERMINISTIC_INPUT_INCOMPLETE'));
+    assert.equal(close.executionEvidence?.closeEconomicBoundary,1.1);
+    assert.equal(close.expectedFutureValue,null);
+  }
+});
+
+test('malformed or impossible contract dates stay unknown with producer-specific close reasons', () => {
+  for (const expiration of [null,'Fri Nov 20','2026-02-30','2026-10-16garbage',new Date(NaN),new Date(2026,9,16,12)]) {
+    const state=assembleManagementInput({...base,expiration_date:expiration},{
+      managementInputSnapshotId:'invalid-date',reconciliationSnapshotId:'recon-1',observedAt:'2026-09-12T14:00:00.000Z',
+    });
+    assert.equal(state.contract.expiration,null);
+    assert.equal(state.market.dte,null);
+    assert.ok(state.unknownFields.includes('contract.expiration'));
+    assert.ok(state.unknownFields.includes('market.dte'));
+    const close=evaluatePaperBootstrapManagementPolicy(state)?.actionValues.find(a=>a.action==='CLOSE_FULL');
+    assert.ok(close?.reasons.includes('MANAGEMENT_DTE_UNAVAILABLE_FROM_CONTRACT_EXPIRATION'));
+    assert.equal(close?.executionEvidence,null);
+  }
+});
+
+test('management consumes same-reconciliation account capital without needing an opportunity scan', () => {
+  const at='2026-09-12T14:00:00.000Z',accountHash='a'.repeat(64);
+  const observation=buildReconciledAccountCapital({equity:'100000.00',cash:'90000.00',options_buying_power:'84300.25',
+    buying_power:'337201.00',status:'ACTIVE',trading_blocked:false,account_blocked:false},
+  {accountHash,snapshotId:'recon-1',requestedAt:at,receivedAt:at});
+  const state=assembleManagementInput({...base,physical_account_hash:accountHash,account_as_of:'2026-09-11T14:00:00Z',
+    reconciliation_detail:{accountCapitalObservation:observation}},
+  {managementInputSnapshotId:'fresh-reconciliation-account',reconciliationSnapshotId:'recon-1',observedAt:at});
+  assert.equal(state.account.optionsBuyingPower,84300.25);
+  assert.equal(state.account.buyingPower,337201);
+  assert.equal(state.evidenceBundle.accountStateAsOf,at);
+  assert.ok(!state.hardBlockers.includes('BROKER_DATA_STALE'));
+});
+
+test('invalid, wrong-account, wrong-cycle or future reconciled capital cannot fall back to a favorable old balance',()=>{
+  const at='2026-09-12T14:00:00.000Z',accountHash='a'.repeat(64);
+  const valid=buildReconciledAccountCapital({equity:'100000',cash:'100000',options_buying_power:'94300',
+    status:'ACTIVE',trading_blocked:false,account_blocked:false},{accountHash,snapshotId:'recon-1',requestedAt:at,receivedAt:at});
+  assert.equal(valid.state,'READY');
+  if(valid.state!=='READY')throw new Error('FIXTURE_NOT_READY');
+  for(const observation of [
+    {...valid,account:{...valid.account,accountHash:'b'.repeat(64)}},
+    {...valid,account:{...valid.account,snapshotId:'other-recon'}},
+    {...valid,account:{...valid.account,receivedAt:'2026-09-12T14:01:00Z'}},
+    {...valid,account:{...valid.account,optionsBuyingPower:null}},
+    {state:'BLOCKED',reasons:['CAPITAL_ACCOUNT_CONTROL_UNQUALIFIED']},
+  ]){
+    const state=assembleManagementInput({...base,physical_account_hash:accountHash,
+      reconciliation_detail:{accountCapitalObservation:observation}},
+    {managementInputSnapshotId:'bad-reconciled-account',reconciliationSnapshotId:'recon-1',observedAt:at});
+    assert.equal(state.account.optionsBuyingPower,null);
+    assert.equal(state.account.availableCapital,null);
+    assert.ok(state.hardBlockers.includes('RECONCILED_ACCOUNT_CAPITAL_UNQUALIFIED'));
+  }
+});
 
 test('management assembly uses executable ask for a short option and preserves whole-chain loss', () => {
   const state = assembleManagementInput(base, {

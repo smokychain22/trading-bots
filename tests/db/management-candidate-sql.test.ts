@@ -4,7 +4,10 @@ import test from 'node:test';
 import { Pool } from 'pg';
 import { ProductionPaperManagementCandidateSource } from
   '../../src/theta/production-paper-management-candidate-source.js';
-import { PostgresManagementInputStore } from '../../src/theta/management-input-state.js';
+import { assembleManagementInput, PostgresManagementInputStore } from '../../src/theta/management-input-state.js';
+import { buildReconciledAccountCapital } from '../../src/execution/reconciled-account-capital.js';
+import { evaluatePaperBootstrapManagementPolicy } from '../../src/theta/paper-bootstrap-management-policy.js';
+import { buildManagementActionFrontier } from '../../src/theta/management-action-frontier.js';
 
 test('management discovery and input queries compile against migrated PostgreSQL and remain master scoped',{
   skip:!process.env.TEST_DATABASE_URL,
@@ -24,6 +27,50 @@ test('management discovery and input queries compile against migrated PostgreSQL
     assert.deepEqual(await new PostgresManagementInputStore(pool).assembleAndPersistOpenChains(
       invalidConnection,invalidReconciliation,new Date().toISOString()),[]);
   }finally{await pool.end();}
+});
+
+test('real PostgreSQL DATE and JSONB reconciliation survive restart-shaped loading through close selection', {
+  skip: !process.env.TEST_DATABASE_URL,
+}, async () => {
+  const connectionString=process.env.TEST_DATABASE_URL;
+  assert.ok(connectionString);
+  assert.ok(['127.0.0.1','localhost'].includes(new URL(connectionString).hostname));
+  const pool=new Pool({connectionString,max:1});
+  const at='2026-10-13T14:00:00.000Z',accountHash='a'.repeat(64);
+  const accountCapitalObservation=buildReconciledAccountCapital({equity:'100000',cash:'90000',
+    options_buying_power:'84300.25',buying_power:'337201',status:'ACTIVE',trading_blocked:false,account_blocked:false},
+  {accountHash,snapshotId:'recon-date-json',requestedAt:at,receivedAt:at});
+  try {
+    const row=(await pool.query(`SELECT DATE '2026-10-16' AS raw_date,
+      DATE '2026-10-16'::text AS expiration_date, $1::jsonb AS reconciliation_detail`,
+    [JSON.stringify({accountCapitalObservation})])).rows[0];
+    assert.ok(row.raw_date instanceof Date,'characterize pg DATE parser, not a string fixture');
+    assert.equal(row.expiration_date,'2026-10-16');
+    for (const expiration of [row.raw_date,row.expiration_date]) {
+      const state=assembleManagementInput({...row,expiration_date:expiration,physical_account_hash:accountHash,
+        chain_id:'chain',lifecycle_state:'CSP_OPEN',underlying_id:'underlying',underlying:'AAPL',
+        option_leg_id:'leg',option_contract_id:'contract',quantity:'1',entry_credit_debit:'200',
+        contract_symbol:'AAPL261016P00200000',option_type:'PUT',strike:'200',multiplier:'100',
+        bid:'0.01',ask:'0.02',quote_as_of:at,feed:'OPRA',quote_quality:'GOOD',realized_option_pnl:'0',
+        open_stock_shares:'0',stock_basis_per_share:null,realized_stock_pnl:'0',dividends:'0',fees:'0',
+        unknown_fill_fees:true,account_as_of:'2026-10-12T14:00:00Z',fusion_snapshot_id:'fusion',
+        reconciliation_quality:'GOOD',broker_option_symbol:'AAPL261016P00200000',broker_option_quantity:'1',
+        broker_option_side:'short',broker_option_asset_class:'us_option',broker_option_observed_at:at,
+        ledger_option_contract_quantity:'1',snapshot_json:{underlyingState:{last:205},
+          marketSession:{isOpen:true},riskState:{newRiskState:'ALLOW_FULL'},eventState:{state:'CLEAR'}}},
+      {managementInputSnapshotId:randomUUID(),reconciliationSnapshotId:'recon-date-json',observedAt:at});
+      assert.equal(state.market.dte,4,'existing DTE policy includes the expiration-session close');
+      assert.equal(state.account.optionsBuyingPower,84300.25);
+      assert.ok(!state.hardBlockers.includes('BROKER_DATA_STALE'));
+      assert.equal(state.economics.fees,null,'unobserved fees must remain unknown');
+      const policy=evaluatePaperBootstrapManagementPolicy(state);
+      const frontier=buildManagementActionFrontier(state,policy);
+      assert.equal(frontier.selectedAction,'CLOSE_FULL');
+      assert.equal(frontier.decisionState,'ACTION_SELECTED');
+      assert.equal(frontier.actions.find(a=>a.action==='CLOSE_FULL')?.executionEvidence?.closeEconomicBoundary,0.02);
+      assert.equal(frontier.actions.find(a=>a.action==='CLOSE_FULL')?.executionEvidence?.expectedAfterCostEv,null);
+    }
+  } finally { await pool.end(); }
 });
 
 test('management candidate producer batches a real-shaped broker lattice into immutable local quote evidence',{

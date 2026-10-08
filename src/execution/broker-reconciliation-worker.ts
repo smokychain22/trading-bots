@@ -6,6 +6,7 @@ import type { BrokerActivity, BrokerCalendarSession, BrokerMarketClock, BrokerOr
 import type { ReadOnlyPaperBroker } from './read-only-paper-broker.js';
 import { isValidOrderIntentTransition, type OrderIntentState } from '../theta/order-intent-state.js';
 import { brokerOrderIntentState } from './broker-order-state.js';
+import { buildReconciledAccountCapital, type ReconciledAccountCapital } from './reconciled-account-capital.js';
 import {
   classifyBrokerFactBatch,
   type BrokerFactBatchSummary,
@@ -67,6 +68,7 @@ export interface ReconciledBrokerOrder {
 export { brokerOrderIntentState } from './broker-order-state.js';
 
 export interface BrokerReconciliationSnapshotInput {
+  readonly accountCapitalObservation?: ReconciledAccountCapital;
   readonly snapshotId: string;
   readonly connectionId: string;
   readonly correlationId: string;
@@ -252,6 +254,7 @@ export async function runReadOnlyBrokerReconciliation(input: {
   }
   const observedAt = input.now();
   const account = accountSchema.parse(await input.broker.getAccount());
+  const accountReceivedAt = input.now();
   if (account.id !== input.expectedProviderAccountRef) throw new Error('MASTER_BROKER_IDENTITY_MISMATCH');
 
   const marketDate = marketDateAt(observedAt);
@@ -287,18 +290,22 @@ export async function runReadOnlyBrokerReconciliation(input: {
   const factImpactSummary = classifyBrokerFactBatch(buildBrokerFactImpactEvidence({
     unmatchedOrders: matches.unmatched, positions, unmatchedActivities, allOrders: orders, observedAt,
   }));
+  const snapshotId = randomUUID();
+  const accountCapitalObservation = buildReconciledAccountCapital(account, {
+    accountHash: providerAccountRefHash, snapshotId, requestedAt: observedAt, receivedAt: accountReceivedAt,
+  });
   const payloadHash = sha256(canonicalJson({
+    accountCapitalObservation,
     account: { status: account.status ?? null }, positions, orders: orders.map((order) => ({
       idHash: sha256(order.id), clientOrderIdHash: sha256(order.clientOrderId), status: order.status,
       symbol: order.symbol, quantity: order.qty, filledQuantity: order.filledQty,
     })), activities: sortedActivities.map((activity) => ({ idHash: sha256(activity.id), type: activity.activityType })),
     marketClock, calendarSessions,
   }));
-  const snapshotId = randomUUID();
   await input.store.persist({
     snapshotId, connectionId: input.connectionId, correlationId: input.correlationId,
     providerAccountRefHash, accountStatus: account.status ?? null,
-    marketClock, calendarSessions,
+    marketClock, calendarSessions, accountCapitalObservation,
     positionCount: positions.length, openOrderCount: orders.filter((order) => !isTerminalOrderStatus(order.status)).length,
     activityCount: sortedActivities.length, positions, activities: sortedActivities, matchedOrders: matches.matched,
     missingLocalIntentIds: matches.missingLocalIntentIds, unmatchedFacts, factImpactSummary, observedAt, payloadHash,
@@ -381,6 +388,7 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
             && input.marketClock.isOpen != null && input.calendarSessions !== null ? 'GOOD' : 'UNKNOWN',
           input.payloadHash,
           JSON.stringify({
+            accountCapitalObservation: input.accountCapitalObservation ?? null,
             localOnlyIntentCount: input.missingLocalIntentIds.length,
             brokerFactImpactSummary: input.factImpactSummary,
             marketOpen: input.marketClock?.isOpen ?? null,

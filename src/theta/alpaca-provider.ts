@@ -173,6 +173,7 @@ async function fetchAccountBody(config: AlpacaProviderConfig):Promise<Record<str
 export async function fetchMasterAccountEvidence(config:AlpacaProviderConfig,
   clock:()=>string=()=>new Date().toISOString()):Promise<{
     readonly providerAccountId:string;readonly requestedAt:string;readonly snapshot:MasterAccountSnapshot;
+    readonly accountBlocked: boolean | null;
     readonly capitalDecimals: { readonly equity: string | null; readonly cash: string | null;
       readonly optionsBuyingPower: string | null };
   }> {
@@ -183,7 +184,7 @@ export async function fetchMasterAccountEvidence(config:AlpacaProviderConfig,
     ||Date.parse(receivedAt)<Date.parse(requestedAt))throw new Error('ALPACA_ACCOUNT_RECEIPT_TIME_INVALID');
   const providerAccountId=nonEmptyString(body.id);
   if(providerAccountId===null)throw new AlpacaProviderError('MALFORMED_RESPONSE',null,'MASTER_ACCOUNT_IDENTITY_UNKNOWN');
-  return {providerAccountId,requestedAt,snapshot:normalizeMasterAccount(body,receivedAt),
+  return {providerAccountId,requestedAt,snapshot:normalizeMasterAccount(body,receivedAt),accountBlocked:asBooleanOrNull(body.account_blocked),
     capitalDecimals: { equity: exactCapitalDecimal(body.equity), cash: exactCapitalDecimal(body.cash),
       optionsBuyingPower: exactCapitalDecimal(body.options_buying_power) } };
 }

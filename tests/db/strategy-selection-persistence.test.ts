@@ -14,6 +14,7 @@ import { buildCycle, persistenceContext, seedWorld } from '../helpers/theta-cycl
 import { capitalInput } from '../fixtures/qualified-account-capital.js';
 import { PostgresPaperOrderStore } from '../../src/execution/postgres-paper-order-store.js';
 import type { PersistedPaperOrderIntent } from '../../src/execution/paper-order-coordinator.js';
+import { enqueueObservedMasterPaperPlan } from '../../src/execution/observed-master-paper-plan.js';
 
 // Real PostgreSQL: when the sovereign frontier selects H or D (from a governed receipt), the decision must persist a NON-NULL selected candidate (H: its exact
 // put; D: a two-leg candidate with no representative contract) and an AEGIS identity bound to THAT strategy's own assessment -- never Q's assessment of the same
@@ -156,7 +157,14 @@ test('D plan enqueue binds the persisted two-leg identity, a DEFINED_RISK chain 
       {...chain,underlyingId:randomUUID()},capital),/ACTION_PLAN_CHAIN_UNDERLYING_MISMATCH/);
     assert.equal((await pool.query('SELECT count(*)::int n FROM trade.capital_reservation WHERE reservation_id=$1',[plan.actionPlanId])).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM trade.capital_envelope WHERE envelope_id=$1',[capital.envelopeId])).rows[0].n,0);
-    const enqueued = await plans.enqueueWithDisposition(plan, '2026-10-08T15:10:01.000Z', chain,capital);
+    // Exercise the actual cycle handoff using an injected upstream observation.
+    // The real catalog, plan/reservation/chain/intent transactions remain intact.
+    const enqueued = await enqueueObservedMasterPaperPlan({pool,plan,chain,createdAt:'2026-10-08T15:10:01.000Z',
+      now:()=> '2026-10-08T15:10:02.000Z',reconciliation:{} as import('../../src/execution/broker-reconciliation-worker.js').BrokerReconciliationResult,
+      alpaca:{tradingApiBase:'https://paper-api.alpaca.markets',marketDataApiBase:'https://data.alpaca.markets',apiKey:'synthetic',apiSecret:'synthetic'}},
+    {required:async(client)=>{const result=await client.query("SELECT to_regclass('trade.capital_reservation') IS NOT NULL AS capital_required");
+      assert.equal(result.rows[0].capital_required,true);return true;},
+      produce:async()=>({state:'READY',observation:capital}),enqueue:(_pool,...args)=>plans.enqueueWithDisposition(...args)});
     assert.equal(enqueued.disposition, 'ENQUEUED');
     assert.equal((await pool.query('SELECT chain_kind FROM trade.economic_chain WHERE chain_id=$1', [plan.chainId])).rows[0]?.chain_kind, 'DEFINED_RISK');
     assert.equal((await plans.enqueueWithDisposition(plan, '2026-10-08T15:10:02.000Z', chain,capital)).disposition, 'REPLAY', 'idempotent replay');

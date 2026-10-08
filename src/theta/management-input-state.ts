@@ -10,6 +10,7 @@ import { securedContractCapacity } from './secured-contract-capacity.js';
 import type { ManagementCandidateDiscovery } from './management-candidate-evidence.js';
 import { loadManagementEntryThesis, type ManagementEntryThesis } from './management-entry-thesis.js';
 import type { BrokerStockInventoryEvidence } from './stock-share-reconciliation.js';
+import { reconciledAccountCapitalSchema } from '../execution/reconciled-account-capital.js';
 
 /** Staleness limits of the BROKER evidence a management decision is built from (named, not inline; the pre-submit quote window is a separate policy). */
 export const managementBrokerQuoteMaxAgeMs = 30_000;
@@ -231,6 +232,23 @@ const numeric = (value: unknown): number | null => {
 
 const text = (value: unknown): string | null => value == null ? null : String(value);
 
+// PostgreSQL DATE has no timezone. pg's default DATE parser constructs local
+// midnight, so ISO conversion can shift its calendar day on non-UTC hosts.
+// The production query returns DATE as text. Retain the parser's calendar
+// components for legacy/injected rows, never a truncated Date.toString().
+function contractExpirationDate(value: unknown): string | null {
+  let date: string;
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime()) || value.getHours() !== 0 || value.getMinutes() !== 0
+      || value.getSeconds() !== 0 || value.getMilliseconds() !== 0) return null;
+    date = `${value.getFullYear().toString().padStart(4,'0')}-${(value.getMonth()+1).toString().padStart(2,'0')}-${value.getDate().toString().padStart(2,'0')}`;
+  } else if (typeof value === 'string') date = value;
+  else return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const ms = Date.parse(`${date}T00:00:00.000Z`);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0,10) === date ? date : null;
+}
+
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
@@ -339,6 +357,24 @@ export function assembleManagementInput(row: Row, input: {
     .filter((value):value is string=>value!==null).sort().at(-1) ?? null;
   const snapshot = object(row.snapshot_json);
   const reconciliationDetail = object(row.reconciliation_detail);
+  const rawReconciledAccount = reconciliationDetail.accountCapitalObservation;
+  let reconciledAccountInvalid = false;
+  if (rawReconciledAccount !== null && rawReconciledAccount !== undefined) {
+    const parsed = reconciledAccountCapitalSchema.safeParse(rawReconciledAccount);
+    const account = parsed.success ? parsed.data.account : null;
+    const valid = account !== null && account.accountHash === row.physical_account_hash
+      && account.snapshotId === input.reconciliationSnapshotId
+      && Date.parse(account.requestedAt) <= Date.parse(account.receivedAt)
+      && Date.parse(account.receivedAt) <= Date.parse(input.observedAt);
+    // A current refusal or mismatched observation cannot fall back to an older
+    // apparently favorable account snapshot. Legacy receipts still use their
+    // original snapshot and existing freshness gate until this is deployed.
+    row = {...row,account_snapshot_id:valid?account.snapshotId:null,
+      buying_power:valid?parsed.data?.buyingPower:null,
+      options_buying_power:valid?account.optionsBuyingPower:null,
+      account_as_of:valid?account.receivedAt:null,account_retrieved_at:valid?account.receivedAt:null};
+    reconciledAccountInvalid = !valid;
+  }
   const marketSession = object(snapshot.marketSession);
   const reconciledMarketOpen = typeof reconciliationDetail.marketOpen==='boolean' ? reconciliationDetail.marketOpen
     : typeof marketSession.isOpen==='boolean' ? marketSession.isOpen : null;
@@ -381,7 +417,7 @@ export function assembleManagementInput(row: Row, input: {
   const ledgerComplete = row.unknown_closed_leg_pnl !== true && row.has_stock_lots !== true;
   const wholeChainPnl = ledgerComplete && (!hasOpenOption || optionMark !== null) && stockMtm !== null && fees !== null
     ? realizedOptionPnl + (optionMark ?? 0) + realizedStockPnl + stockMtm + dividends - fees : null;
-  const expiration = text(row.expiration_date)?.slice(0, 10) ?? null;
+  const expiration = contractExpirationDate(row.expiration_date);
   const spot = stockMark ?? numeric(snapshot.underlyingState && object(snapshot.underlyingState).last);
   const strike = numeric(row.strike);
   const lifecycleState = String(row.lifecycle_state) as ThetaLifecycleState;
@@ -467,6 +503,8 @@ export function assembleManagementInput(row: Row, input: {
   const unknownFields: string[] = [];
   const required = (name: string, value: unknown): void => { if (value === null || value === undefined) unknownFields.push(name); };
   if (hasOpenOption) {
+    required('contract.expiration', expiration);
+    required('market.dte', daysToExpiration(expiration, input.observedAt));
     required('contract.multiplier', multiplier);
     required('market.optionBid', bid);
     required('market.optionAsk', ask);
@@ -500,6 +538,7 @@ export function assembleManagementInput(row: Row, input: {
   }
 
   const hardBlockers: string[] = [];
+  if (reconciledAccountInvalid) hardBlockers.push('RECONCILED_ACCOUNT_CAPITAL_UNQUALIFIED');
   if (hasOpenOption && multiplier === null) hardBlockers.push('MULTIPLIER_UNKNOWN');
   // D6: a buy-to-close needs only a valid ASK. A zero BID (worthless short) is a valid, closable quote; a negative bid,
   // a missing/non-positive ask, a crossed quote, or a missing timestamp is not.
@@ -615,11 +654,12 @@ export class PostgresManagementInputStore {
     stockQuoteReader?: ManagementStockQuoteReader): Promise<readonly ManagementInputState[]> {
     const result = await this.pool.query(`
       SELECT ec.chain_id,ec.lifecycle_state,u.underlying_id,u.symbol AS underlying,
+        encode(digest(master.provider_account_ref,'sha256'),'hex') AS physical_account_hash,
         original_entry.decision_id AS original_decision_id,original_entry.fusion_snapshot_id AS original_snapshot_id,
         original_entry.decided_at AS original_decided_at,original_entry.entry_thesis AS original_entry_thesis,
         original_entry.strategy_branch AS original_strategy_branch,
         ol.option_leg_id,ol.remaining_quantity AS quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
-        oc.strike,oc.expiration_date,oc.multiplier,
+        oc.strike,oc.expiration_date::text AS expiration_date,oc.multiplier,
         oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.retrieved_at AS quote_retrieved_at,oq.feed,oq.quality AS quote_quality,
         totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,acct.account_ledger_shares,
         totals.realized_stock_pnl,totals.dividends,totals.fees,totals.unknown_fill_fees,totals.unknown_closed_leg_pnl,totals.has_stock_lots,

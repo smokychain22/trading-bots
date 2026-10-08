@@ -18,7 +18,7 @@ import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './
 import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-assembly.js';
 import { assembleDefinedRiskPaperEvidencePlan, type PersistedDefinedRiskLegIdentity } from '../execution/defined-risk-plan-assembly.js';
 import { isAutonomousMasterPaperAccepted } from '../execution/paper-execution-authorization.js';
-import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
+import { enqueueObservedMasterPaperPlan } from '../execution/observed-master-paper-plan.js';
 import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, summarizeSizingZero, type RuntimeBehaviorDiagnostic,
   type RuntimeFirstPaperSymbolEvidence, type RuntimeReadOnlyPreSubmitProof } from '../theta/runtime-behavior-diagnostic.js';
 import { buildUniverseBreadthShadowPlan } from './strategy-quality-shadow-diagnostics.js';
@@ -581,8 +581,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       if(assembled.state==='READY'&&!storageAdmission.admitted){
         actionPlansBlocked.push(`${member.symbol}:${storageAdmission.blocker??'STORAGE_NEW_RISK_BLOCKED'}:${storageNewRiskGate.reason}`);
       }else if(assembled.state==='READY'){
-        const enqueued=runtimePlanEnqueueEnabled?await new PostgresMasterPaperActionPlanStore(memberPool).enqueueWithDisposition(assembled.plan,planNow,
-          {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}):null;
+        const enqueued=runtimePlanEnqueueEnabled?await enqueueObservedMasterPaperPlan({pool:memberPool,alpaca:input.alpaca,
+          reconciliation:input.reconciliation,plan:assembled.plan,createdAt:planNow,now:input.now,
+          chain:{botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}}):null;
         if(enqueued?.inserted===true){
           actionPlansReady++;
           // The 45-second plan window starts at durable enqueue. Execute the
@@ -591,6 +592,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         }else if(enqueued!==null){
           // a READY plan that was not inserted (replay of this decision, or an equivalent entry already in flight) is never a silent WAIT
           actionPlansBlocked.push(`${member.symbol}:PLAN_NOT_ENQUEUED_${enqueued.disposition}`);
+          actionPlansBlocked.push(...enqueued.reasons.map(reason=>`${member.symbol}:${reason}`));
         }
         if(readOnlyQuoteSource!==null){
           try{

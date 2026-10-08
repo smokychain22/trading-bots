@@ -804,7 +804,11 @@ function valueFor(
     }
     case 'CLOSE_FULL':
     case 'CLOSE_CC': {
-      if (currentMark === null || dte === null) return { ...base, ...UNKNOWN_VALUE };
+      if (currentMark === null || dte === null) return { ...base, ...UNKNOWN_VALUE, reasons: [
+        'DETERMINISTIC_INPUT_INCOMPLETE',
+        ...(dte === null ? ['MANAGEMENT_DTE_UNAVAILABLE_FROM_CONTRACT_EXPIRATION'] : []),
+        ...(currentMark === null ? ['MANAGEMENT_CLOSE_COST_UNAVAILABLE_FROM_QUOTE_MULTIPLIER_QUANTITY'] : []),
+      ] };
       // A deterministic (not statistical) preference for closing: remaining
       // extrinsic value is a small, KNOWN fraction of what was collected,
       // and very little time remains -- continuing to hold risks gamma/
