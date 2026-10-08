@@ -1,0 +1,90 @@
+{
+  "version": "theta-v4-envelope-checkpoint-v1",
+  "classification": "TESTED_SOURCE_ONLY",
+  "phase": "V4_SHARED_CAPITAL_QUALIFIED_PRODUCER_SLICE",
+  "baseSha": "ff5d50b6a7e0b7315de9cdfb708952a8d235146a",
+  "baseExactCi": {"run": 37765733960, "state": "PASS"},
+  "rootCause": "The transactional reservation primitive accepted caller-created available/reflected maps without a canonical account-evidence compiler or database-loaded intent/fill intersection. The existing normalized account numbers also lost the original exact broker decimal representation.",
+  "implemented": [
+    "Existing bounded account GET now additionally preserves exact capital decimal strings. Missing options buying power never falls back to margin buying power.",
+    "Strict cash-secured-put account evidence compiler checks physical account, snapshot, observation window, policy identity, contract metadata, completeness, and required balances.",
+    "Exact fixed-scale cash and policy exposure include filled positions plus only unfilled opening quantities. Pending closing orders do not free capital.",
+    "Broker-net options buying power is kept separate from internal secured-cash and policy capacities.",
+    "Soft limits remain visible and candidate-bound AEGIS reassessment remains mandatory. The hard boundary retains existing greater-than-or-equal veto semantics.",
+    "Multi-underlying sector/correlation evidence is required explicitly. A sole-underlying proxy is labeled rather than presented as empirical taxonomy.",
+    "Qualified reservation transaction loads active commitments and account-bound intent, broker-order and immutable fill lineage under the physical-account lock.",
+    "Proven pending-order policy/cash intersections are credited only once. Unproven broker-BP attribution and filled-position lot intersections stay held.",
+    "Bounded qualification evidence persists in the existing immutable envelope, without a new table or alternate execution authority.",
+    "Restart replay reuses immutable qualification, validates observation identity, and preserves idempotent claims. Freshness is checked after acquiring the account lock.",
+    "Unsupported native-leg, inventory or assignment inputs refuse qualification rather than being modeled as a zero-risk cash-secured account."
+  ],
+  "source": [
+    "src/theta/alpaca-provider.ts",
+    "src/execution/qualified-account-capital.ts",
+    "src/execution/portfolio-capital-reservation.ts",
+    "src/execution/postgres-portfolio-capital-store.ts"
+  ],
+  "tests": [
+    "tests/alpaca-provider.test.ts",
+    "tests/qualified-account-capital.test.ts",
+    "tests/db/portfolio-capital-reservation.test.ts",
+    "tests/fixtures/qualified-account-capital.ts"
+  ],
+  "databaseProof": {
+    "database": "DISPOSABLE_LOCAL_POSTGRESQL_16",
+    "schema": "071",
+    "inputs": "SYNTHETIC",
+    "transactions": "REAL",
+    "passed": 5,
+    "failed": 0,
+    "covered": ["concurrent ordered and unordered Q/H/D admission", "qualified producer to immutable envelope persistence", "restart replay", "account mismatch", "mutated observation", "expired evidence", "transaction rollback", "missing partial fill", "exact pending reflection", "broker-BP non-attribution retention"],
+    "fixtureLimitation": "Unrelated upstream decision and contract foreign keys are bypassed only to create synthetic intent fixtures. The capital transaction, binding and reflection queries run with normal constraints. No broker requests or Production database writes occur."
+  },
+  "runtimeObservation": {
+    "observedAt": "2026-10-08T10:54:55.747Z",
+    "source": "CANONICAL_INSTALLED_WORKER_ENVIRONMENT",
+    "method": "BOUNDED_GET_AND_READ_ONLY_SQL",
+    "accountPositionsOrdersHttp": [200,200,200],
+    "schema": "070_lifecycle_short_put_open_event",
+    "positionCount": 1,
+    "openOrderCount": 0,
+    "accountHashMatched": true,
+    "filledIntentQuantityMatched": true,
+    "fees": "UNKNOWN",
+    "currentCloseQualification": "NOT_REVERIFIED_THIS_SLICE",
+    "workerChanged": false
+  },
+  "remainingMandatoryIntegration": [
+    "Production snapshot/contract/group loader must assemble this input from one qualified reconciled observation. It is not wired by this checkpoint.",
+    "Exact broker-BP attribution and filled-position lot reflection remain unproved. Conservatively retained capacity must not be advertised as complete nonduplicated account allocation.",
+    "All authorized sovereign Q/H/D plan-to-intent paths must require reservation admission transactionally. The new composable method is not yet called by Production plan/intent consumers.",
+    "Native spread partial-leg, assignment, exercise, stock inventory, position-close and unsubmitted-plan release require their canonical producers and reconciliation.",
+    "Rejected-envelope retention remains required before continuous collection is activated.",
+    "Candidate-bound AEGIS must re-assess concurrent account commitments before submission. The compiler is not a replacement risk authority.",
+    "Migration 071 compatibility, full integrated release certification and owner approval remain required."
+  ],
+  "validation": {
+    "classification": "TESTED_SOURCE_ONLY",
+    "nodeFullRun": {"passed":4490,"failed":1,"skipped":81,"concurrency":2,"evidence":".ci-test-evidence/v4-envelope-node.jsonl"},
+    "nodeFailureResolution": "The sole failure was the existing Phase-2 certificate binding the old Alpaca provider bytes. Its canonical evidence generator executed 609 reviewed tests successfully, then the certificate assertion passed. No test or safety assertion was weakened.",
+    "reviewedEvidenceRerun": {"passed":609,"failed":0},
+    "finalAffectedComponentRerun": {"passed":77,"failed":0,"skipped":0,"evidence":".ci-test-evidence/v4-envelope-final-focused.jsonl"},
+    "componentScope": "The final multiplier and risk-group freshness guards were validated by the complete affected provider/capital/real-database suites. Unaffected full-suite results were retained, not represented as another full-suite invocation.",
+    "python": {"passed":1358,"failed":0},
+    "browser": {"passed":23,"failed":0},
+    "windowsSafetyScripts": {"passed":10,"failed":0},
+    "migration071Invariants": "PASS_DISPOSABLE_DATABASE_ONLY",
+    "checks": ["lint","typecheck","build","security scan: zero findings","Git storage policy: PASS","git diff --check"],
+    "initialFixtureIssue": "The new database fixture used the provider spelling PARTIALLY_FILLED instead of the canonical local enum PARTIAL. Corrected the fixture and reran all five database cases successfully.",
+    "exactNewShaCi": "NOT_RUN",
+    "newCheckpointPush": "OWNER_APPROVAL_REQUIRED"
+  },
+  "productionMigration071": false,
+  "deployment": false,
+  "brokerMutations": 0,
+  "workerRestart": false,
+  "executionControlsChanged": false,
+  "liveAuthorization": "NOT_GRANTED",
+  "profitability": "EMPIRICALLY_UNPROVEN",
+  "nextBoundedSlice": "Complete the canonical snapshot/group adapter and native/reflected exposure semantics, then compose mandatory plan/intent admission. Do not activate schema 071 or deploy this partial integration."
+}

@@ -4,12 +4,59 @@ import test from 'node:test';
 import { Pool } from 'pg';
 import { PostgresPortfolioCapitalStore, type CapitalTerminalEvidence } from '../../src/execution/postgres-portfolio-capital-store.js';
 import type { CapitalEnvelope, CapitalProposal } from '../../src/execution/portfolio-capital-reservation.js';
+import { capitalInput } from '../fixtures/qualified-account-capital.js';
+import { withRuntimePostgresTransaction } from '../../src/theta/runtime-postgres-client.js';
 
 const dims=(x:string)=>({CASH:x,BROKER:x,PORTFOLIO:x,ASSIGNMENT:x,'TICKER:XLE':x,'SECTOR:ENERGY':x,'CORRELATION:ENERGY':x});
 const NOW='2026-10-08T13:30:00Z';
 const proposal=(amount:string,strategy:CapitalProposal['strategy']='THETA_CONVENTIONAL'):CapitalProposal=>({reservationId:randomUUID(),
   proposalRef:randomUUID(),decisionId:randomUUID(),candidateRef:randomUUID(),strategy,quantity:1,canonicalMaximumQuantity:1,
   quoteExpiresAt:'2026-10-08T13:31:00Z',perUnit:dims(amount),authorityHash:'a'.repeat(64)});
+
+test('real PostgreSQL: qualified producer binds account, persists evidence, serializes admission and replays after restart',
+  {skip:!process.env.TEST_DATABASE_URL},async()=>{
+  const url=process.env.TEST_DATABASE_URL as string;
+  assert.ok(['127.0.0.1','localhost'].includes(new URL(url).hostname));
+  const pool=new Pool({connectionString:url,max:3}),v=capitalInput();
+  const hash=v.executionAccountId.replaceAll('-','').repeat(2);
+  v.accountHash=hash;v.account.accountHash=hash;v.positions.accountHash=hash;v.orders.accountHash=hash;
+  const {now,commitments:_,...input}=v;
+  assert.deepEqual(_,[]);
+  const store=new PostgresPortfolioCapitalStore(pool,()=>now);
+  const make=(amount:string,strategy:CapitalProposal['strategy'])=>({...proposal(amount,strategy),perUnit:{
+    CASH:amount,BROKER:amount,PORTFOLIO:amount,ASSIGNMENT:amount,'TICKER:XLE':amount,
+    'SECTOR:SINGLE_UNDERLYING_PROXY:XLE':amount,'CORRELATION:SINGLE_UNDERLYING_PROXY:XLE':amount}});
+  const ps=[make('15000','THETA_CONVENTIONAL'),make('1000','THETA_HOLD_STRIKE'),make('3000','THETA_DEFINED_RISK')];
+  try{
+    await pool.query(`INSERT INTO trade.execution_account(execution_account_id,account_kind,provider_account_ref_hash,
+      provider_account_ref_masked,account_ready) VALUES($1,'MASTER_API_KEY',$2,'synthetic',true)`,[v.executionAccountId,hash]);
+    const execute=(s:PostgresPortfolioCapitalStore,proposals:CapitalProposal[])=>withRuntimePostgresTransaction(pool,
+      client=>s.reserveQualifiedInTransaction(client,input,proposals));
+    const first=await execute(store,ps);
+    assert.equal(first.receipt.state,'QUALIFIED');
+    assert.deepEqual(first.admissions.map(x=>x.state),['RESERVED','RESERVED','BLOCKED']);
+    const saved=(await pool.query('SELECT envelope_json FROM trade.capital_envelope WHERE envelope_id=$1',[v.envelopeId])).rows[0].envelope_json;
+    assert.equal(saved.qualification.accountHash,hash);
+    assert.equal(saved.qualification.usedByDimension.PORTFOLIO,'5700.00000000');
+    assert.equal(saved.available.BROKER,'94328');
+    const repeats=await Promise.all(Array.from({length:4},()=>execute(new PostgresPortfolioCapitalStore(pool,()=>now),ps.slice(0,2))));
+    assert.ok(repeats.every(x=>x.receipt.state==='REPLAY'&&x.admissions.every(y=>y.state==='REPLAY')));
+    const totals=(await pool.query('SELECT count(*)::int n FROM trade.capital_reservation WHERE provider_account_ref_hash=$1',[hash])).rows[0];
+    assert.equal(totals.n,2);
+    await assert.rejects(withRuntimePostgresTransaction(pool,c=>store.reserveQualifiedInTransaction(c,
+      {...input,accountHash:'f'.repeat(64)},ps)),/CAPITAL_ACCOUNT_IDENTITY_CONFLICT/);
+    await assert.rejects(withRuntimePostgresTransaction(pool,c=>store.reserveQualifiedInTransaction(c,
+      {...input,account:{...input.account,optionsBuyingPower:'999999'}},ps)),/CAPITAL_ENVELOPE_IDENTITY_CONFLICT/);
+    const later=new PostgresPortfolioCapitalStore(pool,()=> '2026-10-08T13:30:46Z');
+    const stale=await withRuntimePostgresTransaction(pool,c=>later.reserveQualifiedInTransaction(c,{...input,envelopeId:randomUUID()},ps));
+    assert.equal(stale.receipt.state,'BLOCKED');assert.equal(stale.admissions.length,0);
+    const rolled=make('1','THETA_CONVENTIONAL');
+    await assert.rejects(withRuntimePostgresTransaction(pool,async c=>{
+      await store.reserveQualifiedInTransaction(c,input,[rolled]);throw Error('SIMULATED_PLAN_PERSISTENCE_FAILURE');
+    }),/SIMULATED_PLAN_PERSISTENCE_FAILURE/);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM trade.capital_reservation WHERE reservation_id=$1',[rolled.reservationId])).rows[0].n,0);
+  }finally{await cleanAccount(pool,v.executionAccountId,hash);}
+});
 
 async function cleanAccount(pool:Pool,account:string,hash:string,fixture?:{intent:string;broker:string}) {
   const client=await pool.connect();
@@ -161,4 +208,56 @@ test('real PostgreSQL: one sovereign ordered batch admits all affordable proposa
   }finally{
     await cleanAccount(pool,id,hash);
   }
+});
+
+test('real PostgreSQL: reflection loader requires account-bound intent, exact broker identity and matching partial fill ledger',
+  {skip:!process.env.TEST_DATABASE_URL},async()=>{
+  const url=process.env.TEST_DATABASE_URL as string;
+  assert.ok(['127.0.0.1','localhost'].includes(new URL(url).hostname));
+  const pool=new Pool({connectionString:url,max:2}),v=capitalInput();
+  const account=v.executionAccountId,hash=account.replaceAll('-','').repeat(2),intent=randomUUID(),broker=randomUUID();
+  v.accountHash=hash;v.account.accountHash=hash;v.positions.accountHash=hash;v.orders.accountHash=hash;
+  v.groups={evidenceHash:'e'.repeat(64),policyVersion:v.policyVersion,observedAt:NOW,
+    expiresAt:'2026-10-08T13:31:00Z',members:{XLE:{sector:'ENERGY',correlation:'ENERGY'}}};
+  const p={...proposal('5700'),quantity:2,canonicalMaximumQuantity:2};
+  const store=new PostgresPortfolioCapitalStore(pool,()=>v.now);
+  try{
+    await pool.query(`INSERT INTO trade.execution_account(execution_account_id,account_kind,provider_account_ref_hash,
+      provider_account_ref_masked,account_ready) VALUES($1,'MASTER_API_KEY',$2,'synthetic',true)`,[account,hash]);
+    const setup=await pool.connect();
+    try{
+      await setup.query('BEGIN');await setup.query("SET LOCAL session_replication_role='replica'");
+      await setup.query(`INSERT INTO trade.order_intent(order_intent_id,execution_account_id,decision_id,client_order_id,
+        status,instrument_type,option_contract_id,broker_symbol,side,quantity,theta_action,position_intent,canonical_quantity,paper_evidence_quantity)
+        VALUES($1,$2,$3,$4,'PARTIAL','OPTION',$5,'XLE261120P00057000','sell',2,'OPEN_CSP','SELL_TO_OPEN',2,2)`,
+      [intent,account,p.decisionId,'synthetic-client',randomUUID()]);
+      await setup.query(`INSERT INTO trade.broker_order(broker_order_id,order_intent_id,provider_order_id,broker_status)
+        VALUES($1,$2,'synthetic-broker','PARTIAL')`,[broker,intent]);
+      await setup.query('COMMIT');
+    }catch(e){await setup.query('ROLLBACK');throw e;}finally{setup.release();}
+    await store.reserve({envelopeId:randomUUID(),executionAccountId:account,observedAt:NOW,
+      expiresAt:'2026-10-08T13:31:00Z',evidenceHash:'b'.repeat(64),available:dims('25000'),reflected:{},policyVersion:v.policyVersion},[p],NOW);
+    await withRuntimePostgresTransaction(pool,c=>store.bindIntentInTransaction(c,account,p.reservationId,intent));
+    v.orders.rows=[{orderId:'synthetic-broker',clientOrderId:'synthetic-client',symbol:'XLE261120P00057000',quantity:2,
+      filledQuantity:1,positionIntent:'sell_to_open',status:'partially_filled'}];
+    const {commitments,now,...input}=v;
+    assert.deepEqual(commitments,[]);assert.ok(now);
+    const run=()=>withRuntimePostgresTransaction(pool,c=>store.reserveQualifiedInTransaction(c,input,[proposal('1')]));
+    const missing=await run();assert.equal(missing.receipt.state,'BLOCKED');
+    if(missing.receipt.state==='BLOCKED')assert.deepEqual(missing.receipt.reasons,['CAPITAL_REFLECTION_LINEAGE_CONFLICT']);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM trade.capital_envelope WHERE envelope_id=$1',[v.envelopeId])).rows[0].n,0);
+    await pool.query(`INSERT INTO trade.fill(broker_order_id,provider_fill_id,quantity,price_per_share,filled_at)
+      VALUES($1,'synthetic-partial-fill',1,0.28,now())`,[broker]);
+    // Submit no new proposal here: a stale quote deterministically blocks the
+    // extra claim while still exercising real qualification/persistence.
+    const qualified=await withRuntimePostgresTransaction(pool,c=>store.reserveQualifiedInTransaction(c,input,
+      [{...proposal('1'),quoteExpiresAt:NOW}]));
+    assert.equal(qualified.receipt.state,'QUALIFIED');
+    if(qualified.receipt.state==='QUALIFIED'){
+      assert.equal(qualified.receipt.envelope.reflected[p.reservationId]?.PORTFOLIO,'5700.00000000');
+      assert.equal(qualified.receipt.envelope.reflected[p.reservationId]?.BROKER,undefined);
+      assert.equal(qualified.receipt.reflectionProofs[0]?.orderIntentId,intent);
+    }
+    assert.equal(qualified.admissions[0]?.state,'BLOCKED');
+  }finally{await cleanAccount(pool,account,hash,{intent,broker});}
 });

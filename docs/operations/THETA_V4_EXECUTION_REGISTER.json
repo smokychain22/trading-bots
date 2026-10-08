@@ -14,6 +14,8 @@
   "certifiedStartingHead": "f90076db8bc5314981d2f1c4e9d1bdb3a69f9017",
   "capitalCheckpointStartingHead": "c6c7f26ab4843341d4e68a62334ce8c9b504caab",
   "capitalCheckpoint": "docs/operations/THETA_V4_CAPITAL_CHECKPOINT_20261008.json",
+  "qualifiedEnvelopeCheckpoint": "docs/operations/THETA_V4_ENVELOPE_CHECKPOINT_20261008.json",
+  "qualifiedEnvelopeState": "TESTED_SOURCE_ONLY_CSP_COMPILER_AND_DATABASE_COMPOSITION_NOT_PRODUCTION_WIRED",
   "continuationReleaseState": "BLOCKED_WITH_EXACT_REASON",
   "continuationReleaseBlockers": ["CURRENT_POSITION_CLOSE_EXECUTION_MARKET_NOT_QUALIFIED", "CURRENT_POSITION_FILL_FEES_UNKNOWN", "ACCOUNT_WIDE_CAPITAL_ENVELOPE_PRODUCER_AND_PRODUCTION_HANDOFF_NOT_WIRED", "NATIVE_SPREAD_RESERVATION_TERMINAL_RECONCILIATION_NOT_WIRED", "SCHEMA_071_NOT_ACTIVATED_OR_RUNTIME_APPROVED", "OWNER_GOVERNED_RELEASE_REVIEW_REQUIRED"],
   "continuationValidation": {
@@ -65,7 +67,7 @@
       "tests": ["tests/portfolio-capital-reservation.test.ts", "tests/db/portfolio-capital-reservation.test.ts", "tests/sql/071_capital_reservation_invariants.sql", "tests/lifecycle-event-kind-schema-parity.test.ts"],
       "runtimeEvidence": "TESTED_SOURCE_ONLY. Real PostgreSQL transactions ran only in a disposable localhost database with synthetic account/envelope/proposal evidence. No Production producer or consumer calls the reservation store yet. Schema 071 was not applied to Production and remains outside the runtime compatibility ceiling. No live allocation certification is claimed.",
       "provenSourceGap": { "state": "BLOCKED_WITH_EXACT_REASON", "reason": "CANONICAL_ENVELOPE_AND_RESERVATION_LIFECYCLE_INTEGRATION_PENDING", "evidence": ["Existing plan-store locking is contract-scoped, not account-wide", "Existing intent persistence does not require a reservation", "CapitalBudgetEvidence is candidate-specific explanation, not a shared account envelope", "Native spread release needs leg-level completion, assignment and remaining-leg truth, never only parent fill count"], "requiredIntegration": ["Produce one qualified current account envelope from canonical risk policy and broker exposure, including per-dimension reflected commitments", "Persist reservations atomically with the selected sovereign plans and intents", "Reconcile pending, partial, terminal and position-close/assignment claims without double-counting", "Complete native spread reconciliation before releasing package commitments", "Preserve one PaperOrderCoordinator and all existing release gates", "Govern schema compatibility and migration/deployment only after all consumers are wired and tested"], "productionAuthorityGranted": false },
-      "remaining": ["Qualified envelope producer and reflected-commitment loader", "Atomic Production plan/intent handoff", "Native spread and assignment/position-close reservation lifecycle", "Unsubmitted-plan cancellation and expiry proof", "Natural current-worker proof after governed release"]
+      "remaining": ["Complete canonical snapshot adapter and native/filled-lot/BP attribution beyond the source-tested CSP envelope compiler and database pending-reflection loader", "Atomic Production plan/intent handoff", "Native spread and assignment/position-close reservation lifecycle", "Unsubmitted-plan cancellation and expiry proof", "Natural current-worker proof after governed release"]
     },
     {
       "phase": 5,

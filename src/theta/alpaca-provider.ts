@@ -173,6 +173,8 @@ async function fetchAccountBody(config: AlpacaProviderConfig):Promise<Record<str
 export async function fetchMasterAccountEvidence(config:AlpacaProviderConfig,
   clock:()=>string=()=>new Date().toISOString()):Promise<{
     readonly providerAccountId:string;readonly requestedAt:string;readonly snapshot:MasterAccountSnapshot;
+    readonly capitalDecimals: { readonly equity: string | null; readonly cash: string | null;
+      readonly optionsBuyingPower: string | null };
   }> {
   const requestedAt=clock();
   const body=await fetchAccountBody(config);
@@ -181,7 +183,18 @@ export async function fetchMasterAccountEvidence(config:AlpacaProviderConfig,
     ||Date.parse(receivedAt)<Date.parse(requestedAt))throw new Error('ALPACA_ACCOUNT_RECEIPT_TIME_INVALID');
   const providerAccountId=nonEmptyString(body.id);
   if(providerAccountId===null)throw new AlpacaProviderError('MALFORMED_RESPONSE',null,'MASTER_ACCOUNT_IDENTITY_UNKNOWN');
-  return {providerAccountId,requestedAt,snapshot:normalizeMasterAccount(body,receivedAt)};
+  return {providerAccountId,requestedAt,snapshot:normalizeMasterAccount(body,receivedAt),
+    capitalDecimals: { equity: exactCapitalDecimal(body.equity), cash: exactCapitalDecimal(body.cash),
+      optionsBuyingPower: exactCapitalDecimal(body.options_buying_power) } };
+}
+
+// The transactional capital producer must not reconstruct decimal balances
+// from rounded binary numbers. Alpaca monetary strings are retained exactly.
+// A missing/malformed/negative or overprecision value stays unknown. The older
+// public explanatory number snapshot retains its existing interface.
+function exactCapitalDecimal(value: unknown): string | null {
+  if (typeof value !== 'string' || !/^(0|[1-9]\d{0,15})(\.\d{1,8})?$/.test(value)) return null;
+  return value;
 }
 
 function normalizeMasterAccount(body:Record<string,unknown>,receivedAt:string):MasterAccountSnapshot {

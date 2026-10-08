@@ -4,6 +4,7 @@ import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client
 import { assertInlinePayloadWithinPolicy } from '../storage/storage-dataset-policy.js';
 import { capitalAdmission, capitalContentHash, capitalEnvelopeSchema, capitalProposalSchema,
   type CapitalCommitment, type CapitalEnvelope, type CapitalProposal } from './portfolio-capital-reservation.js';
+import { deriveQualifiedAccountEnvelope, type AccountCapitalInput, type AccountCapitalResult } from './qualified-account-capital.js';
 
 type Admission = { reservationId: string; state: 'RESERVED' | 'REPLAY' | 'BLOCKED'; reasons: readonly string[] };
 type Row = Record<string, unknown>;
@@ -31,7 +32,65 @@ export type CapitalTerminalEvidence = z.infer<typeof terminalEvidenceSchema>;
  * broker timeout, no separate sizing or strategy authority. Callers can use
  * reserveInTransaction to commit claims and canonical plans together. */
 export class PostgresPortfolioCapitalStore {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool, private readonly clock: () => string = () => new Date().toISOString()) {}
+
+  /** Composable producer -> database-lineage loader -> admission -> persistence.
+   * Fetch broker observations BEFORE entering this transaction. Commitments are
+   * always loaded under the physical account lock, never accepted from callers.
+   * The existing legacy primitive is not a Production activation switch. */
+  async reserveQualifiedInTransaction(client: PoolClient,
+    input: Omit<AccountCapitalInput, 'commitments' | 'now'>,
+    proposals: readonly CapitalProposal[]): Promise<{ receipt: AccountCapitalResult | { state: 'REPLAY'; envelope: CapitalEnvelope };
+      admissions: readonly Admission[] }> {
+    const accountHash = await this.lock(client, input.executionAccountId);
+    if (accountHash !== input.accountHash) throw new Error('CAPITAL_ACCOUNT_IDENTITY_CONFLICT');
+    const observationHash = capitalContentHash(input);
+    const previous = await client.query('SELECT envelope_json FROM trade.capital_envelope WHERE envelope_id=$1', [input.envelopeId]);
+    if (previous.rows.length) {
+      const envelope = capitalEnvelopeSchema.parse(previous.rows[0].envelope_json);
+      if (envelope.qualification?.observationHash !== observationHash || envelope.qualification.accountHash !== accountHash)
+        throw new Error('CAPITAL_ENVELOPE_IDENTITY_CONFLICT');
+      // Reuse immutable qualification, never regenerate a different receipt
+      // from the reservations created by the original transaction.
+      return { receipt: { state: 'REPLAY', envelope },
+        admissions: await this.reserveInTransaction(client, envelope, proposals, this.clock()) };
+    }
+    const result = await client.query(`SELECT r.reservation_id,r.remaining_quantity,r.proposal_json,r.content_hash,
+      r.order_intent_id,i.decision_id,i.client_order_id,i.broker_symbol,i.quantity,i.order_class,
+      (SELECT sum(f.quantity) FROM trade.fill f JOIN trade.broker_order b USING(broker_order_id)
+        WHERE b.order_intent_id=r.order_intent_id) AS filled_quantity,
+      (SELECT array_agg(b.provider_order_id ORDER BY b.provider_order_id) FROM trade.broker_order b
+        WHERE b.order_intent_id=r.order_intent_id) AS broker_ids
+      FROM trade.capital_reservation r LEFT JOIN trade.order_intent i ON i.order_intent_id=r.order_intent_id
+        AND i.execution_account_id=r.execution_account_id
+      WHERE r.provider_account_ref_hash=$1 AND r.remaining_quantity>0 ORDER BY r.reservation_id LIMIT 1001`, [accountHash]);
+    if (result.rows.length > 1000) throw new Error('CAPITAL_ACTIVE_COMMITMENT_BOUND_EXCEEDED');
+    const commitments = result.rows.map((r: Row) => {
+      const proposal = capitalProposalSchema.parse(r.proposal_json);
+      if (capitalContentHash(proposal) !== r.content_hash) throw new Error('CAPITAL_COMMITMENT_INTEGRITY_INVALID');
+      const ids = r.broker_ids as string[] | null;
+      return { reservationId: String(r.reservation_id), remainingQuantity: Number(r.remaining_quantity), proposal, accountHash,
+        intent: r.order_intent_id === null || ids?.length !== 1 ? null : {
+          orderIntentId: String(r.order_intent_id), decisionId: String(r.decision_id),
+          clientOrderId: String(r.client_order_id), brokerOrderId: String(ids[0]), symbol: String(r.broker_symbol),
+          quantity: Number(r.quantity), filledQuantity: r.filled_quantity === null ? 0 : Number(r.filled_quantity),
+          orderClass: r.order_class,
+        } };
+    });
+    // Re-read the clock AFTER lock acquisition. An observation can expire while
+    // another worker owns the account, without ever sending a broker request.
+    const at = this.clock();
+    const receipt = deriveQualifiedAccountEnvelope({ ...input, now: at, commitments });
+    if (receipt.state === 'BLOCKED') return { receipt, admissions: [] };
+    const envelope: CapitalEnvelope = { ...receipt.envelope, qualification: {
+      producerVersion: 'theta-account-capital-csp-v1', accountHash, policyHash: receipt.policyHash,
+      inputHash: receipt.inputHash, receiptHash: receipt.receiptHash, observationHash,
+      sourceEvidenceHashes: [input.account.contentHash, input.positions.contentHash, input.orders.contentHash],
+      usedByDimension: receipt.usedByDimension, softLimitByDimension: receipt.softLimitByDimension,
+      retainedReasons: [...receipt.retainedReasons], aegisReassessmentRequired: true, brokerAuthority: false,
+    } };
+    return { receipt, admissions: await this.reserveInTransaction(client, envelope, proposals, at) };
+  }
 
   async reserve(envelope: CapitalEnvelope, proposals: readonly CapitalProposal[], at: string): Promise<readonly Admission[]> {
     return withRuntimePostgresTransaction(this.pool, client => this.reserveInTransaction(client, envelope, proposals, at));
@@ -56,6 +115,8 @@ export class PostgresPortfolioCapitalStore {
     if (new Set(proposals.map(p => p.reservationId)).size !== proposals.length
       || new Set(proposals.map(p => p.proposalRef)).size !== proposals.length) throw new Error('CAPITAL_BATCH_DUPLICATE');
     const accountHash = await this.lock(client, envelope.executionAccountId);
+    if (envelope.qualification !== undefined && envelope.qualification.accountHash !== accountHash)
+      throw new Error('CAPITAL_ACCOUNT_IDENTITY_CONFLICT');
     const latest = await client.query(`SELECT envelope_id,observed_at,content_hash FROM trade.capital_envelope
       WHERE provider_account_ref_hash=$1 ORDER BY observed_at DESC LIMIT 1`, [accountHash]);
     const old = latest.rows[0] as Row | undefined;

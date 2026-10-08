@@ -267,7 +267,19 @@ test('persistence account read shares bounded normalization and records actual r
   assert.equal(evidence.snapshot.receivedAt,'2026-09-10T15:00:03.000Z');
   assert.equal(evidence.snapshot.equity,null);assert.equal(evidence.snapshot.cash,null);
   assert.equal(evidence.snapshot.buyingPower,0);assert.equal(evidence.snapshot.optionsTradingLevel,2);
+  assert.deepEqual(evidence.capitalDecimals,{equity:null,cash:null,optionsBuyingPower:null});
   assert.equal(Object.hasOwn(evidence.snapshot,'providerAccountId'),false);
+});
+
+test('account capital evidence preserves exact provider decimals without generic buying-power fallback',async()=>{
+  const evidence=await fetchMasterAccountEvidence(baseConfig(async()=>jsonResponse(200,{id:'synthetic-id',
+    equity:'100000.00000001',cash:'9007199254740993.00000001',buying_power:'999999',options_buying_power:'5700.12000000'})),()=>NOW);
+  assert.deepEqual(evidence.capitalDecimals,{equity:'100000.00000001',cash:'9007199254740993.00000001',optionsBuyingPower:'5700.12000000'});
+  for(const value of [null,0,false,'','-1','NaN','1e5','1.000000001']){
+    const invalid=await fetchMasterAccountEvidence(baseConfig(async()=>jsonResponse(200,{id:'synthetic-id',
+      equity:value,cash:value,buying_power:'999999',options_buying_power:value})),()=>NOW);
+    assert.deepEqual(invalid.capitalDecimals,{equity:null,cash:null,optionsBuyingPower:null});
+  }
 });
 
 test('persistence account read rejects missing identity and remains timeout bounded',async()=>{

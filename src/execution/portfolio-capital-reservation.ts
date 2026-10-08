@@ -24,6 +24,14 @@ export const capitalEnvelopeSchema = z.object({
   // all internal reservations again from broker buying power.
   reflected: z.record(z.string().uuid(), z.record(key, moneySchema)),
   policyVersion: z.string().min(1),
+  qualification: z.object({
+    producerVersion: z.literal('theta-account-capital-csp-v1'), accountHash: digest, policyHash: digest,
+    inputHash: digest, receiptHash: digest, observationHash: digest,
+    sourceEvidenceHashes: z.array(digest).length(3),
+    usedByDimension: z.record(key, moneySchema), softLimitByDimension: z.record(key, moneySchema),
+    retainedReasons: z.array(z.string().max(256)).max(2000),
+    aegisReassessmentRequired: z.literal(true), brokerAuthority: z.literal(false),
+  }).strict().optional(),
 }).strict().superRefine((value, ctx) => {
   if (Date.parse(value.expiresAt) <= Date.parse(value.observedAt) || !Object.keys(value.available).length)
     ctx.addIssue({ code: 'custom', message: 'CAPITAL_ENVELOPE_INVALID' });
