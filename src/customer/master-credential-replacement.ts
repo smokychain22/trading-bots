@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { Environment } from '../config/environment.js';
 import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import { readOnlyMasterCredentialStoreFromPool, type StoredMasterCredential } from './customer-store.js';
@@ -57,6 +57,7 @@ export async function prepareMasterCredentialReplacement(
 export async function applyMasterCredentialReplacement(
   pool: Pool, environment: Environment, prepared: MasterCredentialReplacement,
   preserveRollback: (previous: StoredMasterCredential & { readonly tokenSecretId: string }) => Promise<void>,
+  beforeWrite?: (client: PoolClient) => Promise<void>,
 ): Promise<{ readonly credentialUpdated: true }> {
   const age = Date.now() - prepared.verifiedAt;
   if (!Number.isFinite(age) || age < 0 || age > 60_000) throw new Error('MASTER_REPLACEMENT_VERIFICATION_STALE');
@@ -81,6 +82,8 @@ export async function applyMasterCredentialReplacement(
     // A protected, durable ciphertext-only rollback copy must be verified before
     // any write. A failed preservation callback rolls back without touching data.
     await preserveRollback({ ...stored, tokenSecretId: String(row.token_secret_id) });
+    if (Date.now() - prepared.verifiedAt > 60_000) throw new Error('MASTER_REPLACEMENT_VERIFICATION_STALE');
+    await beforeWrite?.(client);
     const changed = await client.query(`UPDATE copy.alpaca_oauth_token SET ciphertext=$1,iv=$2,auth_tag=$3
       WHERE token_secret_id=$4 AND customer_id=$5 AND key_ref=$6 AND revoked_at IS NULL
         AND ciphertext=$7 AND iv=$8 AND auth_tag=$9 RETURNING token_secret_id`,

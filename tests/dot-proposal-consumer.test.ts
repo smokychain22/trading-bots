@@ -33,6 +33,18 @@ function input(): ShadowStrategyOrchestratorInput {
 }
 const feature = { feature: 'IV', value: 0.3, evidenceId: 'iv-evidence', snapshotId: 'snapshot-1',
   observedAt: at, availableAt: at, validUntil: '2026-10-08T15:01:00.000Z', qualification: 'QUALIFIED' };
+test('Dot direct H and D consumers reject inconsistent DTE before generator admission', () => {
+  const h = input(); const chain = required(h.holdStrikeChain);
+  h.holdStrikeChain = { ...chain, contracts: chain.contracts.map(contract => ({ ...contract, expiration: '2026-10-09' })) };
+  const hReceipt = evaluateDotShadowProposal(proposal(), h, []);
+  assert.ok(hReceipt.blockers.includes('H_DTE_EXPIRATION_INCONSISTENT'));
+  assert.equal(hReceipt.result, null);
+  const d = input(); d.definedRiskChain = { ...required(d.definedRiskChain), dte: 3 };
+  const dReceipt = evaluateDotShadowProposal(proposal('THETA_DEFINED_RISK'), d, []);
+  assert.ok(dReceipt.blockers.includes('D_DTE_EXPIRATION_INCONSISTENT'));
+  assert.equal(dReceipt.result, null);
+  assert.equal(dReceipt.brokerAuthority, false);
+});
 test('Dot narrowed H lattice actually changes existing generator results without modifying canonical registry', () => {
   const raw = proposal(), before = raw.baselineHash;
   raw.strategy.lattice = { ...raw.strategy.lattice, dteMin: 3 };

@@ -125,6 +125,13 @@ jobs:
         run: |
           createdb -h 127.0.0.1 -U trading_bots theta_runtime_fault_ci
           npx tsx --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tools/theta-test-evidence-reporter.mjs --test-reporter-destination=.ci-test-evidence/disposable-faults.jsonl tests/db/runtime-postgres-faults.test.ts
+      - name: Prove credential-only recovery and one-time claim concurrency in disposable PostgreSQL
+        env:
+          THETA_CREDENTIAL_ROTATION_TEST_DATABASE_URL: postgresql://trading_bots:ci-only-password@127.0.0.1:5432/theta_credential_rotation_ci
+        run: |
+          createdb -h 127.0.0.1 -U trading_bots theta_credential_rotation_ci
+          npx tsx --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tools/theta-test-evidence-reporter.mjs --test-reporter-destination=.ci-test-evidence/disposable-credential-recovery.jsonl tests/db/master-credential-replacement.integration.test.ts
+          dropdb -h 127.0.0.1 -U trading_bots theta_credential_rotation_ci
       - name: Test accepted-canary autonomous Paper transition in a dedicated disposable PostgreSQL database
         env:
           TEST_DATABASE_URL: postgresql://trading_bots:ci-only-password@127.0.0.1:5432/theta_autonomous_transition_ci

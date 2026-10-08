@@ -3,6 +3,43 @@
   "directive": "THETA_CODEX_V4_SIX_PHASE_ENGINEERING_PROFITABILITY_DIRECTIVE_2026-10-08",
   "observedDate": "2026-10-08",
   "integrationBranch": "codex/theta-v4-integration",
+  "secureRecoveryPreparation20261009": {
+    "state": "TESTED_SOURCE_ONLY",
+    "approvedPushedSha": "148d37d16eaa7a4efc5b3c5229fa055746ba45b6",
+    "exactCi": { "run": "37832598196", "result": "FAIL", "reason": "Phase-3 source-byte proof stale after the earlier orchestrator repair", "subsequentJobs": "SKIPPED_NOT_CERTIFIED" },
+    "historicalFailuresPreserved": ["37827936349", "37832598196", "Local unrestricted Node run stopped for host resource safety, not represented as PASS"],
+    "implemented": [
+      "Standalone recovery handler outside the normal API with fixed original-master pins and runtime-only encryption",
+      "Ed25519 owner signature, existing operator authorization, HTTPS deployment pin, five-minute permit and durable single-use audit claim",
+      "Atomic ciphertext compare-and-swap, existing locks, transaction-time control recheck, verified ciphertext rollback pins and post-write canonical-provider verification",
+      "Fixed-host GET-only broker wrapper with redirects rejected, no order, control or worker surface",
+      "Private minimal artifact packaging and stdin-only protected CLI transport, no raw secret output",
+      "Dedicated disposable PostgreSQL recovery-concurrency CI step",
+      "Strict date-only H/D research DTE validation without changing Production strategy parameters"
+    ],
+    "tests": {
+      "finalFocused": { "passed": 44, "failed": 0 },
+      "boundedNodeSuite": { "passed": 4573, "skipped": 86, "failed": 0, "concurrency": 2, "note": "Final added handler/artifact cases and transport correction are additionally covered by focused execution" },
+      "python": { "passed": 1358, "failed": 0 },
+      "browser": { "passed": 23, "failed": 0, "workers": 1 },
+      "realPostgresRecovery": { "passed": 1, "failed": 0, "scope": "Synthetic dedicated database, simultaneous claims and updates, atomic rollback, canonical decrypt and provider verification" },
+      "reexecutedPhase3": { "passed": 264, "failed": 0, "skipped": 0 },
+      "windowsSafety": "Ten canonical safety scripts PASS"
+    },
+    "checks": ["lint", "typecheck", "build", "security scan zero findings", "Git storage policy", "diff check"],
+    "artifactDryRun": "Compiled dependency closure packaged privately with an expired permit and no retained signing key, hashes and inherited owner/SYSTEM ACL verified, not certified or deployable authority",
+    "productionSafetyFinding": "Fresh durable controls remain master-enabled and new orders not paused. Restoration may resume broker activity. Recovery refuses this state. No control was changed.",
+    "providerConfiguration": "Existing Vercel project has Authentication for non-custom-domain deployments, zero cron definitions, Hobby plan, Sensitive Production-only encryption/reference and operator/control variables. No values exported.",
+    "releasePlan": "docs/operations/THETA_MASTER_CREDENTIAL_RECOVERY_DEPLOYMENT_PLAN.md",
+    "productionWrites": 0,
+    "brokerMutations": 0,
+    "workerChanged": false,
+    "deployment": false,
+    "exactNewSourceCi": "NOT_RUN_NEW_SHA_PUSH_NOT_AUTHORIZED",
+    "remaining": ["New exact-SHA review CI", "Separately approved protected recovery deployment and single-use audit mutation", "Known no-submit authority before restoration", "Protected deployed invocation and canonical authentication recovery", "Natural worker and current XLE management evidence"],
+    "profitability": "EMPIRICALLY_UNPROVEN",
+    "uiVerification": "Reticle skipped for backend-only and private CLI changes, browser regression suite passed without claiming deployed endpoint verification"
+  },
   "masterCredentialRecovery20261009": {
     "state": "TESTED_SOURCE_ONLY",
     "parentSha": "34b630e5814ce179cf958a0e3d70f5ee28da71b3",

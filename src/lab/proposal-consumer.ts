@@ -7,6 +7,7 @@ import type { ShadowStrategyOrchestratorInput } from '../research/shadow-strateg
 import { canonicalHash, validateDotProposal } from './contracts.js';
 import type { DotLabStore } from './store.js';
 import { profitReplayInputSchema, runProfitTakingReplay } from '../research/profit-taking-replay.js';
+import { researchDteConsistent } from './date-consistency.js';
 
 const featureSchema = z.object({ feature: thetaFeatureFamily, value: z.number().finite().nullable(),
   evidenceId: z.string().min(1), snapshotId: z.string().min(1), observedAt: z.string().datetime({ offset: true }),
@@ -65,6 +66,12 @@ export function evaluateDotShadowProposal(raw: unknown, input: ShadowStrategyOrc
   else if (!eligibleFamilies(input.routing).includes(family)) blockers.push('ROUTER_INELIGIBLE');
   if (family === 'THETA_H' && input.holdStrikeChain === null) blockers.push('MISSING_H_CHAIN');
   if (family === 'THETA_D' && input.definedRiskChain === null) blockers.push('MISSING_D_CHAIN');
+  if (family === 'THETA_H' && input.holdStrikeChain !== null
+    && input.holdStrikeChain.contracts.some(contract => !researchDteConsistent(contract, input.decisionTimestamp)))
+    blockers.push('H_DTE_EXPIRATION_INCONSISTENT');
+  if (family === 'THETA_D' && input.definedRiskChain !== null
+    && !researchDteConsistent(input.definedRiskChain, input.decisionTimestamp))
+    blockers.push('D_DTE_EXPIRATION_INCONSISTENT');
   const lattice = proposal.strategy.lattice;
   let result: ReturnType<typeof generateHoldStrikeCandidates> | ReturnType<typeof generateDefinedRiskCandidates> | null = null;
   if (blockers.length === 0 && family === 'THETA_H' && input.holdStrikeChain !== null) {
