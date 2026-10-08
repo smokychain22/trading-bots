@@ -32,7 +32,7 @@ export class AlpacaStockInventorySource implements StockInventorySource {
     else {
       const row = equity[0];
       const side = row.side?.toLowerCase() ?? null;
-      if (row.quantity === null || !Number.isFinite(row.quantity)) {
+      if (row.quantity === null || !Number.isFinite(row.quantity) || (side === 'long' && row.quantity < 0)) {
         inventory = { state: 'UNKNOWN', quantity: null, observedAt: null, reason: 'BROKER_POSITION_QUANTITY_INVALID' };
       } else if (side !== 'long' && side !== 'short') {
         inventory = { state: 'UNKNOWN', quantity: null, observedAt: null, reason: 'BROKER_POSITION_SIDE_UNKNOWN' };

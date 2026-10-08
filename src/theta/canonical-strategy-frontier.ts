@@ -338,8 +338,8 @@ export interface CanonicalStrategyFrontierInput {
     readonly currentPrice: number | null;
     readonly brokerCostBasisPerShare: number | null;
     readonly wholeChainEconomicBasisPerShare: number | null;
-    /** Open short-call contracts plus pending sell-to-open call contracts on this underlying. `undefined`
-     * keeps the legacy gross-share capacity; `null` is UNKNOWN and blocks covered-call sizing. */
+    /** Open short-call contracts plus pending sell-to-open call contracts on this underlying.
+     * Missing or null evidence is UNKNOWN and blocks covered-call sizing. */
     readonly committedShortCallContracts?: number | null;
   } | null;
   readonly assignmentCapacityQty: number | null;

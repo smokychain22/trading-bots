@@ -63,7 +63,8 @@ const base = {
 };
 type Stock = NonNullable<CanonicalStrategyFrontierInput['stock']>;
 const stock = (overrides: Partial<Stock> = {}): Stock => ({
-  underlying: 'AAPL', shares: 100, currentPrice: 200, brokerCostBasisPerShare: 195, wholeChainEconomicBasisPerShare: 190, ...overrides,
+  underlying: 'AAPL', shares: 100, currentPrice: 200, brokerCostBasisPerShare: 195,
+  wholeChainEconomicBasisPerShare: 190, committedShortCallContracts: 0, ...overrides,
 });
 const frontier = (input: Partial<CanonicalStrategyFrontierInput> & Pick<CanonicalStrategyFrontierInput, 'contracts'>) =>
   buildCanonicalStrategyFrontier({ ...base, stock: null, routing: routing(['THETA_Q']), ...input });
@@ -104,7 +105,7 @@ test('C capacity is UNKNOWN (null), never zero-by-coercion, for any unknown or i
 });
 
 test('C committed short-call derivation counts open short calls and pending STO calls; unknown stays null', () => {
-  const pos = (symbol: string, quantity: number | null, side: 'long' | 'short', assetClass = 'us_option') =>
+  const pos = (symbol: string, quantity: number | null, side: 'long' | 'short' | null, assetClass = 'us_option') =>
     ({ symbol, assetClass, quantity, side, marketValue: 1, unrealizedPl: 0, avgEntryPrice: 1, receivedAt: NOW }) as never;
   const ord = (symbol: string | null, positionIntent: string | null, quantity: number | null) =>
     ({ orderId: 'o', clientOrderId: null, symbol, side: 'sell', positionIntent, quantity, limitPrice: 1, status: 'new', submittedAt: NOW, receivedAt: NOW }) as never;
@@ -113,6 +114,10 @@ test('C committed short-call derivation counts open short calls and pending STO 
   assert.equal(deriveCommittedShortCallContracts('AAPL', [pos(C, -2, 'short')], []), 2);
   assert.equal(deriveCommittedShortCallContracts('AAPL', [pos(C, 2, 'short')], []), 2);
   assert.equal(deriveCommittedShortCallContracts('AAPL', [pos(C, 3, 'long')], []), 0, 'long calls do not consume stock cover');
+  assert.equal(deriveCommittedShortCallContracts('AAPL', [pos(C, -1, 'long')], []), null,
+    'a contradictory long side and negative signed quantity cannot prove shares are unencumbered');
+  assert.equal(deriveCommittedShortCallContracts('AAPL', [pos(C, 1, null)], []), null,
+    'a missing call side cannot prove shares are unencumbered');
   assert.equal(deriveCommittedShortCallContracts('AAPL', [], [ord(C, 'sell_to_open', 1)]), 1);
   assert.equal(deriveCommittedShortCallContracts('AAPL', [pos(C, -1, 'short')], [ord(C, 'sell_to_open', 2)]), 3);
   assert.equal(deriveCommittedShortCallContracts('AAPL', [], [ord(C, 'buy_to_close', 1)]), 0);

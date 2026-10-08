@@ -41,6 +41,9 @@ test('inventory source: no position row is a KNOWN zero; short stock is negative
   assert.deepEqual([noSide.inventory.state, noSide.inventory.reason], ['UNKNOWN', 'BROKER_POSITION_SIDE_UNKNOWN']);
   const noQty = await source([{ ...equity('100'), qty: null }]).source.readStockInventory('AAPL');
   assert.deepEqual([noQty.inventory.state, noQty.inventory.reason], ['UNKNOWN', 'BROKER_POSITION_QUANTITY_INVALID']);
+  const contradictory = await source([equity('-100', 'long')]).source.readStockInventory('AAPL');
+  assert.deepEqual([contradictory.inventory.state, contradictory.inventory.reason],
+    ['UNKNOWN', 'BROKER_POSITION_QUANTITY_INVALID']);
   const duplicate = await source([equity('100'), equity('100')]).source.readStockInventory('AAPL');
   assert.equal(duplicate.inventory.state, 'UNKNOWN');
 });

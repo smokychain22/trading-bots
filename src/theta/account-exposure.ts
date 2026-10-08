@@ -397,7 +397,9 @@ export function deriveCommittedShortCallContracts(
     if (parsed.underlying !== underlying || parsed.optionType !== 'CALL') continue;
     const quantity = position.quantity ?? null;
     if (quantity === null || !Number.isSafeInteger(quantity) || quantity === 0) return null;
-    if (position.side === 'short' || quantity < 0) committed += Math.abs(quantity);
+    const side = position.side?.toLowerCase();
+    if ((side !== 'long' && side !== 'short') || (side === 'long' && quantity < 0)) return null;
+    if (side === 'short') committed += Math.abs(quantity);
   }
   for (const order of openOrders) {
     const parsed = order.symbol === null ? null : parseOccOptionSymbol(order.symbol);
