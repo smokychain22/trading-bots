@@ -148,6 +148,21 @@ export function safeRuntimeErrorHeader(code: string): string | null {
   return /^(?:POSTGRES|ALPACA|OPTIONOMICS|RUNTIME|THETA)_[A-Z0-9_]{2,87}$/.test(code) ? code : null;
 }
 
+export function failedRuntimeReportHeader(jobs: readonly { readonly status: string | null;
+  readonly errorCode: string | null }[]): string | null {
+  // Preserve database circuit precedence, then identify the failed provider.
+  // Only explicit typed codes can leave the server, never provider messages.
+  const database = jobs.find((job) => typeof job.errorCode === 'string'
+    && /^POSTGRES_(?:53[0-9A-Z]{3}|57P03|57P01|08[0-9A-Z]{3}|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CONNECTION_ACQUISITION_TIMEOUT|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$/.test(job.errorCode));
+  if (database?.errorCode) return safeRuntimeErrorHeader(database.errorCode);
+  for (const job of jobs) {
+    if (job.status !== 'FAILED' || typeof job.errorCode !== 'string') continue;
+    const code = safeRuntimeErrorHeader(job.errorCode);
+    if (code !== null) return code;
+  }
+  return null;
+}
+
 export default async function autonomousRuntimeHandler(
   request: IncomingMessage,
   response: ServerResponse,
@@ -901,12 +916,8 @@ application_name: 'theta-corporate-action-capture' });
       releaseIdentity:{sourceSha:resolvedReleaseIdentity.sourceSha,workerSha:resolvedReleaseIdentity.workerBuildSha}});
     if(localWorkerId!==null)await workerStore.cycleCompleted(localWorkerId,report,new Date().toISOString());
     if(report.status==='FAILED'||report.status==='QUARANTINED'){
-      const databaseCode=report.jobResults.map((job)=>job.errorCode)
-        .find((code)=>typeof code==='string'&&/^POSTGRES_(?:53[0-9A-Z]{3}|57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CONNECTION_ACQUISITION_TIMEOUT|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$/.test(code));
-      if(typeof databaseCode==='string'){
-        const safeCode=safeRuntimeErrorHeader(databaseCode);
-        if(safeCode!==null)response.setHeader('X-Theta-Safe-Error-Code',safeCode);
-      }
+      const safeCode=failedRuntimeReportHeader(report.jobResults);
+      if(safeCode!==null)response.setHeader('X-Theta-Safe-Error-Code',safeCode);
     }
     send(response, report.status === 'FAILED' || report.status === 'QUARANTINED' ? 503 : report.status === 'DEGRADED' ? 207 : 200,
       {...report,databasePools:describeRuntimeDatabasePools({runtime:runtimePool,execution:executionPool})});

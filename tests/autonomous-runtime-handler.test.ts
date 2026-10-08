@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { parseLocalWorkerIdentity, parseLocalWorkerOperation, safeRuntimeErrorHeader } from '../src/theta/autonomous-runtime-handler.js';
+import { parseLocalWorkerIdentity, parseLocalWorkerOperation, safeRuntimeErrorHeader, failedRuntimeReportHeader } from '../src/theta/autonomous-runtime-handler.js';
+
+test('failed runtime HTTP response preserves canonical provider failure without mistaking it for a database incident', () => {
+  assert.equal(failedRuntimeReportHeader([
+    {status:'SKIPPED',errorCode:'THETA_SKIPPED'},
+    {status:'FAILED',errorCode:'ALPACA_ACCOUNT_INVALID_AUTH_HTTP_401'},
+  ]),'ALPACA_ACCOUNT_INVALID_AUTH_HTTP_401');
+  assert.equal(failedRuntimeReportHeader([{status:'FAILED',errorCode:'ALPACA_ACCOUNT_TIMEOUT_HTTP_503'}]),
+    'ALPACA_ACCOUNT_TIMEOUT_HTTP_503');
+  assert.equal(failedRuntimeReportHeader([{status:'FAILED',errorCode:'https://private.invalid/token'}]),null);
+  assert.equal(failedRuntimeReportHeader([{status:'FAILED',errorCode:null}]),null);
+  assert.equal(failedRuntimeReportHeader([{status:'SUCCEEDED',errorCode:'ALPACA_STALE_ERROR'}]),null);
+  assert.equal(failedRuntimeReportHeader([{status:'FAILED',errorCode:'ALPACA_ACCOUNT_INVALID_AUTH_HTTP_401'},
+    {status:'DEGRADED',errorCode:'POSTGRES_EAI_AGAIN'}]),'POSTGRES_EAI_AGAIN');
+});
 
 test('runtime failure header accepts only bounded sanitized error codes', () => {
   assert.equal(safeRuntimeErrorHeader('POSTGRES_53100'), 'POSTGRES_53100');

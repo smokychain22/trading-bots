@@ -12,6 +12,16 @@ test('worker error handling never dereferences an assumed HTTP response', () => 
   assert.doesNotMatch(worker, /\$_\.Exception\.Response/);
 });
 
+test('temporary database DNS failure reaches the existing bounded recovery circuit, while broker auth does not',()=>{
+  const match=worker.match(/\$serverErrorCode -cmatch '([^']+)'/);
+  assert.ok(match);
+  const circuit=new RegExp(match[1]);
+  assert.ok(circuit.test('POSTGRES_EAI_AGAIN'));
+  assert.ok(circuit.test('POSTGRES_CONNECTION_ACQUISITION_TIMEOUT'));
+  assert.ok(!circuit.test('ALPACA_ACCOUNT_INVALID_AUTH_HTTP_401'));
+  assert.ok(!circuit.test('POSTGRES_ENOTFOUND'));
+});
+
 test('strict-mode non-HTTP errors remain classified, while only safe HTTP metadata is retained',
   { skip: process.platform !== 'win32' }, () => {
     const output = execFileSync('pwsh.exe', ['-NoProfile', '-Command', `

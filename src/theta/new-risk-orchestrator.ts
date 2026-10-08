@@ -270,7 +270,7 @@ function attachEntryThesis(
       `The current snapshot produced ${receipt.winningAction}, AEGIS ${selected.aegis?.newRiskState ?? 'UNKNOWN'}, quantity ${selected.sizing.quantity}, and execution recommendation ${selected.executionQuality?.recommendedAction ?? 'UNKNOWN'}.`,
       quoteEvidence),
     quantityReason: claim('KNOWN',
-      `The selected quantity is ${selected.sizing.quantity}; the binding capacity is ${selected.sizing.bindingConstraint}; sizing reasons are ${selected.sizing.reasons.join(', ')}. Quantity was not forced to one.`,
+      `The selected quantity is ${selected.sizing.quantity}; the binding capacity is ${selected.sizing.bindingConstraint}; sizing reasons are ${selected.sizing.reasons.map((reason) => `${reason.code}: ${reason.detail}`).join(', ')}. Quantity was not forced to one.`,
       [request.snapshotId, raw.candidateId]),
     volatilityThesis: volatilityKnown
       ? claim('KNOWN', `Observed IV is ${contract.iv ?? 'UNKNOWN'} and IV rank is ${raw.ivRank ?? 'UNKNOWN'}; these are context, not a calibrated profit forecast.`, commonEvidence)

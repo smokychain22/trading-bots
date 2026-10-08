@@ -352,6 +352,9 @@ itMockedProviderRealCodePath('candidate-specific cleared event policy prevents a
   assert.equal(result.receipt.entryThesisReceipt?.executionAuthorized, false);
   assert.equal(result.receipt.entryThesisReceipt?.expectedCapitalDays.state, 'EMPIRICALLY_UNPROVEN');
   assert.equal(result.receipt.entryThesisReceipt?.assignmentWillingness.state, 'UNKNOWN');
+  assert.doesNotMatch(result.receipt.entryThesisReceipt?.quantityReason.statement ?? '', /\[object Object\]/);
+  assert.match(result.receipt.entryThesisReceipt?.quantityReason.statement ?? '',
+    /SIZING_COMPUTED: quantity=\d+ binding_constraint=/);
   assert.match(result.receipt.entryThesisReceipt?.immutableHash ?? '', /^[a-f0-9]{64}$/);
 });
 

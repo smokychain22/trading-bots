@@ -3,6 +3,35 @@
   "directive": "THETA_CODEX_V4_SIX_PHASE_ENGINEERING_PROFITABILITY_DIRECTIVE_2026-10-08",
   "observedDate": "2026-10-08",
   "integrationBranch": "codex/theta-v4-integration",
+  "incidentSourceRepair20261008": {
+    "state": "TESTED_SOURCE_ONLY",
+    "parentReviewSha": "7a87bd240a5487893f8b074961e6eeaeb7450f46",
+    "parentExactCi": { "run": "37823887034", "result": "PASS", "requiredJobsInspected": true },
+    "rootCauses": [
+      "Failed provider jobs were excluded from the internal runtime response safe-error header, leaving the Windows supervisor unable to distinguish upstream authentication failure from database unavailability",
+      "POSTGRES_EAI_AGAIN was classified transient by the canonical database classifier but omitted from the report header and resident database circuit selector",
+      "PostgreSQL TIMESTAMPTZ Date values became locale strings at management assembly, losing the ISO boundary required by freshness and assignment evidence",
+      "Structured sizing reason objects were joined as strings in the original entry-thesis explanation"
+    ],
+    "implemented": [
+      "Forward only explicit allowlisted FAILED provider job codes while retaining database circuit precedence",
+      "Route EAI_AGAIN through the existing bounded recovery circuit without adding ENOTFOUND retries or changing recovery timing",
+      "Serialize valid timestamp Date objects to UTC ISO, preserve invalid timestamps as null and keep SQL DATE calendar validation separate",
+      "Explain sizing with original reason codes and details, without changing quantity, thresholds or immutable historical receipts"
+    ],
+    "focusedTests": { "runtimeWindowsManagementAndPool": { "passed": 51, "failed": 0 }, "orchestrationManagementThesisAndReceipts": { "passed": 118, "failed": 0 } },
+    "testDevelopmentFailures": "Two draft assertions incorrectly assumed sizingByCandidateId and a shadow entry candidateId field. Both assertions were corrected against the actual orchestration contract. Final affected suite passed. No production threshold or behavior was changed to make tests pass.",
+    "naturalEvidence": "Bounded read-only Production SQL confirmed pg TIMESTAMPTZ returns Date. Detailed session, position, order and research evidence is kept outside Git in owner-restricted private evidence, not committed here.",
+    "historicalFailures": "Previously preserved local timing failures and historical CI failures remain unchanged. The approved parent CI pass does not erase them.",
+    "productionWiringComplete": false,
+    "migration071Ready": false,
+    "deployment": false,
+    "workerChanged": false,
+    "brokerMutations": 0,
+    "uiAcceptance": "Reticle skipped: backend/CLI-only changes with no browser-visible UI or route changes.",
+    "newCheckpointPush": "REQUIRES_NEW_EXACT_SHA_OWNER_APPROVAL",
+    "remaining": ["Canonical master broker authentication recovery through the secure account workflow", "Fresh account-scoped broker and management proof after authentication recovery", "Governed release approval for source corrections", "Complete native/stock capital producers, buying-power reflection, aggregate AEGIS and reservation lifecycle before schema 071 release"]
+  },
   "liveSessionRepair20261008": {
     "classification": "TESTED_SOURCE_ONLY",
     "sourceParent": "13fe9b5db202eac2de02ee9b637ac5eedf67be0c",

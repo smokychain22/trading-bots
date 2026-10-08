@@ -235,6 +235,32 @@ test('open put assignment capacity comes from fresh broker buying power, not the
   assert.ok(!action?.blockers.includes('ASSIGNMENT_CAPACITY_UNKNOWN'));
 });
 
+test('pg TIMESTAMPTZ Date objects preserve ISO evidence, assignment capacity and immutable input hash',()=>{
+  const at='2026-10-16T20:01:00.000Z';
+  const row={...base,expiration_date:'2026-10-16',quote_as_of:at,quote_retrieved_at:at,account_as_of:at,
+    account_retrieved_at:at,reconciliation_observed_at:at,clock_timestamp:at,fusion_decision_time:at,
+    account_snapshot_id:'501',options_buying_power:'0',reconciliation_quality:'GOOD',
+    broker_option_symbol:'AAPL261016P00200000',broker_option_quantity:'1',broker_option_side:'short',
+    broker_option_asset_class:'us_option',broker_option_observed_at:at,ledger_option_contract_quantity:'1',
+    snapshot_json:{underlyingState:{last:190},marketSession:{isOpen:false},riskState:null}};
+  const options={managementInputSnapshotId:'timestamp-equivalence',reconciliationSnapshotId:'recon',observedAt:at};
+  const stringInput=assembleManagementInput(row,options);
+  const dateInput=assembleManagementInput({...row,quote_as_of:new Date(at),quote_retrieved_at:new Date(at),
+    account_as_of:new Date(at),account_retrieved_at:new Date(at),reconciliation_observed_at:new Date(at),
+    clock_timestamp:new Date(at),fusion_decision_time:new Date(at),broker_option_observed_at:new Date(at)},options);
+  assert.deepEqual(dateInput,stringInput);
+  assert.equal(dateInput.context.assignmentCapacity,1);
+  assert.equal(dateInput.market.clockTimestamp,at);
+  assert.equal(dateInput.market.quoteTimestamp,at);
+  assert.ok(!dateInput.hardBlockers.includes('BROKER_DATA_STALE'));
+  const invalid=assembleManagementInput({...row,account_as_of:new Date(NaN),broker_option_observed_at:new Date(NaN)},options);
+  assert.equal(invalid.context.assignmentCapacity,null);
+  assert.ok(invalid.hardBlockers.includes('BROKER_DATA_STALE'));
+  const stale=assembleManagementInput({...row,account_as_of:new Date('2026-10-16T19:00:00Z')},options);
+  assert.equal(stale.context.assignmentCapacity,null);
+  assert.equal(stale.context.assignmentCapacityEvidence.reason,'ACCOUNT_EVIDENCE_STALE_OR_MISSING');
+});
+
 test('known insufficient assignment lots block, while unavailable or stale broker evidence stays UNKNOWN', () => {
   const at = '2026-10-16T20:01:00.000Z';
   const row = { ...base, expiration_date:'2026-10-16', quote_as_of:at, account_as_of:at,

@@ -230,7 +230,13 @@ const numeric = (value: unknown): number | null => {
   return Number.isFinite(result) ? result : null;
 };
 
-const text = (value: unknown): string | null => value == null ? null : String(value);
+const text = (value: unknown): string | null => {
+  // pg returns TIMESTAMPTZ as Date. Locale String(Date) loses the canonical
+  // timestamp boundary required by downstream freshness and capacity checks.
+  // SQL DATE remains separately validated as calendar text, never converted here.
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+  return value == null ? null : String(value);
+};
 
 // PostgreSQL DATE has no timezone. The production query returns DATE as text.
 // A Date object has lost the SQL calendar/type boundary and may depend on the

@@ -820,7 +820,7 @@ try {
           cycleStarted=$false;strategyEvidenceRecorded=$false} | ConvertTo-Json |
           Set-Content -LiteralPath $statusFile -Encoding utf8
       }
-      if ($serverErrorCode -cmatch '^POSTGRES_(53[0-9A-Z]{3}|57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CONNECTION_ACQUISITION_TIMEOUT|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$') {
+      if ($serverErrorCode -cmatch '^POSTGRES_(53[0-9A-Z]{3}|57P03|57P01|08[0-9A-Z]{3}|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CONNECTION_ACQUISITION_TIMEOUT|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$') {
         # Preserve a sanitized, physically read-only broker observation even
         # when the canonical evidence cycle lost Postgres. The probe cannot
         # submit orders and its local spool is never sufficient mutation proof.
