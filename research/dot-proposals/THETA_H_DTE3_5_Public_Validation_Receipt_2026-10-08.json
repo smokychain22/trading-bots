@@ -1,0 +1,170 @@
+{
+  "receiptVersion": "theta-h-dte3-5-public-evidence-v1",
+  "asOfUtc": "2026-10-08T18:29:01+00:00",
+  "status": "RESEARCH_ONLY_CANONICAL_VALIDATION_NOT_RUN",
+  "publicationPurpose": "Draft PR review only; no execution, merge, deployment, account integration or strategy promotion authority.",
+  "sourceCommit": "2cb0d470f473132e80d44c2a2c051765e525afee",
+  "proposal": {
+    "file": "THETA_H_DTE3_5_Research_Proposal_2026-10-08.json",
+    "bytes": 3499,
+    "sha256": "a3a312f03928006336462249e05c90c24442030bd87f99084be29c1678d80b08",
+    "baselineConfigurationHash": "cfdded1548790c092f6a24a00512b771780ca338fbc9a2565e860ce670dae9b3",
+    "baselineVersion": "theta-hold-strike@1.0.1-research",
+    "challengerVersion": "theta-hold-strike@dot-h-dte3-5-v1",
+    "economicChange": "H entry dteMin 2 -> 3; dteMax remains 5",
+    "status": "RESEARCH_ONLY",
+    "executionEnabled": false
+  },
+  "localChecks": {
+    "status": "PASS_LOCAL_ONLY",
+    "method": "Python standard-library JSON parsing, byte hashing, direct field comparisons and bounded shape assertions; no TypeScript application execution.",
+    "assertions": [
+      {
+        "assertion": "Proposal is valid UTF-8 JSON object",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Proposal byte length equals 3499 and is below 16384",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Proposal SHA-256 equals pinned artifact hash",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Top-level keys exactly equal public example keys",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Proposal identifier parses as UUID",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Parent hash is null; baseline hash equals pinned public example hash",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Hypothesis length is between 10 and 2000; experiment identifier matches source shape",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Strategy differs from public example only at strategyVersion and lattice.dteMin",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "DTE minimum changes 2 to 3; maximum remains 5",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Research-only authority and unvalidated promotion remain explicit",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "No research rules or ROLL action; hard rules and allowed actions equal public example",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Unconsumed example metadata remains plannedHoldingDays=10 and challengers FIXED_10,FIXED_50",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Cached public source bytes and SHA-256 match pinned manifest: src/lab/contracts.ts",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Cached public source bytes and SHA-256 match pinned manifest: src/lab/proposal-consumer.ts",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Cached public source bytes and SHA-256 match pinned manifest: src/theta/strategy-package.ts",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Cached public source bytes and SHA-256 match pinned manifest: tests/dot-proposal-consumer.test.ts",
+        "result": "PASS_LOCAL_ONLY"
+      },
+      {
+        "assertion": "Cached public source bytes and SHA-256 match pinned manifest: research/dot-proposals/examples/theta-hold-strike.json",
+        "result": "PASS_LOCAL_ONLY"
+      }
+    ],
+    "limitation": "These checks are not the canonical schema/registry validator and do not establish canonical acceptance."
+  },
+  "canonicalValidation": {
+    "validateDotProposal": "NOT_RUN",
+    "evaluateDotShadowProposal": "NOT_RUN",
+    "reason": "Previously reported execution host failed before process creation; qualified paired inputs unavailable. No new canonical attempt in this preparation.",
+    "canonicalProposalHash": null,
+    "acceptanceOrRejection": "NEITHER"
+  },
+  "researchEvidence": {
+    "marketObservations": 0,
+    "qualifiedEpisodes": 0,
+    "actualFills": 0,
+    "historicalReplay": "NOT_RUN",
+    "outOfSample": "UNKNOWN_NOT_RUN",
+    "expectancy": null,
+    "profitability": "EMPIRICALLY_UNPROVEN",
+    "publicSourceInspectionOnly": true
+  },
+  "preservedBoundaries": {
+    "mandatoryCloses": "Unchanged by proposal; not runtime-verified",
+    "noRoll": true,
+    "hardRules": "Equal to public baseline example",
+    "net50Net80Study": "Separate same-entry net-50 primary/net-80 secondary exit study remains unchanged; this candidate-window experiment is not equivalent to it.",
+    "unconsumedMetadata": {
+      "plannedHoldingDays": 10,
+      "profitTakingChallengers": [
+        "FIXED_10",
+        "FIXED_50"
+      ],
+      "warning": "Public-example metadata only; not verified H hold policy, not permission to outlive mandatory closes; do not route to persistDotExitComparison."
+    }
+  },
+  "pairedCoveragePlan": {
+    "status": "NOT_RUN",
+    "preconditions": [
+      "Run canonical validator against pinned source and exact proposal bytes; retain actual acceptance or rejection and canonical hash.",
+      "Use identical point-in-time input, routing snapshot/timestamp, source evidence IDs, contract chain, ownership/event state and feature evidence in both arms; record matching canonical input hashes.",
+      "Control uses canonical 2-5 DTE strategy under a distinct research version; challenger is this unchanged 3-5 DTE proposal. Both arms remain research-only."
+    ],
+    "assertions": [
+      "Include eligible contracts at DTE 2,3,4,5 and out-of-window boundaries 1,6. Assert challenger accepted IDs equal baseline accepted IDs intersected with DTE 3-5.",
+      "For each retained DTE 3-5 contract compare full candidate economics, quantity and eligibility/gate outputs exactly; permit only explicitly documented proposal/receipt identity fields to differ. Do not infer quantity when absent from output.",
+      "Record every baseline-eligible DTE 2 opportunity removed, with original identity, economics, quantity if present and challenger rejection reason. Report pre-existing rejections separately; do not count them as coverage loss.",
+      "Neither arm may admit DTE 1 or 6. Registry baseline hash and its 2-5 lattice must remain unchanged before and after.",
+      "Negative admission cases must stay rejected/blocked by existing gates in both arms: unknown required metadata/multiplier, stale executable quote, routing/decision time mismatch, missing source evidence IDs, missing chain and ineligible router. Verify concrete fixture coverage and actual reasons; do not invent rejection codes.",
+      "Use separate existing rule-bearing fixtures for missing, unqualified, null, stale, future, wrong-snapshot and unbound feature evidence, plus duplicate-feature rejection. The proposal itself has no research rules: unused feature staleness is not a blanket rejection condition.",
+      "Unknown baseline, unsupported model references, DTE expansion and changed hard-risk boundaries must fail validation or block evaluation as specified by existing admission logic; no bypasses.",
+      "No order intent, broker authority, execution enablement, mandatory-close changes or roll action. Consumer receipt must remain modeled research with profitability empirically unproven."
+    ],
+    "interpretation": "Coverage/invariance testing only. Even a future synthetic test pass is not market evidence, after-cost expectancy, or an out-of-sample result."
+  },
+  "sourceReferences": [
+    {
+      "path": "src/lab/contracts.ts",
+      "url": "https://raw.githubusercontent.com/smokychain22/trading-bots/2cb0d470f473132e80d44c2a2c051765e525afee/src/lab/contracts.ts",
+      "sha256": "a2605233a88e0bc1996ad48e9985119d1176b2d29a5a8ce26559d00a09297dbd"
+    },
+    {
+      "path": "src/lab/proposal-consumer.ts",
+      "url": "https://raw.githubusercontent.com/smokychain22/trading-bots/2cb0d470f473132e80d44c2a2c051765e525afee/src/lab/proposal-consumer.ts",
+      "sha256": "567ab605af852367bcd91174f2a15a09eeffd53fe69eaf73b6bb40b1619fab8f"
+    },
+    {
+      "path": "src/theta/strategy-package.ts",
+      "url": "https://raw.githubusercontent.com/smokychain22/trading-bots/2cb0d470f473132e80d44c2a2c051765e525afee/src/theta/strategy-package.ts",
+      "sha256": "c77cf0af0456327545295869aef690f139848431c3db7ee38fd5147fa551f37e"
+    },
+    {
+      "path": "tests/dot-proposal-consumer.test.ts",
+      "url": "https://raw.githubusercontent.com/smokychain22/trading-bots/2cb0d470f473132e80d44c2a2c051765e525afee/tests/dot-proposal-consumer.test.ts",
+      "sha256": "2c90c61db0b386c1fa38880f2325f0ec5e7e67aa93da2b85c9ce790b7fcd11e5"
+    },
+    {
+      "path": "research/dot-proposals/examples/theta-hold-strike.json",
+      "url": "https://raw.githubusercontent.com/smokychain22/trading-bots/2cb0d470f473132e80d44c2a2c051765e525afee/research/dot-proposals/examples/theta-hold-strike.json",
+      "sha256": "3b86f8c7d2acfca75a205ebd2a3b97bddd044cb20c9ca7ef11d2c82fc7f6970d"
+    }
+  ]
+}
