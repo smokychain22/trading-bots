@@ -59,6 +59,27 @@ test('Alpaca indicative quote qualifies only for the explicit master Paper use',
   assert.ok(live.blockers.includes('ORDER_PRICING_SEMANTICS_NOT_PROVEN'));
 });
 
+test('Paper indicative buy-to-close allows a zero bid only with fresh, exact, open-session ask evidence',()=>{
+  const indicative=quote({provider:'ALPACA',source:'BROKER_INDICATIVE',sourceSemantics:'PAPER_INDICATIVE_REFERENCE',
+    bid:0,ask:0.02,provenance:{authenticated:true,exactContractMapping:true,documentedForOrderPricing:false,
+      feed:'INDICATIVE',paperOnly:true}});
+  const input={quote:indicative,expectedContractId:'AAPL261016P00200000',nowUtc:'2026-09-14T14:30:10Z',
+    maximumAgeMs:3000,marketOpen:true,usage:'MASTER_PAPER' as const,allowZeroBid:true};
+  assert.equal(qualifyExecutionOptionQuote(input).qualified,true);
+  assert.ok(qualifyExecutionOptionQuote({...input,allowZeroBid:false}).blockers.includes('TWO_SIDED_QUOTE_INVALID'));
+  assert.ok(qualifyExecutionOptionQuote({...input,marketOpen:false}).blockers.includes('MARKET_CLOSED'));
+  assert.ok(qualifyExecutionOptionQuote({...input,quote:{...indicative,providerTimestamp:null}})
+    .blockers.includes('PROVIDER_TIMESTAMP_REQUIRED'));
+  assert.ok(qualifyExecutionOptionQuote({...input,quote:{...indicative,ask:0}})
+    .blockers.includes('TWO_SIDED_QUOTE_INVALID'));
+  assert.ok(qualifyExecutionOptionQuote({...input,quote:{...indicative,contractId:'WRONG'}})
+    .blockers.includes('CONTRACT_IDENTITY_MISMATCH'));
+  assert.ok(qualifyExecutionOptionQuote({...input,quote:{...indicative,provenance:{...indicative.provenance,feed:'OPRA'}}})
+    .blockers.includes('ORDER_PRICING_SEMANTICS_NOT_PROVEN'));
+  assert.ok(qualifyExecutionOptionQuote({...input,quote:{...indicative,providerTimestamp:'2026-09-14T14:30:00Z'}})
+    .blockers.includes('QUOTE_STALE'));
+});
+
 test('option identity, multiplier, tradability, exercise style and deliverable are independently fail closed',()=>{
   const expected={underlying:'AAPL',optionSymbol:'provider-contract',expiration:'2026-10-16',strike:200,
     optionType:'PUT' as const,multiplier:100};
