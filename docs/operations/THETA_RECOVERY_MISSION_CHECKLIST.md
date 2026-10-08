@@ -70,3 +70,8 @@ Unit tests and browser tests are not deployed endpoint or current-worker proof.
   cron definitions and Hobby billing. Existing alias/deployment mapping is
   snapshotted outside Git. A first metadata attempt was unconfirmed, then the
   bounded metadata read succeeded. No runtime encryption key was read or pulled.
+- Corrective checkpoint dcd9290d883b0fe2f3f6a598433abc358cf2729b was safely
+  pushed for exact-SHA CI 37839358537. A subsequent receipt-only client correction
+  preserves redacted failure phase, reason and possible-commit evidence instead
+  of dropping them. Its 12 focused tests, lint, typecheck and build passed.
+  This changes no database mutation or trading behavior and needs its own CI.

@@ -18,6 +18,20 @@ const safeReasons = new Set([
   'MASTER_REPLACEMENT_ACCOUNT_NOT_QUALIFIED', 'MASTER_REPLACEMENT_VERIFICATION_STALE',
   'MASTER_REPLACEMENT_IDENTITY_CHANGED', 'MASTER_CREDENTIAL_CONCURRENT_UPDATE',
 ]);
+/** Validate a received redacted receipt without trusting arbitrary server text. */
+export function sanitizeRecoveryReceiptReason(reason: string): string {
+  if (safeReasons.has(reason) || reason === 'RECOVERY_FAILURE_UNCLASSIFIED') return reason;
+  if (/^ALPACA_(INVALID_AUTH|NOT_ENTITLED|RATE_LIMITED|BROKER_REJECTED|AMBIGUOUS_NETWORK|MALFORMED_RESPONSE)$/.test(reason))
+    return reason;
+  if (reason.startsWith('POSTGRES_')) {
+    if (['POSTGRES_CONNECTION_TERMINATED', 'POSTGRES_CHECKED_OUT_CLIENT_LOST',
+      'POSTGRES_COMMIT_OUTCOME_UNKNOWN', 'POSTGRES_CONNECTION_ACQUISITION_TIMEOUT', 'POSTGRES_UNKNOWN_ERROR'].includes(reason))
+      return reason;
+    const classified = classifyPostgresRuntimeError({ code: reason.slice('POSTGRES_'.length) });
+    if (classified.safeCode === reason) return reason;
+  }
+  return 'RECOVERY_FAILURE_UNCLASSIFIED';
+}
 export function recoveryFailureReason(error: unknown): string {
   if (error instanceof Error && safeReasons.has(error.message)) return error.message;
   if (error instanceof AlpacaPaperBrokerError) {

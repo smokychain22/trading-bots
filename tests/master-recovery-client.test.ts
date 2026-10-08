@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { recoveryCurlInput } from '../src/customer/master-recovery-client.js';
+import { recoveryCurlInput, sanitizeRecoveryResult } from '../src/customer/master-recovery-client.js';
 import { authorizeRecovery, type RecoveryPermit } from '../src/customer/master-credential-recovery.js';
 
 test('private curl input sends signed body and operator authentication through stdin with no redirect', () => {
@@ -25,4 +25,18 @@ test('private curl input sends signed body and operator authentication through s
   assert.ok(config.includes('max-redirs = 0'));
   assert.throws(() => recoveryCurlInput({ host: 'attacker.example', permit, operatorToken,
     ownerPrivateKey: '', credentials: { api_key_id: 'synthetic', secret_key: 'synthetic' } }));
+});
+
+test('client preserves typed partial-failure evidence and discards arbitrary server text and fields', () => {
+  const failed = { status: 'REJECTED_OR_INCOMPLETE', phase: 'RECOVERY', reason: 'POSTGRES_COMMIT_OUTCOME_UNKNOWN',
+    credentialWriteMayHaveCommitted: true, automaticRetry: false, brokerMutations: 0 };
+  assert.deepEqual(sanitizeRecoveryResult({ ...failed, secret: 'must-not-propagate' }), failed);
+  for (const reason of ['POSTGRES_EAI_AGAIN', 'POSTGRES_42703', 'RECOVERY_PERMIT_ALREADY_CONSUMED', 'ALPACA_INVALID_AUTH'])
+    assert.equal(sanitizeRecoveryResult({ ...failed, reason }).reason, reason);
+  assert.equal(sanitizeRecoveryResult({ ...failed, reason: 'private key must-not-propagate' }).reason, 'RECOVERY_FAILURE_UNCLASSIFIED');
+  for (const changed of [{ ...failed, automaticRetry: true }, { ...failed, phase: 'unknown' },
+    { ...failed, brokerMutations: 1 }, { status: 'VERIFIED', brokerMutations: 0 }])
+    assert.throws(() => sanitizeRecoveryResult(changed), /UNCONFIRMED_NO_RETRY/);
+  assert.deepEqual(sanitizeRecoveryResult({ status: 'VERIFIED', identity: 'ORIGINAL_MASTER', brokerMutations: 0,
+    secret: 'must-not-propagate' }), { status: 'VERIFIED', identity: 'ORIGINAL_MASTER', brokerMutations: 0 });
 });

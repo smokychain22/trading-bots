@@ -2,6 +2,18 @@ import { sign } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { z } from 'zod';
 import { recoverySignaturePayload, type RecoveryPermit } from './master-credential-recovery.js';
+import { sanitizeRecoveryReceiptReason } from './master-recovery-handler.js';
+
+export function sanitizeRecoveryResult(body: unknown) {
+  const verified = z.object({ status: z.literal('VERIFIED'), identity: z.literal('ORIGINAL_MASTER'),
+    brokerMutations: z.literal(0) }).safeParse(body);
+  if (verified.success) return verified.data;
+  const rejected = z.object({ status: z.literal('REJECTED_OR_INCOMPLETE'), phase: z.enum(['AUTHORIZATION', 'RECOVERY']),
+    reason: z.string().max(100), credentialWriteMayHaveCommitted: z.boolean(), automaticRetry: z.literal(false),
+    brokerMutations: z.literal(0) }).safeParse(body);
+  if (!rejected.success) throw new Error('RECOVERY_RESULT_UNCONFIRMED_NO_RETRY');
+  return { ...rejected.data, reason: sanitizeRecoveryReceiptReason(rejected.data.reason) };
+}
 
 /** Sensitive in-memory material, never log or persist this buffer. Both headers
  * and replacement keys go to curl over stdin, never process arguments. Vercel
@@ -29,7 +41,7 @@ export function recoveryCurlInput(input: {
  * unauthenticated protection test. Raw stdout/stderr are never propagated. */
 export async function invokeProtectedRecovery(input: {
   vercelCliEntry: string; host: string; privateConfig: Buffer;
-}): Promise<{ status: 'VERIFIED' | 'REJECTED_OR_INCOMPLETE'; brokerMutations: 0 }> {
+}): Promise<ReturnType<typeof sanitizeRecoveryResult>> {
   if (!/^[a-z0-9-]+\.vercel\.app$/.test(input.host)) throw new Error('RECOVERY_CLIENT_HOST_INVALID');
   const env = { ...process.env }; delete env.DEBUG; delete env.VERCEL_DEBUG;
   const child = spawn(process.execPath, [input.vercelCliEntry, 'curl', `https://${input.host}/api/recover-master`,
@@ -49,9 +61,6 @@ export async function invokeProtectedRecovery(input: {
     let body: unknown;
     try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
     catch { throw new Error('RECOVERY_RESULT_UNCONFIRMED_NO_RETRY'); }
-    const parsed = z.object({ status: z.enum(['VERIFIED', 'REJECTED_OR_INCOMPLETE']), brokerMutations: z.literal(0) })
-      .safeParse(body);
-    if (!parsed.success) throw new Error('RECOVERY_RESULT_UNCONFIRMED_NO_RETRY');
-    return parsed.data;
+    return sanitizeRecoveryResult(body);
   } finally { clearTimeout(timeout); input.privateConfig.fill(0); }
 }
