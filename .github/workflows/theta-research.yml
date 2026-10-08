@@ -1,0 +1,127 @@
+name: THETA bounded research
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Research-only mode; no broker or account actions
+        required: true
+        default: research
+        type: choice
+        options:
+          - research
+          - shadow
+          - daily-report
+  schedule:
+    - cron: '17 10,13,15 * * 1-5'
+      timezone: America/New_York
+    - cron: '23 17 * * 1-5'
+      timezone: America/New_York
+    - cron: '43 11 * * 6'
+      timezone: America/New_York
+
+permissions:
+  contents: read
+
+concurrency:
+  group: theta-zero-cost-research
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  bounded-research:
+    if: >-
+      github.repository == 'smokychain22/trading-bots' &&
+      github.event.repository.visibility == 'public' &&
+      github.event.repository.private == false &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      vars.THETA_RESEARCH_ACTIONS_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CI: 'true'
+      NODE_OPTIONS: --max-old-space-size=2048
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+    steps:
+      - name: Check out immutable triggering source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+
+      - name: Fail closed on cost, authority, calendar and input gates
+        id: gate
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESEARCH_REQUEST_MODE: ${{ inputs.mode }}
+          RESEARCH_EVENT_NAME: ${{ github.event_name }}
+          RESEARCH_EVENT_SCHEDULE: ${{ github.event.schedule }}
+          RESEARCH_EXPECTED_REPOSITORY: smokychain22/trading-bots
+          RESEARCH_EXPECTED_RUNNER_LABEL: ubuntu-24.04
+          RESEARCH_CURRENT_REF: ${{ github.ref }}
+          RESEARCH_SOURCE_SHA: ${{ github.sha }}
+        run: >-
+          node tools/theta-research-actions-gate.mjs
+          --policy=config/research/actions-policy.json
+          --calendar=config/research/options-session-calendar.json
+          --manifest=config/research/evidence-manifest.json
+          --github-output="$GITHUB_OUTPUT"
+          --github-summary="$GITHUB_STEP_SUMMARY"
+
+      - name: Set up exact reviewed Node runtime without caching
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.18.0'
+          check-latest: false
+          package-manager-cache: false
+
+      - name: Install only the committed lockfile graph
+        if: steps.gate.outputs.run == 'true'
+        timeout-minutes: 2
+        env:
+          npm_config_cache: ${{ runner.temp }}/theta-npm-cache
+          npm_config_update_notifier: 'false'
+          npm_config_loglevel: error
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run one bounded offline research pipeline
+        id: pipeline
+        if: steps.gate.outputs.run == 'true'
+        timeout-minutes: 8
+        env:
+          RESEARCH_MODE: ${{ steps.gate.outputs.mode }}
+          RESEARCH_TARGET_DATE: ${{ steps.gate.outputs.target_date }}
+          RESEARCH_SLOT_ID: ${{ steps.gate.outputs.slot_id }}
+        run: |
+          timeout --signal=TERM --kill-after=10s 470s \
+            node --import tsx tools/theta-research-actions.ts \
+            --mode="$RESEARCH_MODE" \
+            --target-date="$RESEARCH_TARGET_DATE" \
+            --slot-id="$RESEARCH_SLOT_ID" \
+            --source-sha="${{ github.sha }}" \
+            --policy=config/research/actions-policy.json \
+            --manifest=config/research/evidence-manifest.json \
+            --output-dir="$RUNNER_TEMP/theta-research-output"
+
+      - name: Publish only the sanitized small report
+        if: always() && steps.gate.outputs.run == 'true'
+        timeout-minutes: 1
+        run: >-
+          node tools/theta-research-actions-gate.mjs
+          --publish-summary
+          --policy=config/research/actions-policy.json
+          --output-dir="$RUNNER_TEMP/theta-research-output"
+          --github-summary="$GITHUB_STEP_SUMMARY"
+
+      # No upload-artifact, cache/save, release/package publication, commit,
+      # push, API mutation, production endpoint, database or broker step.

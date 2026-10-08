@@ -1,0 +1,34 @@
+{
+  "contractVersion": "cboe-us-options-rth-calendar-v1",
+  "productClass": "CBOE_US_OPTIONS",
+  "timezone": "America/New_York",
+  "sourceUrl": "https://www.cboe.com/about/hours/us-options/",
+  "retrievedAt": "2026-10-08",
+  "validFrom": "2026-01-01",
+  "validThrough": "2026-12-31",
+  "regularSession": {
+    "open": "09:30",
+    "close": "16:15"
+  },
+  "closedDates": [
+    "2026-01-01",
+    "2026-01-19",
+    "2026-02-16",
+    "2026-04-03",
+    "2026-05-25",
+    "2026-06-19",
+    "2026-07-03",
+    "2026-09-07",
+    "2026-11-26",
+    "2026-12-25"
+  ],
+  "earlyCloseDates": {
+    "2026-11-27": "13:00",
+    "2026-12-24": "13:00"
+  },
+  "notes": [
+    "This calendar gates research observation admission only; it never authorizes trading.",
+    "Dates outside the verified range fail closed as CALENDAR_STALE.",
+    "Instrument-specific deviations and unscheduled closures remain DATA_GAP until the official calendar is updated."
+  ]
+}

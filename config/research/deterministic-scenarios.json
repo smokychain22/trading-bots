@@ -1,0 +1,223 @@
+{
+  "contractVersion": "theta-deterministic-scenarios-v1",
+  "evidenceClass": "DETERMINISTIC_SCENARIO_COMPARISON",
+  "scenarioId": "theta-contract-composition-v1",
+  "qd": {
+    "primaryIdentity": {
+      "cspShortLegIdentity": "AAPL261022P00190000",
+      "definedRiskShortLegIdentity": "AAPL261022P00190000",
+      "cspExpiration": "2026-10-22",
+      "definedRiskExpiration": "2026-10-22"
+    },
+    "context": {
+      "decisionTimestamp": "2026-09-22T14:00:00Z",
+      "comparisonHorizonStart": "2026-09-22T14:00:00Z",
+      "comparisonHorizonEnd": "2026-12-21T14:00:00Z",
+      "horizonDefinitionVersion": "theta-r8-horizon-v1",
+      "basis": "PER_POSITION",
+      "currency": "USD"
+    },
+    "input": {
+      "pairingKey": {
+        "underlying": "AAPL",
+        "decisionTimestamp": "2026-09-22T14:00:00Z",
+        "fusionSnapshotId": "deterministic-snapshot-q-d",
+        "ownershipState": "ELIGIBLE",
+        "regimeState": "NEUTRAL",
+        "eventState": "CLEAR",
+        "accountContextId": "deterministic-context"
+      },
+      "cohort": "COHORT_A_SAME_EXPIRATION",
+      "targetDte": 30,
+      "cspCandidates": [
+        {
+          "candidateId": "deterministic-q-csp",
+          "provenance": {
+            "decisionTimestamp": "2026-09-22T14:00:00Z",
+            "fusionSnapshotId": "deterministic-snapshot-q-d",
+            "accountContextId": "deterministic-context",
+            "ownershipState": "ELIGIBLE",
+            "regimeState": "NEUTRAL",
+            "eventState": "CLEAR",
+            "underlying": "AAPL",
+            "sourceEvidenceIds": [
+              "deterministic-scenario-q-d"
+            ]
+          },
+          "underlying": "AAPL",
+          "dte": 30,
+          "strike": 190,
+          "bid": 2,
+          "ask": 2.1,
+          "quoteTimestamp": "2026-09-22T14:00:00Z",
+          "multiplier": 100,
+          "quantity": 1,
+          "collateral": 19000,
+          "buyingPowerImpact": 19000,
+          "breakEven": 188,
+          "downsideCushion": 0.05,
+          "maxQuoteAgeMs": 60000
+        }
+      ],
+      "definedRiskCandidates": [
+        {
+          "candidateId": "deterministic-d-spread",
+          "provenance": {
+            "decisionTimestamp": "2026-09-22T14:00:00Z",
+            "fusionSnapshotId": "deterministic-snapshot-q-d",
+            "accountContextId": "deterministic-context",
+            "ownershipState": "ELIGIBLE",
+            "regimeState": "NEUTRAL",
+            "eventState": "CLEAR",
+            "underlying": "AAPL",
+            "sourceEvidenceIds": [
+              "deterministic-scenario-q-d"
+            ]
+          },
+          "underlying": "AAPL",
+          "dte": 30,
+          "shortStrike": 190,
+          "longStrike": 185,
+          "shortLeg": {
+            "bid": 1.5,
+            "ask": 1.6,
+            "quoteTimestamp": "2026-09-22T14:00:00Z",
+            "multiplier": 100
+          },
+          "longLeg": {
+            "bid": 0.5,
+            "ask": 0.6,
+            "quoteTimestamp": "2026-09-22T14:00:00Z",
+            "multiplier": 100
+          },
+          "quantity": 1,
+          "buyingPowerImpact": 410,
+          "breakEven": 189.1,
+          "downsideCushion": 0.045,
+          "maxSyncAgeMs": 1000,
+          "maxQuoteAgeMs": 60000
+        }
+      ]
+    }
+  },
+  "ac": {
+    "experiment": {
+      "experimentId": "deterministic-a-c-experiment",
+      "chainId": "deterministic-chain",
+      "decisionId": "deterministic-a-c-decision",
+      "decisionAt": "2026-09-22T14:00:00Z",
+      "commonFutureHorizonAt": "2026-10-22T20:00:00Z",
+      "stage": "ASSIGNED_STOCK",
+      "alternatives": [
+        {
+          "action": "SELL_STOCK",
+          "commonFutureHorizonAt": "2026-10-22T20:00:00Z",
+          "resolution": "RESOLVED",
+          "basisComponents": {
+            "cashflowBasis": "ACTUAL_FILL_CASHFLOW",
+            "initialPutPremium": 500,
+            "putCloseCosts": 0,
+            "rollCredits": 0,
+            "rollCloseCosts": 0,
+            "assignmentStrike": 100,
+            "stockSharesAssigned": 100,
+            "dividends": 0,
+            "coveredCallPremium": 200,
+            "coveredCallCloseCosts": 0,
+            "stockSaleOrCallAwayProceeds": null,
+            "fees": 5,
+            "executionCostNotEmbeddedInCashflows": 0,
+            "tcaExecutionShortfall": 2,
+            "currentStockMarkPerShare": 102,
+            "openStockShares": 100
+          },
+          "outcomeComponents": {
+            "cashflowBasis": "ACTUAL_FILL_CASHFLOW",
+            "initialPutPremium": 500,
+            "putCloseCosts": 0,
+            "rollCredits": 0,
+            "rollCloseCosts": 0,
+            "assignmentStrike": 100,
+            "stockSharesAssigned": 100,
+            "dividends": 0,
+            "coveredCallPremium": 200,
+            "coveredCallCloseCosts": 0,
+            "stockSaleOrCallAwayProceeds": 11000,
+            "fees": 5,
+            "executionCostNotEmbeddedInCashflows": 0,
+            "tcaExecutionShortfall": 2,
+            "currentStockMarkPerShare": null,
+            "openStockShares": 0
+          },
+          "dividendEvidenceState": "KNOWN",
+          "eventEvidenceState": "KNOWN",
+          "ccRollCost": null,
+          "callAwayStrike": null,
+          "retainedUpside": 0,
+          "lostUpside": 0,
+          "remainingDownside": 0,
+          "capitalDays": 30,
+          "slippage": 3,
+          "evidenceIds": [
+            "deterministic-scenario-a-c-sell-stock"
+          ],
+          "labelAvailableAt": "2026-10-22T20:00:00Z"
+        },
+        {
+          "action": "SELL_CC",
+          "commonFutureHorizonAt": "2026-10-22T20:00:00Z",
+          "resolution": "RESOLVED",
+          "basisComponents": {
+            "cashflowBasis": "ACTUAL_FILL_CASHFLOW",
+            "initialPutPremium": 500,
+            "putCloseCosts": 0,
+            "rollCredits": 0,
+            "rollCloseCosts": 0,
+            "assignmentStrike": 100,
+            "stockSharesAssigned": 100,
+            "dividends": 0,
+            "coveredCallPremium": 200,
+            "coveredCallCloseCosts": 0,
+            "stockSaleOrCallAwayProceeds": null,
+            "fees": 5,
+            "executionCostNotEmbeddedInCashflows": 0,
+            "tcaExecutionShortfall": 2,
+            "currentStockMarkPerShare": 102,
+            "openStockShares": 100
+          },
+          "outcomeComponents": {
+            "cashflowBasis": "ACTUAL_FILL_CASHFLOW",
+            "initialPutPremium": 500,
+            "putCloseCosts": 0,
+            "rollCredits": 0,
+            "rollCloseCosts": 0,
+            "assignmentStrike": 100,
+            "stockSharesAssigned": 100,
+            "dividends": 0,
+            "coveredCallPremium": 600,
+            "coveredCallCloseCosts": 0,
+            "stockSaleOrCallAwayProceeds": 11000,
+            "fees": 5,
+            "executionCostNotEmbeddedInCashflows": 0,
+            "tcaExecutionShortfall": 2,
+            "currentStockMarkPerShare": null,
+            "openStockShares": 0
+          },
+          "dividendEvidenceState": "KNOWN",
+          "eventEvidenceState": "KNOWN",
+          "ccRollCost": null,
+          "callAwayStrike": null,
+          "retainedUpside": 0,
+          "lostUpside": 0,
+          "remainingDownside": 0,
+          "capitalDays": 30,
+          "slippage": 3,
+          "evidenceIds": [
+            "deterministic-scenario-a-c-sell-cc"
+          ],
+          "labelAvailableAt": "2026-10-22T20:00:00Z"
+        }
+      ]
+    }
+  }
+}

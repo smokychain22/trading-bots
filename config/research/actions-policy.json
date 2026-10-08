@@ -1,0 +1,179 @@
+{
+  "contractVersion": "theta-zero-cost-actions-policy-v1",
+  "expectedRepository": "smokychain22/trading-bots",
+  "requiredVisibility": "public",
+  "requiredRunnerLabel": "ubuntu-24.04",
+  "activationVariable": "THETA_RESEARCH_ACTIONS_ENABLED",
+  "timezone": "America/New_York",
+  "allowedEvents": [
+    "schedule",
+    "workflow_dispatch"
+  ],
+  "allowedModes": [
+    "research",
+    "shadow",
+    "daily-report"
+  ],
+  "schedules": {
+    "17 10,13,15 * * 1-5": "shadow",
+    "23 17 * * 1-5": "daily-report",
+    "43 11 * * 6": "research"
+  },
+  "shadowLocalTimes": [
+    "10:17",
+    "13:17",
+    "15:17"
+  ],
+  "shadowMaximumStartDelayMinutes": 30,
+  "dailyReportMinimumMinutesAfterClose": 30,
+  "allowedManifestRoot": "config/research/evidence",
+  "deterministicScenarioPath": "config/research/deterministic-scenarios.json",
+  "limits": {
+    "workflowTimeoutMinutes": 12,
+    "pipelineDeadlineSeconds": 470,
+    "maximumTotalInputBytes": 33554432,
+    "maximumInputFileBytes": 16777216,
+    "maximumSymbols": 5,
+    "maximumRows": 20000,
+    "maximumCompleteEpisodes": 200,
+    "maximumPreregisteredComparisons": 12,
+    "maximumPreregisteredResamples": 500,
+    "maximumDiagnosticBytes": 262144,
+    "maximumSummaryBytes": 65536
+  },
+  "prohibitedEnvironmentVariables": [
+    "ALPACA_API_KEY",
+    "ALPACA_SECRET_KEY",
+    "APCA_API_KEY_ID",
+    "APCA_API_SECRET_KEY",
+    "DATABASE_URL",
+    "DIRECT_DATABASE_URL",
+    "OPTIONOMICS_API_KEY",
+    "THETA_EXECUTION_ENABLED",
+    "THETA_LIVE_TRADING_ENABLED"
+  ],
+  "sourceReuseContracts": [
+    {
+      "path": "tools/theta-research-dataset-cli.ts",
+      "symbols": [
+        "runRealDataArrivalPipeline"
+      ]
+    },
+    {
+      "path": "src/research/real-data-arrival-harness.ts",
+      "symbols": [
+        "ObservationBundle",
+        "runRealDataArrivalPipeline"
+      ]
+    },
+    {
+      "path": "src/theta/canonical-strategy-frontier.ts",
+      "symbols": [
+        "buildCanonicalStrategyFrontier"
+      ]
+    },
+    {
+      "path": "bots/theta/quant/models/regime_v0.py",
+      "symbols": []
+    },
+    {
+      "path": "bots/theta/quant/features/regime_adapter.py",
+      "symbols": []
+    },
+    {
+      "path": "bots/theta/quant/runtime/regime_contract.py",
+      "symbols": []
+    },
+    {
+      "path": "src/theta/regime-contract.ts",
+      "symbols": [
+        "parseRegimeSnapshotResponse"
+      ]
+    },
+    {
+      "path": "src/research/defined-risk-vs-csp-economics.ts",
+      "symbols": [
+        "compareDefinedRiskToConventionalCsp"
+      ]
+    },
+    {
+      "path": "src/research/defined-risk-vs-csp-paired-study.ts",
+      "symbols": [
+        "buildPairedDecisionRecord",
+        "classifyComparisonReadiness",
+        "summarizePairedCohorts",
+        "computeCohortOutcomeMetrics"
+      ]
+    },
+    {
+      "path": "src/research/cross-strategy-common-horizon-contract.ts",
+      "symbols": [
+        "compareCrossStrategy"
+      ]
+    },
+    {
+      "path": "src/research/hold-strike-empirical-cohort.ts",
+      "symbols": [
+        "buildHoldStrikeCandidateObservation",
+        "buildHoldStrikeCohortReport",
+        "pairHoldStrikeWithConventional"
+      ]
+    },
+    {
+      "path": "src/theta/hold-strike-lifecycle.ts",
+      "symbols": [
+        "assessHoldStrikeLifecycle"
+      ]
+    },
+    {
+      "path": "src/research/profit-taking-replay.ts",
+      "symbols": [
+        "runProfitTakingReplay"
+      ]
+    },
+    {
+      "path": "tools/theta-profit-taking-replay.ts",
+      "symbols": [
+        "runProfitTakingReplay"
+      ]
+    },
+    {
+      "path": "src/research/defined-risk-management-replay.ts",
+      "symbols": [
+        "runDefinedRiskManagementReplay"
+      ]
+    },
+    {
+      "path": "src/research/recovery-covered-call-experiment.ts",
+      "symbols": [
+        "buildRecoveryCoveredCallExperiment"
+      ]
+    },
+    {
+      "path": "src/research/recovery-covered-call-cohort.ts",
+      "symbols": [
+        "buildRecoveryObservation",
+        "buildCoveredCallObservation"
+      ]
+    },
+    {
+      "path": "src/research/primary-common-horizon-utility.ts",
+      "symbols": [
+        "buildCommonHorizonUtility"
+      ]
+    }
+  ],
+  "classificationVocabulary": [
+    "SOURCE_ALREADY_IMPLEMENTED",
+    "SOURCE_GAP",
+    "DATA_GAP",
+    "EMPIRICAL_GAP",
+    "PAPER_AUTHORITY_GAP"
+  ],
+  "verifiedReferences": {
+    "scheduleSyntax": "https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onschedule",
+    "standardRunnerCost": "https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
+    "billingBoundary": "https://docs.github.com/en/actions/concepts/billing-and-usage",
+    "verifiedAt": "2026-10-08"
+  }
+}

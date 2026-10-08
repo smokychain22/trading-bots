@@ -1,0 +1,15 @@
+{
+  "contractVersion": "theta-public-research-evidence-manifest-v1",
+  "manifestId": "theta-public-safe-empty-2026-10-08",
+  "approvedForPublicActions": true,
+  "immutableEntries": true,
+  "createdAt": "2026-10-08T00:00:00.000Z",
+  "dataAvailability": "UNKNOWN",
+  "historicalReplayStatus": "HISTORICAL_REPLAY_NOT_RUN",
+  "entries": [],
+  "notes": [
+    "No authenticated historical option quote or BBO entitlement is verified.",
+    "An empty manifest produces DATA_GAP and HISTORICAL_REPLAY_NOT_RUN.",
+    "Fixtures may be labeled SYNTHETIC_TEST or DETERMINISTIC_SCENARIO_COMPARISON, never market backtests or broker fills."
+  ]
+}
