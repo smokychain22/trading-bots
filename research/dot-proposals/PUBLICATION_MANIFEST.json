@@ -1,9 +1,9 @@
 {
-  "status": "PREPARED_LOCAL_PUBLICATION_PAYLOAD_NO_UPLOAD",
+  "status": "PUBLISHED_IMMUTABLE_REFERENCE_CHECKPOINT",
   "generated_at_utc": "2026-10-08T23:29:51.214651+00:00",
   "files": [
     {
-      "path": "THETA_PUBLIC_RESEARCH_SNAPSHOT_2026-10-09.zip",
+      "path": "reference/THETA_PUBLIC_RESEARCH_SNAPSHOT_2026-10-09.zip",
       "bytes": 183424,
       "sha256": "0277ac16e72496528b262da21be7dd9d9479fd460d562b6e8bce40aabdddaf8c"
     },
@@ -39,11 +39,15 @@
   "private_data_excluded": true,
   "publish_only_this_explicit_list": true,
   "source_commit_reviewed": "d0b479f3dfd0a6d9a1e79a699308cab09ed9f1ba",
-  "current_research_publication_sha": "PARENT_TO_SET_AFTER_PUBLICATION",
   "six_hour_completion_claim": false,
   "notes": [
     "Readable top-level Markdown files are exact copies of selected ZIP members. Folder-relative reproduction paths apply after ZIP extraction.",
     "The full private index, original briefs, owner-parameter XLE models/audits and private review snapshots are excluded.",
-    "Numerical checks are structural; publication payload contains zero qualified historical option episodes."
-  ]
+    "Numerical checks are structural; publication payload contains zero qualified historical option episodes.",
+    "Archive relocated byte-for-byte under the existing small immutable reference policy. Prior source/checkpoint history remains available; no runtime or policy controls changed. See ARCHIVE_PLACEMENT_RECEIPT.json."
+  ],
+  "manifest_version": 2,
+  "updated_at_utc": "2026-10-08T23:51:54.257281+00:00",
+  "initial_publication_checkpoint_sha": "39e6aad029fdc9c1462716a41571f3b6343a66fe",
+  "archive_placement_commit_sha": "8d170fb7f536fbb4d4d99b8f673428ffa51af016"
 }

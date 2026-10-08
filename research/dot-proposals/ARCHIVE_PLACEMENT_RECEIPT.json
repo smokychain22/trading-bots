@@ -1,0 +1,34 @@
+{
+  "verifiedAtUtc": "2026-10-08T23:51:26.301400+00:00",
+  "moveCommit": "8d170fb7f536fbb4d4d99b8f673428ffa51af016",
+  "parents": [
+    "39e6aad029fdc9c1462716a41571f3b6343a66fe"
+  ],
+  "oldPath": "research/dot-proposals/THETA_PUBLIC_RESEARCH_SNAPSHOT_2026-10-09.zip",
+  "newPath": "research/dot-proposals/reference/THETA_PUBLIC_RESEARCH_SNAPSHOT_2026-10-09.zip",
+  "gitStatus": "renamed",
+  "lineAdditions": 0,
+  "lineDeletions": 0,
+  "bytes": 183424,
+  "sha256": "0277ac16e72496528b262da21be7dd9d9479fd460d562b6e8bce40aabdddaf8c",
+  "bytePreservation": "PASS",
+  "policySourceSha": "39e6aad029fdc9c1462716a41571f3b6343a66fe",
+  "policyFileSha256": "497b6ab38ee2472723f913c9223a68a3167e9644ad7c77728391eae5b60435f4",
+  "sourcePolicyAssertions": {
+    "oldPlacement": "GITHUB_RELEASE_OR_GIT_LFS_REVIEW_REQUIRED",
+    "newPlacement": "ORDINARY_GIT_ALLOWED",
+    "assertions": 2
+  },
+  "immutableReferencePurpose": "Bounded versioned research reproduction fixture and report snapshot, not continuously growing data",
+  "controlsChanged": false,
+  "evidenceDeleted": false,
+  "unrelatedNpmFailureFixed": false,
+  "pr_state_required": "DRAFT_UNMERGED",
+  "unrelated_ci_context": {
+    "run": 37860198720,
+    "checkout": "1cd4b810a5e4cd3397d2556c763ced09bac03a0e",
+    "base": "cbea226ee71c67eeee0d788778825b8e4ecbb25c",
+    "failure": "phase2-hdac-mechanics share-boundary fixture omits committedShortCallContracts; source preserves UNKNOWN; no test or Production repair by Dot",
+    "placement_stage_in_that_run": "SKIPPED; placement defect independently identified from exact source"
+  }
+}
