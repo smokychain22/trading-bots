@@ -4,7 +4,7 @@ import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { prepareRecoveryArtifact } from '../src/customer/master-recovery-artifact.js';
+import { prepareRecoveryArtifact, recoveryDeploymentInvocation } from '../src/customer/master-recovery-artifact.js';
 
 test('private standalone artifact preserves verified ciphertext pin and has one route, no aliases, schedules or private keys', () => {
   const temporary = mkdtempSync(join(tmpdir(), 'theta-recovery-fixture-'));
@@ -27,6 +27,17 @@ test('private standalone artifact preserves verified ciphertext pin and has one 
     const privateOutput = join(temporary, 'private-artifact');
     const result = prepareRecoveryArtifact({ repository, privateOutput, permit, rollbackFile });
     assert.equal(result.deploymentAuthorized, false);
+    // Reproduce caller config contamination: its config references a function
+    // absent from the artifact. Invocation must never use that config or cwd.
+    writeFileSync(join(repository, 'vercel.json'), JSON.stringify({ functions: { 'api/theta-runtime.ts': {} } }));
+    const invocation = recoveryDeploymentInvocation({ repository, privateOutput, scope: 'synthetic-team' });
+    assert.equal(invocation.cwd, privateOutput);
+    assert.equal(invocation.args[invocation.args.indexOf('--local-config') + 1], join(privateOutput, 'vercel.json'));
+    assert.equal(invocation.args[invocation.args.indexOf('--cwd') + 1], privateOutput);
+    assert.ok(invocation.args.includes('--prod') && invocation.args.includes('--skip-domain'));
+    assert.ok(!invocation.args.includes('--token') && !invocation.args.includes('--force'));
+    assert.throws(() => recoveryDeploymentInvocation({ repository, privateOutput: repository, scope: 'synthetic-team' }), /OUTSIDE_REPOSITORY/);
+    assert.throws(() => recoveryDeploymentInvocation({ repository, privateOutput, scope: '--token' }), /SCOPE_INVALID/);
     const config = JSON.parse(readFileSync(join(privateOutput, 'vercel.json'), 'utf8'));
     assert.deepEqual(Object.keys(config.functions), ['api/recover-master.js']);
     for (const key of ['crons', 'alias', 'rewrites', 'env', 'build', 'routes']) assert.equal(config[key], undefined);
@@ -37,5 +48,10 @@ test('private standalone artifact preserves verified ciphertext pin and has one 
     assert.throws(() => prepareRecoveryArtifact({ repository, privateOutput: join(temporary, 'wrong-hash'),
       permit: { ...permit, rollbackFileHash: 'e'.repeat(64) }, rollbackFile }));
     assert.throws(() => prepareRecoveryArtifact({ repository, privateOutput, permit, rollbackFile }));
+    writeFileSync(join(privateOutput, 'api/theta-runtime.ts'), 'forbidden');
+    assert.throws(() => recoveryDeploymentInvocation({ repository, privateOutput, scope: 'synthetic-team' }), /STANDALONE_CONFIG_MISMATCH/);
+    rmSync(join(privateOutput, 'api/theta-runtime.ts'));
+    writeFileSync(join(privateOutput, 'vercel.json'), JSON.stringify({ ...config, alias: ['forbidden.example'] }));
+    assert.throws(() => recoveryDeploymentInvocation({ repository, privateOutput, scope: 'synthetic-team' }), /STANDALONE_CONFIG_MISMATCH/);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 });

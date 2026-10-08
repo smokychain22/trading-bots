@@ -1,7 +1,34 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { recoveryPermitSchema } from './master-credential-recovery.js';
+
+const recoveryConfig = {
+  version: 2, framework: null, buildCommand: '', installCommand: 'npm ci --omit=dev', outputDirectory: 'public',
+  functions: { 'api/recover-master.js': { maxDuration: 120, includeFiles: '{dist/**,recovery-permit.json}' } },
+};
+
+/** Plan only. Vercel loads local config before applying --cwd, so both the
+ * actual child cwd and explicit config must point at the isolated artifact.
+ * The caller still proves CI, platform protection, project identity and locks. */
+export function recoveryDeploymentInvocation(input: {
+  repository: string; privateOutput: string; scope: string;
+}): { cwd: string; args: string[] } {
+  const repository = realpathSync(input.repository), output = realpathSync(input.privateOutput);
+  if (output === repository || output.startsWith(repository + sep))
+    throw new Error('RECOVERY_OUTPUT_MUST_BE_OUTSIDE_REPOSITORY');
+  if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(input.scope)) throw new Error('RECOVERY_SCOPE_INVALID');
+  const configPath = join(output, 'vercel.json');
+  const config = JSON.parse(readFileSync(configPath, 'utf8'));
+  // Reject extra routing, aliases, schedules, env or trading functions, rather
+  // than accepting a recovery-shaped subset of a broader application config.
+  if (JSON.stringify(config) !== JSON.stringify(recoveryConfig)
+    || JSON.stringify(readdirSync(join(output, 'api'))) !== JSON.stringify(['recover-master.js']))
+    throw new Error('RECOVERY_STANDALONE_CONFIG_MISMATCH');
+  recoveryPermitSchema.parse(JSON.parse(readFileSync(join(output, 'recovery-permit.json'), 'utf8')));
+  return { cwd: output, args: ['deploy', '--prod', '--skip-domain', '--yes',
+    '--cwd', output, '--local-config', configPath, '--scope', input.scope] };
+}
 
 /** Offline packager, no deploy, provider, DB, environment download or key access.
  * Call only after the source is certified and deployment scope approved. The
@@ -48,8 +75,6 @@ export function prepareRecoveryArtifact(input: {
     `import {readFileSync} from 'node:fs';\nimport {createMasterRecoveryHandler} from '../dist/customer/master-recovery-handler.js';\n`
     + `const permit=JSON.parse(readFileSync(new URL('../recovery-permit.json',import.meta.url),'utf8'));\n`
     + `export default createMasterRecoveryHandler(permit,process.env);\n`);
-  writeFileSync(join(output, 'vercel.json'), JSON.stringify({ version: 2, framework: null,
-    buildCommand: '', installCommand: 'npm ci --omit=dev', outputDirectory: 'public',
-    functions: { 'api/recover-master.js': { maxDuration: 120, includeFiles: '{dist/**,recovery-permit.json}' } } }, null, 2));
+  writeFileSync(join(output, 'vercel.json'), JSON.stringify(recoveryConfig, null, 2));
   return { fileCount: files.size + 5, sourceSha: permit.sourceSha, deploymentAuthorized: false };
 }

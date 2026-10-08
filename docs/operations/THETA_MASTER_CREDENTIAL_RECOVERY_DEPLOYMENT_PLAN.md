@@ -126,5 +126,16 @@ It restores event reads while the original stream can remain ended. The handler
 therefore reads bounded raw data/end events, never parsed JSON reserialization.
 Synthetic restored-stream, oversized-chunk and aborted-request tests cover this.
 
+The deploy child must use `recoveryDeploymentInvocation` and set its actual cwd
+to the private standalone artifact. Pass explicit `--local-config` as well as
+`--cwd`. Vercel loads its initial config before applying the latter override.
+Starting the child in the repository can import the normal trading deployment
+config despite --cwd, as reproduced by the preserved unused_function incident.
+The invocation planner rejects a broader config or extra API function.
+See [CLI global options](https://vercel.com/docs/cli/global-options).
+Preserve bounded private failure diagnostics, identify and remove only the owned
+failed recovery deployment, and re-prove all gates after correcting tooling.
+Never infer that staging success authorizes a credential-request replay.
+
 Reticle is skipped because these are backend, private packaging and CLI changes
 with no deployed UI surface. This is not deployed endpoint verification.

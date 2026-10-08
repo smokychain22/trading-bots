@@ -8,9 +8,9 @@ mutations, new-risk resumption, broad runtime deployment and migration 071.
 
 | Dependency | Status | Evidence or remaining prerequisite |
 | --- | --- | --- |
-| Source certification | IN_PROGRESS | Exact f98f0ffb2c9a3f0f31a2585a54dad5dc132fba96 run 37837291258 passed all required steps. Subsequent recovery guard and raw-body corrections need their own exact-SHA CI. |
+| Source certification | IN_PROGRESS | Exact f98f0ffb run 37837291258, dcd9290d run 37839358537 and ccd3c7da run 37839789005 passed. Deployment invocation correction requires its own exact-SHA CI. |
 | No-submit safety | IN_PROGRESS | Canonical full-submit lock verified at 2026-10-08T20:21:35Z. Existing authorization history preserved. Subsequent same-release cycle used LOCKED authority, with no ambiguous/working intents or active claims observed. Final pre-write drainage must be freshly rechecked. |
-| Protected recovery runtime | NOT_STARTED | Requires certified artifact, platform protection proof, alias/schedule preservation and proven no-submit state. |
+| Protected recovery runtime | FAILED | One staged attempt failed before invocation with unused_function because caller config was loaded before --cwd. The owned ERROR deployment was removed, confirmed by platform 404. No credential request was sent. Corrected invocation must pass CI and fresh platform/no-submit gates before use. |
 | Credential replacement | NOT_STARTED | Existing ciphertext and protected rollback retained. Requires the preceding gates and fresh account verification. |
 | Canonical broker verification | NOT_STARTED | Replacement-key read-only authentication is separate from installed canonical-provider recovery. |
 | Worker recovery | NOT_STARTED | Same-release natural reload must be observed. Online supervisor alone is not health proof. |
@@ -75,3 +75,31 @@ Unit tests and browser tests are not deployed endpoint or current-worker proof.
   preserves redacted failure phase, reason and possible-commit evidence instead
   of dropping them. Its 12 focused tests, lint, typecheck and build passed.
   This changes no database mutation or trading behavior and needs its own CI.
+
+## Deployment incident and scoped correction
+
+- The first recovery-only staging attempt failed at 2026-10-08T20:38:45Z.
+  Vercel reported `unused_function` for the normal runtime function, which is
+  deliberately absent from the isolated recovery artifact. Installed CLI source
+  proves earlyGetConfig runs before the --cwd override is applied to client.cwd.
+  The child process was started in the repository and inherited its config.
+- No recovery credential request was sent, no permit was consumed and no
+  credential update occurred. The durable full-submit lock remains in place.
+- Invocation planning now pins actual child cwd and explicit --local-config to
+  the standalone artifact. Exact config shape and sole recovery route are
+  checked. Repository-contained output, invalid scope, added functions or
+  routing/alias fields fail before any deployment. Focused tests reproduce
+  caller config contamination without contacting Production.
+- Cleanup initially stopped on an alias difference rather than ignoring it.
+  Read-only provenance proved the sole difference was the independently built
+  review-branch Preview deployment for ccd3c7da, created before the failed
+  recovery deployment. Production/custom-domain mappings were unchanged.
+  Only the exact owned ERROR recovery deployment was removed. Platform readback
+  returned 404 at 2026-10-08T20:45:42Z. Private identifiers and detailed evidence
+  remain outside Git.
+- A staging/build failure does not authorize replay of a consumed credential
+  permit. Here no credential invocation occurred. The consolidated mission
+  covers correction of the deployment tooling followed by a newly gated staging
+  operation, provided every original security prerequisite is proven again.
+- Earlier failures and receipts remain preserved. No broker mutation, worker
+  restart, broad deployment, migration or new-risk resumption occurred.
