@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "dot/theta-h-dte3-5-research-v1": false
+    }
+  },
   "outputDirectory": "public",
   "functions": {
     "api/theta-runtime.ts": { "maxDuration": 300, "includeFiles": "{migrations,tests/sql}/**" },
