@@ -478,6 +478,26 @@ export function projectCanonicalFrontierForPostgres(frontier: CanonicalStrategyF
       storageState: 'FULL_STATE_IN_COMPRESSED_CYCLE_ARCHIVE',
       fullStateHash: hash(canonicalJson(adaptive)),
       strategyEdgeReceipts: boundedEdgeReceiptProjection(adaptive.strategyEdgeReceipts ?? [], keep),
+      timeHorizonReceipt: adaptive.timeHorizonReceipt === undefined ? null : {
+        ...adaptive.timeHorizonReceipt,
+        horizons: adaptive.timeHorizonReceipt.horizons.map((horizon) => ({
+          ...horizon,
+          candidates: {
+            storageState: BOUNDED_STATE,
+            count: horizon.candidates.length,
+            truncated: horizon.candidates.length > boundedProjectionSampleSize,
+            fullListHash: hash(canonicalJson(horizon.candidates as unknown as JsonValue)),
+            entries: horizon.candidates.slice(0, boundedProjectionSampleSize),
+          },
+        })),
+        unknownDteCandidateIds: {
+          storageState: BOUNDED_STATE,
+          count: adaptive.timeHorizonReceipt.unknownDteCandidateIds.length,
+          truncated: adaptive.timeHorizonReceipt.unknownDteCandidateIds.length > boundedProjectionSampleSize,
+          fullListHash: hash(canonicalJson(adaptive.timeHorizonReceipt.unknownDteCandidateIds as unknown as JsonValue)),
+          entries: adaptive.timeHorizonReceipt.unknownDteCandidateIds.slice(0, boundedProjectionSampleSize),
+        },
+      },
       shadowComparison: {
         ...adaptive.shadowComparison,
         cohorts: adaptive.shadowComparison.cohorts.map((cohort) => ({

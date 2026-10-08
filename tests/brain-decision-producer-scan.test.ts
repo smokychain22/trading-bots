@@ -53,6 +53,7 @@ const thetaClass: Readonly<Record<string, ProducerClass>> = {
   'theta-q-contract.ts': 'SUBORDINATE_CALCULATOR',
   'theta-shadow-cycle.ts': 'SUBORDINATE_CALCULATOR',
   'theta-shadow-once.ts': 'SHADOW',
+  'time-horizon-receipt.ts': 'SHADOW',
   'zero-trade-diagnostic.ts': 'DISPLAY',
 };
 

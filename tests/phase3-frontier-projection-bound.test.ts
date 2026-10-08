@@ -108,6 +108,19 @@ test('truncation is explicit and exact: counts, per-reason counts and a hash of 
   assert.equal(Object.values(projectedEdgeReceipts.strategyCounts).reduce((sum, count) => sum + count, 0), fullEdgeReceipts.length);
   assert.equal(Object.values(projectedEdgeReceipts.edgeCounts).reduce((sum, count) => sum + count, 0), fullEdgeReceipts.length);
   assert.equal(Object.values(projectedEdgeReceipts.evidenceStateCounts).reduce((sum, count) => sum + count, 0), fullEdgeReceipts.length);
+  const horizon = (projectCanonicalFrontierForPostgres(frontier).projection as { adaptiveShadowDecision: {
+    timeHorizonReceipt: { horizons: readonly { candidateCount: number; candidates: BoundedList }[] } } })
+    .adaptiveShadowDecision.timeHorizonReceipt;
+  const fullHorizon = frontier.adaptiveShadowDecision?.timeHorizonReceipt;
+  assert.ok(fullHorizon);
+  for (let i = 0; i < horizon.horizons.length; i += 1) {
+    const projectedBucket = horizon.horizons[i];
+    const fullBucket = fullHorizon.horizons[i];
+    assert.ok(projectedBucket && fullBucket);
+    assert.equal(projectedBucket.candidateCount, fullBucket.candidates.length);
+    assert.equal(projectedBucket.candidates.fullListHash, sha(fullBucket.candidates));
+    assert.ok(projectedBucket.candidates.entries.length <= boundedProjectionSampleSize);
+  }
 });
 
 test('a short list is not marked truncated and keeps every entry', () => {

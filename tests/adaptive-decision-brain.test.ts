@@ -122,6 +122,43 @@ test('adaptive shadow is a comparison receipt with no broker mutation authority'
   assert.deepEqual(receipt.lineage, sovereignDecisionPath);
 });
 
+test('expiry horizons are explicit shadow evidence and never become a profitability ranking', () => {
+  const f = frontier();
+  const branch = required(f.branches[0]);
+  const source = required(branch.candidates[0]);
+  const dtes = [0, 2, 5, 14, 44, 365, null] as const;
+  const candidates = dtes.map((dte, index) => ({ ...source, candidateId: `h${index}`, dte,
+    sizing: { ...source.sizing, quantity: index === 4 ? 0 : 1 },
+    riskFeasible: index !== 4 }));
+  const input = { ...f, branches: [{ ...branch, candidates }], selectedCandidateId: 'h4' };
+  const receipt = buildAdaptiveShadowDecisionReceipt({ frontier: input,
+    currentDecision: { ...currentDecision(), selectedCandidateRef: 'h4' } });
+  const horizon = receipt.timeHorizonReceipt;
+  assert.deepEqual(horizon.horizons.map((item) => item.candidateCount), [1, 1, 1, 1, 1, 1]);
+  assert.deepEqual(horizon.unknownDteCandidateIds, ['h6']);
+  assert.equal(horizon.currentPolicySelectedHorizon, 'T4');
+  assert.equal(horizon.horizons[4]?.feasibleCount, 0);
+  assert.equal(horizon.horizons[4]?.bestStrategy, null);
+  assert.equal(horizon.bestCrossHorizonCandidateId, null);
+  assert.equal(horizon.whyThisHorizon, 'CURRENT_SOVEREIGN_POLICY_SELECTION_NOT_CROSS_HORIZON_OPTIMALITY');
+  assert.equal(horizon.basis, 'CONTRACT_EXPIRY_NOT_EXPECTED_HOLDING_PERIOD');
+  assert.equal(horizon.brokerAuthority, false);
+  const reversed = { ...input, branches: [{ ...branch, candidates: [...candidates].reverse() }] };
+  assert.equal(buildAdaptiveShadowDecisionReceipt({ frontier: reversed,
+    currentDecision: { ...currentDecision(), selectedCandidateRef: 'h4' } }).contentHash, receipt.contentHash);
+});
+
+test('incomplete horizon enumeration cannot be called complete and WAIT does not invent a selected horizon', () => {
+  const f = frontier();
+  const branch = required(f.branches[0]);
+  const receipt = buildAdaptiveShadowDecisionReceipt({ frontier: { ...f,
+    branches: [{ ...branch, enumerationTruncated: true }] },
+    currentDecision: { actionCode: 'GLOBAL_WAIT', selectedCandidateRef: null, quantity: 0, strategyBranch: null } });
+  assert.equal(receipt.timeHorizonReceipt.enumerationComplete, false);
+  assert.equal(receipt.timeHorizonReceipt.currentPolicySelectedHorizon, null);
+  assert.equal(receipt.timeHorizonReceipt.whyThisHorizon, 'NO_CURRENT_ENTRY_SELECTION');
+});
+
 test('a current-policy WAIT is not presented as adaptive agreement without an adaptive policy', () => {
   const receipt = buildAdaptiveShadowDecisionReceipt({
     frontier: frontier(),

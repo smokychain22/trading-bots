@@ -5,6 +5,7 @@ import { canonicalThetaStrategySources, thetaHardRule, type ThetaStrategyBranch 
 import { buildCanonicalShadowComparison } from './canonical-shadow-comparison.js';
 import { thetaStrategyFeatureManifest } from './phase2-market-intelligence-registry.js';
 import { buildStrategyEdgeReceipts, type StrategyEdgeReceipt } from './strategy-edge-receipt.js';
+import { buildTimeHorizonReceipt, type TimeHorizonReceipt } from './time-horizon-receipt.js';
 
 export const adaptiveDecisionBrainVersion = 'theta-adaptive-decision-brain-shadow-v4' as const;
 
@@ -304,6 +305,7 @@ export interface AdaptiveShadowDecisionReceipt {
    * are persisted shadow receipts, never a gate, score, selector, or claim of
    * empirical profitability. */
   readonly strategyEdgeReceipts: readonly StrategyEdgeReceipt[];
+  readonly timeHorizonReceipt: TimeHorizonReceipt;
   readonly executionAuthorized: false;
   readonly brokerMutationAllowed: false;
   readonly contentHash: string;
@@ -328,6 +330,8 @@ export function buildAdaptiveShadowDecisionReceipt(input: {
 }): AdaptiveShadowDecisionReceipt {
   const shadowComparison = buildCanonicalShadowComparison(input.frontier);
   const strategyEdgeReceipts = buildStrategyEdgeReceipts(input.frontier);
+  const timeHorizonReceipt = buildTimeHorizonReceipt({ ...input.frontier,
+    selectedCandidateId: input.currentDecision.selectedCandidateRef });
   const payload = {
     contractVersion: adaptiveDecisionBrainVersion,
     snapshotId: input.frontier.snapshotId,
@@ -353,6 +357,7 @@ export function buildAdaptiveShadowDecisionReceipt(input: {
     comparison: shadowComparison.state,
     shadowComparison,
     strategyEdgeReceipts,
+    timeHorizonReceipt,
     executionAuthorized: false as const,
     brokerMutationAllowed: false as const,
   };
