@@ -193,6 +193,16 @@ export class ProductionPaperManagementCandidateSource {
         discoveries.set(subject.chainId,emptyDiscovery('PARTIAL_COVERAGE',observedAt,'OPEN_OPTION_QUANTITY_UNQUALIFIED'));
         continue;
       }
+      if(subject.lifecycleState==='CSP_OPEN'||subject.lifecycleState==='CC_OPEN'){
+        const current=subject.currentContractSymbol===null?null:occIdentity(subject.currentContractSymbol);
+        const expectedType=subject.lifecycleState==='CSP_OPEN'?'PUT':'CALL';
+        if(current===null||current.root!==subject.underlying||current.optionType!==expectedType
+          ||subject.currentOptionType!==expectedType||subject.currentExpiration!==current.expiration
+          ||!finitePositiveInteger(subject.currentMultiplier)||subject.currentContractId===null){
+          discoveries.set(subject.chainId,emptyDiscovery('PARTIAL_COVERAGE',observedAt,'OPEN_OPTION_CONTRACT_UNQUALIFIED'));
+          continue;
+        }
+      }
       if(optionType===null||(subject.stockShares<=0&&quantity===null)){
         discoveries.set(subject.chainId,emptyDiscovery('VALID_EMPTY',observedAt,'NO_APPLICABLE_MANAGEMENT_LATTICE',true,true));
         continue;

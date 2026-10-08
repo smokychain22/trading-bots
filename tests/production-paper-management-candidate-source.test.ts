@@ -117,3 +117,20 @@ test('an open option with unknown ledger quantity is incomplete management evide
     assert.equal(result?.reason,'OPEN_OPTION_QUANTITY_UNQUALIFIED');
   }
 });
+
+test('an open option with unqualified original contract identity cannot enter management candidate discovery',async()=>{
+  const base={chain_id:'chain-1',underlying_id:'underlying-1',underlying:'AAPL',lifecycle_state:'CSP_OPEN',
+    current_contract_symbol:subject.currentContractSymbol,current_contract_id:subject.currentContractId,
+    current_option_type:'PUT',current_expiration:subject.currentExpiration,current_multiplier:100,
+    option_quantity:1,stock_shares:0};
+  for(const change of [{current_contract_symbol:null},{current_multiplier:null},
+    {current_expiration:'Fri Oct 16'},{current_option_type:'CALL'}]){
+    const pool={query:async()=>({rows:[{...base,...change}]})} as unknown as Pool;
+    const fetchImpl=(async()=>{throw new Error('provider must not be called for an unqualified subject');}) as typeof fetch;
+    const reader=new ProductionPaperManagementCandidateSource(pool,{tradingApiBase:'https://paper-api.alpaca.markets',
+      marketDataApiBase:'https://data.alpaca.markets',apiKey:'synthetic',apiSecret:'synthetic',fetchImpl});
+    const result=(await reader.discover('connection-1','reconciliation-1')).get('chain-1');
+    assert.equal(result?.state,'PARTIAL_COVERAGE');
+    assert.equal(result?.reason,'OPEN_OPTION_CONTRACT_UNQUALIFIED');
+  }
+});
