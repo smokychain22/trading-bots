@@ -1,0 +1,31 @@
+{
+  "schema": "dot-publication-review-v1",
+  "reviewedAtUtc": "2026-10-08T23:32:00Z",
+  "scope": "Sanitized research-only checkpoint; not a morning completion or trading result",
+  "archive": {
+    "name": "THETA_PUBLIC_RESEARCH_SNAPSHOT_2026-10-09.zip",
+    "bytes": 183424,
+    "sha256": "0277ac16e72496528b262da21be7dd9d9479fd460d562b6e8bce40aabdddaf8c"
+  },
+  "rootByteAndPrivacyReview": "PASS",
+  "archivePathAndDuplicateCheck": "PASS",
+  "privateOwnerTupleAndProtectedPathScan": "NO_MATCHES",
+  "cleanExtractionReproduction": "Seven scripts passed before A/C text-only amendment; executable scripts and21 non-document inputs/reference outputs remained byte-identical",
+  "staticAmendmentReviews": {
+    "Q": "PASS, amendment01 controls",
+    "IV": "PASS, version2 controls",
+    "AC": "PASS, version2 controls"
+  },
+  "sourceSelectionReview": "Exact-source default/SHADOW tie-break and distinct RPCD semantics independently confirmed; historical selection cause unknown",
+  "qualifiedHistoricalOptionEpisodes": 0,
+  "brokerAuthority": false,
+  "productionChanged": false,
+  "prStateRequired": "DRAFT_UNMERGED",
+  "newExecutableStrategyProposals": 0,
+  "notes": [
+    "This receipt supersedes the earlier coordinator-review-pending status in the prepared summary.",
+    "Source-characterization harnesses are not included in the compact archive; no claim that its seven scripts reproduce those distinct source suites.",
+    "No private episode record, exact owner-parameter model, raw brief or private research index is published.",
+    "This is one consolidated research publication, not a CI repair or strategy activation."
+  ]
+}
