@@ -9,6 +9,8 @@ import { DotLabStore } from './store.js';
 import { DotLabGateway } from './gateway.js';
 import { createDotLabApp } from './http.js';
 import { runDotStdio } from './stdio.js';
+import { Pool } from 'pg';
+import { DotCanonicalLedgerReader } from './ledger-import.js';
 
 /** Explicit private files only. Never inherit THETA's process environment or database URL. */
 export function startDotLab(args: readonly string[]) {
@@ -35,17 +37,40 @@ export function startDotLab(args: readonly string[]) {
     .refine(value => value.reader !== value.proposer)
     .parse(JSON.parse(readFileSync(privatePath(readArg('tokens'), true), 'utf8')));
   const store = new DotLabStore(privatePath(readArg('state'), false), identity);
+  let ledgerPool: Pool | undefined;
+  let ledgerReader: DotCanonicalLedgerReader | undefined;
+  try {
+    if (args.some(arg => arg.startsWith('--ledger-config='))) {
+      // Explicit private configuration only. Missing configuration means unavailable,
+      // never a fallback to THETA's Production DATABASE_URL or resident environment.
+      const config = z.object({ connectionString: z.string().url(), executionAccountId: z.string().uuid(),
+        providerAccountId: z.string().uuid(), sourceSha: z.string().regex(/^[a-f0-9]{40}$/) }).strict()
+        .parse(JSON.parse(readFileSync(privatePath(readArg('ledger-config'), true), 'utf8')));
+      if (config.executionAccountId !== identity.executionAccountId || config.providerAccountId !== identity.providerAccountId) {
+        throw new Error('DOT_LEDGER_ACCOUNT_BINDING_INVALID');
+      }
+      const url = new URL(config.connectionString);
+      if (!['postgres:', 'postgresql:'].includes(url.protocol) || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
+        || url.search || url.hash) throw new Error('DOT_ISOLATED_LOCAL_LEDGER_CONFIGURATION_REQUIRED');
+      ledgerPool = new Pool({ connectionString: config.connectionString, max: 1, min: 0,
+        connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000,
+        options: '-c default_transaction_read_only=on -c statement_timeout=5000' });
+      ledgerPool.on('error', () => { /* No raw pg errors, URLs or credentials in protocol output. */ });
+      ledgerReader = new DotCanonicalLedgerReader(ledgerPool, identity, config.sourceSha);
+    }
+  } catch (error) { store.close(); if (ledgerPool) void ledgerPool.end(); throw error; }
+  const close = () => { store.close(); if (ledgerPool) void ledgerPool.end(); };
   const gateway = new DotLabGateway({ tradingApiBase: privateConfig.ALPACA_BASE_URL, marketDataApiBase: 'https://data.alpaca.markets',
-    apiKey: privateConfig.ALPACA_API_KEY, apiSecret: privateConfig.ALPACA_SECRET_KEY }, store);
-  if (args.includes('--verify-only')) return gateway.observe().finally(() => store.close());
-  if (args.includes('--stdio')) return runDotStdio(gateway, process.stdin, process.stdout).finally(() => store.close());
+    apiKey: privateConfig.ALPACA_API_KEY, apiSecret: privateConfig.ALPACA_SECRET_KEY }, store, undefined, ledgerReader);
+  if (args.includes('--verify-only')) return gateway.observe().finally(close);
+  if (args.includes('--stdio')) return runDotStdio(gateway, process.stdin, process.stdout).finally(close);
   let port: number;
-  try { port = Number(readArg('port')); } catch (error) { store.close(); throw error; }
-  if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) { store.close(); throw new Error('DOT_PORT_INVALID'); }
+  try { port = Number(readArg('port')); } catch (error) { close(); throw error; }
+  if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) { close(); throw new Error('DOT_PORT_INVALID'); }
   const app = createDotLabApp(gateway, tokens);
   const server = app.listen(port, '127.0.0.1');
   let closed = false;
-  const closeStore = () => { if (!closed) { closed = true; store.close(); } };
+  const closeStore = () => { if (!closed) { closed = true; close(); } };
   server.once('close', closeStore);
   server.once('error', closeStore);
   return server;

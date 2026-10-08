@@ -13,7 +13,7 @@ const market = z.object({ underlying: z.string().regex(/^[A-Z][A-Z0-9.]{0,9}$/),
       && new Date(from).toISOString().slice(0, 10) === value.from && new Date(to).toISOString().slice(0, 10) === value.to;
   });
 export const dotReadToolNames = ['dot_account', 'dot_observation', 'dot_strategies', 'dot_receipts',
-  'dot_contracts', 'dot_market', 'dot_feedback_schema', 'dot_private_export'] as const;
+  'dot_contracts', 'dot_market', 'dot_feedback_schema', 'dot_private_export', 'dot_ledger'] as const;
 
 export function dotReadTools() {
   return dotReadToolNames.map(name => ({ name,
@@ -37,6 +37,7 @@ export async function callDotReadTool(gateway: DotLabGateway, name: string, args
     case 'dot_strategies': return gateway.strategies();
     case 'dot_receipts': return gateway.store.list('OBSERVATION');
     case 'dot_feedback_schema': return z.toJSONSchema(dotFeedbackSchema);
+    case 'dot_ledger': return gateway.ledger();
     // Account evidence is real, source release identity stays unknown until governed release verification.
     case 'dot_private_export': return exportDotPrivateObservation(gateway.store);
     default: throw new Error('DOT_READ_TOOL_FORBIDDEN');

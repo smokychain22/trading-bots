@@ -46,3 +46,19 @@ Dot is the existing cloud agent. The local token-authenticated interface is test
 3. Owner/workspace connection capability for private MCP, authenticated linking, then an actual Dot read.
 4. Canonical account-scoped ledger importer, challenger-consumer integration, management contract and shared reservation-to-intent wiring in an isolated lab runtime.
 5. Governed release and separate experiment authorization before any Paper order. Live money remains unauthorized.
+
+## Review continuation after foundation CI
+
+Foundation `fd144cc333c38e658c8c77fed1afbcaa1b345ea8` passed exact-SHA CI run `37804755324`. This certifies source tests, not a Dot cloud connection, deployment or Paper experiment.
+
+`src/lab/proposal-consumer.ts` connects validated H/D drafts to the existing research generators. Implemented configuration changes are bounded DTE narrowing and point-in-time numeric research rules. Evidence must match the decision snapshot and source evidence IDs, be available before the decision, and remain valid. Missing, stale, unqualified or future data block evaluation. Changed model references, delta buckets, option type, action sets or unsupported lattice expansion remain explicit blockers. Q and stock-inventory branches still require their canonical consumer integration. Registry defaults and Production selection remain unchanged.
+
+`persistDotExitComparison` uses the existing full 17-policy offline profit-taking replay with the proposed elapsed holding horizon. It retains every policy trial and explicitly marks estimated exits as modeled, never actual fills or empirical promotion. This is separate from authorizing a Production management rule.
+
+`src/lab/ledger-import.ts` reads one bounded repeatable-read, read-only canonical snapshot. It verifies the registered execution account's Paper environment and exact provider UUID hash, rejects mixed-account chains, and exposes account-scoped orders, fills, option legs, stock, fee events, dividends, assignment reconciliation and whole-chain resolutions. Unknown fees or unmatched fill/ledger fees remain unresolved. It reuses `resolveWholeChainOutcome`. Current ledger reads cannot be presented as historical PIT or fresh broker reconciliation. Reader SHA is source metadata, not deployment proof.
+
+The gateway rechecks the pinned broker account before and after the ledger read, then stores only a complete bounded private receipt. `/v1/ledger` and `dot_ledger` expose this through the existing authenticated read-only interface. A missing reader fails explicitly. `--ledger-config` accepts an explicit private configuration outside Git, with matching account IDs, reader SHA and an isolated loopback PostgreSQL URL. It creates one read-only pool of size one. It rejects remote hosts and URL query overrides. It never falls back to Production credentials. No real lab ledger was registered or configured by this checkpoint.
+
+The disposable PostgreSQL test uses rolled-back synthetic fixture facts and a transaction-to-savepoint adapter. It proves the actual SQL joins, fee handling and mixed-account rejection. Ordinary read-only transaction and release/error semantics are separately tested. Neither test is natural Dot broker lifecycle evidence.
+
+Cloud admission still needs the supported Secure MCP Tunnel provisioned for the correct OpenAI organization and ChatGPT workspace, authenticated runtime permission, enabled plugin, and an actual read from Dot. The checked local environment has no tunnel client or runtime control-plane credential. No direct Dot/tunnel provisioning tool was exposed. GitHub plugin inventory reports the plugin available but not installed. Local stdio tests are not cloud proof.

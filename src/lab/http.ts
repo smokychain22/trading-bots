@@ -81,6 +81,7 @@ export function createDotLabApp(gateway: DotLabGateway, tokens: DotLabTokens) {
   app.get('/v1/receipts', (_request, response) => response.json(gateway.store.list('OBSERVATION')));
   app.get('/v1/private-export', (_request, response) => response.json(exportDotPrivateObservation(gateway.store)));
   app.get('/v1/experiments', (_request, response) => response.json(gateway.store.list('EXPERIMENT')));
+  app.get('/v1/ledger', async (_request, response) => response.json(await gateway.ledger()));
   app.get('/v1/performance', (_request, response) => response.json({
     state: 'CANONICAL_LAB_LIFECYCLE_IMPORT_NOT_CONNECTED', afterCostPnl: null, profitability: 'EMPIRICALLY_UNPROVEN',
     reason: 'Broker equity and position marks cannot substitute for a resolved, fee-qualified whole-chain ledger.',

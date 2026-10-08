@@ -1,0 +1,48 @@
+{
+  "version": "dot-lab-review-continuation-v1",
+  "certifiedFoundation": {
+    "sha": "fd144cc333c38e658c8c77fed1afbcaa1b345ea8",
+    "ciRun": "37804755324",
+    "result": "PASS",
+    "job": "verify",
+    "completedSteps": 34,
+    "failedSteps": 0,
+    "remotePush": "FAST_FORWARD_NO_FORCE"
+  },
+  "continuation": {
+    "qualification": "TESTED_SOURCE_ONLY",
+    "proposalConsumer": "H_D_BOUNDED_DTE_AND_PIT_RULES",
+    "exitConsumer": "EXISTING_17_POLICY_MODELED_REPLAY",
+    "ledgerConsumer": "ACCOUNT_PINNED_CANONICAL_READ_ONLY",
+    "cloudConnection": "BLOCKED_WITH_EXACT_REASON",
+    "privateDataCommitted": false,
+    "brokerMutations": 0,
+    "productionDatabaseChanged": false,
+    "workerChanged": false,
+    "deployment": false,
+    "paperExperimentReady": false,
+    "profitability": "EMPIRICALLY_UNPROVEN"
+  },
+  "validation": {
+    "focusedTests": { "passed": 46, "failed": 0 },
+    "disposablePostgres": { "passed": 1, "failed": 0, "fixtures": "SYNTHETIC_ROLLED_BACK", "liveAccountProof": false },
+    "reticle": "NOT_APPLICABLE_BACKEND_NO_UI",
+    "newExactShaCi": "NOT_PUSHED_REQUIRES_OWNER_APPROVAL"
+  },
+  "preservedDiagnosticFailures": [
+    "Initial local database test used port 55437 while the owned cluster started at its default port. Corrected owned-cluster launch arguments without changing source timeout semantics.",
+    "Two synthetic fixture failures required position_intent and evidence quantities under existing schema constraints. Corrected the fixtures without weakening constraints.",
+    "Initial lint found non-null assertions. Replaced with explicit checks without suppressing lint rules.",
+    "Prior historical timing failures remain in earlier V4 receipts. Foundation CI success does not erase them."
+  ],
+  "remainingGates": [
+    "OWNER_APPROVAL_FOR_NEW_CONTINUATION_SHA_PUSH",
+    "OPENAI_ORGANIZATION_WORKSPACE_TUNNEL_AND_PLUGIN_LINK",
+    "ACTUAL_DOT_CLOUD_READ_ONLY_INVOCATION",
+    "REGISTERED_ISOLATED_CANONICAL_DOT_LEDGER",
+    "Q_A_C_CANONICAL_PROPOSAL_CONSUMERS_AND_UNSUPPORTED_MODEL_RULES",
+    "CANONICAL_EXPERIMENT_RESERVATION_INTENT_MANAGEMENT_INTEGRATION",
+    "MANDATORY_V4_NATIVE_LIFECYCLE_AND_ACCOUNT_WIDE_FRONTIER_COMPLETION",
+    "GOVERNED_RELEASE_AND_SEPARATE_EXPERIMENT_APPROVAL"
+  ]
+}
