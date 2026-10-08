@@ -10,6 +10,8 @@
   "brokerMutationsByThisWave": 0,
   "liveMoneyAuthorized": false,
   "profitability": "EMPIRICALLY_UNPROVEN",
+  "dotLabCheckpoint": "docs/operations/DOT_STRATEGY_LAB_CHECKPOINT_20261008.json",
+  "dotLabState": "TESTED_SOURCE_AND_LOCAL_READ_ONLY_ACCOUNT_OBSERVATION_CLOUD_CONNECTION_AND_PAPER_EXPERIMENT_NOT_CERTIFIED",
   "completionRule": "These are V4 phases, not the earlier similarly numbered closure registers. Executed source tests do not confer current-worker, empirical, or broker-authorized maturity.",
   "certifiedStartingHead": "f90076db8bc5314981d2f1c4e9d1bdb3a69f9017",
   "capitalCheckpointStartingHead": "c6c7f26ab4843341d4e68a62334ce8c9b504caab",

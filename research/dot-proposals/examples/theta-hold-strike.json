@@ -1,0 +1,66 @@
+{
+  "proposalId": "00000000-0000-4000-8000-000000000002",
+  "parentProposalHash": null,
+  "baselineHash": "cfdded1548790c092f6a24a00512b771780ca338fbc9a2565e860ce670dae9b3",
+  "strategy": {
+    "strategyId": "theta-hold-strike",
+    "strategyVersion": "dot-example-v1",
+    "branch": "THETA_HOLD_STRIKE",
+    "status": "RESEARCH_ONLY",
+    "executionEnabled": false,
+    "candidateLatticeVersion": "theta-lattice-v1",
+    "featureSetVersion": "theta-feature-set-v1",
+    "entryModelVersion": "EV_MODEL_NOT_EMPIRICALLY_READY",
+    "ownershipModelVersion": "theta-ownership-runtime-v1",
+    "managementPolicyVersion": "theta-management-action-frontier-v2",
+    "riskLimitVersion": "theta-aegis-runtime-v1",
+    "costModelVersion": "theta-cost-model-v1",
+    "executionModelVersion": "theta-execution-quality-runtime-v3",
+    "promotionStatus": "UNVALIDATED",
+    "lattice": {
+      "dteMin": 2,
+      "dteMax": 5,
+      "optionType": "PUT",
+      "deltaResearchBuckets": []
+    },
+    "multiplierSemantics": "BROKER_CONTRACT_METADATA_REQUIRED",
+    "hardRules": [
+      "SUPPORTED_SESSION",
+      "STANDARD_CONTRACT",
+      "KNOWN_MULTIPLIER",
+      "FRESH_BROKER_STATE",
+      "FRESH_EXECUTABLE_BBO",
+      "COLLATERAL_CAPACITY",
+      "ASSIGNMENT_CAPACITY",
+      "PORTFOLIO_RISK_WITHIN_LIMITS",
+      "RECONCILED_LIFECYCLE",
+      "AEGIS_NOT_VETOED",
+      "VALID_NONZERO_QUANTITY"
+    ],
+    "softFeatureFamilies": [
+      "LIQUIDITY",
+      "OWNERSHIP",
+      "DRAWDOWN_RECOVERY",
+      "EVENT_CONTEXT",
+      "REGIME",
+      "EXECUTION_QUALITY"
+    ],
+    "allowedActions": [
+      "OPEN_CSP",
+      "HOLD",
+      "CLOSE_FULL",
+      "LET_EXPIRE",
+      "ACCEPT_ASSIGNMENT",
+      "WAIT",
+      "PASS"
+    ]
+  },
+  "hypothesis": "Synthetic example for paired strategy research. No broker authorization or profitability claim.",
+  "researchRules": [],
+  "profitTakingChallengers": [
+    "FIXED_10",
+    "FIXED_50"
+  ],
+  "plannedHoldingDays": 10,
+  "experimentId": "dot-example-2"
+}

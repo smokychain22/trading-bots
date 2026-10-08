@@ -1,0 +1,61 @@
+{
+  "proposalId": "00000000-0000-4000-8000-000000000003",
+  "parentProposalHash": null,
+  "baselineHash": "4aed5034b3357f252d0fe4ece2c280dc6268f96a240730fd05081af6edf9fa06",
+  "strategy": {
+    "strategyId": "theta-recovery",
+    "strategyVersion": "dot-example-v1",
+    "branch": "THETA_RECOVERY",
+    "status": "RESEARCH_ONLY",
+    "executionEnabled": false,
+    "candidateLatticeVersion": "theta-lattice-v1",
+    "featureSetVersion": "theta-feature-set-v1",
+    "entryModelVersion": "EV_MODEL_NOT_EMPIRICALLY_READY",
+    "ownershipModelVersion": "theta-ownership-runtime-v1",
+    "managementPolicyVersion": "theta-management-action-frontier-v2",
+    "riskLimitVersion": "theta-aegis-runtime-v1",
+    "costModelVersion": "theta-cost-model-v1",
+    "executionModelVersion": "theta-execution-quality-runtime-v3",
+    "promotionStatus": "UNVALIDATED",
+    "lattice": {
+      "dteMin": 0,
+      "dteMax": 3650,
+      "optionType": "PUT_OR_CALL",
+      "deltaResearchBuckets": []
+    },
+    "multiplierSemantics": "BROKER_CONTRACT_METADATA_REQUIRED",
+    "hardRules": [
+      "SUPPORTED_SESSION",
+      "STANDARD_CONTRACT",
+      "KNOWN_MULTIPLIER",
+      "FRESH_BROKER_STATE",
+      "FRESH_EXECUTABLE_BBO",
+      "COLLATERAL_CAPACITY",
+      "ASSIGNMENT_CAPACITY",
+      "PORTFOLIO_RISK_WITHIN_LIMITS",
+      "RECONCILED_LIFECYCLE",
+      "AEGIS_NOT_VETOED",
+      "VALID_NONZERO_QUANTITY"
+    ],
+    "softFeatureFamilies": [
+      "OWNERSHIP",
+      "DRAWDOWN_RECOVERY",
+      "EVENT_CONTEXT",
+      "PORTFOLIO_EXPOSURE",
+      "REGIME"
+    ],
+    "allowedActions": [
+      "RECOVERY_WAIT",
+      "SELL_STOCK",
+      "SELL_CC"
+    ]
+  },
+  "hypothesis": "Synthetic example for paired strategy research. No broker authorization or profitability claim.",
+  "researchRules": [],
+  "profitTakingChallengers": [
+    "FIXED_10",
+    "FIXED_50"
+  ],
+  "plannedHoldingDays": 10,
+  "experimentId": "dot-example-3"
+}

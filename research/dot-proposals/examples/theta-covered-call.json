@@ -1,0 +1,68 @@
+{
+  "proposalId": "00000000-0000-4000-8000-000000000004",
+  "parentProposalHash": null,
+  "baselineHash": "1b73e8f51a5a2274c158eb60ff5cdf0d4116101b0edfde322e6f96f2a4cbbbf7",
+  "strategy": {
+    "strategyId": "theta-covered-call",
+    "strategyVersion": "dot-example-v1",
+    "branch": "THETA_CC",
+    "status": "RESEARCH_ONLY",
+    "executionEnabled": false,
+    "candidateLatticeVersion": "theta-lattice-v1",
+    "featureSetVersion": "theta-feature-set-v1",
+    "entryModelVersion": "EV_MODEL_NOT_EMPIRICALLY_READY",
+    "ownershipModelVersion": "theta-ownership-runtime-v1",
+    "managementPolicyVersion": "theta-management-action-frontier-v2",
+    "riskLimitVersion": "theta-aegis-runtime-v1",
+    "costModelVersion": "theta-cost-model-v1",
+    "executionModelVersion": "theta-execution-quality-runtime-v3",
+    "promotionStatus": "UNVALIDATED",
+    "lattice": {
+      "dteMin": 1,
+      "dteMax": 60,
+      "optionType": "CALL",
+      "deltaResearchBuckets": []
+    },
+    "multiplierSemantics": "BROKER_CONTRACT_METADATA_REQUIRED",
+    "hardRules": [
+      "SUPPORTED_SESSION",
+      "STANDARD_CONTRACT",
+      "KNOWN_MULTIPLIER",
+      "FRESH_BROKER_STATE",
+      "FRESH_EXECUTABLE_BBO",
+      "COLLATERAL_CAPACITY",
+      "ASSIGNMENT_CAPACITY",
+      "PORTFOLIO_RISK_WITHIN_LIMITS",
+      "RECONCILED_LIFECYCLE",
+      "AEGIS_NOT_VETOED",
+      "VALID_NONZERO_QUANTITY"
+    ],
+    "softFeatureFamilies": [
+      "LIQUIDITY",
+      "OWNERSHIP",
+      "DRAWDOWN_RECOVERY",
+      "IV",
+      "SKEW",
+      "TERM_STRUCTURE",
+      "EVENT_CONTEXT",
+      "REGIME",
+      "EXECUTION_QUALITY"
+    ],
+    "allowedActions": [
+      "SELL_CC",
+      "HOLD_CC",
+      "CLOSE_CC",
+      "ROLL_CC",
+      "ALLOW_CALL_AWAY",
+      "RECOVERY_WAIT"
+    ]
+  },
+  "hypothesis": "Synthetic example for paired strategy research. No broker authorization or profitability claim.",
+  "researchRules": [],
+  "profitTakingChallengers": [
+    "FIXED_10",
+    "FIXED_50"
+  ],
+  "plannedHoldingDays": 10,
+  "experimentId": "dot-example-4"
+}

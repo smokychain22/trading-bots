@@ -1,0 +1,56 @@
+{
+  "version": "dot-strategy-lab-checkpoint-v1",
+  "owner": "CODEX",
+  "task": "Isolated account-pinned strategy proposal and read-only lab foundation",
+  "branch": "codex/theta-v4-integration",
+  "sourceBase": "d78d9db0ca22698cb2cfa4572def3bb839fddb36",
+  "identity": "Exact confirmed account UUID and owner-selected account number are pinned in a private file outside Git. No substitution from a previous dashboard account is permitted.",
+  "implemented": [
+    "Explicit private configuration, no THETA environment/database fallback",
+    "Separate account-scoped SQLite WAL namespace and bounded immutable artifacts",
+    "THETA canonical GET-only broker/account/contract/snapshot readers with account recheck",
+    "Scoped authenticated loopback HTTP and read-only MCP JSON-RPC tools",
+    "Private stdio MCP adapter for a future governed tunnel connection",
+    "Versioned five-strategy proposal validation preserving hard risk rules and authority",
+    "Git-safe proposal exchange, CLI validation and five synthetic examples",
+    "Hashed private observation export and strict full outcome feedback schema",
+    "Existing performance analytics reuse without caller-labeled broker promotion",
+    "Canonical sealed-T0 baseline replay and capital arithmetic without an executor"
+  ],
+  "localAccountProof": "VERIFIED_PRIVATE_GET_ONLY_ACCOUNT_POSITIONS_ORDERS_CLOCK_AND_IDENTITY_RECHECK",
+  "cloudAccess": "BLOCKED_UNVERIFIED_DOT_CONNECTION_CAPABILITY_AND_AUTHENTICATED_ACCOUNT_LINKING",
+  "proposalAuthority": "DRAFT_RESEARCH_ONLY",
+  "performance": "CANONICAL_ACCOUNT_SCOPED_LEDGER_IMPORT_NOT_CONNECTED",
+  "experiment": "BASELINE_REPLAY_TESTED_CHALLENGER_RULE_CONSUMER_AND_REGISTERED_ISOLATED_RUNTIME_NOT_CONNECTED",
+  "validation": {
+    "initialDependentNodeSuite": { "passed": 99, "failed": 0, "skipped": 0 },
+    "finalLabFocusedSuite": { "passed": 15, "failed": 0, "skipped": 0 },
+    "canonicalDisposablePostgres": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "files": ["tests/db/portfolio-capital-reservation.test.ts", "tests/db/capital-broker-reconciliation.test.ts", "tests/db/runtime-plan-capital-observation.test.ts"],
+      "qualification": "Existing shared capital boundary proof. Not a registered Dot account or Paper execution proof."
+    },
+    "publicProposalExamplesValidated": 5,
+    "checks": ["typecheck", "repository lint", "build", "security scan", "Git storage policy"],
+    "fullNodePythonBrowserSuite": "NOT_RERUN_FOR_THIS_ISOLATED_BACKEND_CHECKPOINT",
+    "reticle": "SKIPPED_BACKEND_CLI_ONLY_NO_UI_SURFACE",
+    "remoteCi": "NOT_REQUESTED_OR_RUN_NO_PUSH_APPROVAL"
+  },
+  "brokerMutations": 0,
+  "ordersSubmitted": 0,
+  "productionWorkerChanged": false,
+  "productionDatabaseChanged": false,
+  "migration071Applied": false,
+  "liveMoneyAuthorized": false,
+  "nextGates": [
+    "Owner approval for exact checkpoint push and exact-SHA CI",
+    "Dot GitHub read and non-sensitive proposal handoff proof",
+    "Actual authenticated Dot MCP invocation through supported workspace connection",
+    "Canonical ledger importer and challenger consumer",
+    "Registered isolated runtime, shared reservation-to-intent and management lifecycle wiring",
+    "Governed release and separate Paper experiment approval"
+  ],
+  "reviewFocus": ["No account substitution", "No secret/account data in Git", "No second executor", "No modeled profitability promotion", "Unknown fields remain explicit"]
+}
