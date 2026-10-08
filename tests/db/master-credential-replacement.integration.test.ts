@@ -80,8 +80,10 @@ test('isolated PostgreSQL credential rotation serializes competitors, preserves 
     assert.equal(auth?.providerAccountRef,broker); assert.equal(auth?.authentication.apiKey,'synthetic-new');
     const afterRotation = await prepare();
     const recoveryPermit = { ...permit, authorizationId: randomUUID(), previousCiphertextHash: afterRotation.previousHash };
-    const lockedEnv = { ...env, MASTER_PAPER_EXECUTION_ENABLED: false, FOLLOWER_PAPER_EXECUTION_ENABLED: false,
-      PAPER_PAUSE_NEW_ORDERS: true } as Environment;
+    // Production environment stays unchanged. The existing durable full lock
+    // must independently prevent both entry and management submissions.
+    const lockedEnv = { ...env, MASTER_PAPER_EXECUTION_ENABLED: true, FOLLOWER_PAPER_EXECUTION_ENABLED: false,
+      PAPER_PAUSE_NEW_ORDERS: false } as Environment;
     const recovered = await executeMasterRecovery(pool, lockedEnv, recoveryPermit,
       { authorizationId: recoveryPermit.authorizationId, api_key_id: 'synthetic-recovered', secret_key: 'synthetic-recovered-secret' }, fakeGet);
     assert.equal(recovered.status, 'VERIFIED');

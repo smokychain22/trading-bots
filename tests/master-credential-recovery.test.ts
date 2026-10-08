@@ -3,7 +3,8 @@ import test from 'node:test';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { Environment } from '../src/config/environment.js';
-import { authorizeRecovery, claimRecoveryPermit, executeMasterRecovery, recoveryReadOnlyFetch,
+import { resolveEffectivePaperExecutionControl } from '../src/execution/paper-execution-authorization.js';
+import { assertRecoveryNoSubmitControls, authorizeRecovery, claimRecoveryPermit, executeMasterRecovery, recoveryReadOnlyFetch,
   recoverySignaturePayload, type RecoveryPermit } from '../src/customer/master-credential-recovery.js';
 
 const pair = generateKeyPairSync('ed25519');
@@ -76,6 +77,29 @@ test('unknown and active execution controls cannot be interpreted as a credentia
     const pool = { query: async () => ({ rowCount: row ? 1 : 0, rows: row ? [row] : [] }) } as unknown as Pool;
     await assert.rejects(executeMasterRecovery(pool, locked, permit, JSON.parse(body)), /DURABLE_EXECUTION_NOT_LOCKED/);
   }
-  await assert.rejects(executeMasterRecovery({} as Pool, { ...locked, MASTER_PAPER_EXECUTION_ENABLED: true },
-    permit, JSON.parse(body)), /EXECUTION_NOT_LOCKED/);
+});
+
+test('durable full lock blocks entry and management with unchanged known Production environment flags', () => {
+  const row = { pause_new_orders: true, master_execution_enabled: false, follower_execution_enabled: false };
+  for (const master of [true, false]) for (const pause of [true, false]) {
+    assert.doesNotThrow(() => assertRecoveryNoSubmitControls({ MASTER_PAPER_EXECUTION_ENABLED: master,
+      FOLLOWER_PAPER_EXECUTION_ENABLED: false, PAPER_PAUSE_NEW_ORDERS: pause }, row));
+    const effective = resolveEffectivePaperExecutionControl({ environmentMasterEnabled: master,
+      environmentFollowerEnabled: false, environmentPauseNewOrders: pause,
+      persisted: { pauseNewOrders: true, masterExecutionEnabled: false, followerExecutionEnabled: false,
+        authorizationEventId: 'synthetic-existing-authority' }, operatorNewEntriesPaused: false,
+      operatorEmergencyExecutionLock: false });
+    assert.equal(effective.newRiskSubmissionEnabled, false);
+    assert.equal(effective.managementSubmissionEnabled, false);
+    assert.equal(effective.followerEnabled, false);
+  }
+  for (const rowChange of [{ ...row, master_execution_enabled: true }, { ...row, pause_new_orders: false },
+    { ...row, follower_execution_enabled: true }, { ...row, master_execution_enabled: 'false' }, {}, null])
+    assert.throws(() => assertRecoveryNoSubmitControls({ MASTER_PAPER_EXECUTION_ENABLED: true,
+      FOLLOWER_PAPER_EXECUTION_ENABLED: false, PAPER_PAUSE_NEW_ORDERS: false }, rowChange), /DURABLE_EXECUTION_NOT_LOCKED/);
+  for (const changes of [{ MASTER_PAPER_EXECUTION_ENABLED: undefined }, { FOLLOWER_PAPER_EXECUTION_ENABLED: true },
+    { PAPER_PAUSE_NEW_ORDERS: undefined }])
+    assert.throws(() => assertRecoveryNoSubmitControls({ MASTER_PAPER_EXECUTION_ENABLED: true,
+      FOLLOWER_PAPER_EXECUTION_ENABLED: false, PAPER_PAUSE_NEW_ORDERS: false, ...changes } as Environment, row),
+    /CONTROL_UNKNOWN_OR_ACTIVE/);
 });

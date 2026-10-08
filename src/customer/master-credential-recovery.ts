@@ -16,6 +16,21 @@ export const recoveryPermitSchema = z.object({
   ownerPublicKey: z.string().min(40).max(500), notBefore: z.number().int(), expiresAt: z.number().int(),
 }).strict();
 export type RecoveryPermit = z.infer<typeof recoveryPermitSchema>;
+/** The deployed runtime ANDs environment master authority with the durable
+ * master flag. A known durable full lock therefore blocks both entry and
+ * management without changing Sensitive Production environment variables. */
+export function assertRecoveryNoSubmitControls(environment: Pick<Environment,
+  'MASTER_PAPER_EXECUTION_ENABLED' | 'FOLLOWER_PAPER_EXECUTION_ENABLED' | 'PAPER_PAUSE_NEW_ORDERS'>,
+  row: unknown): void {
+  if (typeof environment.MASTER_PAPER_EXECUTION_ENABLED !== 'boolean'
+    || environment.FOLLOWER_PAPER_EXECUTION_ENABLED !== false
+    || typeof environment.PAPER_PAUSE_NEW_ORDERS !== 'boolean')
+    throw new Error('RECOVERY_EXECUTION_CONTROL_UNKNOWN_OR_ACTIVE');
+  const control = row as Record<string, unknown> | undefined;
+  if (!control || control.pause_new_orders !== true || control.master_execution_enabled !== false
+    || control.follower_execution_enabled !== false)
+    throw new Error('RECOVERY_DURABLE_EXECUTION_NOT_LOCKED');
+}
 const bodySchema = z.object({ authorizationId: z.string().uuid(),
   api_key_id: z.string().min(1).max(256), secret_key: z.string().min(1).max(256) }).strict();
 
@@ -94,13 +109,9 @@ export async function executeMasterRecovery(pool: Pool, environment: Environment
   const input = bodySchema.parse(raw);
   if (input.authorizationId !== permit.authorizationId) throw new Error('RECOVERY_AUTHORIZATION_MISMATCH');
   // Require a known, complete no-submit state. A provider outage is not a lock.
-  if (environment.MASTER_PAPER_EXECUTION_ENABLED !== false || environment.FOLLOWER_PAPER_EXECUTION_ENABLED !== false
-    || environment.PAPER_PAUSE_NEW_ORDERS !== true) throw new Error('RECOVERY_EXECUTION_NOT_LOCKED');
   const control = await pool.query(`SELECT pause_new_orders,master_execution_enabled,follower_execution_enabled
     FROM ops.paper_execution_control WHERE singleton=true`);
-  if (control.rowCount !== 1 || control.rows[0].pause_new_orders !== true
-    || control.rows[0].master_execution_enabled !== false || control.rows[0].follower_execution_enabled !== false)
-    throw new Error('RECOVERY_DURABLE_EXECUTION_NOT_LOCKED');
+  assertRecoveryNoSubmitControls(environment, control.rowCount === 1 ? control.rows[0] : undefined);
   const readOnly = recoveryReadOnlyFetch(fetchImpl);
   const stored = await readOnlyMasterCredentialStoreFromPool(pool).getMasterCredential();
   if (!stored || hash(stored.providerAccountRef) !== permit.accountHash
@@ -120,9 +131,7 @@ export async function executeMasterRecovery(pool: Pool, environment: Environment
     if (Date.now() >= permit.expiresAt) throw new Error('RECOVERY_PERMIT_EXPIRED');
     const locked = await client.query(`SELECT pause_new_orders,master_execution_enabled,follower_execution_enabled
       FROM ops.paper_execution_control WHERE singleton=true FOR SHARE`);
-    if (locked.rowCount !== 1 || locked.rows[0].pause_new_orders !== true
-      || locked.rows[0].master_execution_enabled !== false || locked.rows[0].follower_execution_enabled !== false)
-      throw new Error('RECOVERY_DURABLE_EXECUTION_NOT_LOCKED');
+    assertRecoveryNoSubmitControls(environment, locked.rowCount === 1 ? locked.rows[0] : undefined);
   });
   const auth = await new MasterEncryptedStoreBrokerCredentialProvider(readOnlyMasterCredentialStoreFromPool(pool), environment)
     .getAuthentication();

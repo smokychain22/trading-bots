@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Readable } from 'node:stream';
+import { Readable, PassThrough } from 'node:stream';
 import { randomUUID, generateKeyPairSync, sign } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createMasterRecoveryHandler, recoveryFailureReason } from '../src/customer/master-recovery-handler.js';
+import { createMasterRecoveryHandler, readRecoveryBody, recoveryFailureReason } from '../src/customer/master-recovery-handler.js';
 import { recoverySignaturePayload, type RecoveryPermit } from '../src/customer/master-credential-recovery.js';
 
 test('unauthorized, plaintext, oversized and missing-control HTTP requests never acquire a database or leak their payload', async () => {
@@ -39,4 +39,29 @@ test('typed recovery failures preserve useful classes without echoing request, p
     'POSTGRES_COMMIT_OUTCOME_UNKNOWN');
   assert.equal(recoveryFailureReason({ code: 'EAI_AGAIN', message: 'synthetic-private-database-url' }), 'POSTGRES_EAI_AGAIN');
   assert.equal(recoveryFailureReason(new Error('synthetic-private-secret')), 'RECOVERY_FAILURE_UNCLASSIFIED');
+});
+
+test('raw body survives Vercel Node restored-stream helpers without JSON canonicalization', async () => {
+  const body = ' { "secret_key" : "synthetic", "api_key_id" : "synthetic" } ';
+  const request = Readable.from([Buffer.from(body)]) as unknown as IncomingMessage;
+  for await (const chunk of request) { void chunk; /* Simulate platform consumption. */ }
+  assert.equal(request.readableEnded, true);
+  const restored = new PassThrough();
+  const originalOn = request.on.bind(request);
+  // Mirrors Vercel packages/node/src/serverless-functions/helpers.ts restoreBody.
+  request.read = restored.read.bind(restored);
+  request.on = request.addListener = ((name: string, callback: (...args: never[]) => void) =>
+    name === 'data' || name === 'end' ? restored.on(name, callback) : originalOn(name, callback)) as typeof request.on;
+  restored.end(Buffer.from(body));
+  assert.equal(await readRecoveryBody(request), body);
+});
+
+test('raw body bounds split chunks and rejects aborted transport without returning secrets', async () => {
+  await assert.rejects(readRecoveryBody(Readable.from([Buffer.alloc(1024), Buffer.alloc(1025)]) as unknown as IncomingMessage),
+    /RECOVERY_REQUEST_REJECTED/);
+  const request = new PassThrough() as unknown as IncomingMessage;
+  const reading = readRecoveryBody(request);
+  request.emit('aborted');
+  await assert.rejects(reading, /RECOVERY_REQUEST_REJECTED/);
+  request.destroy();
 });

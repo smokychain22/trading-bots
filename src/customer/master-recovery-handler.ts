@@ -28,6 +28,36 @@ export function recoveryFailureReason(error: unknown): string {
   return postgres.safeCode === 'POSTGRES_UNKNOWN_ERROR' ? 'RECOVERY_FAILURE_UNCLASSIFIED' : postgres.safeCode;
 }
 
+/** Vercel's Node helper restores consumed raw bytes by replacing read/on, not
+ * the original stream's ended/destroyed state. Event reads preserve those
+ * bytes. Async iteration over that original stream can silently yield nothing.
+ * Never reconstruct signed bytes from the parsed request.body object. */
+export function readRecoveryBody(request: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const buffers: Buffer[] = []; let size = 0; let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true; clearTimeout(deadline);
+      request.removeListener('error', failed);
+      request.removeListener('aborted', failed);
+      if (error) { buffers.length = 0; reject(error); }
+      else resolve(Buffer.concat(buffers).toString('utf8'));
+    };
+    const failed = () => finish(new Error('RECOVERY_REQUEST_REJECTED'));
+    const deadline = setTimeout(failed, 10_000);
+    request.on('error', failed);
+    request.on('aborted', failed);
+    request.on('data', chunk => {
+      if (settled) return;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.length;
+      if (size > 2048) { failed(); return; }
+      buffers.push(buffer);
+    });
+    request.on('end', () => finish());
+  });
+}
+
 /** Imported only by the private recovery artifact, never api/ or index.ts. */
 export function createMasterRecoveryHandler(permit: RecoveryPermit, runtime: NodeJS.ProcessEnv,
   poolFactory: typeof createRuntimePostgresPool = createRuntimePostgresPool) {
@@ -40,14 +70,7 @@ export function createMasterRecoveryHandler(permit: RecoveryPermit, runtime: Nod
     try {
       if (request.headers['x-forwarded-proto'] !== 'https') throw new Error('RECOVERY_TRANSPORT_REJECTED');
       if (request.headers['content-type'] !== 'application/json') throw new Error('RECOVERY_REQUEST_REJECTED');
-      const buffers: Buffer[] = []; let size = 0;
-      for await (const chunk of request) {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        size += buffer.length;
-        if (size > 2048) throw new Error('RECOVERY_REQUEST_REJECTED');
-        buffers.push(buffer);
-      }
-      const body = Buffer.concat(buffers).toString('utf8');
+      const body = await readRecoveryBody(request);
       const approved = authorizeRecovery({ method: request.method ?? '',
         url: `https://${request.headers.host}${request.url}`, body,
         authorization: String(request.headers.authorization ?? ''),
@@ -55,9 +78,13 @@ export function createMasterRecoveryHandler(permit: RecoveryPermit, runtime: Nod
         vercelEnvironment: runtime.VERCEL_ENV, deploymentHost: runtime.VERCEL_URL,
         operatorToken: runtime.CRON_SECRET, now: Date.now(),
       });
+      // Validate raw flags before the configuration parser can supply defaults.
+      // Durable controls must still prove a full lock inside the recovery path.
+      if (!['true', 'false'].includes(runtime.MASTER_PAPER_EXECUTION_ENABLED ?? '')
+        || runtime.FOLLOWER_PAPER_EXECUTION_ENABLED !== 'false'
+        || !['true', 'false'].includes(runtime.PAPER_PAUSE_NEW_ORDERS ?? ''))
+        throw new Error('RECOVERY_EXECUTION_CONTROL_UNKNOWN_OR_ACTIVE');
       const environment = loadEnvironment(runtime);
-      if (runtime.MASTER_PAPER_EXECUTION_ENABLED !== 'false' || runtime.FOLLOWER_PAPER_EXECUTION_ENABLED !== 'false'
-        || runtime.PAPER_PAUSE_NEW_ORDERS !== 'true') throw new Error('RECOVERY_EXECUTION_CONTROL_UNKNOWN_OR_ACTIVE');
       const url = environment.DATABASE_RUNTIME_AUTHORITY === 'AIVEN'
         ? environment.AIVEN_DATABASE_URL : environment.DATABASE_URL;
       if (!url) throw new Error('RECOVERY_DATABASE_UNAVAILABLE');

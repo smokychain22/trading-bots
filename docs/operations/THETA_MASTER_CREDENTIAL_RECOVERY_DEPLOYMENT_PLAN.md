@@ -1,8 +1,11 @@
-# Recovery-only deployment, approval required
+# Recovery-only deployment, conditional owner authority
 
-State: TESTED_SOURCE_ONLY. No recovery deployment, credential replacement,
-execution-control change, migration, worker restart or broker action is authorized
-by this document. The normal application has no new credential-write route.
+State: TESTED_SOURCE_ONLY. The consolidated owner mission supplied 2026-10-09
+conditionally authorizes minimum durable no-submit controls, protected standalone
+recovery deployment and one credential-only replacement after all prerequisites
+pass. This document grants no authority by itself. No broker action, new-risk
+resumption, migration 071 or broad runtime replacement is authorized. The normal
+application has no new credential-write route.
 
 ## Source and evidence
 
@@ -15,9 +18,11 @@ historical evidence, not overwritten by the new test execution.
 
 Phase-3 reviewed tests were reexecuted, 264 passed, zero failed or skipped, before
 regenerating its receipt. The recovery implementation requires a new local commit
-and its own exact-SHA CI. Approval to push the older checkpoint does not authorize
-pushing a different SHA. The final approval request must bind the certified source
-and artifact hash, not a branch name or this plan's contents.
+and its own exact-SHA CI. The latest mission permits safe corrective review-branch
+pushes within this recovery scope. Checkpoint f98f0ffb2c9a3f0f31a2585a54dad5dc132fba96
+was pushed without force, with run 37837291258 started. Subsequent fixes require
+their own exact-SHA certification. Execution must bind certified source and
+artifact hash, not a branch name or this plan's contents.
 
 ## Proposed deployment scope
 
@@ -49,14 +54,20 @@ and new orders not paused. Followers were disabled. Original identity and old
 ciphertext still matched the protected rollback. Authentication failure is not
 an execution lock.
 
-The proposed recovery must therefore refuse the write in this state. It requires
-known explicit no-submit environment flags and durable controls, including master
-disabled, followers disabled and new orders paused. The durable control row is
-rechecked and share-locked inside the credential transaction. No controls are
-modified by the recovery code. Establishing a temporary full no-submit state,
-if needed, is an additional owner-approved scope boundary. Do not silently pause,
-unlock, resume or restart the worker. No promise of zero indirect broker activity
-is valid while an enabled worker can resume after credential restoration.
+The recovery must refuse the write in this state. Raw environment flags must be
+explicit known booleans, with followers disabled. Durable controls must prove
+master disabled, followers disabled and new orders paused. The deployed runtime
+ANDs environment and durable master authority, so the durable full lock blocks
+both entry and management without changing Sensitive environment variables. The
+durable row is rechecked and share-locked inside the credential transaction.
+No controls are modified by the recovery endpoint.
+
+The deployed runtime caches controls per invocation. Before restoring credentials,
+prove pre-lock invocations have drained, no mutation is in flight, no ambiguous
+submission is unresolved and fresh runtime observations use the full lock. The
+latest owner mission conditionally permits this minimal durable lock but does
+not authorize resumption. Automatic protective closes are disabled during a full
+lock. Monitoring, evidence collection and quote qualification remain separate.
 
 ## Exact database scope for approval
 
@@ -68,7 +79,7 @@ account identity, scope, positions, orders and policy remain unchanged.
 
 One additional copy.operator_audit_event row consumes the recovery permit under
 the existing master advisory transaction lock. This is disclosed auxiliary
-Production mutation and needs inclusion in the final approval. It contains only
+Production mutation included in the consolidated conditional mission. It contains only
 permit identity and hashes. No migration is required. A committed claim survives
 crashes and rejects replay across serverless instances, including failed attempts.
 
@@ -84,7 +95,8 @@ credential transaction. Unknown COMMIT or post-write verification failure must b
 treated as possibly committed. Stop and perform read-only fingerprint and
 canonical-provider authentication checks. Never blindly replay, automatically
 restore expired credentials or claim failure proves no write. A consumed permit
-requires a new separately approved permit for any further write attempt.
+requires read-only diagnosis and a new governed authorization before another
+credential-write attempt. Do not infer automatic retry authority.
 
 After success, verify canonical encrypted-provider authentication, original account
 identity, account restrictions, current positions and open orders. Subsequent
@@ -94,8 +106,8 @@ from source certification. Do not close, roll or modify a position.
 ## Shutdown and cost
 
 Consumed permit and expiry disable further invocation at application level.
-Explicitly approve removal of only the recovery deployment after verified success,
-or expiry, and verify its URL no longer serves recovery. Preserve receipts and the
+The consolidated mission permits removal of only the recovery deployment after
+verified success or expiry. Verify its URL no longer serves recovery. Preserve receipts and the
 protected rollback. Never delete or promote the active Production deployment.
 
 The existing team reports Hobby. No new service, paid plan or new project is
@@ -107,6 +119,12 @@ Official supporting authorities:
 [staged deployment](https://vercel.com/docs/cli/deploying-from-cli),
 [protected CLI requests](https://vercel.com/docs/cli/curl),
 [Sensitive variables](https://vercel.com/docs/environment-variables/sensitive-environment-variables).
+
+Raw-body integration is checked against Vercel's Node
+[restoreBody implementation](https://github.com/vercel/vercel/blob/main/packages/node/src/serverless-functions/helpers.ts).
+It restores event reads while the original stream can remain ended. The handler
+therefore reads bounded raw data/end events, never parsed JSON reserialization.
+Synthetic restored-stream, oversized-chunk and aborted-request tests cover this.
 
 Reticle is skipped because these are backend, private packaging and CLI changes
 with no deployed UI surface. This is not deployed endpoint verification.
