@@ -473,6 +473,9 @@ export function buildManagementActionFrontier(input: ManagementInputState,
   // runs first in every cycle, evaluates the chain immediately. A mandatory H action that is not feasible (for example no executable quote) is recorded as such, loudly.
   const holdStrikeReasons: readonly string[] = hLifecycle===null?[]:[`H_REVIEW_DEADLINE:${hLifecycle.reviewDeadline}`,
     ...(hLifecycle.mandatory&&hSelection===null?[`H_MANDATORY_${hLifecycle.action}_NOT_FEASIBLE`]:[])];
+  const missingDteReasons = (input.lifecycleState === 'CSP_OPEN' || input.lifecycleState === 'CC_OPEN')
+    && input.contract.contracts !== null && input.contract.contracts > 0 && input.market.dte === null
+    ? ['MANAGEMENT_DTE_UNAVAILABLE_FROM_CONTRACT_EXPIRATION'] : [];
   return {
     contractVersion: managementActionFrontierVersion, chainId: input.chainId, lifecycleState: input.lifecycleState,
     policyVersion: hSelection!==null?hLifecycle?.policyVersion??null:structuralSelection !== null ? 'theta-structural-expiration-v1' : policy.policyVersion,
@@ -484,6 +487,7 @@ export function buildManagementActionFrontier(input: ManagementInputState,
     reasonCodes: [...(baseActions.length === 0 ? ['LIFECYCLE_STATE_HAS_NO_MANAGEMENT_FRONTIER']
       : hSelection!==null?[...(hLifecycle?.reasons??[]),`SELECT_${hSelection}`]
       : structuralSelection !== null ? ['STRUCTURAL_EXPIRATION_NO_ORDER', `SELECT_${structuralSelection}`]
-        : policySelected ? policy.reasonCodes : ['EV_MODEL_NOT_EMPIRICALLY_READY',...policy.reasonCodes]), ...holdStrikeReasons],
+        : policySelected ? policy.reasonCodes : ['EV_MODEL_NOT_EMPIRICALLY_READY',...policy.reasonCodes]), ...holdStrikeReasons,
+      ...missingDteReasons],
   };
 }

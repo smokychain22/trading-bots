@@ -422,8 +422,9 @@ export function assembleManagementInput(row: Row, input: {
   const strike = numeric(row.strike);
   const lifecycleState = String(row.lifecycle_state) as ThetaLifecycleState;
   const assignmentApplicable = lifecycleState === 'CSP_OPEN' && hasOpenOption && text(row.option_type) === 'PUT';
-  const accountAgeForCapacity = row.account_as_of == null ? NaN
-    : Date.parse(input.observedAt) - Date.parse(String(row.account_as_of));
+  const accountAsOfForCapacity = text(row.account_as_of);
+  const accountAgeForCapacity = accountAsOfForCapacity === null ? NaN
+    : Date.parse(input.observedAt) - Date.parse(accountAsOfForCapacity);
   const accountFreshForCapacity = Number.isFinite(accountAgeForCapacity)
     && accountAgeForCapacity >= 0 && accountAgeForCapacity <= 180_000;
   const optionsBuyingPower = numeric(row.options_buying_power);

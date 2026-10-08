@@ -44,8 +44,11 @@ test('malformed or impossible contract dates stay unknown with producer-specific
     assert.ok(state.unknownFields.includes('contract.expiration'));
     assert.ok(state.unknownFields.includes('market.dte'));
     const close=evaluatePaperBootstrapManagementPolicy(state)?.actionValues.find(a=>a.action==='CLOSE_FULL');
-    assert.ok(close?.reasons.includes('MANAGEMENT_DTE_UNAVAILABLE_FROM_CONTRACT_EXPIRATION'));
-    assert.equal(close?.executionEvidence,null);
+    assert.equal(close,undefined,'missing DTE must not create a complete HOLD-versus-CLOSE policy comparison');
+    const frontier=buildManagementActionFrontier(state,evaluatePaperBootstrapManagementPolicy(state));
+    assert.equal(frontier.selectedAction,'HOLD');
+    assert.equal(frontier.decisionState,'SYSTEM_HOLD_MISSING_EVIDENCE');
+    assert.ok(frontier.reasonCodes.includes('MANAGEMENT_DTE_UNAVAILABLE_FROM_CONTRACT_EXPIRATION'));
   }
 });
 
@@ -259,6 +262,11 @@ test('pg TIMESTAMPTZ Date objects preserve ISO evidence, assignment capacity and
   const stale=assembleManagementInput({...row,account_as_of:new Date('2026-10-16T19:00:00Z')},options);
   assert.equal(stale.context.assignmentCapacity,null);
   assert.equal(stale.context.assignmentCapacityEvidence.reason,'ACCOUNT_EVIDENCE_STALE_OR_MISSING');
+  const subsecondFuture=assembleManagementInput({...row,
+    account_as_of:new Date('2026-10-16T20:01:00.500Z')},options);
+  assert.equal(subsecondFuture.context.assignmentCapacity,null,
+    'a pg Date observed after the decision cannot become current capacity by dropping milliseconds');
+  assert.equal(subsecondFuture.context.assignmentCapacityEvidence.reason,'ACCOUNT_EVIDENCE_STALE_OR_MISSING');
 });
 
 test('known insufficient assignment lots block, while unavailable or stale broker evidence stays UNKNOWN', () => {
