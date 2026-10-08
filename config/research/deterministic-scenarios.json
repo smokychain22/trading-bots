@@ -2,6 +2,21 @@
   "contractVersion": "theta-deterministic-scenarios-v1",
   "evidenceClass": "DETERMINISTIC_SCENARIO_COMPARISON",
   "scenarioId": "theta-contract-composition-v1",
+  "regime": {
+    "payload": {
+      "contractVersion": "theta-regime-runtime-v1",
+      "snapshotId": "deterministic-regime-snapshot",
+      "timestamp": "2026-09-22T14:00:00Z",
+      "policyVersion": "deterministic-regime-fixture-v1",
+      "trendState": "BULL",
+      "volatilityState": "NORMAL",
+      "eventState": "NONE",
+      "liquidityState": "NORMAL",
+      "stressState": "NORMAL",
+      "confidence": 1,
+      "reasons": []
+    }
+  },
   "qd": {
     "primaryIdentity": {
       "cspShortLegIdentity": "AAPL261022P00190000",
@@ -96,6 +111,116 @@
           "downsideCushion": 0.045,
           "maxSyncAgeMs": 1000,
           "maxQuoteAgeMs": 60000
+        }
+      ]
+    }
+  },
+  "h": {
+    "observation": {
+      "snapshotId": "deterministic-snapshot-h-q",
+      "candidateId": "deterministic-h-candidate",
+      "decisionId": "deterministic-h-decision",
+      "chainId": null,
+      "episodeId": null,
+      "independentUnitId": null,
+      "strategyVersion": "theta-hold-strike-1.0.0-research",
+      "environment": "SHADOW",
+      "executionKind": "SHADOW_CANDIDATE",
+      "asOf": "2026-09-19T14:00:00Z",
+      "underlying": "AAPL",
+      "optionSymbol": "AAPL260924P00190000",
+      "expiration": "2026-09-24",
+      "dte": 5,
+      "delta": -0.22,
+      "strike": 190,
+      "underlyingPriceAtDecision": 200,
+      "breakEven": 188.5,
+      "expectedMoveDollars": 6,
+      "premiumPerShare": 1.5,
+      "premiumPerContract": 150,
+      "positionPremium": 150,
+      "multiplier": 100,
+      "quantity": 1,
+      "capitalAmount": 19000,
+      "ownershipScore": 0.65,
+      "eventRisk": "ABSENT_VERIFIED",
+      "bid": 1.45,
+      "ask": 1.55,
+      "spreadPct": 0.065,
+      "openInterest": 500,
+      "volume": 120,
+      "impliedVolatility": 0.28,
+      "ivRank": 0.4,
+      "ivPercentile": 0.45,
+      "realizedVolatility": 0.22,
+      "ivMinusRv": 0.06,
+      "skew25Delta": 0.03,
+      "termSlope": -0.01,
+      "recordedAegisState": "PERMITTED",
+      "resolvedLabels": null
+    },
+    "conventional": {
+      "snapshotId": "deterministic-snapshot-h-q",
+      "candidateId": "deterministic-q-conventional",
+      "asOf": "2026-09-19T14:00:00Z",
+      "executionKind": "SHADOW_CANDIDATE",
+      "underlying": "AAPL",
+      "strike": 195,
+      "breakEven": 192,
+      "premiumPerShare": 2,
+      "dte": 30,
+      "delta": -0.28,
+      "capitalAmount": 19500
+    }
+  },
+  "entryExit": {
+    "input": {
+      "version": "theta-profit-taking-replay-input-v1",
+      "sourceSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceManifestHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "episodeId": "deterministic-entry-exit-episode",
+      "chainId": "deterministic-entry-exit-chain",
+      "evidenceClass": "DETERMINISTIC_SCENARIO_COMPARISON",
+      "entryAt": "2026-09-21T14:00:00Z",
+      "entryCreditDollars": 100,
+      "entryFeesDollars": 1,
+      "policy": {
+        "version": "deterministic-entry-exit-policy-v1",
+        "maxHoldingMinutes": 60,
+        "exitDte": 5,
+        "maxTailLossDollars": 1000
+      },
+      "observations": [
+        {
+          "evidenceId": "deterministic-entry-exit-quote",
+          "decisionAt": "2026-09-22T14:00:00Z",
+          "dte": 4,
+          "closeAskDollars": 4,
+          "closeFeesDollars": 1,
+          "adverseSlippageDollars": 1,
+          "quoteAt": "2026-09-22T13:59:59Z",
+          "quoteReceivedAt": "2026-09-22T14:00:00Z",
+          "quoteValidThrough": "2026-09-22T14:00:10Z",
+          "quoteAuthority": "ALPACA_EXECUTABLE_MARKET",
+          "hardRiskExitRequired": false,
+          "eventExitRequired": false,
+          "riskAvailableAt": "2026-09-22T14:00:00Z",
+          "eventAvailableAt": "2026-09-22T14:00:00Z",
+          "eventValidThrough": "2026-09-22T15:00:00Z",
+          "forecast": {
+            "modelVersion": "DETERMINISTIC_NOT_TRAINED",
+            "availableAt": "2026-09-22T13:00:00Z",
+            "validThrough": "2026-09-22T15:00:00Z",
+            "horizonEnd": "2026-09-25T20:00:00Z",
+            "units": "USD_PER_EPISODE_INCREMENTAL_VS_CLOSE_NOW_AFTER_COST",
+            "holdValue": -1,
+            "uncertainty": 1,
+            "tailLoss": 100,
+            "redeploymentValue": 2,
+            "evidenceIds": [
+              "deterministic-entry-exit-forecast"
+            ]
+          }
         }
       ]
     }

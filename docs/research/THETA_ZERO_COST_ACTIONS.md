@@ -57,8 +57,9 @@ https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-synt
 The default evidence manifest is deliberately empty and public-safe. Its first
 truthful result is:
 
-- SOURCE_GAP for the remaining regime, H, and entry/exit empirical adapter
-  composition;
+- SOURCE_GAP for reviewed real-evidence-to-domain adapters; the pure
+  deterministic contract composition is implemented, but a generic admitted
+  ObservationBundle is not silently treated as a domain-ready market record;
 - DATA_GAP;
 - HISTORICAL_REPLAY_NOT_RUN;
 - EMPIRICAL_GAP; and
@@ -71,14 +72,17 @@ file, five symbols, 20,000 rows, 200 complete episodes, 12 preregistered
 comparisons, and 500 resamples. Reaching a cap is disclosed and never means
 the sample is adequate.
 
-The checked-in deterministic scenario invokes the existing Q/D paired-study
-and Recovery/Covered-Call experiment modules. The adapter first enforces an
-identical Q/D primary short-leg identity and expiration, then delegates to the
-existing shared-expiration contract. It also delegates A/C common-horizon and
-stage-valid-action checks to the existing experiment contract. These two
-contract-composition comparisons count against the 12-comparison cap and are
-always reported as non-empirical DETERMINISTIC_SCENARIO_COMPARISON evidence.
-They produce no winner, return estimate, recommendation, or broker authority.
+The checked-in deterministic scenario invokes the existing five-axis regime
+parser, Q/D paired study, H short-DTE versus Conventional pairing, all 17
+entry/exit policies, and Recovery/Covered-Call experiment. The adapter first
+enforces an identical Q/D primary short-leg identity and expiration, then
+delegates to the existing shared-expiration contract. It preserves H at 2-5
+DTE with no roll and Conventional at 25-60 DTE, and delegates A/C
+common-horizon and stage-valid-action checks to the existing experiment
+contract. The four contract-composition comparisons count against the
+12-comparison cap and are always reported as non-empirical
+DETERMINISTIC_SCENARIO_COMPARISON evidence. The public adapter exposes no
+winner, return estimate, recommendation, actual fill, or broker authority.
 
 INDICATIVE option quotes may support explicitly labeled diagnostics. They
 cannot certify OPRA execution-quality replay even when a fixture says
@@ -110,6 +114,11 @@ deterministic primary adapter now enforces identical short-leg identity before
 calling existing paired-study Cohort A, which enforces shared expiration. This
 closes the narrow source-composition gap only; it is not an empirical Q/D
 result. The same-risk-budget and historical-outcome experiments remain gaps.
+The regime fixture validates the five independent axes without invoking or
+duplicating the Python model. The H fixture stays unresolved, pairs only on the
+same snapshot/timestamp/evidence class/underlying, and cannot create an
+empirical cohort result. The entry/exit fixture executes existing policies
+offline with actualFill=false and EMPIRICALLY_UNPROVEN.
 Recovery/Covered-Call historical basis remains separate from forward value,
 and the deterministic A/C adapter exercises only stage-valid actions. Real
 historical A/C outcomes remain a DATA_GAP/EMPIRICAL_GAP.

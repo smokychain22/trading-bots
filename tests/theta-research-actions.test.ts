@@ -15,20 +15,62 @@ function deterministicScenario(): DeterministicResearchScenario {
   ) as DeterministicResearchScenario;
 }
 
-test('deterministic adapters invoke existing Q/D and A/C modules without empirical or broker claims', () => {
+test('deterministic adapters invoke existing regime, Q/D, H, entry/exit, and A/C modules without authority', () => {
   const result = runDeterministicResearchAdapters(deterministicScenario());
   assert.equal(result.evidenceClass, 'DETERMINISTIC_SCENARIO_COMPARISON');
   assert.equal(result.empirical, false);
   assert.equal(result.brokerAuthority, false);
-  assert.equal(result.comparisonCount, 2);
+  assert.equal(result.comparisonCount, 4);
+  assert.equal(result.regime.module, 'regime-contract');
+  assert.equal(result.regime.resolvedAxisCount, 5);
+  assert.equal(result.regime.confidence, 1);
   assert.equal(result.qd.module, 'defined-risk-vs-csp-paired-study');
   assert.equal(result.qd.readiness, 'STRUCTURAL_PAIR_READY');
   assert.equal(result.qd.identicalShortLeg, true);
   assert.equal(result.qd.identicalExpiration, true);
+  assert.equal(result.h.module, 'hold-strike-empirical-cohort');
+  assert.equal(result.h.pairable, true);
+  assert.equal(result.h.holdStrikeDte, 5);
+  assert.equal(result.h.conventionalDte, 30);
+  assert.equal(result.h.resolutionState, 'UNRESOLVED');
+  assert.equal(result.entryExit.module, 'profit-taking-replay');
+  assert.equal(result.entryExit.policyCount, 17);
+  assert.equal(result.entryExit.actualFillCount, 0);
+  assert.equal(result.entryExit.profitability, 'EMPIRICALLY_UNPROVEN');
   assert.equal(result.ac.module, 'recovery-covered-call-experiment');
   assert.equal(result.ac.comparisonState, 'DESCRIPTIVE_NO_RANKING');
   assert.deepEqual(result.ac.actions, ['SELL_CC', 'SELL_STOCK']);
   assert.ok(!('winner' in result) && !('selectedAction' in result));
+});
+
+test('regime and H deterministic composition fail closed on invalid confidence, DTE, or pairing identity', () => {
+  const badConfidence = structuredClone(deterministicScenario()) as unknown as {
+    regime: { payload: { trendState: null; confidence: number } };
+  };
+  badConfidence.regime.payload.trendState = null;
+  badConfidence.regime.payload.confidence = 1;
+  assert.throws(
+    () => runDeterministicResearchAdapters(badConfidence as unknown as DeterministicResearchScenario),
+    /confidence must equal the fraction of resolvable axes/,
+  );
+
+  const badDte = structuredClone(deterministicScenario()) as unknown as {
+    h: { observation: { dte: number } };
+  };
+  badDte.h.observation.dte = 6;
+  assert.throws(
+    () => runDeterministicResearchAdapters(badDte as unknown as DeterministicResearchScenario),
+    /H_DETERMINISTIC_CANDIDATE_BOUNDARY_INVALID/,
+  );
+
+  const wrongSnapshot = structuredClone(deterministicScenario()) as unknown as {
+    h: { conventional: { snapshotId: string } };
+  };
+  wrongSnapshot.h.conventional.snapshotId = 'different-snapshot';
+  assert.throws(
+    () => runDeterministicResearchAdapters(wrongSnapshot as unknown as DeterministicResearchScenario),
+    /H_DETERMINISTIC_PAIR_NOT_PAIRABLE/,
+  );
 });
 
 test('Q/D adapter rejects a labeled identity that does not preserve the primary short leg or expiration', () => {
@@ -84,7 +126,7 @@ test('empty approved manifest produces a small truthful gap receipt and no fabri
     assert.equal(receipt.authority.brokerAuthority, false);
     assert.equal(receipt.authority.orderSubmissionAvailable, false);
     assert.equal(receipt.authority.productionMutationAvailable, false);
-    assert.equal(receipt.limitsObserved.comparisons, 2);
+    assert.equal(receipt.limitsObserved.comparisons, 4);
     const qd = receipt.stages.find((stage: { id: string }) => (
       stage.id === 'Q_D_DETERMINISTIC_CONTRACT_COMPOSITION'
     ));
@@ -95,6 +137,18 @@ test('empty approved manifest produces a small truthful gap receipt and no fabri
     assert.ok(qd?.reasons.includes('DETERMINISTIC_SCENARIO_COMPARISON'));
     assert.equal(ac?.status, 'SOURCE_ALREADY_IMPLEMENTED');
     assert.ok(ac?.reasons.includes('NON_EMPIRICAL'));
+    assert.ok(receipt.stages.some((stage: { id: string; status: string }) => (
+      stage.id === 'REGIME_DETERMINISTIC_CONTRACT_COMPOSITION'
+      && stage.status === 'SOURCE_ALREADY_IMPLEMENTED'
+    )));
+    assert.ok(receipt.stages.some((stage: { id: string; status: string }) => (
+      stage.id === 'H_DETERMINISTIC_SHORT_VS_CONVENTIONAL_COMPOSITION'
+      && stage.status === 'SOURCE_ALREADY_IMPLEMENTED'
+    )));
+    assert.ok(receipt.stages.some((stage: { id: string; status: string }) => (
+      stage.id === 'ENTRY_EXIT_DETERMINISTIC_POLICY_REPLAY'
+      && stage.status === 'SOURCE_ALREADY_IMPLEMENTED'
+    )));
     assert.ok(receipt.stages.some((stage: { status: string }) => stage.status === 'SOURCE_ALREADY_IMPLEMENTED'));
     assert.ok(receipt.stages.some((stage: { status: string }) => stage.status === 'DATA_GAP'));
     assert.ok(receipt.stages.some((stage: { status: string }) => stage.status === 'EMPIRICAL_GAP'));

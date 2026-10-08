@@ -214,6 +214,16 @@ export async function runBoundedResearch(request: BoundedResearchRequest): Promi
     reasons: source.reasons,
     count: source.found,
   }, {
+    id: 'REGIME_DETERMINISTIC_CONTRACT_COMPOSITION',
+    status: deterministic.regime.status,
+    reasons: [
+      deterministic.evidenceClass,
+      'NON_EMPIRICAL',
+      'FIVE_AXES_PRESERVED',
+      'CONFIDENCE_DERIVED_FROM_RESOLVED_AXES',
+    ],
+    count: 1,
+  }, {
     id: 'Q_D_DETERMINISTIC_CONTRACT_COMPOSITION',
     status: deterministic.qd.status,
     reasons: [
@@ -221,6 +231,28 @@ export async function runBoundedResearch(request: BoundedResearchRequest): Promi
       'NON_EMPIRICAL',
       'IDENTICAL_SHORT_LEG_AND_EXPIRATION_ENFORCED',
       deterministic.qd.readiness,
+    ],
+    count: 1,
+  }, {
+    id: 'H_DETERMINISTIC_SHORT_VS_CONVENTIONAL_COMPOSITION',
+    status: deterministic.h.status,
+    reasons: [
+      deterministic.evidenceClass,
+      'NON_EMPIRICAL',
+      'H_2_5_DTE_NO_ROLL_PRESERVED',
+      'CONVENTIONAL_25_60_DTE_PRESERVED',
+      'SAME_SNAPSHOT_TIMESTAMP_EXECUTION_CLASS_AND_UNDERLYING',
+    ],
+    count: 1,
+  }, {
+    id: 'ENTRY_EXIT_DETERMINISTIC_POLICY_REPLAY',
+    status: deterministic.entryExit.status,
+    reasons: [
+      deterministic.evidenceClass,
+      'NON_EMPIRICAL',
+      'ALL_REGISTERED_POLICIES_EXECUTED_OFFLINE',
+      'NO_ACTUAL_FILLS',
+      deterministic.entryExit.profitability,
     ],
     count: 1,
   }, {
@@ -345,8 +377,9 @@ export async function runBoundedResearch(request: BoundedResearchRequest): Promi
     id: 'RESEARCH_ADAPTER_ORCHESTRATION',
     status: 'SOURCE_GAP',
     reasons: [
-      'DETERMINISTIC_Q_D_AND_A_C_ADAPTERS_RUN',
-      'REGIME_H_AND_ENTRY_EXIT_EMPIRICAL_ADAPTERS_NOT_RUN',
+      'DETERMINISTIC_REGIME_Q_D_H_ENTRY_EXIT_AND_A_C_ADAPTERS_RUN',
+      'REAL_EVIDENCE_TO_DOMAIN_ADAPTERS_NOT_IMPLEMENTED',
+      'APPROVED_HISTORICAL_OPTION_EVIDENCE_SCHEMA_AND_DATA_REQUIRED',
     ],
     count: deterministic.comparisonCount,
   });
@@ -357,6 +390,7 @@ export async function runBoundedResearch(request: BoundedResearchRequest): Promi
       'Q_D_IDENTICAL_SHORT_LEG_AND_EXPIRATION_EXPERIMENT_SEPARATE',
       'Q_D_SAME_RISK_BUDGET_EXPERIMENT_SEPARATE',
       'Q_D_DETERMINISTIC_CONTRACT_COMPOSITION_PASSED',
+      'H_SHORT_VS_CONVENTIONAL_DETERMINISTIC_COMPOSITION_PASSED',
       'H_2_5_DTE_NO_ROLL_PRESERVED',
       usableRealEvidence ? 'EMPIRICAL_OUTCOMES_NOT_MATURED' : 'MARKET_EVIDENCE_UNAVAILABLE',
     ],
@@ -365,7 +399,11 @@ export async function runBoundedResearch(request: BoundedResearchRequest): Promi
   stages.push({
     id: 'ENTRY_EXIT_POLICY_REPLAY',
     status: 'EMPIRICAL_GAP',
-    reasons: ['HISTORICAL_REPLAY_NOT_RUN', 'SOURCE_ANCESTRY_AND_COMPLETE_EXIT_PATH_REQUIRED'],
+    reasons: [
+      'DETERMINISTIC_POLICY_REPLAY_PASSED',
+      'HISTORICAL_REPLAY_NOT_RUN',
+      'SOURCE_ANCESTRY_AND_COMPLETE_EXIT_PATH_REQUIRED',
+    ],
     count: 0,
   });
   stages.push({
@@ -401,7 +439,7 @@ export async function runBoundedResearch(request: BoundedResearchRequest): Promi
   const recommendations = [
     {
       classification: 'SOURCE_GAP',
-      action: 'Compose the remaining regime, H, and entry/exit empirical adapters before calling the Actions runner feature-complete.',
+      action: 'Define and review real-evidence-to-domain adapters before calling the Actions runner feature-complete; deterministic contract composition alone is not empirical readiness.',
     },
     {
       classification: 'DATA_GAP',

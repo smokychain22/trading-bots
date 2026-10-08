@@ -16,7 +16,7 @@ export const profitReplayInputSchema = z.object({
   sourceSha: z.string().regex(/^[a-f0-9]{40}$/),
   sourceManifestHash: z.string().regex(/^[a-f0-9]{64}$/),
   episodeId: z.string().min(1), chainId: z.string().min(1),
-  evidenceClass: z.enum(['REAL_PERSISTED', 'DETERMINISTIC_TEST']),
+  evidenceClass: z.enum(['REAL_PERSISTED', 'DETERMINISTIC_TEST', 'DETERMINISTIC_SCENARIO_COMPARISON']),
   entryAt: timestamp, entryCreditDollars: finite.positive(), entryFeesDollars: finite.nonnegative(),
   policy: z.object({ version: z.string().min(1), maxHoldingMinutes: finite.positive(),
     exitDte: finite.nonnegative(), maxTailLossDollars: finite.nonnegative() }).strict(),
