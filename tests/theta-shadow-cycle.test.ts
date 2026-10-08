@@ -318,7 +318,7 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.equal(gapReceipt.stressGapDetected, false);
   const technical = regimeState.technicalFeatures as Record<string, unknown>;
   const intraday = technical.intradayStructure as Record<string, unknown>;
-  assert.equal(intraday.version, 'theta-intraday-structure-shadow-v1');
+  assert.equal(intraday.version, 'theta-intraday-structure-shadow-v2');
   assert.equal(intraday.closedMinuteCount, 90);
   assert.equal(intraday.brokerAuthority, false);
   assert.deepEqual(result.orchestration?.receipt.intradayStructure, intraday,

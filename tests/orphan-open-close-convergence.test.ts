@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import { applyConfirmedFillLifecycle } from '../src/execution/postgres-broker-fill-lifecycle-orchestrator.js';
 import { deterministicRuntimeUuid } from '../src/theta/postgres-theta-cycle-store.js';
+import { LifecycleEvidenceError } from '../src/theta/postgres-lifecycle-application-store.js';
 
 // Drives the REAL fill-lifecycle orchestrator, REAL lifecycle-application store and REAL copy planner against an in-memory
 // emulation of the rows they touch. Scenario (generic orphan): the OPEN_CSP fill's lifecycle registration was blocked, the position
@@ -12,7 +13,7 @@ const chainId = id(1), openIntent = id(2), closeIntent = id(3), contract = id(4)
 const openFill = id(8), closeFill = id(9), bot = id(10);
 const legId = deterministicRuntimeUuid(`option-leg:${openIntent}`);
 
-function emulatedDatabase() {
+function emulatedDatabase(chainReadFailure?: Error) {
   const db = {
     chainState: 'WAIT',
     legs: new Map<string, { quantity: number; entryCreditDebit: number; openedAt: string; closedAt: string | null; realizedPnl: number | null }>(),
@@ -46,7 +47,10 @@ function emulatedDatabase() {
       return found === undefined ? { rows: [], rowCount: 0 } : one({ lifecycle_application_id: found.id, chain_id: found.chainId,
         event_kind: found.eventKind, transition_path_json: found.path, result_hash: 'x' });
     }
-    if (sql.includes('SELECT lifecycle_state FROM trade.economic_chain')) return one({ lifecycle_state: db.chainState });
+    if (sql.includes('SELECT lifecycle_state FROM trade.economic_chain')) {
+      if (chainReadFailure) throw chainReadFailure;
+      return one({ lifecycle_state: db.chainState });
+    }
     if (sql.includes('CROSS JOIN trade.economic_chain')) return one({ option_type: 'PUT', multiplier: 100,
       contract_underlying_id: underlying, chain_underlying_id: underlying });
     if (sql.includes('INSERT INTO trade.option_leg')) {
@@ -115,4 +119,25 @@ test('open-then-close replay converges in ONE cycle: exactly one SHORT_PUT_OPEN 
   assert.equal(db.legs.size, 1);
   assert.equal(db.transitions.length, transitions);
   assert.equal(db.copyEvents.size, 2);
+});
+
+test('infrastructure errors with uppercase typed messages abort lifecycle application instead of becoming unresolved fills', async () => {
+  for (const code of ['POSTGRES_CHECKED_OUT_CLIENT_LOST', 'POSTGRES_CONNECTION_ACQUISITION_TIMEOUT', 'ECONNRESET', 'UNRECOGNIZED_DATABASE_FAILURE',
+    'LIFECYCLE_IDEMPOTENCY_CONFLICT', 'LIFECYCLE_EVIDENCE_HASH_INVALID']) {
+    const failure = new Error(code);
+    const { db, pool } = emulatedDatabase(failure);
+    await assert.rejects(applyConfirmedFillLifecycle(pool as never, id(11), '2026-10-07T20:05:00.000Z'),
+      error => error === failure, code);
+    assert.equal(db.applications.size, 0);
+    assert.equal(db.legs.size, 0);
+  }
+});
+
+test('explicit chain-local evidence rejection remains unresolved and never creates a leg', async () => {
+  const { db, pool } = emulatedDatabase(new LifecycleEvidenceError('ECONOMIC_CHAIN_NOT_FOUND'));
+  const report = await applyConfirmedFillLifecycle(pool as never, id(11), '2026-10-07T20:05:00.000Z');
+  assert.ok(report.unresolved > 0);
+  assert.equal(report.applied, 0);
+  assert.equal(db.legs.size, 0);
+  assert.equal(db.applications.size, 0);
 });

@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
-import { AlpacaProviderError, fetchStockBars, type AlpacaProviderConfig } from '../alpaca-provider.js';
+import { AlpacaProviderError, fetchMarketCalendar, fetchStockBars, type AlpacaProviderConfig } from '../alpaca-provider.js';
 import type { HistoricalBar } from '../underlying-history.js';
 import { newYorkSessionTime } from '../../research/alpaca-learning-calendar.js';
 
-export const intradayStructureVersion = 'theta-intraday-structure-shadow-v1' as const;
+export const intradayStructureVersion = 'theta-intraday-structure-shadow-v2' as const;
 type Direction = 'ABOVE' | 'BELOW' | 'AT';
 interface ClosedBar { readonly start: string; readonly end: string; readonly close: number }
+export interface IntradaySession { readonly open: string; readonly close: string }
 export interface IntradayStructureReceipt {
   readonly version: typeof intradayStructureVersion;
   readonly underlying: string;
@@ -25,9 +26,12 @@ export interface IntradayStructureReceipt {
   readonly inputHash: string | null;
   readonly lastClosedAt: string | null;
   readonly stale: boolean | null;
+  readonly warmupSessions: readonly IntradaySession[];
+  readonly warmupPolicy: 'SESSION_ANCHORED_FULL_BUCKETS_ONLY';
   readonly frames: readonly {
     readonly minutes: 1 | 5 | 15 | 60;
     readonly closedCount: number;
+    readonly continuousCount: number;
     readonly ema9: number | null;
     readonly lastCloseVsEma9: Direction | null;
     readonly confirmingCloses: 0 | 2;
@@ -48,17 +52,27 @@ const base = (input: Context): IntradayStructureReceipt => ({
   state: 'PARTIAL', reasons: [], provider: 'ALPACA', feed: 'iex',
   authority: 'SHADOW_CONTEXT', brokerAuthority: false, paginationComplete: null, closedMinuteCount: 0,
   excludedDevelopingCount: 0, inputHash: null, lastClosedAt: null, stale: null, frames: [],
+  warmupSessions: [], warmupPolicy: 'SESSION_ANCHORED_FULL_BUCKETS_ONLY',
   sessionVwap: null, vwapRelation: null, vwapTransition: null, alignment: 'INSUFFICIENT',
 });
 
-export function buildIntradayStructure(input: Context & { readonly bars: readonly HistoricalBar[]; readonly complete: boolean }): IntradayStructureReceipt {
+export function buildIntradayStructure(input: Context & { readonly bars: readonly HistoricalBar[]; readonly complete: boolean;
+  readonly warmupSessions?: readonly IntradaySession[]; readonly warmupReasons?: readonly string[] }): IntradayStructureReceipt {
   const receipt = base(input);
   const at = Date.parse(input.observedAt), open = Date.parse(input.sessionOpen ?? ''), close = Date.parse(input.sessionClose ?? '');
   const cutoff = Math.min(at, Date.parse(input.requestedAt));
   if (![at, open, close, Date.parse(input.requestedAt)].every(Number.isFinite) || close <= open
     || Date.parse(input.requestedAt) > at) throw new Error('INTRADAY_TIME_BOUNDARY_INVALID');
-  if (input.bars.length > 500) throw new Error('INTRADAY_INPUT_BOUND_EXCEEDED');
-  const reasons: string[] = [];
+  if (input.bars.length > 1500 || (input.warmupSessions?.length ?? 0) > 2) throw new Error('INTRADAY_INPUT_BOUND_EXCEEDED');
+  const sessions = [...(input.warmupSessions ?? []), { open: input.sessionOpen as string, close: input.sessionClose as string }]
+    .map(session => ({ open: Date.parse(session.open), close: Date.parse(session.close) }));
+  for (const [index, session] of sessions.entries()) {
+    if (![session.open, session.close].every(Number.isFinite) || session.close <= session.open
+      || session.open % 60_000 !== 0 || session.close % 60_000 !== 0
+      || session.close - session.open > 390 * 60_000
+      || (index > 0 && session.open <= (sessions[index - 1] as typeof session).close)) throw new Error('INTRADAY_SESSION_BOUNDARY_INVALID');
+  }
+  const reasons: string[] = [...(input.warmupReasons ?? [])];
   const ordered = [...input.bars].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
   const seen = new Set<number>();
   for (const b of ordered) {
@@ -78,24 +92,25 @@ export function buildIntradayStructure(input: Context & { readonly bars: readonl
   const lastEnd = last ? Date.parse(last.timestamp) + 60_000 : null;
   const stale = lastEnd === null ? null : at - lastEnd > 120_000;
   if (stale) reasons.push('LAST_CLOSED_BAR_STALE');
+  const qualified = ordered.filter(b => sessions.some(s => Date.parse(b.timestamp) >= s.open
+    && Date.parse(b.timestamp) + 60_000 <= Math.min(cutoff, s.close)));
+  const byStart = new Map(qualified.map(bar => [Date.parse(bar.timestamp), bar]));
   const frames = ([1, 5, 15, 60] as const).map(minutes => {
-    const groups = new Map<number, HistoricalBar[]>();
-    for (const bar of bars) {
-      const key = Math.floor((Date.parse(bar.timestamp) - open) / (minutes * 60_000));
-      const group = groups.get(key) ?? []; group.push(bar); groups.set(key, group);
-    }
     const closed: ClosedBar[] = [];
-    for (const [key, group] of groups) {
-      const start = open + key * minutes * 60_000, end = start + minutes * 60_000;
-      if (end > Math.min(cutoff, close)) continue;
-      if (group.length !== minutes || group.some((b, index) => Date.parse(b.timestamp) !== start + index * 60_000)) {
-        reasons.push(`INCOMPLETE_${minutes}M_BUCKET`); continue;
+    let tail: ClosedBar[] = [];
+    // Walk every EXPECTED bucket, including buckets with no rows. An exchange
+    // closure is a known boundary, a missing trading candle resets warmup.
+    for (const session of sessions) {
+      for (let start = session.open; start + minutes * 60_000 <= Math.min(cutoff, session.close); start += minutes * 60_000) {
+        const group = Array.from({ length: minutes }, (_, i) => byStart.get(start + i * 60_000));
+        if (group.some(bar => bar === undefined)) {
+          reasons.push(`INCOMPLETE_${minutes}M_BUCKET`); tail = []; continue;
+        }
+        const candle = { start: new Date(start).toISOString(), end: new Date(start + minutes * 60_000).toISOString(),
+          close: (group.at(-1) as HistoricalBar).close };
+        closed.push(candle); tail.push(candle);
       }
-      closed.push({ start: new Date(start).toISOString(), end: new Date(end).toISOString(), close: (group.at(-1) as HistoricalBar).close });
     }
-    // Never splice separated candles into an apparently continuous EMA.
-    let tail = closed;
-    for (let i = closed.length - 1; i > 0; i--) if ((closed[i] as ClosedBar).start !== (closed[i - 1] as ClosedBar).end) { tail = closed.slice(i); break; }
     const relations: Direction[] = [];
     let ema: number | null = null;
     for (let i = 8; i < tail.length; i++) {
@@ -104,14 +119,17 @@ export function buildIntradayStructure(input: Context & { readonly bars: readonl
       relations.push(relation(current.close, ema));
     }
     const direction = relations.at(-1) ?? null;
-    return { minutes, closedCount: closed.length, ema9: ema, lastCloseVsEma9: direction,
+    if (ema === null) reasons.push(`EMA9_${minutes}M_WARMUP_INSUFFICIENT`);
+    return { minutes, closedCount: closed.length, continuousCount: tail.length, ema9: ema, lastCloseVsEma9: direction,
       confirmingCloses: relations.length >= 2 && direction !== 'AT' && direction === relations.at(-2) ? 2 as const : 0 as const,
       bars: closed };
   });
   const sides = frames.filter(f => f.minutes !== 1).map(f => f.lastCloseVsEma9);
   let weighted = 0, volume = 0, vwap: number | null = null;
   const vwapSides: Direction[] = [];
-  const vwapQualified = input.complete && bars.length > 0 && bars.every(b => b.vwap !== null && Number.isFinite(b.vwap) && b.vwap > 0);
+  const vwapQualified = input.complete && bars.length > 0
+    && bars.length === Math.floor((Math.min(cutoff, close) - open) / 60_000)
+    && bars.every(b => b.vwap !== null && Number.isFinite(b.vwap) && b.vwap > 0);
   if (vwapQualified) for (const b of bars) {
     weighted += (b.vwap as number) * b.volume; volume += b.volume;
     vwap = volume > 0 ? weighted / volume : null;
@@ -121,8 +139,10 @@ export function buildIntradayStructure(input: Context & { readonly bars: readonl
   const side = vwapSides.at(-1) ?? null, prior = vwapSides.at(-2) ?? null;
   return { ...receipt, state: reasons.length ? 'PARTIAL' : 'PRESENT', reasons: [...new Set(reasons)],
     paginationComplete: input.complete, closedMinuteCount: bars.length, excludedDevelopingCount: developing,
-    inputHash: createHash('sha256').update(JSON.stringify(bars)).digest('hex'),
+    inputHash: createHash('sha256').update(JSON.stringify({ bars: qualified, sessions, complete: input.complete,
+      warmupReasons: input.warmupReasons ?? [] })).digest('hex'),
     lastClosedAt: lastEnd === null ? null : new Date(lastEnd).toISOString(), stale, frames,
+    warmupSessions: input.warmupSessions ?? [],
     sessionVwap: vwap, vwapRelation: side,
     vwapTransition: side === null || prior === null ? null : side === 'ABOVE' && prior === 'BELOW' ? 'RECLAIM'
       : side === 'BELOW' && prior === 'ABOVE' ? 'REJECT' : 'NONE',
@@ -131,7 +151,8 @@ export function buildIntradayStructure(input: Context & { readonly bars: readonl
   };
 }
 
-/** Single bounded optional GET before candidate quotes. Failures never alter trading gates. */
+/** Optional, bounded current-session read plus at most two prior session reads
+ * and one calendar read. No retry and no trading authority. */
 export async function observeIntradayStructure(input: Omit<Context, 'observedAt'> & {
   readonly alpaca: AlpacaProviderConfig; readonly marketOpen: boolean; readonly now: () => string;
   readonly calendarDate?: string;
@@ -144,12 +165,40 @@ export async function observeIntradayStructure(input: Omit<Context, 'observedAt'
     if (input.calendarDate !== undefined) context = { ...context,
       sessionOpen: newYorkSessionTime(input.calendarDate, input.sessionOpen),
       sessionClose: newYorkSessionTime(input.calendarDate, input.sessionClose) };
-    const result = await fetchStockBars({ ...input.alpaca, requestTimeoutMs: Math.min(input.alpaca.requestTimeoutMs ?? 2_000, 2_000),
-      readRetry: { policy: { maxRetries: 0 } } }, { symbols: [input.underlying], timeframe: '1Min',
+    const provider = { ...input.alpaca, requestTimeoutMs: Math.min(input.alpaca.requestTimeoutMs ?? 2_000, 2_000),
+      readRetry: { policy: { maxRetries: 0 } } };
+    const result = await fetchStockBars(provider, { symbols: [input.underlying], timeframe: '1Min',
       start: context.sessionOpen as string, end: input.requestedAt, feed: 'iex', maxPages: 1, adjustment: 'raw' }, input.requestedAt);
+    const warmupSessions: IntradaySession[] = [], warmupBars: HistoricalBar[] = [], warmupReasons: string[] = [];
+    try {
+      const start = new Date(Date.parse(context.sessionOpen as string)); start.setUTCDate(start.getUTCDate() - 10);
+      const end = new Date(Date.parse(context.sessionOpen as string)); end.setUTCDate(end.getUTCDate() - 1);
+      const calendar = await fetchMarketCalendar(provider, start.toISOString().slice(0, 10), end.toISOString().slice(0, 10));
+      const prior = calendar.filter(s => s.date >= start.toISOString().slice(0, 10) && s.date <= end.toISOString().slice(0, 10))
+        .sort((a, b) => a.date.localeCompare(b.date)).slice(-2);
+      // A malformed calendar row must not be silently removed and bridge an
+      // unknown trading session. Duplicate/overlapping sessions fail validation.
+      for (const session of prior) {
+        if (session.open === null || session.close === null) throw new Error('INTRADAY_SESSION_BOUNDARY_INVALID');
+        warmupSessions.push({ open: newYorkSessionTime(session.date, session.open), close: newYorkSessionTime(session.date, session.close) });
+      }
+      if (warmupSessions.length < 2) warmupReasons.push('WARMUP_CALENDAR_INSUFFICIENT');
+      for (const session of warmupSessions) {
+        try {
+          const history = await fetchStockBars(provider, { symbols: [input.underlying], timeframe: '1Min',
+            start: session.open, end: session.close, feed: 'iex', maxPages: 1, adjustment: 'raw' }, input.requestedAt);
+          if (history.complete) warmupBars.push(...history.bars);
+          else warmupReasons.push('WARMUP_PAGINATION_INCOMPLETE');
+        } catch { warmupReasons.push('WARMUP_PROVIDER_ERROR'); }
+      }
+    } catch {
+      warmupSessions.length = 0; warmupBars.length = 0;
+      warmupReasons.push('WARMUP_CALENDAR_UNAVAILABLE');
+    }
     const observedAt = input.now();
     return buildIntradayStructure({ ...context, observedAt, complete: result.complete,
-      bars: result.bars.map(b => ({ ...b, receivedAt: observedAt })) });
+      warmupSessions, warmupReasons,
+      bars: [...warmupBars, ...result.bars].map(b => ({ ...b, receivedAt: observedAt })) });
   } catch (error) {
     const code = error instanceof AlpacaProviderError ? error.errorClass
       : error instanceof Error && /^INTRADAY_[A-Z_]+$/.test(error.message) ? error.message : 'UNCLASSIFIED_PROVIDER_FAILURE';

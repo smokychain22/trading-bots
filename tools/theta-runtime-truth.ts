@@ -279,12 +279,15 @@ if (paperBrokerConfigured) {
   broker.openOrders = Array.isArray(orders.body) ? orders.body.length : null;
 }
 
-const paperAuthority = classifyPaperRuntimeAuthority({ now: new Date().toISOString(),
+// A heartbeat can advance during these bounded reads. Compare both classifiers
+// against completion, not the timestamp captured before querying the worker.
+const observationCompletedAt = new Date().toISOString();
+const paperAuthority = classifyPaperRuntimeAuthority({ now: observationCompletedAt,
   maximumAgeMs: maximumWorkerHeartbeatAgeMs, workerSha, workerHeartbeat, executionGate,
   evidence: paperAuthorityEvidence });
 const mismatches = deriveRuntimeMismatches({ sourceSha, sourceDirty, workerSha, activeWorkerLeases,
   workerHeartbeat, workerMode, executionGate, paperAuthority,
-  migrationHead, requiredMigrationPresent, observedAt });
+  migrationHead, requiredMigrationPresent, observedAt: observationCompletedAt });
 mismatches.push(...deriveDatabaseRuntimeMismatches({
   databaseReachable: databaseReachable && !databaseConnectionFailed,
   databaseEvidenceComplete,
@@ -293,7 +296,7 @@ const databaseSchemaCompatibility = assessRuntimeSchemaCompatibility({
   appliedVersions: appliedMigrationVersions, sourceSha, workerSha,
 });
 const receipt = {
-  schemaVersion: 'theta-runtime-system-truth-v1', observedAt, sourceSha, sourceDirty,
+  schemaVersion: 'theta-runtime-system-truth-v1', observedAt, observationCompletedAt, sourceSha, sourceDirty,
   workerSha, workerLeaseId, workerLeaseState, activeWorkerLeases, workerHeartbeat,
   workerMode, workerState, executionGate, paperAuthority,
   autonomousPaperAuthorized: ['UNKNOWN_CONTROL', 'STALE_AUTHORITY'].includes(paperAuthority.state)

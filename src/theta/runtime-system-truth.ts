@@ -38,7 +38,8 @@ export function deriveRuntimeMismatches(input: RuntimeTruthInputs): RuntimeMisma
   const mismatches: RuntimeMismatch[] = [];
   if (input.sourceDirty) mismatches.push('UNRELEASED_SOURCE_CHANGES');
   if (input.activeWorkerLeases === null || input.workerSha === null || input.workerHeartbeat === null
-    || input.workerMode === null || input.executionGate === null || input.requiredMigrationPresent === null) {
+    || input.workerMode === null || input.executionGate === null || input.requiredMigrationPresent === null
+    || input.migrationHead === null) {
     mismatches.push('RUNTIME_EVIDENCE_UNAVAILABLE');
   }
   if (input.workerSha !== null && input.workerSha !== input.sourceSha) mismatches.push('SOURCE_SHA_NE_WORKER_SHA');
@@ -46,7 +47,7 @@ export function deriveRuntimeMismatches(input: RuntimeTruthInputs): RuntimeMisma
   const heartbeatAgeMs = input.workerHeartbeat === null ? null
     : Date.parse(input.observedAt) - Date.parse(input.workerHeartbeat);
   if (input.activeWorkerLeases === 0 || (heartbeatAgeMs !== null
-    && (!Number.isFinite(heartbeatAgeMs) || heartbeatAgeMs > maximumWorkerHeartbeatAgeMs)))
+    && (!Number.isFinite(heartbeatAgeMs) || heartbeatAgeMs < 0 || heartbeatAgeMs > maximumWorkerHeartbeatAgeMs)))
     mismatches.push('WORKER_STALE');
   if (input.workerMode !== null && input.workerMode !== 'MASTER_THETA_PAPER') mismatches.push('WORKER_MODE_UNEXPECTED');
   if (input.executionGate !== null && input.executionGate !== 'LOCKED'

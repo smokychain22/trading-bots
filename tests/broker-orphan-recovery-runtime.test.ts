@@ -252,3 +252,33 @@ test('DB: orphan candidate SQL is valid against the migrated schema (unknown sna
     await pool.query(`EXPLAIN SELECT 1 FROM trade.management_input_snapshot WHERE input_json->>'inputKind' IS DISTINCT FROM 'BROKER_CONFIRMED_ORPHAN'`);
   } finally { await pool.end(); }
 });
+
+test('missing order-intent lineage is visible, blocks recovery and never adopts or closes unexplained exposure', async () => {
+  for (const signedQuantity of [-1, 1]) {
+    const { value, calls } = deps({}, [{ position: { ...position, signedQuantity }, lineages: [], fusionSnapshotId: null, strategyVersion: null }]);
+    const report = await runBrokerOrphanRecovery(value);
+    assert.equal(report.blockingCode, orphanLineageIncomplete);
+    assert.deepEqual(report.items.map(item => [item.state, item.reasons]),
+      [['REFUSED', [signedQuantity < 0 ? 'ORPHAN_NO_THETA_LINEAGE' : 'ORPHAN_SIDE_MISMATCH']]]);
+    assert.deepEqual(calls, { persisted: 0, published: 0, market: 0 });
+  }
+});
+
+test('orphan loader binds snapshot and ownership to the same account and preserves malformed position evidence', async () => {
+  for (const patch of [{ side: null }, { quantity: null }, { quantity: '' }, { quantity: false },
+    { average_entry_price: '' }, { average_entry_price: -0.28 }]) {
+    const pool = { query: async (sql: string, args: readonly unknown[]) => {
+      if (sql.includes('SELECT bp.symbol')) {
+        assert.deepEqual(args, [ids.reconciliation, ids.account]);
+        assert.match(sql, /fa.follower_account_id=bp.connection_id/);
+        assert.match(sql, /ea.execution_account_id=\$2/);
+        assert.match(sql, /owner_intent.execution_account_id=ea.execution_account_id/);
+        return { rows: [{ symbol: SYMBOL, quantity: -1, side: 'short', average_entry_price: 0.28, observed_at: NOW, data_quality: 'GOOD', ...patch }] };
+      }
+      return { rows: [] };
+    } };
+    const loaded = await loadBrokerConfirmedOrphanCandidates(pool as never, { reconciliationSnapshotId: ids.reconciliation, executionAccountId: ids.account });
+    assert.equal(loaded.length, 1, 'malformed broker position remains visible');
+    assert.equal(classifyBrokerConfirmedOrphan((loaded[0] as OrphanCandidate).position, [lineage()]).state, 'REFUSED');
+  }
+});

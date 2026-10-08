@@ -189,6 +189,7 @@ test('a sale already applied (its lots are all disposed) is a duplicate, not a p
 
 test('a coded domain rejection for one chain is reported as unresolved and does not stop the other chains; infrastructure errors still abort the cycle', async () => {
   const { applyConfirmedFillLifecycle } = await import('../src/execution/postgres-broker-fill-lifecycle-orchestrator.js');
+  const { LifecycleEvidenceError } = await import('../src/theta/postgres-lifecycle-application-store.js');
   const { EventEmitter } = await import('node:events');
   const rowFor = (chain: string, intent: string) => ({ order_intent_id: intent, chain_id: chain, bot_instance_id: 'bot', decision_id: 'decision', theta_action: 'SELL_STOCK', status: 'FILLED',
     order_quantity: 100, underlying_symbol: 'AAPL', option_contract_id: null, fill_ids: ['f-' + intent],
@@ -204,8 +205,9 @@ test('a coded domain rejection for one chain is reported as unresolved and does 
     const report = await applyConfirmedFillLifecycle(pool as never, 'connection', '2026-10-02T16:00:00Z');
     return { report, attempts: applied.length };
   };
-  const coded = await run(new Error('STOCK_DISPOSAL_LEAVES_OPEN_LOTS'));
+  const coded = await run(new LifecycleEvidenceError('STOCK_DISPOSAL_LEAVES_OPEN_LOTS'));
   assert.equal(coded.report.unresolved, 2, 'both chains reported unresolved');
   assert.equal(coded.attempts, 2, 'the second chain was still attempted after the first was rejected');
   await assert.rejects(run(new Error('connection terminated unexpectedly')), /connection terminated/);
+  await assert.rejects(run(new Error('POSTGRES_CHECKED_OUT_CLIENT_LOST')), /POSTGRES_CHECKED_OUT_CLIENT_LOST/);
 });

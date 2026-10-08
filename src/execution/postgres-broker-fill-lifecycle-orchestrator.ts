@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { fillEvidenceKey,routeConfirmedFillLifecycle,routeConfirmedRollPair,type ConfirmedFillFact,type FillLifecycleContext } from './broker-fill-lifecycle-router.js';
 import type { OpenStockLot } from './stock-lot-allocation.js';
-import { PostgresLifecycleApplicationStore,type LifecycleApplicationResult } from '../theta/postgres-lifecycle-application-store.js';
+import { LifecycleEvidenceError,PostgresLifecycleApplicationStore,type LifecycleApplicationResult } from '../theta/postgres-lifecycle-application-store.js';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
 import { confirmedMasterCopyEventId,PostgresDisabledCopyPlanner } from '../customer/postgres-disabled-copy-planner.js';
 import type { MasterCopyEvent } from '../customer/copy-engine-contract.js';
@@ -90,7 +90,7 @@ async function applyConfirmedFillLifecyclePass(pool:Pool,connectionId:string,obs
   // reported as unresolved; it must not stop every other chain's fills from being applied. Infrastructure errors still abort the cycle.
   const applySafely=async(application:Parameters<PostgresLifecycleApplicationStore['apply']>[0]):Promise<LifecycleApplicationResult|null>=>{
     try{return await store.apply(application);}
-    catch(error){if(error instanceof Error&&/^[A-Z][A-Z0-9_]+$/.test(error.message)){unresolved++;return null;}throw error;}
+    catch(error){if(error instanceof LifecycleEvidenceError){unresolved++;return null;}throw error;}
   };
   const persistMasterFillEvent=async(row:Row,parentMasterCopyEventId:string|null=null):Promise<string|null>=>{
     const decision=s(row.decision_id),chain=s(row.chain_id),bot=s(row.bot_instance_id),order=s(row.order_intent_id);

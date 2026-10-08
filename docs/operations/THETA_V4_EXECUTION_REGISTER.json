@@ -11,24 +11,40 @@
   "liveMoneyAuthorized": false,
   "profitability": "EMPIRICALLY_UNPROVEN",
   "completionRule": "These are V4 phases, not the earlier similarly numbered closure registers. Executed source tests do not confer current-worker, empirical, or broker-authorized maturity.",
+  "certifiedStartingHead": "f90076db8bc5314981d2f1c4e9d1bdb3a69f9017",
+  "continuationReleaseState": "BLOCKED_WITH_EXACT_REASON",
+  "continuationReleaseBlockers": ["CURRENT_POSITION_DATABASE_LINEAGE_NOT_VERIFIED_POSTGRES_EAI_AGAIN", "ACCOUNT_WIDE_ATOMIC_CAPITAL_RESERVATION_NOT_IMPLEMENTED", "OWNER_GOVERNED_RELEASE_REVIEW_REQUIRED"],
+  "continuationValidation": {
+    "classification": "TESTED_SOURCE_ONLY",
+    "nodeSuite": { "passed": 4478, "skipped": 76, "failed": 0, "scope": "Full continuation suite before the final spread-ownership and read-completion integration review changes; those changes have additional focused tests and require exact-commit CI." },
+    "pythonSuite": { "passed": 1358, "failed": 0 },
+    "browserSuite": { "passed": 23, "failed": 0 },
+    "windowsSafetySuites": { "passed": 10, "failed": 0 },
+    "disposablePostgres": { "passed": 41, "skipped": 31, "failed": 0, "scope": "Applicable local database suites, excluding the separately named customer fixture. Dedicated CI databases cover the remaining environments." },
+    "finalOwnershipFocused": { "passed": 15, "skipped": 0, "failed": 0, "scope": "Real local PostgreSQL ownership joins plus orphan and open-close convergence tests." },
+    "finalRuntimeTruthFocused": { "passed": 17, "failed": 0 },
+    "checks": ["lint", "typecheck", "build", "security scan", "Git storage policy"],
+    "privateBrokerEvidence": "Local ignored receipt only. No private account identifiers or raw broker payloads are committed.",
+    "deploymentAuthorized": false
+  },
   "phases": [
     {
       "phase": 1,
       "state": "IN_PROGRESS",
-      "implementedThisWave": ["Six-state read-only Paper authority classifier with current worker binding", "Canonical management frontier timestamp in runtime truth", "Malformed broker/fill/count/timestamp rejection in restricted orphan recovery"],
-      "source": ["src/theta/paper-runtime-authority-truth.ts", "tools/theta-runtime-truth.ts", "src/execution/broker-orphan-position-recovery.ts"],
-      "tests": ["tests/paper-runtime-authority-truth.test.ts", "tests/runtime-system-truth.test.ts", "tests/broker-orphan-position-recovery.test.ts"],
+      "implementedThisWave": ["Six-state read-only Paper authority classifier with current worker binding", "Canonical management frontier timestamp in runtime truth", "Malformed broker/fill/count/timestamp rejection in restricted orphan recovery", "Only typed chain-local lifecycle evidence rejections may become unresolved; infrastructure and idempotency failures propagate", "Orphan snapshot and option-leg ownership are scoped to the exact execution account", "Missing order-intent lineage remains a visible refusal without adoption authority", "Future heartbeat and unavailable schema cannot certify healthy runtime"],
+      "source": ["src/theta/paper-runtime-authority-truth.ts", "tools/theta-runtime-truth.ts", "src/execution/broker-orphan-position-recovery.ts", "src/execution/postgres-broker-orphan-recovery.ts", "src/execution/postgres-broker-fill-lifecycle-orchestrator.ts", "src/theta/postgres-lifecycle-application-store.ts", "src/theta/runtime-system-truth.ts"],
+      "tests": ["tests/paper-runtime-authority-truth.test.ts", "tests/runtime-system-truth.test.ts", "tests/broker-orphan-position-recovery.test.ts", "tests/broker-orphan-recovery-runtime.test.ts", "tests/orphan-open-close-convergence.test.ts", "tests/db/orphan-account-ownership.test.ts", "tests/db/lifecycle-application.test.ts", "tests/db/defined-risk-position-lifecycle.test.ts"],
       "runtimeEvidence": "Existing worker health and authenticated Paper GETs observed. Direct local database query returned EAI_AGAIN. No new schema, lease, lineage or risk-reducing-close proof is inferred from that failure.",
       "remaining": ["Fresh database-backed schema, authorization and position-to-chain lineage proof", "Current managed position close-route evidence", "Governed release acceptance of the integrated source"]
     },
     {
       "phase": 2,
       "state": "IN_PROGRESS",
-      "implementedThisWave": ["Bounded optional Alpaca IEX minute-bar producer", "Closed-bar EMA9/VWAP with request-time finality", "1/5/15/60 minute aggregation and gap-aware warmup", "Snapshot and actual decision-receipt wiring", "Daily malformed and future-session bar boundary", "T0-T5 missing-branch and holding-window truth"],
+      "implementedThisWave": ["Bounded optional Alpaca IEX minute-bar producer", "Closed-bar EMA9/VWAP with request-time finality", "1/5/15/60 minute aggregation and gap-aware warmup", "Snapshot and actual decision-receipt wiring", "Daily malformed and future-session bar boundary", "T0-T5 missing-branch and holding-window truth", "V2 shadow warmup uses at most two prior calendar-confirmed sessions and full session-anchored buckets", "Whole missing buckets reset EMA warmup; known overnight and early-close boundaries do not fabricate candles", "Current-session VWAP remains unavailable when minute coverage is incomplete"],
       "source": ["src/theta/strategy-intelligence/intraday-structure.ts", "src/theta/strategy-intelligence/market-regime.ts", "src/theta/theta-shadow-cycle.ts", "src/theta/new-risk-orchestrator.ts", "src/theta/time-horizon-receipt.ts"],
       "tests": ["tests/intraday-structure.test.ts", "tests/strategy-intelligence-regime.test.ts", "tests/theta-shadow-cycle.test.ts", "tests/adaptive-decision-brain.test.ts"],
       "runtimeEvidence": "Mocked provider data exercised the real Python and TypeScript decision path. New intraday evidence is shadow context and has not run on the deployed worker.",
-      "remaining": ["Multi-session hourly warmup, since a single regular session cannot supply nine hourly bars", "Qualified VIX/current option-surface context and full snapshot coverage", "Strategy-specific planned holding windows and horizon utility", "Current-release natural session persistence proof"]
+      "remaining": ["Natural session proof of bounded historical warmup and its provider coverage", "Qualified VIX/current option-surface context and full snapshot coverage", "Strategy-specific planned holding windows and horizon utility", "Current-release natural session persistence proof"]
     },
     {
       "phase": 3,
@@ -46,6 +62,7 @@
       "source": ["src/theta/capital-budget-evidence.ts", "src/theta/canonical-strategy-frontier.ts", "src/execution/paper-order-coordinator.ts"],
       "tests": ["tests/canonical-strategy-frontier.test.ts"],
       "runtimeEvidence": "No new allocator certification. Existing capital evidence explicitly does not claim to be a portfolio allocator.",
+      "provenSourceGap": { "state": "BLOCKED_WITH_EXACT_REASON", "reason": "ACCOUNT_WIDE_ATOMIC_CAPITAL_RESERVATION_NOT_IMPLEMENTED", "evidence": ["PostgresMasterPaperActionPlanStore.enqueueWithDisposition uses contract-scoped entry advisory locks and same-contract in-flight deduplication, not account-wide reservations", "PostgresPaperOrderStore persists intents and execution evidence without a shared capital reservation boundary", "CapitalBudgetEvidence labels strategy capital and extra cash reserve NOT_CONFIGURED instead of inventing thresholds"], "requiredIntegration": ["Reuse canonical sizing/AEGIS capacities and current account exposure", "Reserve against one account envelope atomically with canonical plan/intent persistence", "Retain commitments through ambiguous submission and partial fills", "Use one PaperOrderCoordinator and preserve all strategy release gates", "Prove concurrent distinct-contract Q/H/D proposals, reconciliation transfer and restart idempotency in disposable PostgreSQL"], "productionAuthorityGranted": false },
       "remaining": ["Trace complete current account envelope and outstanding commitments", "Prove or implement atomic cross-strategy reservations and ambiguity release rules", "Concurrent proposal and aggregate exposure acceptance"]
     },
     {

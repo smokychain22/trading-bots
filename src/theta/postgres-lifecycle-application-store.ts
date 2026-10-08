@@ -3,6 +3,12 @@ import type { Pool, PoolClient } from 'pg';
 import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import { assertValidLifecycleTransition, type ThetaLifecycleState } from './runtime-state.js';
 
+/** A rolled-back, chain-local evidence rejection. Infrastructure and commit errors
+ * must never be converted to unresolved lifecycle facts based on message spelling. */
+export class LifecycleEvidenceError extends Error {
+  constructor(code: string) { super(code); this.name = 'LifecycleEvidenceError'; }
+}
+
 export interface StockLotDisposal { readonly stockLotId: string; readonly realizedStockPnl: number }
 
 type BaseApplication = {
@@ -100,7 +106,7 @@ function transitionPath(application: LifecycleApplication, current: ThetaLifecyc
   }
   if (application.eventKind === 'COVERED_CALL_OPEN' && current === 'RECOVERY_WAIT') return ['CC_PROPOSED', 'CC_OPEN'];
   if (application.eventKind === 'STOCK_DISPOSAL' && current === 'RECOVERY_WAIT') return ['CLOSE_STOCK', 'CLOSED'];
-  throw new Error('LIFECYCLE_EVENT_STATE_MISMATCH');
+  throw new LifecycleEvidenceError('LIFECYCLE_EVENT_STATE_MISMATCH');
 }
 
 async function applyTransition(client: PoolClient, application: LifecycleApplication,
@@ -141,7 +147,7 @@ export class PostgresLifecycleApplicationStore {
           chainId:application.chainId,eventKind:application.eventKind,transitionPath:path,finalState:path.at(-1) ?? 'WAIT' };
       }
       const chain = await client.query(`SELECT lifecycle_state FROM trade.economic_chain WHERE chain_id=$1 FOR UPDATE`, [application.chainId]);
-      if (chain.rowCount !== 1) throw new Error('ECONOMIC_CHAIN_NOT_FOUND');
+      if (chain.rowCount !== 1) throw new LifecycleEvidenceError('ECONOMIC_CHAIN_NOT_FOUND');
       let current = String(chain.rows[0].lifecycle_state) as ThetaLifecycleState;
       const path = transitionPath(application, current);
       const economic = await this.mutateEconomicState(client, application, current);
@@ -172,12 +178,12 @@ export class PostgresLifecycleApplicationStore {
   private async mutateEconomicState(client: PoolClient, application: LifecycleApplication,
     current: ThetaLifecycleState): Promise<{ readonly lotIds: readonly string[] } | void> {
     if (application.eventKind === 'SHORT_PUT_OPEN') {
-      if (application.quantity <= 0) throw new Error('SHORT_PUT_QUANTITY_INVALID');
+      if (application.quantity <= 0) throw new LifecycleEvidenceError('SHORT_PUT_QUANTITY_INVALID');
       const contract = await this.contractEconomics(client, application.optionContractId, application.chainId);
       if (contract.optionType !== 'PUT' || contract.contractUnderlyingId !== contract.chainUnderlyingId
         || !closeEnough(application.entryCreditDebit,
           application.entryPricePerShare * contract.multiplier * application.quantity)) {
-        throw new Error('SHORT_PUT_OPEN_ECONOMICS_INVALID');
+        throw new LifecycleEvidenceError('SHORT_PUT_OPEN_ECONOMICS_INVALID');
       }
       await client.query(
         `INSERT INTO trade.option_leg(option_leg_id,chain_id,option_contract_id,decision_id,side,quantity,
@@ -189,17 +195,17 @@ export class PostgresLifecycleApplicationStore {
       return;
     }
     if (application.eventKind === 'SHORT_PUT_ASSIGNMENT') {
-      if (application.providerActivityRefHash === null) throw new Error('BROKER_ASSIGNMENT_EVIDENCE_REQUIRED');
+      if (application.providerActivityRefHash === null) throw new LifecycleEvidenceError('BROKER_ASSIGNMENT_EVIDENCE_REQUIRED');
       const leg = await this.openLegEconomics(client, application.optionLegId, application.chainId);
       if (leg.side !== 'SHORT' || leg.optionType !== 'PUT' || leg.contractUnderlyingId !== leg.chainUnderlyingId) {
-        throw new Error('ASSIGNMENT_OPTION_LEG_INVALID');
+        throw new LifecycleEvidenceError('ASSIGNMENT_OPTION_LEG_INVALID');
       }
       const expectedShares = leg.remainingQuantity * leg.multiplier;
       if (application.shares <= 0 || application.strikePrice <= 0
         || !closeEnough(application.shares, expectedShares)
         || !closeEnough(application.strikePrice, leg.strike)
         || !closeEnough(application.economicBasisPerShare, leg.strike)) {
-        throw new Error('ASSIGNMENT_ECONOMIC_BASIS_INVALID');
+        throw new LifecycleEvidenceError('ASSIGNMENT_ECONOMIC_BASIS_INVALID');
       }
       this.assertOptionRealizedPnl(leg, 0, application.realizedOptionPnl);
       await this.closeLeg(client, application.optionLegId, application.chainId, application.occurredAt,
@@ -211,7 +217,7 @@ export class PostgresLifecycleApplicationStore {
         [application.stockLotId,application.chainId,application.shares,application.economicBasisPerShare,
           application.brokerBasisPerShare,application.optionLegId,application.occurredAt],
       );
-      if (stock.rowCount !== 1) throw new Error('ASSIGNMENT_STOCK_LOT_NOT_CREATED');
+      if (stock.rowCount !== 1) throw new LifecycleEvidenceError('ASSIGNMENT_STOCK_LOT_NOT_CREATED');
       await client.query(
         `INSERT INTO trade.assignment_event(option_leg_id,stock_lot_id,assigned_at,shares,strike_price)
          VALUES($1,$2,$3,$4,$5)`,
@@ -220,12 +226,12 @@ export class PostgresLifecycleApplicationStore {
       return;
     }
     if (application.eventKind === 'COVERED_CALL_ASSIGNMENT') {
-      if (application.providerActivityRefHash === null) throw new Error('BROKER_ASSIGNMENT_EVIDENCE_REQUIRED');
+      if (application.providerActivityRefHash === null) throw new LifecycleEvidenceError('BROKER_ASSIGNMENT_EVIDENCE_REQUIRED');
       const leg = await this.openLegEconomics(client, application.optionLegId, application.chainId);
       if (leg.side !== 'SHORT' || leg.optionType !== 'CALL' || leg.contractUnderlyingId !== leg.chainUnderlyingId
         || !closeEnough(application.shares, leg.remainingQuantity * leg.multiplier)
         || !closeEnough(application.strikePrice, leg.strike)) {
-        throw new Error('CALL_AWAY_OPTION_LEG_INVALID');
+        throw new LifecycleEvidenceError('CALL_AWAY_OPTION_LEG_INVALID');
       }
       this.assertOptionRealizedPnl(leg, 0, application.realizedOptionPnl);
       await this.closeLeg(client, application.optionLegId, application.chainId, application.occurredAt,
@@ -233,7 +239,7 @@ export class PostgresLifecycleApplicationStore {
       const disposed = await this.disposeStockLots(client, application.chainId, application.occurredAt, application.strikePrice,
         [{ stockLotId: application.stockLotId, realizedStockPnl: application.realizedStockPnl }, ...(application.additionalStockLots ?? [])],
         'CALL_AWAY_STOCK_ECONOMICS_INVALID');
-      if (!closeEnough(disposed.totalShares, application.shares)) throw new Error('CALL_AWAY_STOCK_ECONOMICS_INVALID');
+      if (!closeEnough(disposed.totalShares, application.shares)) throw new LifecycleEvidenceError('CALL_AWAY_STOCK_ECONOMICS_INVALID');
       for (const lot of disposed.lots) {
         await client.query(
           `INSERT INTO trade.assignment_event(option_leg_id,stock_lot_id,assigned_at,shares,strike_price)
@@ -244,10 +250,10 @@ export class PostgresLifecycleApplicationStore {
       return { lotIds: disposed.lots.map((lot) => lot.stockLotId) };
     }
     if (application.eventKind === 'OPTION_EXPIRATION') {
-      if (application.providerActivityRefHash === null) throw new Error('BROKER_EXPIRATION_EVIDENCE_REQUIRED');
+      if (application.providerActivityRefHash === null) throw new LifecycleEvidenceError('BROKER_EXPIRATION_EVIDENCE_REQUIRED');
       const leg = await this.openLegEconomics(client, application.optionLegId, application.chainId);
       if (leg.side !== 'SHORT' || leg.contractUnderlyingId !== leg.chainUnderlyingId) {
-        throw new Error('EXPIRING_OPTION_LEG_INVALID');
+        throw new LifecycleEvidenceError('EXPIRING_OPTION_LEG_INVALID');
       }
       this.assertOptionRealizedPnl(leg, 0, application.realizedOptionPnl);
       await this.closeLeg(client, application.optionLegId, application.chainId, application.occurredAt,
@@ -261,9 +267,9 @@ export class PostgresLifecycleApplicationStore {
       if (leg.side !== 'SHORT' || leg.contractUnderlyingId !== leg.chainUnderlyingId
         || (current === 'CSP_OPEN' && leg.optionType !== 'PUT')
         || (current === 'CC_OPEN' && leg.optionType !== 'CALL')) {
-        throw new Error('CLOSING_OPTION_LEG_INVALID');
+        throw new LifecycleEvidenceError('CLOSING_OPTION_LEG_INVALID');
       }
-      if (!closeEnough(application.closedQuantity, leg.remainingQuantity)) throw new Error('OPTION_CLOSE_REMAINING_QUANTITY_MISMATCH');
+      if (!closeEnough(application.closedQuantity, leg.remainingQuantity)) throw new LifecycleEvidenceError('OPTION_CLOSE_REMAINING_QUANTITY_MISMATCH');
       this.assertOptionRealizedPnl(leg, application.closePricePerShare, application.realizedOptionPnl);
       const cumulativeClosePrice=(leg.partialClosingDebit
         +application.closePricePerShare*leg.multiplier*leg.remainingQuantity)/(leg.multiplier*leg.originalQuantity);
@@ -272,11 +278,11 @@ export class PostgresLifecycleApplicationStore {
       return;
     }
     if (application.eventKind === 'OPTION_PARTIAL_CLOSE') {
-      if (!['CSP_OPEN','CC_OPEN'].includes(current)) throw new Error('PARTIAL_CLOSE_STATE_INVALID');
+      if (!['CSP_OPEN','CC_OPEN'].includes(current)) throw new LifecycleEvidenceError('PARTIAL_CLOSE_STATE_INVALID');
       const leg = await this.openLegEconomics(client, application.optionLegId, application.chainId);
       if (leg.side !== 'SHORT' || leg.contractUnderlyingId !== leg.chainUnderlyingId
         || (current === 'CSP_OPEN' && leg.optionType !== 'PUT')
-        || (current === 'CC_OPEN' && leg.optionType !== 'CALL')) throw new Error('PARTIAL_CLOSE_LEG_INVALID');
+        || (current === 'CC_OPEN' && leg.optionType !== 'CALL')) throw new LifecycleEvidenceError('PARTIAL_CLOSE_LEG_INVALID');
       const order = await client.query(`SELECT oi.status,oi.chain_id,oi.option_contract_id,
           COALESCE(sum(f.quantity),0) AS filled_quantity,
           CASE WHEN sum(f.quantity)>0 THEN sum(f.quantity*f.price_per_share)/sum(f.quantity) END AS weighted_price,
@@ -292,9 +298,9 @@ export class PostgresLifecycleApplicationStore {
         ||!closeEnough(Number(row.weighted_price),application.weightedClosePricePerShare)
         ||((row.explicit_fees==null)!==(application.explicitFees===null))
         ||(row.explicit_fees!=null&&!closeEnough(Number(row.explicit_fees),application.explicitFees as number))) {
-        throw new Error('PARTIAL_CLOSE_BROKER_EVIDENCE_MISMATCH');
+        throw new LifecycleEvidenceError('PARTIAL_CLOSE_BROKER_EVIDENCE_MISMATCH');
       }
-      if(application.closedQuantity<=0||application.closedQuantity>=leg.remainingQuantity)throw new Error('PARTIAL_CLOSE_QUANTITY_INVALID');
+      if(application.closedQuantity<=0||application.closedQuantity>=leg.remainingQuantity)throw new LifecycleEvidenceError('PARTIAL_CLOSE_QUANTITY_INVALID');
       const remaining=leg.remainingQuantity-application.closedQuantity;
       const allocated=leg.entryCreditDebit===null?null:leg.entryCreditDebit*(application.closedQuantity/leg.originalQuantity);
       const debit=application.weightedClosePricePerShare*leg.multiplier*application.closedQuantity;
@@ -303,7 +309,7 @@ export class PostgresLifecycleApplicationStore {
         ||!closeEnough(allocated-debit,application.realizedPnlBeforeFees)
         ||(application.explicitFees===null?application.realizedPnlAfterFees!==null:
           !closeEnough(allocated-debit-application.explicitFees,application.realizedPnlAfterFees as number))) {
-        throw new Error('PARTIAL_CLOSE_ECONOMICS_MISMATCH');
+        throw new LifecycleEvidenceError('PARTIAL_CLOSE_ECONOMICS_MISMATCH');
       }
       await client.query(`INSERT INTO trade.option_partial_close_realization(
           option_leg_id,order_intent_id,terminal_order_status,closed_quantity,remaining_quantity_after,
@@ -317,7 +323,7 @@ export class PostgresLifecycleApplicationStore {
       return;
     }
     if (application.eventKind === 'OPTION_ROLL') {
-      if (application.newQuantity <= 0) throw new Error('OPEN_ROLL_LEG_INVALID');
+      if (application.newQuantity <= 0) throw new LifecycleEvidenceError('OPEN_ROLL_LEG_INVALID');
       const priorClose=current==='ROLL_DECISION';
       const oldLegEconomics = await this.openLegEconomics(client, application.oldOptionLegId, application.chainId,priorClose);
       if(priorClose){
@@ -327,19 +333,19 @@ export class PostgresLifecycleApplicationStore {
         if(!old?.closed_at||old.close_reason!=='ROLLED'||old.rolled_to_option_leg_id!==null
           ||new Date(old.closed_at).getTime()>Date.parse(application.occurredAt)
           ||!closeEnough(Number(old.close_price_per_share),application.oldClosePricePerShare)
-          ||!closeEnough(Number(old.realized_pnl),application.oldRealizedPnl))throw new Error('ROLL_PRIOR_CLOSE_MISMATCH');
+          ||!closeEnough(Number(old.realized_pnl),application.oldRealizedPnl))throw new LifecycleEvidenceError('ROLL_PRIOR_CLOSE_MISMATCH');
       }
       const expectedType = application.legKind === 'SHORT_PUT' ? 'PUT' : 'CALL';
       if (oldLegEconomics.side !== 'SHORT' || oldLegEconomics.optionType !== expectedType
         || oldLegEconomics.contractUnderlyingId !== oldLegEconomics.chainUnderlyingId) {
-        throw new Error('ROLL_OLD_LEG_INVALID');
+        throw new LifecycleEvidenceError('ROLL_OLD_LEG_INVALID');
       }
       this.assertOptionRealizedPnl(oldLegEconomics, application.oldClosePricePerShare, application.oldRealizedPnl);
       const nextContract = await this.contractEconomics(client, application.newOptionContractId, application.chainId);
       if (nextContract.optionType !== expectedType || nextContract.contractUnderlyingId !== nextContract.chainUnderlyingId
         || !closeEnough(application.newEntryCreditDebit,
           application.newEntryPricePerShare * nextContract.multiplier * application.newQuantity)) {
-        throw new Error('ROLL_NEW_LEG_INVALID');
+        throw new LifecycleEvidenceError('ROLL_NEW_LEG_INVALID');
       }
       await client.query(
         `INSERT INTO trade.option_leg(option_leg_id,chain_id,option_contract_id,decision_id,side,quantity,
@@ -361,11 +367,11 @@ export class PostgresLifecycleApplicationStore {
         [application.oldOptionLegId,application.occurredAt,application.oldClosePricePerShare,
           application.oldRealizedPnl,application.newOptionLegId,application.chainId],
       );
-      if (oldLeg.rowCount !== 1) throw new Error('OPEN_ROLL_LEG_NOT_FOUND');
+      if (oldLeg.rowCount !== 1) throw new LifecycleEvidenceError('OPEN_ROLL_LEG_NOT_FOUND');
       return;
     }
     if (application.eventKind === 'COVERED_CALL_OPEN') {
-      if (application.quantity <= 0) throw new Error('COVERED_CALL_QUANTITY_INVALID');
+      if (application.quantity <= 0) throw new LifecycleEvidenceError('COVERED_CALL_QUANTITY_INVALID');
       const contract = await this.contractEconomics(client, application.optionContractId, application.chainId);
       const stockShares = await client.query(
         `SELECT COALESCE(sum(shares),0) AS shares FROM trade.stock_lot
@@ -376,7 +382,7 @@ export class PostgresLifecycleApplicationStore {
         || availableShares < application.quantity * contract.multiplier
         || !closeEnough(application.entryCreditDebit,
           application.entryPricePerShare * contract.multiplier * application.quantity)) {
-        throw new Error('COVERED_CALL_COVERAGE_INVALID');
+        throw new LifecycleEvidenceError('COVERED_CALL_COVERAGE_INVALID');
       }
       await client.query(
         `INSERT INTO trade.option_leg(option_leg_id,chain_id,option_contract_id,decision_id,side,quantity,
@@ -406,19 +412,19 @@ export class PostgresLifecycleApplicationStore {
     for (const lot of lots) {
       const economics = await this.openStockLotEconomics(client, lot.stockLotId, chainId);
       if (!closeEnough((pricePerShare - economics.economicBasisPerShare) * economics.shares, lot.realizedStockPnl)) {
-        throw new Error(invalidEconomicsError);
+        throw new LifecycleEvidenceError(invalidEconomicsError);
       }
       const updated = await client.query(
         `UPDATE trade.stock_lot SET disposed_at=$2,disposed_price_per_share=$3,realized_pnl=$4
          WHERE stock_lot_id=$1 AND chain_id=$5 AND disposed_at IS NULL AND shares=$6 RETURNING stock_lot_id`,
         [lot.stockLotId,occurredAt,pricePerShare,lot.realizedStockPnl,chainId,economics.shares],
       );
-      if (updated.rowCount !== 1) throw new Error('OPEN_STOCK_LOT_NOT_FOUND');
+      if (updated.rowCount !== 1) throw new LifecycleEvidenceError('OPEN_STOCK_LOT_NOT_FOUND');
       disposed.push({ stockLotId: lot.stockLotId, shares: economics.shares });
     }
     const remaining = await client.query(
       `SELECT count(*)::int AS open_lots FROM trade.stock_lot WHERE chain_id=$1 AND disposed_at IS NULL`, [chainId]);
-    if (Number(remaining.rows[0]?.open_lots ?? 0) !== 0) throw new Error('STOCK_DISPOSAL_LEAVES_OPEN_LOTS');
+    if (Number(remaining.rows[0]?.open_lots ?? 0) !== 0) throw new LifecycleEvidenceError('STOCK_DISPOSAL_LEAVES_OPEN_LOTS');
     return { totalShares: disposed.reduce((sum, item) => sum + item.shares, 0), lots: disposed };
   }
 
@@ -429,7 +435,7 @@ export class PostgresLifecycleApplicationStore {
        WHERE option_leg_id=$1 AND chain_id=$6 AND closed_at IS NULL RETURNING option_leg_id`,
       [optionLegId,occurredAt,closeReason,closePrice,realizedPnl,chainId],
     );
-    if (leg.rowCount !== 1) throw new Error('OPEN_OPTION_LEG_NOT_FOUND');
+    if (leg.rowCount !== 1) throw new LifecycleEvidenceError('OPEN_OPTION_LEG_NOT_FOUND');
   }
 
   private async openLegEconomics(client: PoolClient, optionLegId: string,
@@ -449,7 +455,7 @@ export class PostgresLifecycleApplicationStore {
        WHERE l.option_leg_id=$1 AND l.chain_id=$2 AND ($3 OR l.closed_at IS NULL)`,
       [optionLegId,chainId,allowClosed],
     );
-    if (result.rowCount !== 1) throw new Error('OPEN_OPTION_LEG_NOT_FOUND');
+    if (result.rowCount !== 1) throw new LifecycleEvidenceError('OPEN_OPTION_LEG_NOT_FOUND');
     const row = result.rows[0];
     const optionType = String(row.option_type);
     const originalQuantity = Number(row.quantity), partialClosed=Number(row.partial_closed_quantity),
@@ -460,10 +466,10 @@ export class PostgresLifecycleApplicationStore {
       || !Number.isFinite(remainingQuantity) || remainingQuantity <= 0 || !Number.isFinite(partialRealizedPnl)
       || !Number.isFinite(partialClosingDebit) || partialClosingDebit<0
       || !Number.isFinite(strike) || strike <= 0 || !Number.isFinite(multiplier) || multiplier <= 0) {
-      throw new Error('OPTION_LEG_ECONOMICS_INVALID');
+      throw new LifecycleEvidenceError('OPTION_LEG_ECONOMICS_INVALID');
     }
     const entryCreditDebit = row.entry_credit_debit == null ? null : Number(row.entry_credit_debit);
-    if (entryCreditDebit !== null && !Number.isFinite(entryCreditDebit)) throw new Error('OPTION_LEG_ECONOMICS_INVALID');
+    if (entryCreditDebit !== null && !Number.isFinite(entryCreditDebit)) throw new LifecycleEvidenceError('OPTION_LEG_ECONOMICS_INVALID');
     return { side:String(row.side),optionContractId:String(row.option_contract_id),originalQuantity,remainingQuantity,
       partialRealizedPnl,partialClosingDebit,entryCreditDebit,optionType:optionType as 'PUT' | 'CALL',strike,multiplier,
       contractUnderlyingId:String(row.contract_underlying_id),chainUnderlyingId:String(row.chain_underlying_id) };
@@ -479,10 +485,10 @@ export class PostgresLifecycleApplicationStore {
        FROM market.option_contract oc CROSS JOIN trade.economic_chain ec
        WHERE oc.option_contract_id=$1 AND ec.chain_id=$2`, [optionContractId,chainId],
     );
-    if (result.rowCount !== 1) throw new Error('OPTION_CONTRACT_NOT_FOUND');
+    if (result.rowCount !== 1) throw new LifecycleEvidenceError('OPTION_CONTRACT_NOT_FOUND');
     const row = result.rows[0], optionType = String(row.option_type), multiplier = Number(row.multiplier);
     if (!['PUT','CALL'].includes(optionType) || !Number.isFinite(multiplier) || multiplier <= 0) {
-      throw new Error('OPTION_CONTRACT_ECONOMICS_INVALID');
+      throw new LifecycleEvidenceError('OPTION_CONTRACT_ECONOMICS_INVALID');
     }
     return { optionType:optionType as 'PUT' | 'CALL',multiplier,
       contractUnderlyingId:String(row.contract_underlying_id),chainUnderlyingId:String(row.chain_underlying_id) };
@@ -495,10 +501,10 @@ export class PostgresLifecycleApplicationStore {
       `SELECT shares,economic_basis_per_share FROM trade.stock_lot
        WHERE stock_lot_id=$1 AND chain_id=$2 AND disposed_at IS NULL`, [stockLotId,chainId],
     );
-    if (result.rowCount !== 1) throw new Error('OPEN_STOCK_LOT_NOT_FOUND');
+    if (result.rowCount !== 1) throw new LifecycleEvidenceError('OPEN_STOCK_LOT_NOT_FOUND');
     const shares = Number(result.rows[0].shares), economicBasisPerShare = Number(result.rows[0].economic_basis_per_share);
     if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(economicBasisPerShare)) {
-      throw new Error('STOCK_LOT_ECONOMICS_INVALID');
+      throw new LifecycleEvidenceError('STOCK_LOT_ECONOMICS_INVALID');
     }
     return { shares,economicBasisPerShare };
   }
@@ -506,10 +512,10 @@ export class PostgresLifecycleApplicationStore {
   private assertOptionRealizedPnl(leg: OpenLegEconomics, closePricePerShare: number,
     suppliedRealizedPnl: number): void {
     if (leg.entryCreditDebit === null || !Number.isFinite(closePricePerShare) || closePricePerShare < 0) {
-      throw new Error('OPTION_REALIZED_PNL_INPUT_UNKNOWN');
+      throw new LifecycleEvidenceError('OPTION_REALIZED_PNL_INPUT_UNKNOWN');
     }
     const remainingOpeningCredit=leg.entryCreditDebit*(leg.remainingQuantity/leg.originalQuantity);
     const expected = leg.partialRealizedPnl+remainingOpeningCredit-closePricePerShare*leg.multiplier*leg.remainingQuantity;
-    if (!closeEnough(suppliedRealizedPnl, expected)) throw new Error('OPTION_REALIZED_PNL_MISMATCH');
+    if (!closeEnough(suppliedRealizedPnl, expected)) throw new LifecycleEvidenceError('OPTION_REALIZED_PNL_MISMATCH');
   }
 }

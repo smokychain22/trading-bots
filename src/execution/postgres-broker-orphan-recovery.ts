@@ -11,11 +11,13 @@ import type { ApprovedMasterPaperActionPlan } from './master-paper-action-handof
 import type { ManagementChainInFlightState, ManagementDecisionDraft } from './management-paper-plan-assembly.js';
 
 type Row = Record<string, unknown>;
-const num = (value: unknown): number | null => value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
+const num = (value: unknown): number | null =>
+  (typeof value !== 'number' && typeof value !== 'string') || (typeof value === 'string' && value.trim() === '')
+    || !Number.isFinite(Number(value)) ? null : Number(value);
 const text = (value: unknown): string | null => value === null || value === undefined ? null : String(value);
 const iso = (value: unknown): string => value instanceof Date ? value.toISOString() : String(value);
 
-/** One broker-confirmed short option position that no open option leg owns, with every THETA lineage on that exact contract. */
+/** One broker-confirmed option position without a canonical lifecycle owner, with every recoverable THETA lineage on that exact contract. */
 export interface OrphanCandidate {
   readonly position: BrokerConfirmedOptionPosition;
   readonly lineages: readonly OrphanThetaLineage[];
@@ -25,8 +27,8 @@ export interface OrphanCandidate {
 }
 
 /**
- * READ-ONLY. Unowned short option positions in a reconciliation snapshot, joined to the THETA OPEN_CSP lineage of the same contract
- * in this execution account. A position held by an open option leg of an open chain is owned and never returned.
+ * READ-ONLY. Unowned option positions in a reconciliation snapshot, joined to the THETA OPEN_CSP lineage of the same contract
+ * in this execution account. A position held by a Wheel leg or a registered native spread in this account is already owned.
  */
 export async function loadBrokerConfirmedOrphanCandidates(pool: Pick<Pool, 'query'>, input: {
   readonly reconciliationSnapshotId: string; readonly executionAccountId: string;
@@ -34,22 +36,34 @@ export async function loadBrokerConfirmedOrphanCandidates(pool: Pick<Pool, 'quer
   const positions = await pool.query(`SELECT bp.symbol,bp.quantity,bp.side,bp.average_entry_price,bp.observed_at,brs.data_quality
     FROM trade.broker_position_snapshot bp
     JOIN trade.broker_reconciliation_snapshot brs ON brs.reconciliation_snapshot_id=bp.reconciliation_snapshot_id
-    WHERE bp.reconciliation_snapshot_id=$1 AND bp.asset_class='us_option'
+    JOIN copy.follower_account fa ON fa.follower_account_id=brs.connection_id AND fa.follower_account_id=bp.connection_id
+    JOIN trade.execution_account ea ON ea.provider_account_ref_hash=encode(digest(fa.provider_account_ref,'sha256'),'hex')
+    WHERE bp.reconciliation_snapshot_id=$1 AND ea.execution_account_id=$2 AND bp.asset_class='us_option'
       AND NOT EXISTS(SELECT 1 FROM trade.option_leg l JOIN market.option_contract oc ON oc.option_contract_id=l.option_contract_id
         JOIN trade.economic_chain ec ON ec.chain_id=l.chain_id
-        WHERE oc.contract_symbol=bp.symbol AND l.closed_at IS NULL AND ec.closed_at IS NULL)
-    ORDER BY bp.symbol`, [input.reconciliationSnapshotId]);
+        WHERE oc.contract_symbol=bp.symbol AND l.closed_at IS NULL AND ec.closed_at IS NULL
+          AND EXISTS(SELECT 1 FROM trade.order_intent owner_intent WHERE owner_intent.chain_id=ec.chain_id
+            AND owner_intent.option_contract_id=l.option_contract_id AND owner_intent.execution_account_id=ea.execution_account_id))
+      AND NOT EXISTS(SELECT 1 FROM trade.defined_risk_position dp
+        JOIN trade.order_intent di ON di.order_intent_id=dp.order_intent_id AND di.chain_id=dp.chain_id
+        JOIN trade.economic_chain dc ON dc.chain_id=dp.chain_id
+        JOIN trade.order_intent_leg dl ON dl.order_intent_id=di.order_intent_id
+        WHERE di.execution_account_id=ea.execution_account_id AND dl.occ_symbol=bp.symbol
+          AND di.theta_action='OPEN_DEFINED_RISK' AND di.order_class='mleg'
+          AND dc.chain_kind='DEFINED_RISK' AND dc.closed_at IS NULL AND dp.closed_at IS NULL)
+    ORDER BY bp.symbol`, [input.reconciliationSnapshotId, input.executionAccountId]);
   const candidates: OrphanCandidate[] = [];
   for (const raw of positions.rows as Row[]) {
     const quantity = num(raw.quantity);
     const side = String(raw.side ?? '').toLowerCase();
-    const signedQuantity = quantity === null ? Number.NaN : side === 'short' ? -Math.abs(quantity) : quantity;
+    const signedQuantity = quantity === null || !['short','long'].includes(side) ? Number.NaN : side === 'short' ? -Math.abs(quantity) : quantity;
     const average = num(raw.average_entry_price);
     const quality = String(raw.data_quality);
     const position: BrokerConfirmedOptionPosition = { symbol: String(raw.symbol), signedQuantity,
-      averageEntryPricePerShare: average === null ? Number.NaN : Math.abs(average), observedAt: iso(raw.observed_at),
+      averageEntryPricePerShare: average === null ? Number.NaN : average, observedAt: iso(raw.observed_at),
       reconciliationQuality: quality === 'GOOD' ? 'GOOD' : quality === 'DEGRADED' ? 'DEGRADED' : 'UNKNOWN' };
-    if (!(signedQuantity < 0)) continue; // THETA only opens short options on this path; a long option is never a CSP orphan.
+    // Owned spread legs were excluded by exact account/contract lineage above.
+    // An unexplained long is a visible refusal, never presumed to be a hedge.
     const lineageRows = await pool.query(`SELECT oi.order_intent_id,oi.client_order_id,oi.chain_id,oi.decision_id,oi.status::text AS status,
         oi.theta_action,oi.side,oi.position_intent,oi.quantity,oi.option_contract_id,oi.underlying_id,oc.contract_symbol,oc.multiplier,
         ec.chain_kind,ec.lifecycle_state::text AS chain_state,ec.closed_at IS NOT NULL AS chain_closed,ec.bot_instance_id,u.symbol AS underlying,
@@ -192,8 +206,8 @@ export async function runBrokerOrphanRecovery(deps: OrphanRecoveryDependencies):
   const items: OrphanRecoveryItem[] = [];
   let published = 0;
   for (const candidate of await deps.loadCandidates()) {
-    // An option position with no THETA lineage at all is an external/unknown reconciliation fact owned by broker reconciliation.
-    if (candidate.lineages.length === 0) continue;
+    // Unexplained exposure is not adopted, but it must remain visible as a
+    // refusal in management as well as broker reconciliation.
     const classified = classifyBrokerConfirmedOrphan(candidate.position, candidate.lineages);
     if (classified.state === 'RECONCILING') {
       items.push({ symbol: candidate.position.symbol, state: 'RECONCILING', reasons: [classified.reason, ...classified.missing], chainId: null });

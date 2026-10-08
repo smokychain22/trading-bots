@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { classifyPaperRuntimeAuthority } from '../src/theta/paper-runtime-authority-truth.js';
 import { deriveDatabaseRuntimeMismatches, deriveRuntimeMismatches, maximumWorkerHeartbeatAgeMs,
@@ -62,6 +63,20 @@ test('missing runtime observations never look healthy', () => {
     workerHeartbeat: null, activeWorkerLeases: null, requiredMigrationPresent: null }), [
     'RUNTIME_EVIDENCE_UNAVAILABLE',
   ]);
+});
+
+test('future heartbeat and absent schema head never certify a healthy runtime', () => {
+  assert.deepEqual(deriveRuntimeMismatches({ ...healthy, workerHeartbeat: '2027-01-01T00:00:00Z' }), ['WORKER_STALE']);
+  assert.deepEqual(deriveRuntimeMismatches({ ...healthy, migrationHead: null }), ['RUNTIME_EVIDENCE_UNAVAILABLE']);
+});
+
+test('heartbeat sampled after observation start is evaluated against read completion by both runtime classifiers', () => {
+  const observationCompletedAt = '2026-09-23T13:30:25.000Z';
+  assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
+    workerHeartbeat: '2026-09-23T13:30:23.000Z', observedAt: observationCompletedAt }), []);
+  const cli = readFileSync(new URL('../tools/theta-runtime-truth.ts', import.meta.url), 'utf8');
+  assert.match(cli, /classifyPaperRuntimeAuthority\(\{ now: observationCompletedAt/);
+  assert.match(cli, /migrationHead, requiredMigrationPresent, observedAt: observationCompletedAt/);
 });
 
 test('unreleased local source changes do not inherit worker proof', () => {
