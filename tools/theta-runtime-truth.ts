@@ -9,6 +9,8 @@ import { assessRuntimeSchemaCompatibility } from '../src/theta/runtime-schema-co
 import { classifyPaperRuntimeAuthority, readPaperRuntimeAuthorityEvidence,
   type PaperRuntimeAuthorityEvidence } from '../src/theta/paper-runtime-authority-truth.js';
 import { maximumWorkerHeartbeatAgeMs } from '../src/theta/runtime-system-truth.js';
+import { MasterEncryptedStoreBrokerCredentialProvider } from '../src/customer/broker-credential-provider.js';
+import { readOnlyMasterCredentialStoreFromPool } from '../src/customer/customer-store.js';
 
 const observedAt = new Date().toISOString();
 const sourceGitOptions = { encoding: 'utf8' as const, maxBuffer: 1024 * 1024,
@@ -18,8 +20,9 @@ const sourceDirty = execFileSync('git', ['status', '--porcelain'], sourceGitOpti
 const environmentFile = resolveRuntimeTruthEnvironmentFile(process.argv);
 const environment = loadEnvironmentFile(environmentFile);
 const brokerHost = environment.ALPACA_BASE_URL ? new URL(environment.ALPACA_BASE_URL).hostname : null;
-const paperBrokerConfigured = brokerHost === 'paper-api.alpaca.markets'
-  && Boolean(environment.ALPACA_API_KEY && environment.ALPACA_SECRET_KEY);
+const paperBrokerConfigured = brokerHost === 'paper-api.alpaca.markets';
+let masterCredential: Awaited<ReturnType<MasterEncryptedStoreBrokerCredentialProvider['getAuthentication']>> = null;
+let brokerCredentialState = 'NOT_OBSERVED';
 const broker = {
   host: brokerHost, auth: 'NOT_PROBED' as string, accountHttpStatus: null as number | null,
   clockHttpStatus: null as number | null, positionsHttpStatus: null as number | null,
@@ -28,12 +31,12 @@ const broker = {
 };
 
 async function brokerGet(path: string): Promise<{ status: number | null; body: unknown }> {
-  if (!paperBrokerConfigured) return { status: null, body: null };
+  if (!paperBrokerConfigured || masterCredential === null) return { status: null, body: null };
   try {
     const response = await fetch(`https://paper-api.alpaca.markets${path}`, {
       method: 'GET', headers: {
-        'APCA-API-KEY-ID': environment.ALPACA_API_KEY!,
-        'APCA-API-SECRET-KEY': environment.ALPACA_SECRET_KEY!,
+        'APCA-API-KEY-ID': masterCredential.authentication.apiKey,
+        'APCA-API-SECRET-KEY': masterCredential.authentication.apiSecret,
       }, signal: AbortSignal.timeout(7_000),
     });
     return { status: response.status, body: response.ok ? await response.json() : null };
@@ -98,6 +101,15 @@ if (pool) {
     requiredMigrationPresent = state.rows[0]?.schema_067 === true;
     appliedMigrationVersions = Array.isArray(state.rows[0]?.applied_versions)
       ? state.rows[0].applied_versions.map(String) : null;
+    // The worker authenticates through the stored master, not ambient dotenv
+    // broker keys. Keep a failed diagnostic read unknown, with no fallback.
+    try {
+      masterCredential = await new MasterEncryptedStoreBrokerCredentialProvider(
+        readOnlyMasterCredentialStoreFromPool(pool), environment).getAuthentication();
+      brokerCredentialState = masterCredential === null ? 'STORED_MASTER_ABSENT' : 'STORED_MASTER_READ';
+    } catch {
+      brokerCredentialState = 'STORED_MASTER_UNAVAILABLE';
+    }
     databaseEvidenceStage = 'ACTIVE_WORKER_LEASES';
     const leases = await pool.query(`SELECT count(*)::int AS active_count FROM ops.runtime_worker_lease WHERE expires_at>now()`);
     activeWorkerLeases = Number(leases.rows[0]?.active_count ?? 0);
@@ -273,10 +285,13 @@ if (paperBrokerConfigured) {
   broker.accountHttpStatus = account.status; broker.clockHttpStatus = clock.status;
   broker.positionsHttpStatus = positions.status; broker.ordersHttpStatus = orders.status;
   broker.calendarHttpStatus = calendar.status;
-  broker.auth = account.status === 200 ? 'PASS' : account.status === 401 ? 'UNAUTHORIZED'
+  const accountBody = account.body as {id?:unknown} | null;
+  const accountMatches = masterCredential !== null && accountBody?.id === masterCredential.providerAccountRef;
+  broker.auth = account.status === 200 ? accountMatches ? 'PASS' : 'ACCOUNT_IDENTITY_MISMATCH'
+    : account.status === 401 ? 'UNAUTHORIZED'
     : account.status === null ? 'UNAVAILABLE' : 'OTHER_HTTP_STATUS';
-  broker.positions = Array.isArray(positions.body) ? positions.body.length : null;
-  broker.openOrders = Array.isArray(orders.body) ? orders.body.length : null;
+  broker.positions = accountMatches && Array.isArray(positions.body) ? positions.body.length : null;
+  broker.openOrders = accountMatches && Array.isArray(orders.body) ? orders.body.length : null;
 }
 
 // A heartbeat can advance during these bounded reads. Compare both classifiers
@@ -309,7 +324,9 @@ const receipt = {
   databaseSchemaCompatibility,
   databaseReadOnlyState, databaseReachable, databaseEvidenceComplete,
   databaseEvidenceError,
-  alpacaAuth: broker.auth, optionomicsAuth: 'NOT_PROBED_IN_THIS_RECEIPT',
+  alpacaAuth: broker.auth, brokerCredentialState,
+  brokerCredentialSource: 'CANONICAL_ENCRYPTED_MASTER_STORE_READ_ONLY_NO_ENV_KEY_FALLBACK',
+  optionomicsAuth: 'NOT_PROBED_IN_THIS_RECEIPT',
   workerProviderHealth, broker,
   latestReconciliationState: latestReconciliation, latestEvidenceCycle, latestCandidateCycle,
   latestAegisCycle,

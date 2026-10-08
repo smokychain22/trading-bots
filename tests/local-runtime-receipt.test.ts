@@ -51,6 +51,32 @@ test('local runtime receipt uses a strict sanitized schema', () => {
   assert.equal(sanitized.scopes.BROKER.masterPaperOrdersSubmitted, 0);
 });
 
+test('local mirrors preserve typed job failure reasons without raw errors or identifiers',()=>{
+  for(const code of ['POSTGRES_EAI_AGAIN','DETERMINISTIC_INPUT_INCOMPLETE','EXECUTION_MARKET_NOT_QUALIFIED']) {
+    const input=receipt('2026-09-17T20:16:07.000Z');
+    input.scopes.MANAGEMENT.jobResults[0].errorCode=code;
+    const result=sanitizeLocalRuntimeReceipt(input);
+    assert.equal(result.scopes.MANAGEMENT.jobResults[0].errorCode,code);
+    assert.doesNotMatch(JSON.stringify(result),/must-not-survive/);
+  }
+  for(const code of ['secret-key-value','https://private.example/key','Bearer secret', 'A'.repeat(97)]) {
+    const input=receipt('2026-09-17T20:16:07.000Z');input.scopes.MANAGEMENT.jobResults[0].errorCode=code;
+    assert.equal(sanitizeLocalRuntimeReceipt(input).scopes.MANAGEMENT.jobResults[0].errorCode,null);
+  }
+});
+
+test('absent and malformed submission observations stay unknown, while known zero stays zero',()=>{
+  for(const value of [undefined,null,-1,0.5,'0',NaN,Infinity]) {
+    const input=receipt('2026-09-17T20:16:07.000Z');
+    Object.assign(input.scopes.BROKER,{masterPaperOrdersSubmitted:value,followerPaperOrdersSubmitted:value,liveOrdersSubmitted:value});
+    const result=sanitizeLocalRuntimeReceipt(input).scopes.BROKER;
+    assert.equal(result.masterPaperOrdersSubmitted,null);
+    assert.equal(result.followerPaperOrdersSubmitted,null);
+    assert.equal(result.liveOrdersSubmitted,null);
+  }
+  assert.equal(sanitizeLocalRuntimeReceipt(receipt('2026-09-17T20:16:07.000Z')).scopes.BROKER.masterPaperOrdersSubmitted,0);
+});
+
 test('local runtime receipts are append-only and hash chained', async () => {
   const root = await mkdtemp(join(tmpdir(), 'theta-local-receipts-'));
   try {

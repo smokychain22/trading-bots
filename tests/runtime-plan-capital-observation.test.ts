@@ -11,7 +11,7 @@ import { CapitalPlanAdmissionError } from '../src/execution/plan-capital-binding
 
 const at='2026-10-08T13:30:00.000Z',symbol='XLE261120P00057000';
 const accountHash=createHash('sha256').update('synthetic-account').digest('hex');
-const reconciliation={snapshotId:randomUUID(),dataQuality:'GOOD',localOnlyIntentCount:0,
+const reconciliation={snapshotId:randomUUID(),dataQuality:'GOOD',localOnlyIntentCount:0,capitalReconciliationBlockedCount:0,
   brokerFactImpactSummary:{currentEconomicExposureCount:1,currentReconciliationDefectCount:0,unknownCurrentImpactCount:0}} as BrokerReconciliationResult;
 const plan={executionAccountId:randomUUID(),underlying:'XLE',symbol} as ApprovedMasterPaperActionPlan;
 
@@ -89,6 +89,17 @@ test('current reconciliation defects and infrastructure failures are refusals or
   assert.equal(f.paths.length,0,'a persisted capital incident cannot appear as cleared capacity');
   const failure=Object.assign(Error('synthetic'),{code:'EAI_AGAIN'});
   await assert.rejects(produceRuntimePlanCapitalObservation({...f.input,pool:{query:async()=>{throw failure;}} as unknown as Pool}),e=>e===failure);
+});
+
+test('missing or malformed capital reconciliation never clears schema 071 admission',async()=>{
+  for(const count of [undefined,null,'0',-1,NaN,Infinity,0.5]) {
+    const f=fixture();
+    const result=await produceRuntimePlanCapitalObservation({...f.input,reconciliation:{
+      ...reconciliation,capitalReconciliationBlockedCount:count,
+    } as unknown as BrokerReconciliationResult});
+    assert.deepEqual(result,{state:'BLOCKED',reasons:['CAPITAL_RECONCILIATION_UNQUALIFIED']});
+    assert.equal(f.paths.length,0,'unknown reconciliation must stop before provider reads or plan persistence');
+  }
 });
 
 test('read window aging refuses the envelope and known zero remains explicit evidence',async()=>{

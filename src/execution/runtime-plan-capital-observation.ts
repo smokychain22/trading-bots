@@ -26,7 +26,7 @@ export async function produceRuntimePlanCapitalObservation(input: {
   const blocked=(...reasons:string[]):RuntimePlanCapitalResult=>({state:'BLOCKED',reasons});
   const r=input.reconciliation;
   if(r.dataQuality!=='GOOD'||r.localOnlyIntentCount!==0
-    ||(r.capitalReconciliationBlockedCount ?? 0)!==0
+    ||r.capitalReconciliationBlockedCount!==0
     ||r.brokerFactImpactSummary.currentReconciliationDefectCount!==0
     ||r.brokerFactImpactSummary.unknownCurrentImpactCount!==0) return blocked('CAPITAL_RECONCILIATION_UNQUALIFIED');
   const identity=await input.pool.query(`SELECT ea.provider_account_ref_hash AS account_hash

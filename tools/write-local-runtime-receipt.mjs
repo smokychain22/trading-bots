@@ -21,6 +21,7 @@ const hash = (value) => createHash('sha256').update(canonicalJson(value)).digest
 const finiteInteger = (value) => Number.isInteger(value) && value >= 0 ? value : null;
 const boundedString = (value, maximum = 160) => typeof value === 'string' && value.length <= maximum ? value : null;
 const nullableBoolean = (value) => typeof value === 'boolean' ? value : null;
+const reasonCode = (value) => typeof value === 'string' && /^[A-Z][A-Z0-9_]{2,95}$/.test(value) ? value : null;
 
 function sanitizeReconciliation(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -45,6 +46,7 @@ function sanitizeScope(value) {
     jobType: boundedString(job?.jobType, 64),
     outcome: boundedString(job?.outcome, 64),
     status: boundedString(job?.status, 32),
+    errorCode: reasonCode(job?.errorCode),
   })) : [];
   return {
     correlationId: boundedString(value.correlationId, 160),
@@ -54,9 +56,9 @@ function sanitizeScope(value) {
     jobsCompleted: finiteInteger(value.jobsCompleted),
     jobResults: jobs,
     reconciliation: sanitizeReconciliation(value.reconciliation),
-    masterPaperOrdersSubmitted: finiteInteger(value.masterPaperOrdersSubmitted) ?? 0,
-    followerPaperOrdersSubmitted: finiteInteger(value.followerPaperOrdersSubmitted) ?? 0,
-    liveOrdersSubmitted: finiteInteger(value.liveOrdersSubmitted) ?? 0,
+    masterPaperOrdersSubmitted: finiteInteger(value.masterPaperOrdersSubmitted),
+    followerPaperOrdersSubmitted: finiteInteger(value.followerPaperOrdersSubmitted),
+    liveOrdersSubmitted: finiteInteger(value.liveOrdersSubmitted),
   };
 }
 

@@ -346,15 +346,18 @@ export class PostgresCustomerStore implements CustomerStore {
       : null;
   }
 
-  async getMasterCredential(): Promise<StoredMasterCredential | null> {
-    const result = await this.pool.query(
-      `UPDATE copy.alpaca_oauth_token t SET last_used_at=now()
-       FROM copy.follower_account f
+  async getMasterCredential(readOnly = false): Promise<StoredMasterCredential | null> {
+    const selection = `SELECT t.token_secret_id,t.customer_id,t.key_ref,t.ciphertext,t.iv,t.auth_tag,
+         f.connection_method,f.provider_account_ref
+       FROM copy.alpaca_oauth_token t JOIN copy.follower_account f ON t.token_secret_id=f.token_secret_id
        WHERE f.account_role='MASTER_THETA_PAPER' AND f.environment='PAPER'
          AND f.connection_method='PAPER_API_KEY_PRIVATE_BETA'
          AND f.connection_status='CONNECTED' AND f.account_ready=true
-         AND f.disconnected_at IS NULL AND t.token_secret_id=f.token_secret_id
-         AND t.customer_id=f.customer_id AND t.revoked_at IS NULL
+         AND f.disconnected_at IS NULL AND t.customer_id=f.customer_id AND t.revoked_at IS NULL`;
+    const result = await this.pool.query(
+      readOnly ? selection : `WITH eligible AS (${selection})
+       UPDATE copy.alpaca_oauth_token t SET last_used_at=now()
+       FROM eligible f WHERE t.token_secret_id=f.token_secret_id
        RETURNING t.customer_id,t.key_ref,t.ciphertext,t.iv,t.auth_tag,
          f.connection_method,f.provider_account_ref`,
     );
@@ -524,4 +527,11 @@ export function customerStore(databaseUrl: string | undefined): CustomerStore & 
  * second credential-store pool inside the same decision process. */
 export function customerStoreFromPool(pool:Pool):CustomerStore&MasterCredentialStore{
   return new PostgresCustomerStore(pool);
+}
+
+/** Diagnostics use the same master identity and encrypted provider contract,
+ * without updating credential usage or exposing any mutation method. */
+export function readOnlyMasterCredentialStoreFromPool(pool:Pool):MasterCredentialStore {
+  const store=new PostgresCustomerStore(pool);
+  return {getMasterCredential:()=>store.getMasterCredential(true)};
 }
