@@ -85,8 +85,9 @@
       {
         "file": "tests/management-action-frontier.test.ts",
         "names": [
-          "stale broker state blocks quote-dependent actions but keeps passive management available",
-          "expiration actions require exact moneyness rather than DTE alone"
+        "stale broker state blocks quote-dependent actions but keeps passive management available",
+        "a stale close quote cannot turn passive HOLD into a qualified economic selection",
+        "expiration actions require exact moneyness rather than DTE alone"
         ]
       },
       {

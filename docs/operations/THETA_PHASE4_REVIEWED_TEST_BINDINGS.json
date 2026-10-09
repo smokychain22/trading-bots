@@ -104,8 +104,13 @@
       "CSP management enumerates the full required action surface",
       "assigned stock compares recovery wait, stock sale, and covered call without forcing a CC",
       "covered call management exposes hold, close, roll, and call-away",
-      "complete same-snapshot economics can select a risk-reducing CSP close",
-      "incomplete or stale policy evidence cannot displace passive management"
+        "complete same-snapshot economics can select a risk-reducing CSP close",
+        "a stale close quote cannot turn passive HOLD into a qualified economic selection",
+        "a missing option ask cannot turn passive HOLD into a qualified economic selection",
+        "future-dated close evidence cannot turn passive HOLD into a qualified economic selection",
+        "a covered-call HOLD cannot claim a complete comparison with an unqualified close",
+        "a fully quoted policy may still select HOLD after a qualified comparison",
+        "incomplete or stale policy evidence cannot displace passive management"
     ]}]
   },
   {
