@@ -49,7 +49,7 @@ export interface BuildDefinedRiskPaperCommandInput {
   readonly maximumQuoteAgeSeconds: number;
   readonly attempt: number;
   /** where the leg quotes came from. Alpaca Paper option quotes are the INDICATIVE feed: labelling them OPRA / consolidated NBBO would falsify evidence. */
-  readonly quoteProvenance?: { readonly feed: 'OPRA' | 'INDICATIVE' };
+  readonly quoteProvenance: { readonly feed: 'OPRA' | 'INDICATIVE' };
   readonly legContractEvidence: readonly [{
     readonly optionContractId:string; readonly providerContractId:string; readonly deliverableIdentity:string;
   },{
@@ -80,6 +80,9 @@ const deterministicUuid = (value: string): string => {
  */
 export function buildDefinedRiskPaperCommand(input: BuildDefinedRiskPaperCommandInput): DefinedRiskPaperCommand {
   const { plan, authorization } = input;
+  if (input.quoteProvenance?.feed !== 'OPRA' && input.quoteProvenance?.feed !== 'INDICATIVE') {
+    throw new Error('DEFINED_RISK_QUOTE_PROVENANCE_UNKNOWN');
+  }
   try {
     assertStrategyPaperOrderAllowed(authorization, 'THETA_DEFINED_RISK');
   } catch {
@@ -144,8 +147,8 @@ export function buildDefinedRiskPaperCommand(input: BuildDefinedRiskPaperCommand
       ratioQuantity:1,expiration:leg.expiration,strike:leg.strike,multiplier:leg.multiplier,
       deliverableIdentity:input.legContractEvidence[index]?.deliverableIdentity??'',
     }))},
-    executionEvidence: { quoteSource: 'ALPACA', quoteFeed: input.quoteProvenance?.feed ?? 'OPRA',
-      quoteSemantics: input.quoteProvenance?.feed === 'INDICATIVE' ? 'PAPER_INDICATIVE_REFERENCE' : 'CONSOLIDATED_NBBO',
+    executionEvidence: { quoteSource: 'ALPACA', quoteFeed: input.quoteProvenance.feed,
+      quoteSemantics: input.quoteProvenance.feed === 'INDICATIVE' ? 'PAPER_INDICATIVE_REFERENCE' : 'CONSOLIDATED_NBBO',
       quoteAsOf: new Date(Math.max(...plan.legs.map((leg) => Date.parse(leg.quoteTimestamp)))).toISOString(),
       decisionExpiresAt: input.decisionExpiresAt, quoteContentHash: hash(plan.legs), aegisState: plan.aegisReceipt.state === 'ALLOW_REDUCED'
         ? 'ALLOW_REDUCED' : 'ALLOW_FULL' },

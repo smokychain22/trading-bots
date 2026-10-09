@@ -10,6 +10,7 @@ export interface DefinedRiskScanInputs {
   readonly brokerOpenContracts: { readonly short: number | null; readonly long: number | null };
   readonly shortQuote: DefinedRiskLegQuoteEvidence | null;
   readonly longQuote: DefinedRiskLegQuoteEvidence | null;
+  readonly quoteFeed: 'OPRA' | 'INDICATIVE' | null;
   readonly spot: number | null;
   readonly dte: number | null;
   readonly marketOpen: boolean | null;
@@ -50,7 +51,7 @@ export interface DefinedRiskScanResult {
   readonly blocksNewRisk: boolean;
 }
 
-const unknownInputs = (executionAccountId: string): DefinedRiskScanInputs => ({ brokerOpenContracts: { short: null, long: null }, shortQuote: null, longQuote: null, spot: null, dte: null,
+const unknownInputs = (executionAccountId: string): DefinedRiskScanInputs => ({ brokerOpenContracts: { short: null, long: null }, shortQuote: null, longQuote: null, quoteFeed: null, spot: null, dte: null,
   marketOpen: null, context: { eventState: 'UNKNOWN', aegisState: null, executionQuality: 'UNKNOWN' }, aegisState: null, executionAccountId });
 
 /**
@@ -74,22 +75,26 @@ export async function runDefinedRiskManagementScan(deps: DefinedRiskManagementRu
     if (shortLeg === undefined || longLeg === undefined) throw new Error('DEFINED_RISK_OPEN_PARENT_LEGS_INVALID');
     const decision = assessDefinedRiskManagement({ orderIntentId: position.orderIntentId, chainId: position.chainId, state: refreshed.state, exposure: refreshed.exposure,
       shortSymbol: shortLeg.occSymbol, longSymbol: longLeg.occSymbol, shortStrike: position.shortStrike, longStrike: position.longStrike, observedAt,
-      brokerOpenContracts: inputs.brokerOpenContracts, shortQuote: inputs.shortQuote, longQuote: inputs.longQuote, spot: inputs.spot, dte: inputs.dte, marketOpen: inputs.marketOpen,
+      brokerOpenContracts: inputs.brokerOpenContracts, shortQuote: inputs.shortQuote, longQuote: inputs.longQuote, quoteFeed: inputs.quoteFeed,
+      spot: inputs.spot, dte: inputs.dte, marketOpen: inputs.marketOpen,
       closeOrderWorking: refreshed.closeOrderWorking, context: inputs.context, pinBandPct: deps.pinBandPct, maximumQuoteAgeSeconds: deps.maximumQuoteAgeSeconds });
     // D proposes; the ONE management frontier selects; only its selection is executed
     const frontier = buildDefinedRiskManagementActionFrontier(definedRiskManagementProposal(decision, refreshed));
     const closeSelected = frontier.selectedAction === 'CLOSE_FULL';
-    const closeBlocked = closeSelected && !deps.mayClose;
-    const reasons = [...decision.reasons, ...(inputError ? ['MANAGEMENT_INPUTS_UNAVAILABLE'] : []), ...(closeBlocked ? ['CLOSE_SUBMISSION_NOT_AUTHORIZED_NOW'] : [])];
+    const closeBlocked = decision.closeRequired && (!deps.mayClose || inputs.quoteFeed === null);
+    const reasons = [...decision.reasons, ...(inputError ? ['MANAGEMENT_INPUTS_UNAVAILABLE'] : []),
+      ...(closeSelected && !deps.mayClose ? ['CLOSE_SUBMISSION_NOT_AUTHORIZED_NOW'] : [])];
     const decisionId = await deps.recordDecision(decision, position, frontier);
     let closeIntentId: string | null = null;
-    if (closeSelected && deps.mayClose && inputs.shortQuote?.bid != null && inputs.longQuote?.bid != null) {
+    if (closeSelected && deps.mayClose && inputs.quoteFeed !== null
+      && inputs.shortQuote?.bid != null && inputs.longQuote?.bid != null) {
       const attempt = await deps.nextCloseAttempt(position.orderIntentId);
       const expires = new Date(Date.parse(observedAt) + deps.decisionWindowSeconds * 1000).toISOString();
       const command = buildDefinedRiskCloseCommand({ openIntentId: position.orderIntentId, openEvidence: openIntent.multiLegEvidence, chainId: position.chainId, underlyingId: position.underlyingId,
         executionAccountId: inputs.executionAccountId, decisionId, decision, shortQuote: { symbol: shortLeg.occSymbol, bid: inputs.shortQuote.bid, ask: inputs.shortQuote.ask as number, observedAt: inputs.shortQuote.observedAt as string },
         longQuote: { symbol: longLeg.occSymbol, bid: inputs.longQuote.bid, ask: inputs.longQuote.ask as number, observedAt: inputs.longQuote.observedAt as string },
-        now: observedAt, decisionExpiresAt: expires, maximumQuoteAgeSeconds: deps.maximumQuoteAgeSeconds, attempt, aegisState: inputs.aegisState });
+        quoteFeed: inputs.quoteFeed, now: observedAt, decisionExpiresAt: expires,
+        maximumQuoteAgeSeconds: deps.maximumQuoteAgeSeconds, attempt, aegisState: inputs.aegisState });
       const { gate, ...intent } = command;
       const existing = await deps.orders.getIntent(intent.orderIntentId);
       const prepared = existing ?? await deps.coordinator.prepare(intent);

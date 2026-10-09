@@ -71,7 +71,8 @@ export async function runDefinedRiskManagementForRuntime(input: DefinedRiskRunti
     const stock = await fetchLatestStockQuote(input.alpaca, row.underlying, 'iex').catch(() => null);
     const spot = stock !== null && stock.bid !== null && stock.ask !== null && stock.bid > 0 && stock.ask >= stock.bid ? (stock.bid + stock.ask) / 2 : null;
     const executableQuotes = shortQuote?.bid != null && shortQuote.ask != null && longQuote?.bid != null && longQuote.ask != null;
-    return { brokerOpenContracts, shortQuote, longQuote, spot, dte: calendarDays(easternDate(observedAt), position.expiration), marketOpen: input.reconciliation.marketOpen,
+    return { brokerOpenContracts, shortQuote, longQuote, quoteFeed: snapshots.complete ? 'INDICATIVE' : null,
+      spot, dte: calendarDays(easternDate(observedAt), position.expiration), marketOpen: input.reconciliation.marketOpen,
       // event / AEGIS-deterioration feeds are not wired for open spreads yet: they stay UNKNOWN (never CLEAR / ALLOW by default)
       context: { eventState: 'UNKNOWN', aegisState: null, executionQuality: executableQuotes ? 'GOOD' : 'UNKNOWN' }, aegisState: null, executionAccountId: input.executionAccountId };
   };

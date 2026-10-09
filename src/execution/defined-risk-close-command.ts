@@ -21,6 +21,7 @@ export interface BuildDefinedRiskCloseCommandInput {
   readonly decision: DefinedRiskManagementDecision;
   readonly shortQuote: DefinedRiskCloseQuote;
   readonly longQuote: DefinedRiskCloseQuote;
+  readonly quoteFeed: 'OPRA' | 'INDICATIVE';
   readonly now: string;
   readonly decisionExpiresAt: string;
   readonly maximumQuoteAgeSeconds: number;
@@ -49,6 +50,7 @@ const deterministicUuid = (value: string): string => {
  * Closing reduces risk, so it is not a new entry, but it is still persisted before submission and submitted only by PaperOrderCoordinator.
  */
 export function buildDefinedRiskCloseCommand(input: BuildDefinedRiskCloseCommandInput): DefinedRiskCloseCommand {
+  if (input.quoteFeed !== 'OPRA' && input.quoteFeed !== 'INDICATIVE') throw new Error('DEFINED_RISK_CLOSE_QUOTE_PROVENANCE_UNKNOWN');
   if (input.decision.action !== 'CLOSE_FULL' || input.decision.orderIntentId !== input.openIntentId || input.decision.chainId !== input.chainId) throw new Error('DEFINED_RISK_CLOSE_REQUIRES_MATCHING_CLOSE_DECISION');
   if (!input.decision.quotesExecutable) throw new Error('DEFINED_RISK_CLOSE_QUOTES_NOT_EXECUTABLE');
   if (!Number.isSafeInteger(input.decision.closeQuantity) || input.decision.closeQuantity <= 0) throw new Error('DEFINED_RISK_CLOSE_QUANTITY_INVALID');
@@ -85,7 +87,8 @@ export function buildDefinedRiskCloseCommand(input: BuildDefinedRiskCloseCommand
     chainId: input.chainId, optionContractId: null, underlyingId: input.underlyingId,
     multiLegEvidence: { orderClass: 'mleg', creditDebitDirection: 'DEBIT', packageIdentity, legs: [
       { ...shortOpen, positionIntent: 'buy_to_close' as const }, { ...longOpen, positionIntent: 'sell_to_close' as const }] },
-    executionEvidence: { quoteSource: 'ALPACA', quoteFeed: 'OPRA', quoteSemantics: 'CONSOLIDATED_NBBO',
+    executionEvidence: { quoteSource: 'ALPACA', quoteFeed: input.quoteFeed,
+      quoteSemantics: input.quoteFeed === 'INDICATIVE' ? 'PAPER_INDICATIVE_REFERENCE' : 'CONSOLIDATED_NBBO',
       quoteAsOf: new Date(Math.max(Date.parse(input.shortQuote.observedAt), Date.parse(input.longQuote.observedAt))).toISOString(),
       decisionExpiresAt: input.decisionExpiresAt, quoteContentHash: hash([input.shortQuote, input.longQuote]), aegisState },
     // a close is sized by the position, not by AEGIS/risk sizing: canonical == evidence == the exact open quantity (never rounded up, never "at least 1")

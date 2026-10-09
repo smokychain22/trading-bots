@@ -35,6 +35,8 @@ export interface DefinedRiskManagementInput {
   readonly brokerOpenContracts: { readonly short: number | null; readonly long: number | null };
   readonly shortQuote: DefinedRiskLegQuoteEvidence | null;
   readonly longQuote: DefinedRiskLegQuoteEvidence | null;
+  /** The authenticated source of both leg quotes. Unknown provenance cannot authorize a close. */
+  readonly quoteFeed: 'OPRA' | 'INDICATIVE' | null;
   readonly spot: number | null;
   /** calendar days to expiration; null = UNKNOWN */
   readonly dte: number | null;
@@ -84,7 +86,8 @@ const quoteExecutable = (quote: DefinedRiskLegQuoteEvidence | null, symbol: stri
 export function assessDefinedRiskManagement(input: DefinedRiskManagementInput): DefinedRiskManagementDecision {
   const nowMs = Date.parse(input.observedAt);
   if (!Number.isFinite(nowMs)) throw new Error('DEFINED_RISK_MANAGEMENT_TIME_INVALID');
-  const quotesExecutable = quoteExecutable(input.shortQuote, input.shortSymbol, nowMs, input.maximumQuoteAgeSeconds)
+  const feedQualified = input.quoteFeed === 'OPRA' || input.quoteFeed === 'INDICATIVE';
+  const quotesExecutable = feedQualified && quoteExecutable(input.shortQuote, input.shortSymbol, nowMs, input.maximumQuoteAgeSeconds)
     && quoteExecutable(input.longQuote, input.longSymbol, nowMs, input.maximumQuoteAgeSeconds);
   const reviewMinutes = input.dte === null ? 1 : Math.min(15, Math.max(1, input.dte));
   const reviewDeadline = new Date(nowMs + reviewMinutes * 60_000).toISOString();
@@ -132,6 +135,7 @@ export function assessDefinedRiskManagement(input: DefinedRiskManagementInput): 
     return make('HOLD', unknownNearExpiry ? ['EXPIRY_STATE_UNKNOWN_NEAR_EXPIRY'] : ['NO_D_SAFETY_TRIGGER'], { escalate: unknownNearExpiry });
   }
   // both exact legs must be freshly and executably quoted before any close is proposed (never close only one leg, never price from one leg)
-  if (!quotesExecutable) return make('HOLD', [...triggers, 'CLOSE_REQUIRED_QUOTES_NOT_EXECUTABLE'], { closeRequired: true, escalate: input.dte !== null && input.dte <= 1 });
+  if (!quotesExecutable) return make('HOLD', [...triggers, ...(!feedQualified ? ['CLOSE_QUOTE_PROVENANCE_UNKNOWN'] : []), 'CLOSE_REQUIRED_QUOTES_NOT_EXECUTABLE'],
+    { closeRequired: true, escalate: input.dte !== null && input.dte <= 1 });
   return make('CLOSE_FULL', triggers, { closeRequired: true, closeQuantity: input.exposure.hedgedSpreads });
 }

@@ -56,11 +56,13 @@ test('native D command is one mleg parent and never sends naked parent symbol or
     executionAccountId: UUID.account, decisionId: UUID.decision, chainId: UUID.chain, underlyingId: UUID.underlying,
     canonicalQuantity: 1, paperEvidenceQuantity: 1, paperEvidenceRiskCap: 1, limitCreditPerShare: 1.1,
     now: NOW, decisionExpiresAt: '2026-09-14T15:00:30.000Z', maximumQuoteAgeSeconds: 30, attempt: 1,
-    legContractEvidence:dLegContractEvidence });
+    quoteProvenance:{feed:'INDICATIVE'},legContractEvidence:dLegContractEvidence });
   assert.equal(command.request.order_class, 'mleg');
   assert.equal(command.request.legs?.length, 2);
   assert.equal(command.request.limit_price, '-1.10');
   assert.equal(command.request.symbol, multiLegPackageIdentity(command.request.legs ?? []));
+  assert.equal(command.executionEvidence?.quoteFeed, 'INDICATIVE');
+  assert.equal(command.executionEvidence?.quoteSemantics, 'PAPER_INDICATIVE_REFERENCE');
   const payload = brokerPayloadForOrder(command.request);
   assert.equal(payload.order_class, 'mleg');
   assert.equal('symbol' in payload, false);
@@ -73,7 +75,7 @@ test('D pre-submit rejects a stale leg, crossed leg, wrong geometry, and invalid
     decisionId: UUID.decision, chainId: UUID.chain, underlyingId: UUID.underlying, canonicalQuantity: 1,
     paperEvidenceQuantity: 1, paperEvidenceRiskCap: 1, limitCreditPerShare: 1.1, now: NOW,
     decisionExpiresAt: '2026-09-14T15:00:30.000Z', maximumQuoteAgeSeconds: 30, attempt: 1,
-    legContractEvidence:dLegContractEvidence } as const;
+    quoteProvenance:{feed:'INDICATIVE' as const},legContractEvidence:dLegContractEvidence } as const;
   assert.throws(() => buildDefinedRiskPaperCommand({ ...base, plan: { ...dPlan(), legs: [
     { ...dPlan().legs[0], quoteTimestamp: '2026-09-14T14:58:00.000Z' }, dPlan().legs[1]] } }), /QUOTE_NOT_EXECUTABLE/);
   assert.throws(() => buildDefinedRiskPaperCommand({ ...base, limitCreditPerShare: 1.21 }), /LIMIT_CREDIT_INVALID/);
@@ -83,6 +85,8 @@ test('D pre-submit rejects a stale leg, crossed leg, wrong geometry, and invalid
     managementCoverageCertified: false, evidenceIds: ['phase4-d-management-gap'] });
   assert.throws(() => buildDefinedRiskPaperCommand({ ...base, authorization: incompleteAuthority }),
     /DEFINED_RISK_AUTHORITY_INCOMPLETE/);
+  assert.throws(() => buildDefinedRiskPaperCommand({ ...base, quoteProvenance: undefined as never }),
+    /QUOTE_PROVENANCE_UNKNOWN/);
 });
 
 test('Alpaca nested mleg response preserves every leg and exposes asymmetric partial risk', () => {

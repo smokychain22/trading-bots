@@ -60,7 +60,8 @@ async function setup() {
   await orders.recordBrokerSnapshot(open.orderIntentId, brokerParent(open, 'open', { filled: 1, avg: 2.0 }, { filled: 1, avg: 0.9 }, 'filled'));
   const executionAccountId = open.executionAccountId;
   const inputs = (patch: Partial<DefinedRiskScanInputs> = {}): DefinedRiskScanInputs => ({ brokerOpenContracts: { short: 1, long: 1 },
-    shortQuote: { symbol: world.shortSymbol, bid: 1.9, ask: 2.0, observedAt: NOW }, longQuote: { symbol: world.longSymbol, bid: 0.8, ask: 0.9, observedAt: NOW }, spot: 670, dte: 1, marketOpen: true,
+    shortQuote: { symbol: world.shortSymbol, bid: 1.9, ask: 2.0, observedAt: NOW }, longQuote: { symbol: world.longSymbol, bid: 0.8, ask: 0.9, observedAt: NOW },
+    quoteFeed: 'INDICATIVE', spot: 670, dte: 1, marketOpen: true,
     context: { eventState: 'CLEAR', aegisState: 'ALLOW_FULL', executionQuality: 'GOOD' }, aegisState: 'ALLOW_FULL', executionAccountId, ...patch });
   const deps = (load: (position: DefinedRiskPositionSnapshot, at: string) => Promise<DefinedRiskScanInputs>) => ({ positions, orders, coordinator, loadInputs: load,
     recordDecision: (decision: Parameters<PostgresDefinedRiskDecisionRecorder['record']>[0], position: DefinedRiskPositionSnapshot, frontier: Parameters<PostgresDefinedRiskDecisionRecorder['record']>[2]) => recorder.record(decision, position, frontier),
@@ -84,6 +85,9 @@ test('a safety trigger closes the spread through the coordinator exactly once; a
     // the decision is a durable, auditable trade.decision the close references
     const decisionRow = (await ctx.pool.query(`SELECT d.decision_kind, d.action_code, d.receipt_json->>'evidenceSnapshotSource' AS source FROM trade.order_intent oi JOIN trade.decision d ON d.decision_id=oi.decision_id WHERE oi.order_intent_id=$1`, [mine.closeIntentId])).rows[0];
     assert.deepEqual({ ...decisionRow }, { decision_kind: 'MANAGEMENT', action_code: 'CLOSE_DEFINED_RISK', source: 'ENTRY_DECISION_FUSION_SNAPSHOT' });
+    const provenance = (await ctx.pool.query(`SELECT quote_feed,quote_semantics FROM trade.order_intent WHERE order_intent_id=$1`,
+      [mine.closeIntentId])).rows[0];
+    assert.deepEqual(provenance, { quote_feed: 'INDICATIVE', quote_semantics: 'PAPER_INDICATIVE_REFERENCE' });
 
     // second scan: the close is in flight, so the decision is HOLD (CLOSE_ORDER_IN_FLIGHT) and the broker sees nothing new
     const second = await runDefinedRiskManagementScan(ctx.deps(async () => ctx.inputs()));
@@ -104,6 +108,22 @@ test('a safety trigger closes the spread through the coordinator exactly once; a
     } finally { await restartedPool.end(); }
   } finally { await ctx.pool.end(); }
 });
+
+test('a required spread close with unknown quote feed leaves a decision but no order intent or broker mutation',
+  { skip: !url }, async () => {
+    const ctx = await setup();
+    try {
+      const result = await runDefinedRiskManagementScan(ctx.deps(async () => ctx.inputs({ quoteFeed: null })));
+      const mine = result.find((item) => item.orderIntentId === ctx.open.orderIntentId);
+      assert.equal(mine?.selectedAction, 'HOLD');
+      assert.ok(mine?.reasons.includes('CLOSE_QUOTE_PROVENANCE_UNKNOWN'));
+      assert.equal(mine?.closeIntentId, null);
+      assert.equal(ctx.broker.submitted.length, 0);
+      const closeIntents = await ctx.pool.query(`SELECT count(*)::int AS count FROM trade.order_intent
+        WHERE chain_id=$1 AND theta_action='CLOSE_DEFINED_RISK'`, [ctx.chainId]);
+      assert.equal(closeIntents.rows[0]?.count, 0);
+    } finally { await ctx.pool.end(); }
+  });
 
 test('a crash after the close intent was persisted but before submit resumes at the READY intent: no second prepare, exactly one submit', { skip: !url }, async () => {
   const ctx = await setup();

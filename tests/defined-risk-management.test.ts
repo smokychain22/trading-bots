@@ -9,7 +9,8 @@ const SHORT = 'SPY261016P00650000', LONG = 'SPY261016P00645000';
 const quote = (symbol: string, bid: number | null, ask: number | null, observedAt: string | null = NOW) => ({ symbol, bid, ask, observedAt });
 const hedged = { shortOpen: 1, longOpen: 1, nakedShortContracts: 0, excessLongContracts: 0, hedgedSpreads: 1 };
 const base: DefinedRiskManagementInput = { orderIntentId: 'open-1', chainId: 'chain-1', state: 'OPEN', exposure: hedged, shortSymbol: SHORT, longSymbol: LONG, shortStrike: 650, longStrike: 645,
-  observedAt: NOW, brokerOpenContracts: { short: 1, long: 1 }, shortQuote: quote(SHORT, 1.9, 2.0), longQuote: quote(LONG, 0.8, 0.9), spot: 670, dte: 10, marketOpen: true,
+  observedAt: NOW, brokerOpenContracts: { short: 1, long: 1 }, shortQuote: quote(SHORT, 1.9, 2.0), longQuote: quote(LONG, 0.8, 0.9), quoteFeed: 'INDICATIVE',
+  spot: 670, dte: 10, marketOpen: true,
   closeOrderWorking: false, context: { eventState: 'CLEAR', aegisState: 'ALLOW_FULL', executionQuality: 'GOOD' }, pinBandPct: 0.002, maximumQuoteAgeSeconds: 30 };
 
 test('a healthy hedged spread far from expiry is HELD with a persisted review deadline and no invented profit/loss rule', () => {
@@ -92,7 +93,8 @@ const evidence: DurableMultiLegOrderEvidence = { orderClass: 'mleg', creditDebit
 const closeDecision = assessDefinedRiskManagement({ ...base, dte: 1 });
 const closeInput = { openIntentId: 'open-1', openEvidence: evidence, chainId: 'chain-1', underlyingId: 'u-1', executionAccountId: 'acct-1', decisionId: 'decision-1', decision: closeDecision,
   shortQuote: { symbol: SHORT, bid: 1.9, ask: 2.0, observedAt: NOW }, longQuote: { symbol: LONG, bid: 0.8, ask: 0.9, observedAt: NOW }, now: NOW,
-  decisionExpiresAt: '2026-10-15T15:01:00.000Z', maximumQuoteAgeSeconds: 30, attempt: 1, aegisState: 'ALLOW_FULL' as const };
+  decisionExpiresAt: '2026-10-15T15:01:00.000Z', maximumQuoteAgeSeconds: 30, attempt: 1,
+  quoteFeed: 'INDICATIVE' as const, aegisState: 'ALLOW_FULL' as const };
 
 test('close command: one native mleg package, buy_to_close short + sell_to_close long, marketable POSITIVE debit rounded up, identities from the durable open legs', () => {
   const command = buildDefinedRiskCloseCommand(closeInput);
@@ -105,6 +107,8 @@ test('close command: one native mleg package, buy_to_close short + sell_to_close
   assert.equal(command.multiLegEvidence?.creditDebitDirection, 'DEBIT');
   assert.equal(command.gate.isNewEntry, false);
   assert.equal(command.optionContractId, null);
+  assert.equal(command.executionEvidence?.quoteFeed, 'INDICATIVE');
+  assert.equal(command.executionEvidence?.quoteSemantics, 'PAPER_INDICATIVE_REFERENCE');
   // deterministic identities: a replay produces the same intent and client order id; a new attempt produces new ones
   assert.equal(buildDefinedRiskCloseCommand(closeInput).orderIntentId, command.orderIntentId);
   assert.equal(buildDefinedRiskCloseCommand(closeInput).request.client_order_id, command.request.client_order_id);
@@ -123,4 +127,15 @@ test('close command refuses: wrong decision, non-executable quotes, wrong leg id
   assert.throws(() => buildDefinedRiskCloseCommand({ ...closeInput, shortQuote: { ...closeInput.shortQuote, observedAt: '2026-10-15T14:00:00.000Z' } }), /QUOTE_NOT_EXECUTABLE/);
   assert.throws(() => buildDefinedRiskCloseCommand({ ...closeInput, decisionExpiresAt: NOW }), /DECISION_EXPIRED/);
   assert.throws(() => buildDefinedRiskCloseCommand({ ...closeInput, openEvidence: { ...evidence, legs: [evidence.legs[1] as never, evidence.legs[0] as never] } }), /STRUCTURE_INVALID/);
+  assert.throws(() => buildDefinedRiskCloseCommand({ ...closeInput, quoteFeed: null as never }), /QUOTE_PROVENANCE_UNKNOWN/);
+});
+
+test('a required close with unknown feed is persisted as HOLD with provenance failure even when both leg prices are fresh', () => {
+  const decision = assessDefinedRiskManagement({ ...base, dte: 1, quoteFeed: null });
+  assert.equal(decision.action, 'HOLD');
+  assert.equal(decision.closeRequired, true);
+  assert.equal(decision.quotesExecutable, false);
+  assert.ok(decision.reasons.includes('CLOSE_QUOTE_PROVENANCE_UNKNOWN'));
+  assert.equal(decision.closeQuantity, 0);
+  assert.equal(decision.escalate, true);
 });

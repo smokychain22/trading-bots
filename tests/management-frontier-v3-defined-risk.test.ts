@@ -64,6 +64,7 @@ test('the D producer maps onto the frontier: an emergency proposal from real pro
     exposure: { shortOpen: 1, longOpen: 1, nakedShortContracts: 0, excessLongContracts: 0, hedgedSpreads: 1 }, shortSymbol: 'SPY261009P00500000', longSymbol: 'SPY261009P00495000',
     shortStrike: 500, longStrike: 495, observedAt: NOW, brokerOpenContracts: { short: 1, long: 1 },
     shortQuote: { symbol: 'SPY261009P00500000', bid: 1.0, ask: 1.1, observedAt: NOW }, longQuote: { symbol: 'SPY261009P00495000', bid: 0.4, ask: 0.5, observedAt: NOW },
+    quoteFeed: 'INDICATIVE',
     spot: 500.2, dte: 0, marketOpen: true, closeOrderWorking: false, context: { eventState: 'CLEAR', aegisState: 'ALLOW_FULL', executionQuality: 'GOOD' },
     pinBandPct: 0.002, maximumQuoteAgeSeconds: 30 };
   const pin = assessDefinedRiskManagement(base);
