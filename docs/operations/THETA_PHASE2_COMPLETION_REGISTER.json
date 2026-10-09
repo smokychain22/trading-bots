@@ -289,7 +289,7 @@
       "PROVIDER_LIMITED": false,
       "OWNER_GATED": false,
       "FIX_REQUIRED": "NO_KNOWN_SOURCE_FIX_REMAINING_FOR_REVIEWED_REQUIREMENT",
-      "FIX_COMMIT": "196b66f377b80df2321649c5c5e2d7a2727984ef",
+      "FIX_COMMIT": "8e9712d4199c28369a9cedb87e1acab4af5f1704",
       "TEST_RESULT": {
         "requirementId": "2.2.FAULT_MATRIX",
         "reviewedBehavior": "Deterministic error injection covers acquisition, checkout, query, rollback, ambiguous commit identity readback and bounded queue release. Dedicated disposable PostgreSQL execution is additionally required for full fault-matrix closure.",
@@ -388,15 +388,15 @@
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
-        "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "ecfc4b26e857494995e8aa83bb2a1825f433fc22191ef01e31dd1d7e10cbfbe2"
+        "artifactHash": "ecfc4b26e857494995e8aa83bb2a1825f433fc22191ef01e31dd1d7e10cbfbe2",
+        "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json"
       },
       "RUNTIME_EVIDENCE": "Executed disposable PostgreSQL evidence. Deployed current-worker behavior remains separately unproven.",
       "DISPOSABLE_DB_EVIDENCE": {
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_DISPOSABLE_CI.json",
-        "artifactHash": "a3dc1bacf1f10d31d2ffc2660c0804c583937c5c59db4a8cceba8f36ceb8e32e",
-        "ciRun": "37933992755",
-        "sourceSha": "196b66f377b80df2321649c5c5e2d7a2727984ef",
+        "artifactHash": "000bda837409776caa1b0617efc822fb948995d56c0bf1a4fe00f9c8bd53f107",
+        "ciRun": "37945055254",
+        "sourceSha": "8e9712d4199c28369a9cedb87e1acab4af5f1704",
         "requirementId": "2.2.FAULT_MATRIX"
       }
     },
@@ -625,17 +625,17 @@
         "tests/theta-shadow-cycle.test.ts",
         "tests/database-health-circuit.test.ts"
       ],
-      "CLOSURE_STATE": "EVIDENCE_INVALIDATED",
-      "BLOCKER_CLASS": "DISPOSABLE_DATABASE_EVIDENCE_STALE",
+      "CLOSURE_STATE": "CLOSED_ENGINEERING",
+      "BLOCKER_CLASS": "NONE_ENGINEERING",
       "CODE_SOLVABLE": true,
-      "CURRENT_STATUS": "EVIDENCE_INVALIDATED",
+      "CURRENT_STATUS": "CLOSED_ENGINEERING",
       "CONFIG_SOLVABLE": false,
       "OFFLINE_TESTABLE": true,
       "CURRENT_MARKET_REQUIRED": false,
       "PROVIDER_LIMITED": false,
       "OWNER_GATED": false,
       "FIX_REQUIRED": "NO_KNOWN_SOURCE_FIX_REMAINING_FOR_REVIEWED_REQUIREMENT",
-      "FIX_COMMIT": "196b66f377b80df2321649c5c5e2d7a2727984ef",
+      "FIX_COMMIT": "8e9712d4199c28369a9cedb87e1acab4af5f1704",
       "TEST_RESULT": {
         "requirementId": "2.4.FRESH_CYCLE",
         "reviewedBehavior": "Runtime cycle store expires only stale unfinished identities. Actual shadow cycle obtains a new run ID and fails stale evidence closed. Production customer persistence recovery test is separately required, and offline circuit tests do not prove deployed circuit behavior.",
@@ -647,7 +647,7 @@
         "failed": 0,
         "blockers": [],
         "sourceHashes": {
-          "src/theta/autonomous-runtime.ts": "0bc37bf687f33b15fc4b03ae2563c7f0d683130adcd5230b2780b011b2c118c7",
+          "src/theta/autonomous-runtime.ts": "d7810850b686622d213219b6afbb5fadcd28ea276bd9d8a2bb5be166932cb543",
           "src/theta/database-health-circuit.ts": "5b9dff352c27226882f06c48eb78416dd38ddb19f77c877ccce8fd899949b4e3",
           "src/theta/theta-shadow-cycle.ts": "59a35d9a744a6963bed44915018a4ee033c287828726469255690a78806f0cac",
           "tests/database-health-circuit.test.ts": "8a563b6222465fe32a1325e29b60fac857e8986ab88f65d40cf15dd95eb9a9d1",
@@ -659,55 +659,55 @@
             "file": "tests/runtime-postgres-client.test.ts",
             "name": "a recovered cycle marks only stale RUNNING rows failed before starting a new cycle",
             "state": "PASS",
-            "durationMs": 0.2748,
+            "durationMs": 0.1978,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "runId is unique per cycle",
             "state": "PASS",
-            "durationMs": 1554.8641,
+            "durationMs": 1499.711,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "an account fetch failure is recorded as a blocker, never silently ignored, and the cycle still completes coherently",
             "state": "PASS",
-            "durationMs": 15.4516,
+            "durationMs": 16.8039,
             "line": 1
           },
           {
             "file": "tests/theta-shadow-cycle.test.ts",
             "name": "a stale required observation (account fetched long before the decision moment) becomes SYSTEM_HOLD_STALE_ACCOUNT, never a strategy WAIT/PASS",
             "state": "PASS",
-            "durationMs": 23.2427,
+            "durationMs": 15.2189,
             "line": 1
           },
           {
             "file": "tests/database-health-circuit.test.ts",
             "name": "database circuit requires consecutive fresh probes and a new cycle boundary",
             "state": "PASS",
-            "durationMs": 0.7404,
+            "durationMs": 0.9373,
             "line": 1
           },
           {
             "file": "tests/database-health-circuit.test.ts",
             "name": "a non-retryable failure discards earlier recovery successes in the offline model",
             "state": "PASS",
-            "durationMs": 0.8332,
+            "durationMs": 0.9538,
             "line": 1
           }
         ],
         "command": "node --import tsx tools/theta-phase2-executed-evidence.ts",
-        "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json",
-        "artifactHash": "c0f55bac308d2c15cc9049bed9166757a902dc2c86d5e5c8eee03c349605f3d8"
+        "artifactHash": "ecfc4b26e857494995e8aa83bb2a1825f433fc22191ef01e31dd1d7e10cbfbe2",
+        "artifactPath": "docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json"
       },
       "RUNTIME_EVIDENCE": "Executed disposable PostgreSQL evidence. Deployed current-worker behavior remains separately unproven.",
       "DISPOSABLE_DB_EVIDENCE": {
         "artifactPath": "docs/operations/evidence/THETA_PHASE2_DISPOSABLE_CI.json",
-        "artifactHash": "a3dc1bacf1f10d31d2ffc2660c0804c583937c5c59db4a8cceba8f36ceb8e32e",
-        "ciRun": "37933992755",
-        "sourceSha": "196b66f377b80df2321649c5c5e2d7a2727984ef",
+        "artifactHash": "000bda837409776caa1b0617efc822fb948995d56c0bf1a4fe00f9c8bd53f107",
+        "ciRun": "37945055254",
+        "sourceSha": "8e9712d4199c28369a9cedb87e1acab4af5f1704",
         "requirementId": "2.4.FRESH_CYCLE"
       }
     },
@@ -2673,15 +2673,15 @@
   },
   "PHASE2_TOTAL": 25,
   "PHASE2_CODE_SOLVABLE": 21,
-  "PHASE2_CODE_SOLVABLE_COMPLETE": 20,
-  "PHASE2_CODE_SOLVABLE_REMAINING": 1,
+  "PHASE2_CODE_SOLVABLE_COMPLETE": 21,
+  "PHASE2_CODE_SOLVABLE_REMAINING": 0,
   "phase2EngineeringState": "CLOSED_REVIEWED_ENGINEERING",
   "phase2CurrentWorkerProof": "PENDING_REVIEWED_RELEASE_INTEGRATION",
   "checkpoint": {
     "CURRENT_PHASE": 3,
     "EXACT_CI": {
-      "sourceSha": "196b66f377b80df2321649c5c5e2d7a2727984ef",
-      "runId": "37933992755",
+      "sourceSha": "8e9712d4199c28369a9cedb87e1acab4af5f1704",
+      "runId": "37945055254",
       "conclusion": "success"
     },
     "COMPLETED": "21 reviewed Phase-2 engineering requirements have executed evidence, including real disposable database fault and fresh-cycle recovery tests.",
