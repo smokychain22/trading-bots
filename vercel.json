@@ -1,4 +1,5 @@
 {
+  "git": { "deploymentEnabled": { "codex/dot-basic-readonly-v1": false } },
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "public",
   "functions": {
