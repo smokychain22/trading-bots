@@ -10,6 +10,18 @@ const contractVersion = 'theta-management-candidate-discovery-v1' as const;
 // A bounded Paper search universe, not a claim that longer-dated rolls are bad.
 export const managementCandidateSearchHorizonDays = 90;
 
+/** Option expirations are exchange calendar dates. UTC's next day can begin while New York is still on today's session date. */
+export function managementCandidateDateWindow(observedAt:string):{readonly today:string;readonly end:string}{
+  const instant=Date.parse(observedAt);
+  if(!Number.isFinite(instant))throw new Error('MANAGEMENT_CANDIDATE_OBSERVED_AT_INVALID');
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'})
+    .formatToParts(new Date(instant));
+  const part=(type:string):string=>parts.find((item)=>item.type===type)?.value??'';
+  const today=`${part('year')}-${part('month')}-${part('day')}`;
+  const end=new Date(Date.parse(`${today}T00:00:00.000Z`)+managementCandidateSearchHorizonDays*86_400_000).toISOString().slice(0,10);
+  return {today,end};
+}
+
 export interface OpenManagementCandidateSubject {
   readonly chainId: string;
   readonly underlyingId: string;
@@ -210,8 +222,7 @@ export class ProductionPaperManagementCandidateSource {
       const cacheKey=`${subject.underlying}:${optionType}`;
       let request=requestCache.get(cacheKey);
       if(request===undefined){
-        const today=new Date().toISOString().slice(0,10);
-        const end=new Date(Date.now()+managementCandidateSearchHorizonDays*86_400_000).toISOString().slice(0,10);
+        const {today,end}=managementCandidateDateWindow(observedAt);
         request=(async()=>{
           const contracts=await fetchOptionContracts(this.alpaca,{underlyingSymbol:subject.underlying,optionType,
             expirationDateGte:today,expirationDateLte:end,showDeliverables:true,limit:1000,maxPages:20});

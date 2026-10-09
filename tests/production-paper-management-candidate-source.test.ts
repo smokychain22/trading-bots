@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ProductionPaperManagementCandidateSource, classifyEmptyManagementLattice,
+import { ProductionPaperManagementCandidateSource, classifyEmptyManagementLattice, managementCandidateDateWindow,
   qualifyManagementContractLattice, type OpenManagementCandidateSubject } from
   '../src/theta/production-paper-management-candidate-source.js';
 import type { AlpacaOptionContractListing, AlpacaOptionSnapshot } from '../src/theta/option-chain-ingestion.js';
@@ -18,6 +18,13 @@ const contract=(overrides:Partial<AlpacaOptionContractListing>={}):AlpacaOptionC
 const snapshot=(overrides:Partial<AlpacaOptionSnapshot>={}):AlpacaOptionSnapshot=>({
   bid:1.5,ask:1.6,bidSize:10,askSize:12,quoteTimestamp:'2026-09-22T13:59:58.000Z',
   greeks:null,impliedVolatility:null,dailyVolume:null,...overrides,
+});
+
+test('management option search dates follow New York calendar across UTC midnight and DST',()=>{
+  assert.deepEqual(managementCandidateDateWindow('2026-10-09T00:30:00.000Z'),{today:'2026-10-08',end:'2027-01-06'});
+  assert.deepEqual(managementCandidateDateWindow('2026-03-08T03:00:00.000Z'),{today:'2026-03-07',end:'2026-06-05'});
+  assert.deepEqual(managementCandidateDateWindow('2026-10-09T15:00:00.000Z'),{today:'2026-10-09',end:'2027-01-07'});
+  assert.throws(()=>managementCandidateDateWindow('not-a-time'),/MANAGEMENT_CANDIDATE_OBSERVED_AT_INVALID/);
 });
 
 test('management discovery qualifies an exact fresh Alpaca Paper option without ranking it',()=>{
