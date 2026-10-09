@@ -1,0 +1,394 @@
+{
+  "version": "theta-v4-proposal-source-compatibility-public-v1",
+  "observedAt": "2026-10-08T19:08:11Z",
+  "frozenSourceCommit": "34b630e5814ce179cf958a0e3d70f5ee28da71b3",
+  "historicalBaseCommit": "2cb0d470f473132e80d44c2a2c051765e525afee",
+  "priorReviewedV4Commit": "7a87bd240a5487893f8b074961e6eeaeb7450f46",
+  "laterDrift": "UNREVIEWED",
+  "result": "SOURCE_COMPATIBLE_UNCHANGED_H_PROPOSAL",
+  "semanticVersionRebaseRequired": false,
+  "scope": "Read-only public exact-source audit. No test execution, repository modification, CI creation, deployment, account access or orders.",
+  "changes": {
+    "oldToPrior": {
+      "commits": 2,
+      "files": 32
+    },
+    "priorToFrozen": {
+      "commits": 1,
+      "files": 9
+    },
+    "totalDistinctFiles": 40
+  },
+  "proposal": {
+    "head": "a8167a47ffe2bf95fda47bccde7a3e45bacdb812",
+    "draftAtRead": true,
+    "version": "dot-h-dte3-5-v1",
+    "baselineHash": "cfdded1548790c092f6a24a00512b771780ca338fbc9a2565e860ce670dae9b3",
+    "proposalHash": "d13341a5768535f44019c9aedfbfa2d83c0c9a5aeef465bc0410c5255e468033",
+    "sha256": "a3a312f03928006336462249e05c90c24442030bd87f99084be29c1678d80b08",
+    "gitBlob": "46213ff1ce479d012533298910c78beaea4bcd1c",
+    "matchesPublishedPrBlob": true,
+    "hashEvidence": "Existing canonical validation receipt plus current unchanged registry/runtime-policy/contracts/serialization Git-blob identities. Validator was not rerun."
+  },
+  "unchangedEvidence": [
+    {
+      "path": "tests/management-action-frontier.test.ts",
+      "sha256": "e8564ceea7ee3ccc5dcbee6d120173e2ec1956d87b2199e8e88dac8b4ca35911",
+      "oldGitBlob": "c292b606821a39162ad903037e2104940874e8bc",
+      "currentGitBlob": "c292b606821a39162ad903037e2104940874e8bc",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/tests/management-action-frontier.test.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/tests/management-action-frontier.test.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/tests/management-action-frontier.test.ts"
+    },
+    {
+      "path": "tests/dot-proposal-consumer.test.ts",
+      "sha256": "2c90c61db0b386c1fa38880f2325f0ec5e7e67aa93da2b85c9ce790b7fcd11e5",
+      "oldGitBlob": "e5bfec5f426d835e4aa1626ebd54bb772b48a0f9",
+      "currentGitBlob": "e5bfec5f426d835e4aa1626ebd54bb772b48a0f9",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/tests/dot-proposal-consumer.test.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/tests/dot-proposal-consumer.test.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/tests/dot-proposal-consumer.test.ts"
+    },
+    {
+      "path": "tools/validate-dot-proposals.ts",
+      "sha256": "2281a12f7e7eddddd1b8917465adc2ea94540aac0b55b3137b6cb15d5b291f7c",
+      "oldGitBlob": "b15183c37f0f4ee006987ad0a3c9f0b3df0ad5b2",
+      "currentGitBlob": "b15183c37f0f4ee006987ad0a3c9f0b3df0ad5b2",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/tools/validate-dot-proposals.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/tools/validate-dot-proposals.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/tools/validate-dot-proposals.ts"
+    },
+    {
+      "path": "src/theta/management-action-frontier.ts",
+      "sha256": "a89891c6174c28a863780452ecb03be362ed6a31ee3b306c857a5f5731ac7fc2",
+      "oldGitBlob": "934de9ed4492badf0f139abb8af187109b8687ff",
+      "currentGitBlob": "934de9ed4492badf0f139abb8af187109b8687ff",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/theta/management-action-frontier.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/theta/management-action-frontier.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/management-action-frontier.ts"
+    },
+    {
+      "path": "src/theta/hold-strike-lifecycle.ts",
+      "sha256": "d1a745fbc6207333046806b02a72596a96f314981a9936afab23eeaff4588eba",
+      "oldGitBlob": "14d878070ed1fdbcfe2a24b6c36383b7316ac9b9",
+      "currentGitBlob": "14d878070ed1fdbcfe2a24b6c36383b7316ac9b9",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/theta/hold-strike-lifecycle.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/theta/hold-strike-lifecycle.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/hold-strike-lifecycle.ts"
+    },
+    {
+      "path": "src/theta/paper-bootstrap-management-policy.ts",
+      "sha256": "24d115efe061a9f0b12bab3d26c7003108e96940b33b052777ba1418e8166a4f",
+      "oldGitBlob": "a229e6773c6ff4c7c3b136e508566dd38c0d34b6",
+      "currentGitBlob": "a229e6773c6ff4c7c3b136e508566dd38c0d34b6",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/theta/paper-bootstrap-management-policy.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/theta/paper-bootstrap-management-policy.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/paper-bootstrap-management-policy.ts"
+    },
+    {
+      "path": "src/theta/hold-strike-production-decision.ts",
+      "sha256": "425580e8ed1db1b3a9155b1417b946f0f8fbea67a90f3d43fbcb6aa78ac29864",
+      "oldGitBlob": "0dc0bc126cb10ae973e9d5456de528f4822b1e57",
+      "currentGitBlob": "0dc0bc126cb10ae973e9d5456de528f4822b1e57",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/theta/hold-strike-production-decision.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/theta/hold-strike-production-decision.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/hold-strike-production-decision.ts"
+    },
+    {
+      "path": "src/theta/strategy-package.ts",
+      "sha256": "c77cf0af0456327545295869aef690f139848431c3db7ee38fd5147fa551f37e",
+      "oldGitBlob": "c7b1694679286c36efa53b46e558357c46609efb",
+      "currentGitBlob": "c7b1694679286c36efa53b46e558357c46609efb",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/theta/strategy-package.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/theta/strategy-package.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/strategy-package.ts"
+    },
+    {
+      "path": "src/lab/proposal-exchange.ts",
+      "sha256": "02ed49340f48995a4f3d9642921fef8e49b1cb6120a5c283c9fd2963786269c2",
+      "oldGitBlob": "df7da1d603929a821e2eeedda07cb682e9d5fec2",
+      "currentGitBlob": "df7da1d603929a821e2eeedda07cb682e9d5fec2",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/lab/proposal-exchange.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/lab/proposal-exchange.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/lab/proposal-exchange.ts"
+    },
+    {
+      "path": "src/lab/proposal-consumer.ts",
+      "sha256": "567ab605af852367bcd91174f2a15a09eeffd53fe69eaf73b6bb40b1619fab8f",
+      "oldGitBlob": "498b3e56549ec672234e473319fee0a7f6047558",
+      "currentGitBlob": "728562fb8d129872694a65a2f061a765cf7ab692",
+      "byteIdentical": false,
+      "unchangedAtFrozenTip": false,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/lab/proposal-consumer.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/lab/proposal-consumer.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/lab/proposal-consumer.ts"
+    },
+    {
+      "path": "src/lab/contracts.ts",
+      "sha256": "a2605233a88e0bc1996ad48e9985119d1176b2d29a5a8ce26559d00a09297dbd",
+      "oldGitBlob": "96113ba695b16d03c238417af8ec066f7e1a2755",
+      "currentGitBlob": "96113ba695b16d03c238417af8ec066f7e1a2755",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/lab/contracts.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/lab/contracts.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/lab/contracts.ts"
+    },
+    {
+      "path": "src/research/profit-taking-experiment.ts",
+      "sha256": "7d09410c383d43784f09794ed926200cb903a9695ed3de175ec6164aac5bc749",
+      "oldGitBlob": "599c739d9fb9b27c60a55eeb5d9b6fb9aced8100",
+      "currentGitBlob": "599c739d9fb9b27c60a55eeb5d9b6fb9aced8100",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/research/profit-taking-experiment.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/research/profit-taking-experiment.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/research/profit-taking-experiment.ts"
+    },
+    {
+      "path": "src/research/defined-risk-vs-csp-paired-study.ts",
+      "sha256": "394e1f3b433312f07d58cdd0dd7113f5686cde87700005d016eada3a1274d291",
+      "oldGitBlob": "f4580e811bed524169399f7d8989047d5d84d43c",
+      "currentGitBlob": "f4580e811bed524169399f7d8989047d5d84d43c",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/research/defined-risk-vs-csp-paired-study.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/research/defined-risk-vs-csp-paired-study.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/research/defined-risk-vs-csp-paired-study.ts"
+    },
+    {
+      "path": "src/research/recovery-covered-call-experiment.ts",
+      "sha256": "396389ad9e6fe2dee614aeadd2ab4fca07c4cc0f194fc27c4d00a15c90560883",
+      "oldGitBlob": "c1877a31804a8131ab20e2fcb0d0c683a511f57c",
+      "currentGitBlob": "c1877a31804a8131ab20e2fcb0d0c683a511f57c",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/research/recovery-covered-call-experiment.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/research/recovery-covered-call-experiment.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/research/recovery-covered-call-experiment.ts"
+    },
+    {
+      "path": "src/research/profit-taking-replay.ts",
+      "sha256": "4ada7550296c04e8f5787d242dcc81dfdce157f3a55256aa50ebe26359ef5e6f",
+      "oldGitBlob": "dd22818af5c9088811cb5c0690ce8ba54e5639be",
+      "currentGitBlob": "dd22818af5c9088811cb5c0690ce8ba54e5639be",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/research/profit-taking-replay.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/research/profit-taking-replay.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/research/profit-taking-replay.ts"
+    },
+    {
+      "path": "src/theta/paper-bootstrap-runtime-policy.ts",
+      "sha256": "acdc5c17fa28e241efb62b0c9803d12e8aeb7d806a82be039c378c4e4116dee1",
+      "oldGitBlob": "861f43be0d6753f84628c973953b717bf5e8fbd6",
+      "currentGitBlob": "861f43be0d6753f84628c973953b717bf5e8fbd6",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/theta/paper-bootstrap-runtime-policy.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/theta/paper-bootstrap-runtime-policy.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/paper-bootstrap-runtime-policy.ts"
+    },
+    {
+      "path": "src/theta/strategy-router-contract.ts",
+      "sha256": "e70e56a822782fad35ec1b9f042fcfc55c878227733e62e76d0cbaa195e05d59",
+      "oldGitBlob": "2c946d21b43a13822f2bc8b7e21fbedac3816183",
+      "currentGitBlob": "2c946d21b43a13822f2bc8b7e21fbedac3816183",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/theta/strategy-router-contract.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/theta/strategy-router-contract.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/strategy-router-contract.ts"
+    },
+    {
+      "path": "src/research/hold-strike-shadow-candidate-generator.ts",
+      "sha256": "71a53593a9851cfda9002bd92ba6420c20e948a02954d83e1161e733490baae5",
+      "oldGitBlob": "ca933a85512b9a534d19a2650a0c6da7579ac534",
+      "currentGitBlob": "ca933a85512b9a534d19a2650a0c6da7579ac534",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/research/hold-strike-shadow-candidate-generator.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/research/hold-strike-shadow-candidate-generator.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/research/hold-strike-shadow-candidate-generator.ts"
+    },
+    {
+      "path": "src/research/defined-risk-shadow-candidate-generator.ts",
+      "sha256": "398f5e985107566d89ad3c1d033465bad455dcc63c5daca4e70690d123d39156",
+      "oldGitBlob": "b413bf902446a1f3dbca4991d9156be110697016",
+      "currentGitBlob": "b413bf902446a1f3dbca4991d9156be110697016",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/research/defined-risk-shadow-candidate-generator.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/research/defined-risk-shadow-candidate-generator.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/research/defined-risk-shadow-candidate-generator.ts"
+    },
+    {
+      "path": "src/research/cross-strategy-common-horizon-contract.ts",
+      "sha256": "1ff14fa4c191f7b07e1efa40a1b90610b6857f0db53ba777bc7961b45414ce8d",
+      "oldGitBlob": "4cf0bc494c03136f536b0766593d7956077ada79",
+      "currentGitBlob": "4cf0bc494c03136f536b0766593d7956077ada79",
+      "byteIdentical": true,
+      "unchangedAtFrozenTip": true,
+      "historicalSourceUrl": "https://github.com/smokychain22/trading-bots/blob/2cb0d470f473132e80d44c2a2c051765e525afee/src/research/cross-strategy-common-horizon-contract.ts",
+      "priorSourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/research/cross-strategy-common-horizon-contract.ts",
+      "frozenSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/research/cross-strategy-common-horizon-contract.ts"
+    }
+  ],
+  "downloadedSourceHashes": [
+    {
+      "path": "src/theta/strategy-router-contract.ts",
+      "commit": "7a87bd240a5487893f8b074961e6eeaeb7450f46",
+      "bytes": 2470,
+      "sha256": "e70e56a822782fad35ec1b9f042fcfc55c878227733e62e76d0cbaa195e05d59",
+      "gitBlob": "2c946d21b43a13822f2bc8b7e21fbedac3816183",
+      "sourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/theta/strategy-router-contract.ts"
+    },
+    {
+      "path": "src/lab/proposal-consumer.ts",
+      "commit": "7a87bd240a5487893f8b074961e6eeaeb7450f46",
+      "bytes": 8587,
+      "sha256": "4b20dbb7a84dc5a3887340492fc6e8865261ba743fc12ac3f1e97feb25c681dc",
+      "gitBlob": "728562fb8d129872694a65a2f061a765cf7ab692",
+      "sourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/lab/proposal-consumer.ts"
+    },
+    {
+      "path": "src/lab/canonical-proposal-consumer.ts",
+      "commit": "7a87bd240a5487893f8b074961e6eeaeb7450f46",
+      "bytes": 6139,
+      "sha256": "b0a8802534ddbdb826eae3ebc293d86b741ec428bf7a8de4e6d4fd74a43a94a3",
+      "gitBlob": "cffafb7e854faddb5c62b8f6ff0e4c3b718fcf07",
+      "sourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/lab/canonical-proposal-consumer.ts"
+    },
+    {
+      "path": "src/research/hold-strike-shadow-candidate-generator.ts",
+      "commit": "7a87bd240a5487893f8b074961e6eeaeb7450f46",
+      "bytes": 9441,
+      "sha256": "71a53593a9851cfda9002bd92ba6420c20e948a02954d83e1161e733490baae5",
+      "gitBlob": "ca933a85512b9a534d19a2650a0c6da7579ac534",
+      "sourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/research/hold-strike-shadow-candidate-generator.ts"
+    },
+    {
+      "path": "src/research/shadow-strategy-orchestrator.ts",
+      "commit": "7a87bd240a5487893f8b074961e6eeaeb7450f46",
+      "bytes": 10572,
+      "sha256": "70f7999d3063104548490b1fc91525d4c1cc3a218415b0f0b045f23051296cd1",
+      "gitBlob": "21d6c3afd3927e35d3f2c77e6189b30626edff45",
+      "sourceUrl": "https://github.com/smokychain22/trading-bots/blob/7a87bd240a5487893f8b074961e6eeaeb7450f46/src/research/shadow-strategy-orchestrator.ts"
+    },
+    {
+      "path": "src/theta/option-chain-ingestion.ts",
+      "commit": "34b630e5814ce179cf958a0e3d70f5ee28da71b3",
+      "bytes": 10235,
+      "sha256": "267062dda0ccec9da341926e756cd1e6b7a5db05ec179a6592ee4731c9c09d5d",
+      "gitBlob": "481f0185ff7169d45e2b03fba80d73c3f8a692a9",
+      "sourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/option-chain-ingestion.ts"
+    },
+    {
+      "path": "src/theta/canonical-strategy-frontier.ts",
+      "commit": "34b630e5814ce179cf958a0e3d70f5ee28da71b3",
+      "bytes": 95607,
+      "sha256": "628c06916b24090eb1ded329d3e9139362fcc274bb38728dbba254f1422b77e8",
+      "gitBlob": "9e65ab83dee5b45eb59267476e74ea6ade0a05d1",
+      "sourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/canonical-strategy-frontier.ts"
+    },
+    {
+      "path": "src/theta/option-contract.ts",
+      "commit": "34b630e5814ce179cf958a0e3d70f5ee28da71b3",
+      "bytes": 17537,
+      "sha256": "14080fafa549457a753f63718c7c01d92a82217bf9371091cffd7652ae6854f8",
+      "gitBlob": "66727068671484cd796cd8a2054131c2f9251f00",
+      "sourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/option-contract.ts"
+    }
+  ],
+  "findings": [
+    "Canonical H remains 1.0.1-research, RESEARCH_ONLY, execution disabled, PUT 2\u20135 DTE with no roll action. Proposal dot-h-dte3-5-v1 narrows to 3\u20135 and retains exact baseline/risk/cost/execution refs.",
+    "proposal-consumer.ts extracts existing qualification into qualifyDotProposal. H/D generator dispatch, eligibleFamilies routing gate, PIT feature requirements, research receipt and exit-comparison behavior are unchanged.",
+    "Contracts forbid changed riskLimitVersion, multiplierSemantics, costModelVersion and executionModelVersion; require identical hard-rule sets and forbid expanded allowedActions. Shared qualification also blocks any changed allowedActions, model/policy/feature/lattice-version refs, optionType, delta buckets or DTE expansion.",
+    "plannedHoldingDays and profitTakingChallengers remain unconsumed entry-consumer fields. Existing exit-comparison uses plannedHoldingDays as maxHoldingMinutes and retains all policy trials; no new selected-winner-only economic authority.",
+    "H lifecycle/frontier remain byte-identical: no roll; mandatory-close triggers include event, AEGIS or liquidity deterioration and DTE<=1; closed-market expiry assignment/expiry reconciliation preserved; infeasible mandatory action recorded explicitly. This is code compatibility, not a claim all runtime close actions occur.",
+    "New 34b630e management-input-state change canonicalizes valid pg Date timestamps to ISO, invalid Date to null. It can change runtime evidence qualification and input hashes for formerly locale-stringified dates; existing synthetic results do not establish current live evidence quality.",
+    "34b630e also preserves allowlisted failed provider error codes/database precedence, includes POSTGRES_EAI_AGAIN in existing recovery circuit, and renders sizing reason codes/details without changing quantity."
+  ],
+  "canonicalQAC": {
+    "path": "src/lab/canonical-proposal-consumer.ts",
+    "function": "evaluateDotCanonicalProposal / persistDotCanonicalProposal",
+    "endpoint": "POST /v1/research/canonical (private PROPOSER scope)",
+    "branches": [
+      "THETA_CONVENTIONAL",
+      "THETA_RECOVERY",
+      "THETA_CC"
+    ],
+    "HD": "Explicit USE_EXISTING_H_D_GENERATOR_CONSUMER blocker: continue existing evaluateDotShadowProposal for H and D.",
+    "prerequisites": [
+      "Valid research proposal bound to exact canonical baseline/version/hash; fresh qualified feature evidence with account source IDs and snapshot/PIT identity.",
+      "Sealed T0 bundle with bundleContentHash; canonical replay validates integrity hashes; non-null routing with matching snapshotId.",
+      "Execution-account UUID binding. A/C inventory must be QUALIFIED and strict-schema valid; account, snapshot, evidence ID and PIT availability/expiry match; hash of stock equals bundle stock; known nonnegative integer committedShortCallContracts required."
+    ],
+    "supportedScope": "Retain existing canonical frontier candidate economics, rejection reasons, rank and quantities; filter within baseline DTE window. A/recovery stock lattice must be exactly identical, including null-DTE recovery candidates. Does not rerank filtered set or synthesize candidate economics.",
+    "receipt": "dot-canonical-proposal-consumer-v1 includes proposal/config/baseline/input/frontier/receipt hashes, account/snapshot/time, blockers/rules, candidates/exclusions, canonicalBestRetained and baseline refs. executionReady=false, brokerAuthority=false, orderIntentCreated=false, EMPIRICALLY_UNPROVEN.",
+    "unconsumed": [
+      "plannedHoldingDays",
+      "profitTakingChallengers"
+    ],
+    "QAndDWindows": "Unchanged Q canonical runtime-policy lattice 25\u201360 DTE; D 7\u201360. H 3\u20135 is not a generic Q/D candidate window.",
+    "stageCaveat": "Read source only. Research consumer does not itself authorize Paper/live, deploy an endpoint or prove account connectivity.",
+    "sourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/lab/canonical-proposal-consumer.ts",
+    "endpointSourceUrl": "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/lab/http.ts"
+  },
+  "dteSemantics": {
+    "canonicalProducer": "src/theta/option-contract.ts:211\u2013212,261",
+    "formula": "Math.round((new Date(toIso).getTime() - new Date(fromIso).getTime()) / 86_400_000)",
+    "ingestion": "src/theta/option-chain-ingestion.ts:69,138\u2013148 uses YYYY-MM-DD asOfDate and expirationDate",
+    "frontier": "src/theta/canonical-strategy-frontier.ts:763 consumes contract.dte unchanged",
+    "meaning": "Rounded calendar-date duration, not trading-day count; Friday-to-Monday date strings produce 3. H research generator accepts supplied numeric dte and does not validate date consistency. 3\u20135 DTE alone does not exclude weekend exposure.",
+    "sourceUrls": [
+      "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/option-contract.ts#L211-L212",
+      "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/option-contract.ts#L261",
+      "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/option-chain-ingestion.ts#L138-L148",
+      "https://github.com/smokychain22/trading-bots/blob/34b630e5814ce179cf958a0e3d70f5ee28da71b3/src/theta/canonical-strategy-frontier.ts#L763"
+    ]
+  },
+  "governanceExplanation": {
+    "sourceFixes": [
+      "tests/brain-decision-producer-scan.test.ts explicitly classifies proposal-consumer and canonical-proposal-consumer RESEARCH, ledger-import DISPLAY.",
+      "src/lab/main.ts adds application_name dot_lab_isolated_read_only_ledger to max:1 pool.",
+      "tools/theta-postgres-owner-inventory.ts registers ISOLATED_LAB_PROCESS ownership/shutdown/concurrency; its test increases reviewed source pool count30 to31."
+    ],
+    "ciContextsFromParent": {
+      "rawPush": "37825376144 FAIL (3 governance checks)",
+      "syntheticMerge": "37825725232 PASS at af5a9addc72b926c3b479901ba601dee655c9919 with 7a87bd2 + a8167a4 parents"
+    },
+    "interpretation": "Exact source fixes explain supplied governance failures versus historical merge pass. They do not relabel raw push PASS or certify a merge based on newer34b630e. CI logs were not independently fetched in this audit."
+  },
+  "nextStep": "Keep immutable proposal JSON/version/hash. Record this new source-compatibility receipt; refresh integration/CI evidence against any newly generated merge/current source before approval. No semantic rebase required by audited diff.",
+  "limits": [
+    "No rerun of 78 synthetic checks or canonical validator.",
+    "No fresh canonical/private invocation, deployment, Paper authority, broker/account feedback or profitability evidence.",
+    "Later branch commits and any new merge SHA require separate inspection."
+  ],
+  "publicSources": {
+    "frozenCommit": "https://github.com/smokychain22/trading-bots/commit/34b630e5814ce179cf958a0e3d70f5ee28da71b3",
+    "historicalToPriorDiff": "https://github.com/smokychain22/trading-bots/compare/2cb0d470f473132e80d44c2a2c051765e525afee...7a87bd240a5487893f8b074961e6eeaeb7450f46",
+    "priorToFrozenDiff": "https://github.com/smokychain22/trading-bots/compare/7a87bd240a5487893f8b074961e6eeaeb7450f46...34b630e5814ce179cf958a0e3d70f5ee28da71b3",
+    "proposalPullRequest": "https://github.com/smokychain22/trading-bots/pull/18",
+    "proposalAtHead": "https://github.com/smokychain22/trading-bots/blob/a8167a47ffe2bf95fda47bccde7a3e45bacdb812/research/dot-proposals/THETA_H_DTE3_5_Research_Proposal_2026-10-08.json"
+  }
+}

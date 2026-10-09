@@ -1,0 +1,53 @@
+{
+  "status": "PUBLISHED_IMMUTABLE_REFERENCE_CHECKPOINT",
+  "generated_at_utc": "2026-10-08T23:29:51.214651+00:00",
+  "files": [
+    {
+      "path": "reference/THETA_PUBLIC_RESEARCH_SNAPSHOT_2026-10-09.zip",
+      "bytes": 183424,
+      "sha256": "0277ac16e72496528b262da21be7dd9d9479fd460d562b6e8bce40aabdddaf8c"
+    },
+    {
+      "path": "THETA_RESEARCH_SNAPSHOT_SUMMARY.md",
+      "bytes": 6069,
+      "sha256": "bbd8651729a28f5aa6a327d19805d46cfd4637156019b7eb8fc33bdc305685dc"
+    },
+    {
+      "path": "THETA_SELECTION_BASIS_HANDOFF.md",
+      "bytes": 14490,
+      "sha256": "8e9943c5fc9cf641d3d9f0c03ab2cbf1ff79db78933bd586005e4c82c7c233eb"
+    },
+    {
+      "path": "THETA_FEATURE_INTERFACE_HANDOFF.md",
+      "bytes": 13853,
+      "sha256": "0e0dc5a280d1321896ceb64592beeb477fb08e26501b53640271b212b2afb3aa"
+    },
+    {
+      "path": "THETA_Q_DESIGN_AMENDMENT_01.md",
+      "bytes": 8223,
+      "sha256": "5fe1855fd1416b57442308c261a0242c154e42435921cc396e2769df5a7733b9"
+    },
+    {
+      "path": "THETA_PROSPECTIVE_EVIDENCE_HANDOFF.md",
+      "bytes": 7452,
+      "sha256": "a4aa973f290b86855fd41133d0760070bdfe84149d05cbabdcd2a10099f46d14"
+    }
+  ],
+  "zip_entries": 43,
+  "zip_preserves_reproduction_tree": true,
+  "deterministic_zip_second_build_identical": true,
+  "private_data_excluded": true,
+  "publish_only_this_explicit_list": true,
+  "source_commit_reviewed": "d0b479f3dfd0a6d9a1e79a699308cab09ed9f1ba",
+  "six_hour_completion_claim": false,
+  "notes": [
+    "Readable top-level Markdown files are exact copies of selected ZIP members. Folder-relative reproduction paths apply after ZIP extraction.",
+    "The full private index, original briefs, owner-parameter XLE models/audits and private review snapshots are excluded.",
+    "Numerical checks are structural; publication payload contains zero qualified historical option episodes.",
+    "Archive relocated byte-for-byte under the existing small immutable reference policy. Prior source/checkpoint history remains available; no runtime or policy controls changed. See ARCHIVE_PLACEMENT_RECEIPT.json."
+  ],
+  "manifest_version": 2,
+  "updated_at_utc": "2026-10-08T23:51:54.257281+00:00",
+  "initial_publication_checkpoint_sha": "39e6aad029fdc9c1462716a41571f3b6343a66fe",
+  "archive_placement_commit_sha": "8d170fb7f536fbb4d4d99b8f673428ffa51af016"
+}

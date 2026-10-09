@@ -1,0 +1,240 @@
+{
+  "version": "theta-h-dte-consistency-observation-v1",
+  "syntheticOnly": true,
+  "sourceSha": "2cb0d470f473132e80d44c2a2c051765e525afee",
+  "artifactSha256": "a3a312f03928006336462249e05c90c24442030bd87f99084be29c1678d80b08",
+  "canonicalProposalHash": "d13341a5768535f44019c9aedfbfa2d83c0c9a5aeef465bc0410c5255e468033",
+  "asOfDate": "2026-10-05",
+  "decisionTimestamp": "2026-10-05T15:00:00.000Z",
+  "consumerInvocations": 2,
+  "old78AssertionSuiteRerun": false,
+  "observation": "Both accepted. The direct pure consumer does not reject numeric DTE 3 paired with a 2-calendar-day expiration.",
+  "boundary": "Direct consumer injection only. Normalized ingestion computes DTE from expiration and asOfDate; with these same date-only fields it produces 2 for October 7 and 3 for October 8. This experiment does not demonstrate a normalized-ingestion or production-runtime bypass.",
+  "fixtureReview": "Existing fixture used Thursday October 8 plus numeric DTE; its DTE 2 and 3 expirations were Saturday October 10 and Sunday October 11. New probe uses Monday October 5 to Wednesday October 7 versus Thursday October 8, no weekend expiration.",
+  "limitations": [
+    "No real quotes, actual fills, historical replay, broker or database access.",
+    "H/D-only synthetic routing follows existing fixture; full routing schema not tested.",
+    "No normalizer execution, producer or runtime-source modification.",
+    "No production admission or profitability claim."
+  ],
+  "cases": [
+    {
+      "name": "consistent supplied DTE 3 / Thursday expiration",
+      "actualCalendarDays": 3,
+      "input": {
+        "underlying": "XLE",
+        "decisionTimestamp": "2026-10-05T15:00:00.000Z",
+        "sourceEvidenceIds": [
+          "synthetic-iv-evidence"
+        ],
+        "ownershipState": "ELIGIBLE",
+        "eventState": "CLEAR",
+        "routing": {
+          "contractVersion": "theta-strategy-router-runtime-v1",
+          "snapshotId": "synthetic-snapshot-dte-consistency",
+          "timestamp": "2026-10-05T15:00:00.000Z",
+          "policyVersion": "synthetic",
+          "results": [
+            {
+              "strategyFamily": "THETA_H",
+              "eligible": true,
+              "eligibilityState": "ELIGIBLE_PRIMARY",
+              "reasons": [],
+              "policyVersion": "synthetic"
+            },
+            {
+              "strategyFamily": "THETA_D",
+              "eligible": true,
+              "eligibilityState": "ELIGIBLE_PRIMARY",
+              "reasons": [],
+              "policyVersion": "synthetic"
+            }
+          ]
+        },
+        "holdStrikeChain": {
+          "maxQuoteAgeMs": 60000,
+          "contracts": [
+            {
+              "contractId": "synthetic-dte-consistency",
+              "dte": 3,
+              "expiration": "2026-10-08",
+              "strike": 57,
+              "bid": 1,
+              "ask": 1.1,
+              "quoteTimestamp": "2026-10-05T15:00:00.000Z",
+              "delta": -0.2,
+              "multiplier": 100
+            }
+          ]
+        },
+        "definedRiskChain": null
+      },
+      "receipt": {
+        "version": "dot-shadow-proposal-consumer-v1",
+        "proposalHash": "d13341a5768535f44019c9aedfbfa2d83c0c9a5aeef465bc0410c5255e468033",
+        "strategyVersion": "dot-h-dte3-5-v1",
+        "configurationHash": "465fe9e8c6d39e7bd54c02ee1a827b0a5a9398c64fd8f79208ebbd3da5dff0ba",
+        "snapshotId": "synthetic-snapshot-dte-consistency",
+        "decisionTimestamp": "2026-10-05T15:00:00.000Z",
+        "inputHash": "d0db48bd4d39a746d5798183b1cc2b261a2e7c6b962a305adfb057c9b7130225",
+        "rules": [],
+        "blockers": [],
+        "result": {
+          "generatorVersion": "theta-hold-strike-shadow-candidate-generator-v1",
+          "underlying": "XLE",
+          "decisionTimestamp": "2026-10-05T15:00:00.000Z",
+          "acceptedCandidates": [
+            {
+              "candidateId": "HOLD_STRIKE:synthetic-dte-consistency",
+              "contractId": "synthetic-dte-consistency",
+              "strike": 57,
+              "dte": 3,
+              "expiration": "2026-10-08",
+              "delta": -0.2,
+              "bid": 1,
+              "ask": 1.1,
+              "spread": 0.10000000000000009,
+              "multiplier": 100,
+              "quantity": 1,
+              "collateral": 5700,
+              "breakEven": 56,
+              "maxLossAtZero": 5600,
+              "quoteTimestamp": "2026-10-05T15:00:00.000Z",
+              "evidenceIds": [
+                "synthetic-iv-evidence"
+              ]
+            }
+          ],
+          "rejectedCandidates": [],
+          "brokerAuthority": false
+        },
+        "state": "EVALUATED_RESEARCH_ONLY",
+        "truthClass": "MODELED_RESEARCH",
+        "unconsumedExperimentFields": [
+          "plannedHoldingDays",
+          "profitTakingChallengers"
+        ],
+        "brokerAuthority": false,
+        "orderIntentCreated": false,
+        "profitability": "EMPIRICALLY_UNPROVEN",
+        "receiptHash": "6d20d165c11d4c1fcaba595f3b769deeeee69ec79cb2c55e852a714bae8959bd"
+      }
+    },
+    {
+      "name": "inconsistent supplied DTE 3 / Wednesday expiration",
+      "actualCalendarDays": 2,
+      "input": {
+        "underlying": "XLE",
+        "decisionTimestamp": "2026-10-05T15:00:00.000Z",
+        "sourceEvidenceIds": [
+          "synthetic-iv-evidence"
+        ],
+        "ownershipState": "ELIGIBLE",
+        "eventState": "CLEAR",
+        "routing": {
+          "contractVersion": "theta-strategy-router-runtime-v1",
+          "snapshotId": "synthetic-snapshot-dte-consistency",
+          "timestamp": "2026-10-05T15:00:00.000Z",
+          "policyVersion": "synthetic",
+          "results": [
+            {
+              "strategyFamily": "THETA_H",
+              "eligible": true,
+              "eligibilityState": "ELIGIBLE_PRIMARY",
+              "reasons": [],
+              "policyVersion": "synthetic"
+            },
+            {
+              "strategyFamily": "THETA_D",
+              "eligible": true,
+              "eligibilityState": "ELIGIBLE_PRIMARY",
+              "reasons": [],
+              "policyVersion": "synthetic"
+            }
+          ]
+        },
+        "holdStrikeChain": {
+          "maxQuoteAgeMs": 60000,
+          "contracts": [
+            {
+              "contractId": "synthetic-dte-consistency",
+              "dte": 3,
+              "expiration": "2026-10-07",
+              "strike": 57,
+              "bid": 1,
+              "ask": 1.1,
+              "quoteTimestamp": "2026-10-05T15:00:00.000Z",
+              "delta": -0.2,
+              "multiplier": 100
+            }
+          ]
+        },
+        "definedRiskChain": null
+      },
+      "receipt": {
+        "version": "dot-shadow-proposal-consumer-v1",
+        "proposalHash": "d13341a5768535f44019c9aedfbfa2d83c0c9a5aeef465bc0410c5255e468033",
+        "strategyVersion": "dot-h-dte3-5-v1",
+        "configurationHash": "465fe9e8c6d39e7bd54c02ee1a827b0a5a9398c64fd8f79208ebbd3da5dff0ba",
+        "snapshotId": "synthetic-snapshot-dte-consistency",
+        "decisionTimestamp": "2026-10-05T15:00:00.000Z",
+        "inputHash": "cf7228e485bed1158931b622d4db865e25632ab8225766a217af30ddf4655c0d",
+        "rules": [],
+        "blockers": [],
+        "result": {
+          "generatorVersion": "theta-hold-strike-shadow-candidate-generator-v1",
+          "underlying": "XLE",
+          "decisionTimestamp": "2026-10-05T15:00:00.000Z",
+          "acceptedCandidates": [
+            {
+              "candidateId": "HOLD_STRIKE:synthetic-dte-consistency",
+              "contractId": "synthetic-dte-consistency",
+              "strike": 57,
+              "dte": 3,
+              "expiration": "2026-10-07",
+              "delta": -0.2,
+              "bid": 1,
+              "ask": 1.1,
+              "spread": 0.10000000000000009,
+              "multiplier": 100,
+              "quantity": 1,
+              "collateral": 5700,
+              "breakEven": 56,
+              "maxLossAtZero": 5600,
+              "quoteTimestamp": "2026-10-05T15:00:00.000Z",
+              "evidenceIds": [
+                "synthetic-iv-evidence"
+              ]
+            }
+          ],
+          "rejectedCandidates": [],
+          "brokerAuthority": false
+        },
+        "state": "EVALUATED_RESEARCH_ONLY",
+        "truthClass": "MODELED_RESEARCH",
+        "unconsumedExperimentFields": [
+          "plannedHoldingDays",
+          "profitTakingChallengers"
+        ],
+        "brokerAuthority": false,
+        "orderIntentCreated": false,
+        "profitability": "EMPIRICALLY_UNPROVEN",
+        "receiptHash": "04d6a31d5d1abe6da62e5b03fb6ebeb908eb456f1e923091491fe5cafb6faf3e"
+      }
+    }
+  ],
+  "sourceQualification": {
+    "executedSourceSha": "2cb0d470f473132e80d44c2a2c051765e525afee",
+    "compatibilityAuditReferenceSha": "34b630e5814ce179cf958a0e3d70f5ee28da71b3",
+    "newSourceExecuted": false,
+    "qualification": "Execution is frozen to the existing 2cb source closure. The separate 34b compatibility audit is contextual evidence, not execution of that newer runtime or proof of its full behavior."
+  },
+  "execution": {
+    "nodeVersion": "v24.19.0",
+    "command": "node --permission --allow-fs-read=\"$PWD\" harness.mjs > observation-receipt.json",
+    "harnessRuns": 1,
+    "pureConsumerCalls": 2,
+    "additionalCasesRun": 0,
+    "prior78AssertionSuiteRerun": false
+  }
+}

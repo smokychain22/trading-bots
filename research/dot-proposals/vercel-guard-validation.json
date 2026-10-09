@@ -1,0 +1,9 @@
+{
+  "status": "PASS_INSTANCE_AND_GIT_SUBSCHEMA",
+  "schemaUrl": "https://openapi.vercel.sh/vercel.json",
+  "schemaSha256": "4493cbebf8c320b79d1ef18fb5aa99b0962469857e414ff67cba9cfc0d481eb3",
+  "warning": "Whole provider schema fails its declared meta-schema on unrelated queue trigger keywords. No schema modified; instance validation and isolated git subtree validation passed. Not a Vercel deployment acceptance receipt.",
+  "exactBranch": "dot/theta-h-dte3-5-research-v1",
+  "otherConfigurationPreserved": true,
+  "deploymentBehaviorVerified": false
+}

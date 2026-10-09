@@ -1,0 +1,64 @@
+{
+  "schema": "new_bot_research.independent_publication_package_review.v2",
+  "reviewed_at_utc": "2026-10-09T01:21:48.203014+00:00",
+  "status": "PASS_EXACT_PACKAGE_INVENTORY_PROVENANCE_PRIVACY_AND_CLAIMS_REVIEW",
+  "archive": {
+    "filename": "NEW_BOT_OFFLINE_RESEARCH_PACKAGE_2026-10-09_v2.zip",
+    "bytes": 233834,
+    "sha256": "d4ff103e30f51ff1361cca37d1a95c70109881d7f1bbb53ea196bfc77d21f583",
+    "files": 96,
+    "manifest_records": 95,
+    "manifest_sha256": "e242153fc3ffc5ca4d5c3fb170ca7382c8ee052ef16ca8c728db23addf588bb3"
+  },
+  "checks": {
+    "every_manifest_hash_and_size_exact": true,
+    "every_entry_explicitly_whitelisted": true,
+    "safe_paths_no_duplicates_no_symlinks_no_encryption": true,
+    "all_payloads_utf8_text": true,
+    "no_binary_or_proprietary_pdf_payload": true,
+    "sensitive_pattern_hits": [],
+    "no_private_owner_brief_account_tuple_or_credential_found": true,
+    "canonical_reference_source_byte_identical_notices_preserved": true,
+    "public_overview_separates_synthetic_and_empirical_evidence": true,
+    "public_overview_disclaims_cross_bot_performance_ranking": true,
+    "reviewed_tests_not_promoted_to_market_samples": true,
+    "no_original_H_proposal_files_included": true
+  },
+  "docs_only_continuity": {
+    "superseded_archive_sha256": "a662ba48a738ac901b8be92c4809b8b0da44f2e850f08c0c639c569a62e134bf",
+    "changed_entries": [
+      "MANIFEST_SHA256.json",
+      "NEW_BOT_RESEARCH_OVERVIEW.md",
+      "README.md",
+      "harvester/FINAL_MANIFEST_v0.1.1.json",
+      "harvester/STRATEGY_CONTRACT_v0.1.1.md",
+      "review/cross_family/INTERFACE_AND_CLAIMS_REVIEW.md",
+      "review/cross_family/REVIEW_MANIFEST.json",
+      "review/cross_family/manifest_integrity.json",
+      "review/harvester/FINAL_REVIEW.md",
+      "review/harvester/FINAL_REVIEW_RECEIPT.json"
+    ],
+    "unchanged_entries": 86,
+    "unchanged_executable_or_test_entries": 18,
+    "changed_executable_entries": 0,
+    "changed_fixture_or_financial_output_entries": 0,
+    "clarification": "65 completed daily sessions feed EWMA;252 sessions/year is annualization, not history length or forecast horizon;30-calendar-day ATM IV comparison is an unmatched screening proxy.",
+    "continuity_receipt_sha256": "1ba5af4d51112a5565c0c7d9ccd9ddf6517b974299b889dd4e2b368f2e40529f"
+  },
+  "reproduction_evidence": {
+    "prototype_test_executions_by_this_review": 0,
+    "new_tests_or_market_observations": 0,
+    "original_packaging_runs": "One execution of each entrypoint in the initial clean extraction, as recorded separately.",
+    "revised_archive": "Exact extraction/manifest and byte-continuity checks only; no prototype rerun.",
+    "original_packaging_receipt_sha256": "b7b70acbbd0b3db62ade366862e26004542ff6fea60e3c78e45d0d175679657d"
+  },
+  "proposed_destination_reviewed": "research/dot-proposals/reference/THETA_NEW_BOT_RESEARCH_PROTOTYPES_2026-10-09.zip",
+  "limitations": [
+    "Bounded explicit-whitelist and content review; not a universal secret-detection guarantee.",
+    "Canonical file provenance is byte equality to the previously approved archived source; no new remote-license verification was performed.",
+    "No actual fills, empirical profitability, capacity, tail adequacy or deployment readiness established.",
+    "This receipt records packaging review only, not a publication or trading authorization."
+  ],
+  "publication_performed_by_reviewer": false,
+  "archive_modified_by_reviewer": false
+}

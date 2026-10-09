@@ -1,0 +1,66 @@
+{
+  "proposalId": "88cbf70e-d45a-4442-b7a8-fe766bc9d692",
+  "parentProposalHash": null,
+  "baselineHash": "cfdded1548790c092f6a24a00512b771780ca338fbc9a2565e860ce670dae9b3",
+  "strategy": {
+    "strategyId": "theta-hold-strike",
+    "strategyVersion": "dot-h-dte3-5-v1",
+    "branch": "THETA_HOLD_STRIKE",
+    "status": "RESEARCH_ONLY",
+    "executionEnabled": false,
+    "candidateLatticeVersion": "theta-lattice-v1",
+    "featureSetVersion": "theta-feature-set-v1",
+    "entryModelVersion": "EV_MODEL_NOT_EMPIRICALLY_READY",
+    "ownershipModelVersion": "theta-ownership-runtime-v1",
+    "managementPolicyVersion": "theta-management-action-frontier-v2",
+    "riskLimitVersion": "theta-aegis-runtime-v1",
+    "costModelVersion": "theta-cost-model-v1",
+    "executionModelVersion": "theta-execution-quality-runtime-v3",
+    "promotionStatus": "UNVALIDATED",
+    "lattice": {
+      "dteMin": 3,
+      "dteMax": 5,
+      "optionType": "PUT",
+      "deltaResearchBuckets": []
+    },
+    "multiplierSemantics": "BROKER_CONTRACT_METADATA_REQUIRED",
+    "hardRules": [
+      "SUPPORTED_SESSION",
+      "STANDARD_CONTRACT",
+      "KNOWN_MULTIPLIER",
+      "FRESH_BROKER_STATE",
+      "FRESH_EXECUTABLE_BBO",
+      "COLLATERAL_CAPACITY",
+      "ASSIGNMENT_CAPACITY",
+      "PORTFOLIO_RISK_WITHIN_LIMITS",
+      "RECONCILED_LIFECYCLE",
+      "AEGIS_NOT_VETOED",
+      "VALID_NONZERO_QUANTITY"
+    ],
+    "softFeatureFamilies": [
+      "LIQUIDITY",
+      "OWNERSHIP",
+      "DRAWDOWN_RECOVERY",
+      "EVENT_CONTEXT",
+      "REGIME",
+      "EXECUTION_QUALITY"
+    ],
+    "allowedActions": [
+      "OPEN_CSP",
+      "HOLD",
+      "CLOSE_FULL",
+      "LET_EXPIRE",
+      "ACCEPT_ASSIGNMENT",
+      "WAIT",
+      "PASS"
+    ]
+  },
+  "hypothesis": "Bounded H candidate-coverage hypothesis: narrow entry DTE from canonical 2-5 to 3-5 only, using evaluateDotShadowProposal. Compare identical point-in-time input and routing snapshots. All retained 3-5 DTE contracts must have identical economics, quantity and eligibility; record every excluded 2-DTE opportunity. A longer minimum runway might reduce near-expiry management pressure, but coverage loss may outweigh any benefit; this proposal makes no profitability claim. This is a separate integration/coverage experiment, not a change to the accepted same-entry H net-50 primary/net-80 secondary exit study, gross incumbent, or no-roll rule. No new soft rule, model reference, action or hard-rule change. Public source: smokychain22/trading-bots@2cb0d470f473132e80d44c2a2c051765e525afee; src/lab/proposal-consumer.ts SHA256=567ab605af852367bcd91174f2a15a09eeffd53fe69eaf73b6bb40b1619fab8f; src/lab/contracts.ts SHA256=a2605233a88e0bc1996ad48e9985119d1176b2d29a5a8ce26559d00a09297dbd. Provenance: independently retrieved public source on 2026-10-08; zero market observations, zero actual fills, no private account read. The sole economic parameter change is dteMin 2 to 3. plannedHoldingDays=10 and profitTakingChallengers=[FIXED_10,FIXED_50] are retained public-example metadata, unconsumed by this shadow-candidate experiment. They are not a verified H hold policy or permission to outlive mandatory exits; do not route this proposal to persistDotExitComparison. Canonical validator and qualified baseline/challenger evaluation pending. Research only, execution disabled, no broker authority.",
+  "researchRules": [],
+  "profitTakingChallengers": [
+    "FIXED_10",
+    "FIXED_50"
+  ],
+  "plannedHoldingDays": 10,
+  "experimentId": "theta_h_dte3_5_20261008_v1"
+}
