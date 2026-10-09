@@ -235,6 +235,11 @@ try {
       $command5aSourceCursor = $null
       $command5aArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
       $hostResourceGuard = Get-ThetaHostResourceGuard -Path $stateRoot
+      # Source-page backfill is research-only and can consume its full 180-second
+      # deadline. During an open or unknown market session, leave the primary
+      # supervisor free to start its next broker and management cycle. The
+      # durable source cursor resumes this work when the market is closed.
+      $command5aScheduleDeferredForMarket = $report.reconciliation.marketOpen -ne $false
       $command5aSchedulingPausedForHost = -not $hostResourceGuard.AllowHeavyResearch
       $command5aSchedulingPausedForStorage = $false
       if (Test-Path -LiteralPath $command5aArchiveHealthPath -PathType Leaf) {
@@ -246,7 +251,9 @@ try {
       $previousErrorActionPreference = $ErrorActionPreference
       $ErrorActionPreference = 'Continue'
       try {
-        if ($command5aSchedulingPausedForHost) {
+        if ($command5aScheduleDeferredForMarket) {
+          $command5aScheduleState = 'DEFERRED_MARKET_CRITICAL'
+        } elseif ($command5aSchedulingPausedForHost) {
           $command5aScheduleState = 'PAUSED_HOST_RESOURCE_GUARD'
         } elseif ($command5aSchedulingPausedForStorage) {
           $command5aScheduleState = 'PAUSED_STORAGE_WATERMARK'

@@ -67,3 +67,13 @@ test('Windows owner schedules, observes, and matures Command-5A through the immu
   assert.match(source, /if \(\$report\.reconciliation\.marketOpen -eq \$true\)/);
   assert.doesNotMatch(source, /theta-command5a-runtime\.ts[\s\S]{0,220}(submit|createOrder|postOrder)/i);
 });
+
+test('open or unknown market defers slow research scheduling before the next management cycle', () => {
+  const marketGate = source.indexOf('$command5aScheduleDeferredForMarket = $report.reconciliation.marketOpen -ne $false');
+  const scheduleStart = source.indexOf('$command5aScheduleProcess = Invoke-ThetaBoundedProcess');
+  assert.ok(marketGate >= 0 && scheduleStart > marketGate);
+  assert.match(source, /if \(\$command5aScheduleDeferredForMarket\)\s*\{\s*\$command5aScheduleState = 'DEFERRED_MARKET_CRITICAL'\s*\} elseif \(\$command5aSchedulingPausedForHost\)/);
+  assert.match(source, /\$command5aSince = \[string\]\$runtime\.installedAt/);
+  assert.match(source, /\$command5aObservationProcess = Invoke-ThetaBoundedProcess/);
+  assert.match(source, /\$command5aMaturationProcess = Invoke-ThetaBoundedProcess/);
+});
