@@ -1,0 +1,124 @@
+{
+  "name": "dot Basic GET-only verification",
+  "on": {
+    "workflow_dispatch": {
+      "inputs": {
+        "reviewed_sha": {
+          "description": "Approved exact 40-character lowercase commit SHA on codex/dot-basic-readonly-v1",
+          "required": true,
+          "type": "string"
+        }
+      }
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "dot-basic-readonly-v1",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "source_tests": {
+      "name": "Secretless source and workflow tests",
+      "if": "${{ github.event_name == 'workflow_dispatch' && github.repository == 'smokychain22/trading-bots' && github.ref == 'refs/heads/codex/dot-basic-readonly-v1' && github.sha == inputs.reviewed_sha && github.run_attempt == 1 }}",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 1,
+      "permissions": {
+        "contents": "read"
+      },
+      "steps": [
+        {
+          "name": "Validate manual dispatch and reviewed SHA",
+          "shell": "bash",
+          "env": {
+            "REVIEWED_SHA": "${{ inputs.reviewed_sha }}"
+          },
+          "run": "set -euo pipefail\n/usr/bin/python3 -I -S -B - <<'PYGUARD'\nimport os\nimport re\nimport sys\nsha = os.environ.get(\"REVIEWED_SHA\", \"\")\nvalid = (\n    os.environ.get(\"GITHUB_ACTIONS\") == \"true\"\n    and os.environ.get(\"GITHUB_EVENT_NAME\") == \"workflow_dispatch\"\n    and os.environ.get(\"GITHUB_REPOSITORY\") == \"smokychain22/trading-bots\"\n    and os.environ.get(\"GITHUB_REF\") == \"refs/heads/codex/dot-basic-readonly-v1\"\n    and os.environ.get(\"GITHUB_RUN_ATTEMPT\") == \"1\"\n    and re.fullmatch(r\"[0-9a-f]{40}\", sha) is not None\n    and os.environ.get(\"GITHUB_SHA\") == sha\n)\nif not valid:\n    print(\"READONLY_DISPATCH_GUARD_REFUSED\")\n    sys.exit(2)\nprint(\"READONLY_DISPATCH_GUARD_PASSED\")\nPYGUARD"
+        },
+        {
+          "name": "Check out the reviewed commit",
+          "uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+          "with": {
+            "repository": "smokychain22/trading-bots",
+            "ref": "${{ github.sha }}",
+            "persist-credentials": false,
+            "fetch-depth": 1,
+            "submodules": false,
+            "lfs": false,
+            "show-progress": false,
+            "sparse-checkout": ".github/workflows/dot-basic-readonly.yml\ntools/dot-basic-readonly",
+            "sparse-checkout-cone-mode": false
+          }
+        },
+        {
+          "name": "Run only isolated synthetic unit tests",
+          "shell": "bash",
+          "run": "set -euo pipefail\ncd -- tools/dot-basic-readonly\nenv -i PATH=/usr/bin:/bin /usr/bin/python3 -E -s -S -B -m unittest discover -s tests -v"
+        }
+      ]
+    },
+    "verify_readonly": {
+      "name": "Protected bounded GET-only verification",
+      "needs": [
+        "source_tests"
+      ],
+      "if": "${{ github.event_name == 'workflow_dispatch' && github.repository == 'smokychain22/trading-bots' && github.ref == 'refs/heads/codex/dot-basic-readonly-v1' && github.sha == inputs.reviewed_sha && github.run_attempt == 1 }}",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 2,
+      "permissions": {
+        "contents": "read"
+      },
+      "environment": {
+        "name": "dot-basic-readonly"
+      },
+      "steps": [
+        {
+          "name": "Validate manual dispatch and reviewed SHA",
+          "shell": "bash",
+          "env": {
+            "REVIEWED_SHA": "${{ inputs.reviewed_sha }}"
+          },
+          "run": "set -euo pipefail\n/usr/bin/python3 -I -S -B - <<'PYGUARD'\nimport os\nimport re\nimport sys\nsha = os.environ.get(\"REVIEWED_SHA\", \"\")\nvalid = (\n    os.environ.get(\"GITHUB_ACTIONS\") == \"true\"\n    and os.environ.get(\"GITHUB_EVENT_NAME\") == \"workflow_dispatch\"\n    and os.environ.get(\"GITHUB_REPOSITORY\") == \"smokychain22/trading-bots\"\n    and os.environ.get(\"GITHUB_REF\") == \"refs/heads/codex/dot-basic-readonly-v1\"\n    and os.environ.get(\"GITHUB_RUN_ATTEMPT\") == \"1\"\n    and re.fullmatch(r\"[0-9a-f]{40}\", sha) is not None\n    and os.environ.get(\"GITHUB_SHA\") == sha\n)\nif not valid:\n    print(\"READONLY_DISPATCH_GUARD_REFUSED\")\n    sys.exit(2)\nprint(\"READONLY_DISPATCH_GUARD_PASSED\")\nPYGUARD"
+        },
+        {
+          "name": "Check out the reviewed commit",
+          "uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+          "with": {
+            "repository": "smokychain22/trading-bots",
+            "ref": "${{ github.sha }}",
+            "persist-credentials": false,
+            "fetch-depth": 1,
+            "submodules": false,
+            "lfs": false,
+            "show-progress": false,
+            "sparse-checkout": ".github/workflows/dot-basic-readonly.yml\ntools/dot-basic-readonly",
+            "sparse-checkout-cone-mode": false
+          }
+        },
+        {
+          "name": "Verify and isolate immutable source subset",
+          "id": "stage",
+          "shell": "bash",
+          "env": {
+            "REVIEWED_SHA": "${{ inputs.reviewed_sha }}"
+          },
+          "run": "set -euo pipefail\numask 077\n/usr/bin/python3 -I -S -B - <<'PYSTAGE'\nimport hashlib\nimport os\nfrom pathlib import Path\nimport stat\nimport subprocess\nimport sys\nimport tempfile\n\nEXPECTED = {'theta_basic_lab/__init__.py': '5df5ac3b667d6a3b90895eecf4d320ac872998971f979be6fcb597f36f563756', 'theta_basic_lab/observations.py': '5c6fd81bdf037e424596d22317af3b4bbc898c1230a84492a0987d04c5b6d862', 'theta_basic_lab/providers.py': '235292059eb5ebfd78366d5201f18f36125ca10c0cee3bf884c0a714a1bf802f', 'theta_basic_lab/verify_readonly.py': '8f1b9c7e0b01b3c6498a2692ae7ad4f0bcb944570041a1bc992e48d35212b148'}\ntry:\n    workspace = Path(os.environ[\"GITHUB_WORKSPACE\"])\n    head = subprocess.run(\n        [\"/usr/bin/git\", \"rev-parse\", \"HEAD\"], cwd=workspace,\n        env={\"PATH\": \"/usr/bin:/bin\"}, check=True, capture_output=True,\n        text=True, timeout=5,\n    ).stdout.strip()\n    if head != os.environ[\"GITHUB_SHA\"] or head != os.environ[\"REVIEWED_SHA\"]:\n        raise ValueError()\n    source = workspace / \"tools\" / \"dot-basic-readonly\"\n    for parent in (workspace / \"tools\", source, source / \"theta_basic_lab\"):\n        if not stat.S_ISDIR(parent.lstat().st_mode):\n            raise ValueError()\n    contents = {}\n    for relative, digest in EXPECTED.items():\n        path = source / relative\n        if not stat.S_ISREG(path.lstat().st_mode):\n            raise ValueError()\n        body = path.read_bytes()\n        if hashlib.sha256(body).hexdigest() != digest:\n            raise ValueError()\n        contents[relative] = body\n    root = Path(tempfile.mkdtemp(prefix=\"dot-readonly-\", dir=os.environ[\"RUNNER_TEMP\"]))\n    package = root / \"theta_basic_lab\"\n    package.mkdir(mode=0o700)\n    for relative, body in contents.items():\n        target = root / relative\n        target.write_bytes(body)\n        target.chmod(0o400)\n    package.chmod(0o500)\n    root.chmod(0o500)\n    with open(os.environ[\"GITHUB_OUTPUT\"], \"a\", encoding=\"utf-8\") as output:\n        output.write(\"root=\" + str(root) + \"\\n\")\n    print(\"READONLY_REVIEWED_SUBSET_PASSED\")\nexcept BaseException:\n    print(\"READONLY_REVIEWED_SUBSET_REFUSED\")\n    sys.exit(2)\nPYSTAGE"
+        },
+        {
+          "name": "Run bounded read-only verification",
+          "shell": "bash",
+          "timeout-minutes": 1,
+          "env": {
+            "THETA_GITHUB_ENVIRONMENT": "dot-basic-readonly",
+            "THETA_VERIFIER_ROOT": "${{ steps.stage.outputs.root }}",
+            "THETA_ALPACA_PAPER_KEY_ID": "${{ secrets.THETA_ALPACA_PAPER_KEY_ID }}",
+            "THETA_ALPACA_PAPER_SECRET_KEY": "${{ secrets.THETA_ALPACA_PAPER_SECRET_KEY }}",
+            "THETA_ALPACA_PAPER_ACCOUNT_NUMBER": "${{ secrets.THETA_ALPACA_PAPER_ACCOUNT_NUMBER }}"
+          },
+          "run": "set -euo pipefail\ncd -- \"$THETA_VERIFIER_ROOT\"\nexec /usr/bin/python3 -E -s -S -B -m theta_basic_lab.verify_readonly --enable-api-read --require-github-environment dot-basic-readonly"
+        }
+      ]
+    }
+  }
+}
