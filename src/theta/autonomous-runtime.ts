@@ -333,6 +333,15 @@ export async function buildRuntimeManagementFrontiers(
   return states.map((state, index) => buildManagementActionFrontier(state, evidence[index] ?? null));
 }
 
+/** Preserve a missing qualified close comparison in the scheduler receipt.
+ * Passive monitoring continues, but it must not look like an ordinary
+ * empirical-model limitation to operators. */
+export function managementFrontierObservationBlocker(frontier: ManagementActionFrontier): string | null {
+  return frontier.decisionState === 'SYSTEM_HOLD_MISSING_EVIDENCE'
+    && frontier.reasonCodes.includes('CLOSE_UNQUALIFIED_MISSING_EVIDENCE')
+    ? 'CLOSE_UNQUALIFIED_MISSING_EVIDENCE' : null;
+}
+
 /**
  * P-A. The stock-exit freeze a management cycle must honour for one chain. Only actions that would sell or cover shares are
  * evidence-gated; every other action reports CLEAR without a read. The result feeds assembleManagementPaperPlans
@@ -587,6 +596,7 @@ export async function runAutonomousRuntimeCycle(
           const rawAegis=state.context.aegisState;
           const aegisState=typeof rawAegis==='string'&&['ALLOW_FULL','ALLOW_REDUCED','HOLD_ONLY','HARD_VETO'].includes(rawAegis)
             ? rawAegis as 'ALLOW_FULL'|'ALLOW_REDUCED'|'HOLD_ONLY'|'HARD_VETO':null;
+          firstChainBlocker??=managementFrontierObservationBlocker(persisted.frontier);
           // P-A: a chain frozen after a terminal partial stock exit may not sell or cover shares until broker and ledger agree.
           const stockExitFreeze=await resolveManagementStockExitFreeze(pool,master.executionAccountId,state,persisted.frontier.selectedAction);
           if(stockExitFreeze.state==='FROZEN'){firstChainBlocker??=stockPartialExitPendingReconciliation;continue;}

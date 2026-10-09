@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildRuntimeManagementFrontiers } from '../src/theta/autonomous-runtime.js';
+import { buildRuntimeManagementFrontiers, managementFrontierObservationBlocker } from '../src/theta/autonomous-runtime.js';
 import {
+  buildManagementActionFrontier,
   managementPolicyEvidenceVersion,
   type ManagementPolicyEvidence,
 } from '../src/theta/management-action-frontier.js';
@@ -58,4 +59,15 @@ test('runtime rejects stale provider evidence and returns to passive management'
   })});
   assert.equal(frontiers[0]?.selectedAction,'HOLD');
   assert.ok(frontiers[0]?.reasonCodes.includes('MANAGEMENT_POLICY_INPUT_HASH_MISMATCH'));
+});
+
+test('runtime receipt preserves an unqualified close comparison without changing passive action',()=>{
+  const base=state();
+  const frontier={...buildManagementActionFrontier(base),selectedAction:'HOLD' as const,
+    decisionState:'SYSTEM_HOLD_MISSING_EVIDENCE' as const,
+    reasonCodes:['MANAGEMENT_POLICY_EVIDENCE_REJECTED','CLOSE_UNQUALIFIED_MISSING_EVIDENCE']};
+  assert.equal(managementFrontierObservationBlocker(frontier),'CLOSE_UNQUALIFIED_MISSING_EVIDENCE');
+  assert.equal(frontier.selectedAction,'HOLD');
+  assert.equal(managementFrontierObservationBlocker({...frontier,reasonCodes:['MANAGEMENT_POLICY_EVIDENCE_MISSING']}),null);
+  assert.equal(managementFrontierObservationBlocker({...frontier,decisionState:'ACTION_SELECTED'}),null);
 });
