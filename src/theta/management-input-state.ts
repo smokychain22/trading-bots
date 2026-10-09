@@ -547,11 +547,11 @@ export function assembleManagementInput(row: Row, input: {
   // a missing/non-positive ask, a crossed quote, or a missing timestamp is not.
   if (hasOpenOption && (bid === null || ask === null || bid < 0 || ask <= 0 || bid > ask || row.quote_as_of == null)) hardBlockers.push('EXECUTABLE_QUOTE_UNAVAILABLE');
   if (hasOpenOption && text(row.quote_quality) !== 'GOOD') hardBlockers.push('BROKER_DATA_INVALID');
-  const quoteAgeMs = row.quote_as_of == null ? null : Date.parse(input.observedAt) - Date.parse(String(row.quote_as_of));
+  const quoteAgeMs = row.quote_as_of == null ? null : Date.parse(input.observedAt) - Date.parse(text(row.quote_as_of) ?? '');
   if (quoteAgeMs !== null && (!Number.isFinite(quoteAgeMs) || quoteAgeMs < 0 || quoteAgeMs > managementBrokerQuoteMaxAgeMs)) {
     hardBlockers.push('BROKER_DATA_STALE');
   }
-  const accountAgeMs = row.account_as_of == null ? null : Date.parse(input.observedAt) - Date.parse(String(row.account_as_of));
+  const accountAgeMs = row.account_as_of == null ? null : Date.parse(input.observedAt) - Date.parse(text(row.account_as_of) ?? '');
   if (accountAgeMs === null || !Number.isFinite(accountAgeMs) || accountAgeMs < 0 || accountAgeMs > managementBrokerAccountMaxAgeMs) {
     hardBlockers.push('BROKER_DATA_STALE');
   }

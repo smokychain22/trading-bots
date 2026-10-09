@@ -52,6 +52,23 @@ test('malformed or impossible contract dates stay unknown with producer-specific
   }
 });
 
+test('subsecond future pg quote and account timestamps are classified as stale broker evidence', () => {
+  const observedAt='2026-09-12T14:00:00.000Z';
+  const options={managementInputSnapshotId:'future-broker-evidence',
+    reconciliationSnapshotId:'recon-1',observedAt};
+  const future=new Date('2026-09-12T14:00:00.500Z');
+  const quote=assembleManagementInput({...base,quote_as_of:future},options);
+  const account=assembleManagementInput({...base,account_as_of:future},options);
+  for(const state of [quote,account]){
+    assert.ok(state.hardBlockers.includes('BROKER_DATA_STALE'));
+    assert.ok(state.hardBlockers.includes('EVIDENCE_OBSERVED_AFTER_DECISION'));
+  }
+  const withinLimit=assembleManagementInput({...base,
+    quote_as_of:new Date('2026-09-12T13:59:30.001Z'),
+    account_as_of:new Date('2026-09-12T13:57:00.001Z')},options);
+  assert.ok(!withinLimit.hardBlockers.includes('BROKER_DATA_STALE'));
+});
+
 test('management consumes same-reconciliation account capital without needing an opportunity scan', () => {
   const at='2026-09-12T14:00:00.000Z',accountHash='a'.repeat(64);
   const observation=buildReconciledAccountCapital({equity:'100000.00',cash:'90000.00',options_buying_power:'84300.25',
