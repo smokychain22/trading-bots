@@ -571,8 +571,11 @@ export async function runAutonomousRuntimeCycle(
           .discover(master.connectionId,reconciliation.snapshotId);
         // The evidence scan follows management in the Windows supervisor. Its
         // last account snapshot may have expired despite fresh broker reconciliation.
-        const accountRefresh = await refreshManagementAccountSnapshot({pool,alpaca:master.alpaca,
-          connectionId:master.connectionId,expectedProviderAccountRef:master.providerAccountRef});
+        // A broker-only cycle can have no open Wheel chain and no canonical
+        // trading account yet. Refresh only when a management subject exists.
+        const accountRefresh = candidateDiscovery.size === 0 ? null
+          : await refreshManagementAccountSnapshot({pool,alpaca:master.alpaca,
+            connectionId:master.connectionId,expectedProviderAccountRef:master.providerAccountRef});
         const states = await managementStore.assembleAndPersistOpenChains(
           master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,candidateDiscovery,
           // SELL_STOCK executable evidence: one bounded Alpaca IEX stock quote read per underlying holding shares.

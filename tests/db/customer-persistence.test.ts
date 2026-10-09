@@ -107,6 +107,9 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
       const first = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
       const duplicate = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
       assert.equal(first.status, 'SUCCEEDED', JSON.stringify(first.jobResults));
+      assert.ok(first.jobResults.some(job => job.jobType === 'POSITION_MANAGEMENT_SCAN'
+        && job.status === 'SKIPPED' && job.errorCode === 'NO_OPEN_THETA_CHAINS'),
+      'a broker-only account with no open chain needs no management account snapshot');
       assert.equal(first.reconciliation?.dataQuality, 'GOOD');
       assert.equal(first.reconciliation?.accountStatus, 'ACTIVE');
       assert.equal(duplicate.status, 'DUPLICATE');
