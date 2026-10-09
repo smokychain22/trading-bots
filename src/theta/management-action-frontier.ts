@@ -299,6 +299,14 @@ function applyPolicyEvidence(actions: readonly ManagementActionEconomics[], inpu
       executionEvidence:value.executionEvidence, reasons:[...action.reasons,...value.reasons] };
   });
   const comparable = merged.filter((action) => action.feasibility === 'FEASIBLE');
+  // A passive HOLD cannot be certified as the economic winner when its
+  // risk-reducing close alternative lacks qualified execution evidence.
+  const requiredClose = evidence.selectedAction === 'HOLD' && input.lifecycleState === 'CSP_OPEN'
+    ? 'CLOSE_FULL' : evidence.selectedAction === 'HOLD_CC' && input.lifecycleState === 'CC_OPEN'
+      ? 'CLOSE_CC' : null;
+  if (requiredClose !== null && merged.find((action) => action.action === requiredClose)?.feasibility !== 'FEASIBLE') {
+    evidenceErrors.push('CLOSE_UNQUALIFIED_MISSING_EVIDENCE');
+  }
   for (const action of comparable) if (action.utility === null) evidenceErrors.push(`MANAGEMENT_POLICY_UTILITY_UNKNOWN:${action.action}`);
   const ranked = comparable.filter((action): action is ManagementActionEconomics & { utility: number } => action.utility !== null)
     .sort((left, right) => right.utility - left.utility

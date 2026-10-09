@@ -41,6 +41,16 @@ test('CSP_OPEN with no known reason to act and no roll candidate holds', () => {
   assert.ok(evidence?.reasonCodes.includes('BOOTSTRAP_DETERMINISTIC_NO_EMPIRICAL_CLAIM'));
 });
 
+test('real bootstrap HOLD remains a system hold when the close quote is stale', () => {
+  const stateWithStaleBroker = { ...state('CSP_OPEN'), hardBlockers: ['BROKER_DATA_STALE'] };
+  const evidence = evaluatePaperBootstrapManagementPolicy(stateWithStaleBroker);
+  assert.equal(evidence?.selectedAction, 'HOLD');
+  const frontier = buildManagementActionFrontier(stateWithStaleBroker, evidence);
+  assert.equal(frontier.selectedAction, 'HOLD');
+  assert.equal(frontier.decisionState, 'SYSTEM_HOLD_MISSING_EVIDENCE');
+  assert.ok(frontier.reasonCodes.includes('CLOSE_UNQUALIFIED_MISSING_EVIDENCE'));
+});
+
 test('CSP_OPEN near expiration with near-exhausted remaining value closes deterministically', () => {
   const input = state('CSP_OPEN', { bid: 0.01, ask: 0.02 }, '2026-10-13T14:00:00.000Z');
   const evidence = evaluatePaperBootstrapManagementPolicy(input);

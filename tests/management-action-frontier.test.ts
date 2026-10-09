@@ -75,6 +75,49 @@ test('stale broker state blocks quote-dependent actions but keeps passive manage
   assert.ok(frontier.actions.find((action)=>action.action==='CLOSE_FULL')?.blockers.includes('EXECUTION_MARKET_NOT_QUALIFIED'));
 });
 
+test('a stale close quote cannot turn passive HOLD into a qualified economic selection',()=>{
+  const input={...state('CSP_OPEN'),hardBlockers:['BROKER_DATA_STALE']};
+  const frontier=buildManagementActionFrontier(input,policy(input,'HOLD',null));
+  assert.equal(frontier.selectedAction,'HOLD');
+  assert.equal(frontier.decisionState,'SYSTEM_HOLD_MISSING_EVIDENCE');
+  assert.equal(frontier.policyVersion,null);
+  assert.ok(frontier.reasonCodes.includes('CLOSE_UNQUALIFIED_MISSING_EVIDENCE'));
+});
+
+test('a missing option ask cannot turn passive HOLD into a qualified economic selection',()=>{
+  const base=state('CSP_OPEN');
+  const input={...base,market:{...base.market,optionAsk:null}};
+  const frontier=buildManagementActionFrontier(input,policy(input,'HOLD',null));
+  assert.equal(frontier.selectedAction,'HOLD');
+  assert.equal(frontier.decisionState,'SYSTEM_HOLD_MISSING_EVIDENCE');
+  assert.ok(frontier.reasonCodes.includes('CLOSE_UNQUALIFIED_MISSING_EVIDENCE'));
+});
+
+test('future-dated close evidence cannot turn passive HOLD into a qualified economic selection',()=>{
+  const base=state('CSP_OPEN');
+  const input={...base,evidenceBundle:{...base.evidenceBundle,timingState:'FUTURE_EVIDENCE' as const}};
+  const frontier=buildManagementActionFrontier(input,policy(input,'HOLD',null));
+  assert.equal(frontier.decisionState,'SYSTEM_HOLD_MISSING_EVIDENCE');
+  assert.ok(frontier.reasonCodes.includes('CLOSE_UNQUALIFIED_MISSING_EVIDENCE'));
+});
+
+test('a covered-call HOLD cannot claim a complete comparison with an unqualified close',()=>{
+  const input={...state('CC_OPEN'),hardBlockers:['BROKER_DATA_STALE']};
+  const frontier=buildManagementActionFrontier(input,policy(input,'HOLD_CC',null));
+  assert.equal(frontier.selectedAction,'HOLD_CC');
+  assert.equal(frontier.decisionState,'SYSTEM_HOLD_MISSING_EVIDENCE');
+  assert.equal(frontier.policyVersion,null);
+  assert.ok(frontier.reasonCodes.includes('CLOSE_UNQUALIFIED_MISSING_EVIDENCE'));
+});
+
+test('a fully quoted policy may still select HOLD after a qualified comparison',()=>{
+  const input=state('CSP_OPEN');
+  const frontier=buildManagementActionFrontier(input,policy(input,'HOLD',null));
+  assert.equal(frontier.selectedAction,'HOLD');
+  assert.equal(frontier.decisionState,'ACTION_SELECTED');
+  assert.ok(!frontier.reasonCodes.includes('CLOSE_UNQUALIFIED_MISSING_EVIDENCE'));
+});
+
 test('complete same-snapshot economics can select a risk-reducing CSP close',()=>{
   const input=state('CSP_OPEN');
   const frontier=buildManagementActionFrontier(input,policy(input,'CLOSE_FULL',execution()));
