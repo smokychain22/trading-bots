@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import { fetchMasterAccountEvidence, type AlpacaProviderConfig } from './alpaca-provider.js';
+import { AlpacaProviderError, fetchMasterAccountEvidence, type AlpacaProviderConfig } from './alpaca-provider.js';
 import { managementBrokerAccountMaxAgeMs } from './management-input-state.js';
 
 const refreshMarginMs = 60_000;
@@ -15,7 +15,7 @@ export async function refreshManagementAccountSnapshot(input: {
   readonly expectedProviderAccountRef: string;
   readonly now?: () => string;
   readonly readEvidence?: typeof fetchMasterAccountEvidence;
-}): Promise<'FRESH' | 'REFRESHED'> {
+}): Promise<'FRESH' | 'REFRESHED' | 'PROVIDER_UNAVAILABLE'> {
   const now = input.now ?? (() => new Date().toISOString());
   const checkedAt = now();
   if (!Number.isFinite(Date.parse(checkedAt))) throw new Error('MANAGEMENT_ACCOUNT_CLOCK_INVALID');
@@ -35,7 +35,18 @@ export async function refreshManagementAccountSnapshot(input: {
     return 'FRESH';
   }
 
-  const evidence = await (input.readEvidence ?? fetchMasterAccountEvidence)(input.alpaca, now);
+  let evidence: Awaited<ReturnType<typeof fetchMasterAccountEvidence>>;
+  try {
+    evidence = await (input.readEvidence ?? fetchMasterAccountEvidence)(input.alpaca, now);
+  } catch (error) {
+    // Keep recording the position's missing-evidence frontier on a transient
+    // broker read failure. Invalid authentication and malformed account data
+    // remain hard failures, never a reusable account snapshot.
+    if (error instanceof AlpacaProviderError &&
+      ['RATE_LIMITED','SERVER_ERROR','NETWORK_ERROR','PROVIDER_TIMEOUT'].includes(error.errorClass))
+      return 'PROVIDER_UNAVAILABLE';
+    throw error;
+  }
   if (evidence.providerAccountId !== input.expectedProviderAccountRef)
     throw new Error('MANAGEMENT_MASTER_ACCOUNT_IDENTITY_MISMATCH');
   if (evidence.snapshot.accountStatus !== 'ACTIVE') throw new Error('MANAGEMENT_MASTER_ACCOUNT_NOT_ACTIVE');

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Pool } from 'pg';
 import { refreshManagementAccountSnapshot } from '../src/theta/management-account-snapshot.js';
-import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
+import { AlpacaProviderError, type AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import { readFileSync } from 'node:fs';
 
 const alpaca: AlpacaProviderConfig = {
@@ -53,6 +53,21 @@ test('stale account is refreshed from a verified read before management freezes 
     90_000, 45_000, 3, at, 'existing-master-account']);
 });
 
+test('real account parser preserves unavailable buying power as unknown, never zero', async () => {
+  const { pool, calls } = fixture(null);
+  const requested: string[] = [];
+  const fetchImpl = (async (resource: RequestInfo | URL) => {
+    requested.push(new URL(String(resource)).pathname);
+    return Response.json({ id: 'master-physical-id', status: 'ACTIVE', equity: '100000',
+      cash: '70000', buying_power: '90000', options_buying_power: null,
+      options_approved_level: 3, options_trading_level: 3 });
+  }) as typeof fetch;
+  assert.equal(await refreshManagementAccountSnapshot({ ...base, pool, readEvidence: undefined,
+    alpaca: { ...alpaca, fetchImpl } }), 'REFRESHED');
+  assert.deepEqual(requested, ['/v2/account']);
+  assert.equal(calls[1]?.values[5], null);
+});
+
 test('identity mismatch, inactive account, and changed canonical row cannot persist a snapshot', async () => {
   for (const invalid of [
     { providerAccountId: 'other-account', snapshot },
@@ -77,10 +92,22 @@ test('provider and database failures propagate instead of becoming a valid manag
   await assert.rejects(refreshManagementAccountSnapshot({ ...base, pool: failed.pool }), /postgres outage/);
 });
 
+test('transient broker failure keeps the prior account stale and returns a typed degraded state', async () => {
+  const { pool, calls } = fixture(null);
+  assert.equal(await refreshManagementAccountSnapshot({ ...base, pool,
+    readEvidence: async () => { throw new AlpacaProviderError('NETWORK_ERROR', null, 'synthetic network'); } }),
+  'PROVIDER_UNAVAILABLE');
+  assert.equal(calls.length, 1, 'a failed read must never write a replacement account snapshot');
+  await assert.rejects(refreshManagementAccountSnapshot({ ...base, pool,
+    readEvidence: async () => { throw new AlpacaProviderError('INVALID_AUTH', 401, 'synthetic auth'); } }),
+  (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'INVALID_AUTH');
+});
+
 test('runtime refreshes account after discovery and before immutable management input', () => {
   const source = readFileSync(new URL('../src/theta/autonomous-runtime.ts', import.meta.url), 'utf8');
   const start = source.indexOf('const candidateDiscovery = await new ProductionPaperManagementCandidateSource');
   const refresh = source.indexOf('await refreshManagementAccountSnapshot(', start);
   const freeze = source.indexOf('await managementStore.assembleAndPersistOpenChains(', start);
   assert.ok(start >= 0 && start < refresh && refresh < freeze);
+  assert.match(source, /accountRefresh==='PROVIDER_UNAVAILABLE'[\s\S]{0,100}'ALPACA_ACCOUNT_REFRESH_UNAVAILABLE'/);
 });

@@ -571,7 +571,7 @@ export async function runAutonomousRuntimeCycle(
           .discover(master.connectionId,reconciliation.snapshotId);
         // The evidence scan follows management in the Windows supervisor. Its
         // last account snapshot may have expired despite fresh broker reconciliation.
-        await refreshManagementAccountSnapshot({pool,alpaca:master.alpaca,
+        const accountRefresh = await refreshManagementAccountSnapshot({pool,alpaca:master.alpaca,
           connectionId:master.connectionId,expectedProviderAccountRef:master.providerAccountRef});
         const states = await managementStore.assembleAndPersistOpenChains(
           master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,candidateDiscovery,
@@ -590,7 +590,8 @@ export async function runAutonomousRuntimeCycle(
         await new PostgresP2EEvidenceStore(pool).persistManagementEvidence(states,frontiers);
         const persistedFrontiers=await managementStore.persistFrontiers(states, frontiers);
         const actionPlanStore=new PostgresMasterPaperActionPlanStore(pool);
-        let firstChainBlocker:string|null=null;
+        let firstChainBlocker:string|null=accountRefresh==='PROVIDER_UNAVAILABLE'
+          ?'ALPACA_ACCOUNT_REFRESH_UNAVAILABLE':null;
         for(let index=0;index<states.length;index+=1){
           const state=states[index],persisted=persistedFrontiers[index];
           if(state===undefined||persisted===undefined)throw new Error('MANAGEMENT_PERSISTENCE_ALIGNMENT_FAILED');
