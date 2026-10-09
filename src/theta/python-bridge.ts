@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { redactDiagnosticText } from '../security/diagnostic-redaction.js';
 
 // R1I: the controlled Python <-> TypeScript bridge, per
 // docs/quant/phase6_router/PYTHON_TS_BRIDGE_ARCHITECTURE.md.
@@ -81,15 +82,8 @@ export interface VersionExpectation {
   readonly expectedModelVersions?: Readonly<Record<string, string>>;
 }
 
-// Redacts anything shaped like a credential (key/secret/token/password
-// followed by a long alphanumeric value) from process error output before
-// it is ever logged or returned -- mirrors the heuristic
-// tools/security-scan.mjs already applies to source files, applied here to
-// live stderr content instead.
-const SECRET_SHAPED_PATTERN = /(api[_-]?key|secret|token|password)(\s*[:=]\s*)['"]?[A-Za-z0-9_-]{8,}['"]?/gi;
-
 export function redactSecretShapedContent(text: string): string {
-  return text.replace(SECRET_SHAPED_PATTERN, '$1$2<redacted>');
+  return redactDiagnosticText(text).replaceAll('[REDACTED]', '<redacted>');
 }
 
 /**
