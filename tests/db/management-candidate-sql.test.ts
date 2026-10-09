@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { ProductionPaperManagementCandidateSource } from
   '../../src/theta/production-paper-management-candidate-source.js';
 import { PostgresManagementInputStore } from '../../src/theta/management-input-state.js';
+import { refreshManagementAccountSnapshot } from '../../src/theta/management-account-snapshot.js';
 
 test('management discovery and input queries compile against migrated PostgreSQL and remain master scoped',{
   skip:!process.env.TEST_DATABASE_URL,
@@ -16,13 +17,17 @@ test('management discovery and input queries compile against migrated PostgreSQL
   const pool=new Pool({connectionString:url.toString(),max:2});
   try{
     const invalidConnection=randomUUID(),invalidReconciliation=randomUUID();
-    const source=new ProductionPaperManagementCandidateSource(pool,{
+    const alpaca={
       tradingApiBase:'https://paper-api.alpaca.markets',marketDataApiBase:'https://data.alpaca.markets',
       apiKey:'test-only',apiSecret:'test-only',fetchImpl:(async()=>{throw new Error('BROKER_FETCH_NOT_EXPECTED');}) as typeof fetch,
-    });
+    };
+    const source=new ProductionPaperManagementCandidateSource(pool,alpaca);
     assert.deepEqual(await source.loadSubjects(invalidConnection,invalidReconciliation),[]);
     assert.deepEqual(await new PostgresManagementInputStore(pool).assembleAndPersistOpenChains(
       invalidConnection,invalidReconciliation,new Date().toISOString()),[]);
+    await assert.rejects(refreshManagementAccountSnapshot({pool,alpaca,
+      connectionId:invalidConnection,expectedProviderAccountRef:'missing-synthetic-account'}),
+    /MANAGEMENT_MASTER_ACCOUNT_IDENTITY_UNVERIFIED/);
   }finally{await pool.end();}
 });
 
