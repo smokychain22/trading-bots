@@ -977,7 +977,7 @@ test('covered-call opens need BROKER-confirmed cover: a ledger-only count (e.g. 
 
 test('one blocked chain never starves the other chains of the management scan (first blocker is recorded, the loop continues)', () => {
   const runtime = readFileSync(new URL('../src/theta/autonomous-runtime.ts', import.meta.url), 'utf8');
-  assert.match(runtime, /let firstChainBlocker:string\|null=null;/);
+  assert.match(runtime, /let firstChainBlocker:string\|null=accountRefresh==='PROVIDER_UNAVAILABLE'\s*\?'ALPACA_ACCOUNT_REFRESH_UNAVAILABLE':null;/);
   assert.match(runtime, /firstChainBlocker\?\?=compiled\.blockers\[0\]\?\?'MANAGEMENT_LEG_COMPILATION_BLOCKED';continue;/);
   assert.match(runtime, /firstChainBlocker\?\?=assembly\.blockers\[0\]\?\?'MANAGEMENT_ACTION_PLAN_BLOCKED';continue;/);
   assert.match(runtime, /if \(firstChainBlocker !== null\) return degraded\(firstChainBlocker, retryAt\);/);
