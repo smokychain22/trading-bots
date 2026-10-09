@@ -53,6 +53,8 @@ jobs:
       - run: npm test -- --evidence=.ci-test-evidence/node-suite.jsonl
       - run: npm run build
       - run: npm run scan:security
+      - name: Reject critical Production dependency advisories
+        run: npm audit --omit=dev --audit-level=critical
       - run: npm run storage:git-policy
       - name: Test Windows backup safety and bounded digest contracts
         shell: pwsh
