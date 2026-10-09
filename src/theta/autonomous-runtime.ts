@@ -12,6 +12,7 @@ import { dispatchDueJobs, type DueJob } from './scheduler-engine.js';
 import type { JobRunResult, JobType } from './scheduler.js';
 import { PostgresSchedulerCheckpointRepository } from './postgres-scheduler-checkpoint-repository.js';
 import { PostgresManagementInputStore, type ManagementInputState } from './management-input-state.js';
+import { refreshManagementAccountSnapshot } from './management-account-snapshot.js';
 import {
   buildManagementActionFrontier,
   type ManagementActionFrontier,
@@ -568,6 +569,10 @@ export async function runAutonomousRuntimeCycle(
         // producer enumerates only; this remains the one policy authority.
         const candidateDiscovery = await new ProductionPaperManagementCandidateSource(pool,master.alpaca)
           .discover(master.connectionId,reconciliation.snapshotId);
+        // The evidence scan follows management in the Windows supervisor. Its
+        // last account snapshot may have expired despite fresh broker reconciliation.
+        await refreshManagementAccountSnapshot({pool,alpaca:master.alpaca,
+          connectionId:master.connectionId,expectedProviderAccountRef:master.providerAccountRef});
         const states = await managementStore.assembleAndPersistOpenChains(
           master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,candidateDiscovery,
           // SELL_STOCK executable evidence: one bounded Alpaca IEX stock quote read per underlying holding shares.
