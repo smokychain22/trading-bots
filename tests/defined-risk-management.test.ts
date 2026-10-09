@@ -94,7 +94,7 @@ const closeDecision = assessDefinedRiskManagement({ ...base, dte: 1 });
 const closeInput = { openIntentId: 'open-1', openEvidence: evidence, chainId: 'chain-1', underlyingId: 'u-1', executionAccountId: 'acct-1', decisionId: 'decision-1', decision: closeDecision,
   shortQuote: { symbol: SHORT, bid: 1.9, ask: 2.0, observedAt: NOW }, longQuote: { symbol: LONG, bid: 0.8, ask: 0.9, observedAt: NOW }, now: NOW,
   decisionExpiresAt: '2026-10-15T15:01:00.000Z', maximumQuoteAgeSeconds: 30, attempt: 1,
-  quoteFeed: 'INDICATIVE' as const, aegisState: 'ALLOW_FULL' as const };
+  quoteFeed: 'INDICATIVE' as const, accountVerified: true, optionsCapabilityVerified: true, aegisState: 'ALLOW_FULL' as const };
 
 test('close command: one native mleg package, buy_to_close short + sell_to_close long, marketable POSITIVE debit rounded up, identities from the durable open legs', () => {
   const command = buildDefinedRiskCloseCommand(closeInput);
@@ -128,6 +128,8 @@ test('close command refuses: wrong decision, non-executable quotes, wrong leg id
   assert.throws(() => buildDefinedRiskCloseCommand({ ...closeInput, decisionExpiresAt: NOW }), /DECISION_EXPIRED/);
   assert.throws(() => buildDefinedRiskCloseCommand({ ...closeInput, openEvidence: { ...evidence, legs: [evidence.legs[1] as never, evidence.legs[0] as never] } }), /STRUCTURE_INVALID/);
   assert.throws(() => buildDefinedRiskCloseCommand({ ...closeInput, quoteFeed: null as never }), /QUOTE_PROVENANCE_UNKNOWN/);
+  assert.throws(() => buildDefinedRiskCloseCommand({ ...closeInput, accountVerified: false }), /ACCOUNT_NOT_VERIFIED/);
+  assert.throws(() => buildDefinedRiskCloseCommand({ ...closeInput, optionsCapabilityVerified: false }), /OPTIONS_CAPABILITY_NOT_VERIFIED/);
 });
 
 test('a required close with unknown feed is persisted as HOLD with provenance failure even when both leg prices are fresh', () => {

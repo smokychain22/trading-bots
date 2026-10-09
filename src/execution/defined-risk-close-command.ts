@@ -22,6 +22,8 @@ export interface BuildDefinedRiskCloseCommandInput {
   readonly shortQuote: DefinedRiskCloseQuote;
   readonly longQuote: DefinedRiskCloseQuote;
   readonly quoteFeed: 'OPRA' | 'INDICATIVE';
+  readonly accountVerified: boolean;
+  readonly optionsCapabilityVerified: boolean;
   readonly now: string;
   readonly decisionExpiresAt: string;
   readonly maximumQuoteAgeSeconds: number;
@@ -50,6 +52,8 @@ const deterministicUuid = (value: string): string => {
  * Closing reduces risk, so it is not a new entry, but it is still persisted before submission and submitted only by PaperOrderCoordinator.
  */
 export function buildDefinedRiskCloseCommand(input: BuildDefinedRiskCloseCommandInput): DefinedRiskCloseCommand {
+  if (input.accountVerified !== true) throw new Error('DEFINED_RISK_CLOSE_ACCOUNT_NOT_VERIFIED');
+  if (input.optionsCapabilityVerified !== true) throw new Error('DEFINED_RISK_CLOSE_OPTIONS_CAPABILITY_NOT_VERIFIED');
   if (input.quoteFeed !== 'OPRA' && input.quoteFeed !== 'INDICATIVE') throw new Error('DEFINED_RISK_CLOSE_QUOTE_PROVENANCE_UNKNOWN');
   if (input.decision.action !== 'CLOSE_FULL' || input.decision.orderIntentId !== input.openIntentId || input.decision.chainId !== input.chainId) throw new Error('DEFINED_RISK_CLOSE_REQUIRES_MATCHING_CLOSE_DECISION');
   if (!input.decision.quotesExecutable) throw new Error('DEFINED_RISK_CLOSE_QUOTES_NOT_EXECUTABLE');
@@ -93,7 +97,8 @@ export function buildDefinedRiskCloseCommand(input: BuildDefinedRiskCloseCommand
       decisionExpiresAt: input.decisionExpiresAt, quoteContentHash: hash([input.shortQuote, input.longQuote]), aegisState },
     // a close is sized by the position, not by AEGIS/risk sizing: canonical == evidence == the exact open quantity (never rounded up, never "at least 1")
     authorizationEvidence: { executionTier: 'PAPER_EVIDENCE', canonicalQuantity: quantity, paperEvidenceQuantity: quantity, empiricalEconomicsReady: false, expectedAfterCostEv: null },
-    gate: { baseHostname: 'paper-api.alpaca.markets', accountVerified: true, optionsCapabilityVerified: true, aegisState, quoteFresh: true,
+    gate: { baseHostname: 'paper-api.alpaca.markets', accountVerified: input.accountVerified,
+      optionsCapabilityVerified: input.optionsCapabilityVerified, aegisState, quoteFresh: true,
       priceEvidence: 'QUALIFIED_OPTION_BBO', decisionExpiresAt: input.decisionExpiresAt, now: input.now, isNewEntry: false },
   } as DefinedRiskCloseCommand;
 }

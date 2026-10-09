@@ -65,7 +65,8 @@ async function setup() {
     context: { eventState: 'CLEAR', aegisState: 'ALLOW_FULL', executionQuality: 'GOOD' }, aegisState: 'ALLOW_FULL', executionAccountId, ...patch });
   const deps = (load: (position: DefinedRiskPositionSnapshot, at: string) => Promise<DefinedRiskScanInputs>) => ({ positions, orders, coordinator, loadInputs: load,
     recordDecision: (decision: Parameters<PostgresDefinedRiskDecisionRecorder['record']>[0], position: DefinedRiskPositionSnapshot, frontier: Parameters<PostgresDefinedRiskDecisionRecorder['record']>[2]) => recorder.record(decision, position, frontier),
-    nextCloseAttempt: (id: string) => recorder.nextCloseAttempt(id), pinBandPct: 0.002, maximumQuoteAgeSeconds: 30, decisionWindowSeconds: 60, mayClose: true, now: () => NOW });
+    nextCloseAttempt: (id: string) => recorder.nextCloseAttempt(id), pinBandPct: 0.002, maximumQuoteAgeSeconds: 30, decisionWindowSeconds: 60,
+    mayClose: true, accountVerified: true, optionsCapabilityVerified: true, now: () => NOW });
   return { pool, world, orders, positions, broker, coordinator, open, chainId, inputs, deps };
 }
 
@@ -125,6 +126,24 @@ test('a required spread close with unknown quote feed leaves a decision but no o
     } finally { await ctx.pool.end(); }
   });
 
+test('a spread close cannot prepare or submit when account identity or options capability is unverified',
+  { skip: !url }, async () => {
+    const ctx = await setup();
+    try {
+      for (const patch of [{ accountVerified: false }, { optionsCapabilityVerified: false }]) {
+        const result = await runDefinedRiskManagementScan({ ...ctx.deps(async () => ctx.inputs()), ...patch });
+        const mine = result.find((item) => item.orderIntentId === ctx.open.orderIntentId);
+        assert.equal(mine?.selectedAction, 'CLOSE_FULL');
+        assert.equal(mine?.closeIntentId, null);
+        assert.ok(mine?.reasons.includes(patch.accountVerified === false ? 'CLOSE_ACCOUNT_NOT_VERIFIED' : 'CLOSE_OPTIONS_CAPABILITY_NOT_VERIFIED'));
+      }
+      assert.equal(ctx.broker.submitted.length, 0);
+      const intents = await ctx.pool.query(`SELECT count(*)::int AS count FROM trade.order_intent
+        WHERE chain_id=$1 AND theta_action='CLOSE_DEFINED_RISK'`, [ctx.chainId]);
+      assert.equal(intents.rows[0]?.count, 0);
+    } finally { await ctx.pool.end(); }
+  });
+
 test('a crash after the close intent was persisted but before submit resumes at the READY intent: no second prepare, exactly one submit', { skip: !url }, async () => {
   const ctx = await setup();
   try {
@@ -181,7 +200,8 @@ test('an inert scan: with no active spread the runner does nothing at all', { sk
     // only terminal / absent positions remain for this assertion: filter to a fresh empty world by checking no result references an unknown id
     const results = await runDefinedRiskManagementScan({ positions: new ScopedPositions(pool, randomUUID()), orders,
       coordinator: new PaperOrderCoordinator(broker, orders, control({ masterEnabled: true, pauseNewOrders: false })), loadInputs: async () => { throw new Error('MUST_NOT_BE_CALLED'); },
-      recordDecision: (decision, position, frontier) => recorder.record(decision, position, frontier), nextCloseAttempt: (id) => recorder.nextCloseAttempt(id), pinBandPct: 0.002, maximumQuoteAgeSeconds: 30, decisionWindowSeconds: 60, mayClose: true, now: () => NOW });
+      recordDecision: (decision, position, frontier) => recorder.record(decision, position, frontier), nextCloseAttempt: (id) => recorder.nextCloseAttempt(id), pinBandPct: 0.002,
+      maximumQuoteAgeSeconds: 30, decisionWindowSeconds: 60, mayClose: true, accountVerified: true, optionsCapabilityVerified: true, now: () => NOW });
     assert.deepEqual(results, []);
     assert.equal(broker.submitted.length, 0);
   } finally { await pool.end(); }

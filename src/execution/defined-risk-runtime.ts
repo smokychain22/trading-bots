@@ -20,7 +20,9 @@ export interface DefinedRiskRuntimeInput {
   readonly coordinator: PaperOrderCoordinator;
   readonly orders: PaperOrderStore;
   readonly executionAccountId: string;
-  readonly reconciliation: { readonly snapshotId: string; readonly marketOpen: boolean | null; readonly dataQuality: 'GOOD' | 'UNKNOWN'; readonly observedAt: string };
+  readonly reconciliation: { readonly snapshotId: string; readonly marketOpen: boolean | null; readonly dataQuality: 'GOOD' | 'UNKNOWN';
+    readonly accountStatus: string | null; readonly observedAt: string };
+  readonly optionsCapabilityVerified: boolean;
   readonly managementSubmissionEnabled: boolean;
   readonly now?: () => string;
 }
@@ -77,6 +79,8 @@ export async function runDefinedRiskManagementForRuntime(input: DefinedRiskRunti
       context: { eventState: 'UNKNOWN', aegisState: null, executionQuality: executableQuotes ? 'GOOD' : 'UNKNOWN' }, aegisState: null, executionAccountId: input.executionAccountId };
   };
   return runDefinedRiskManagementScan({ positions, orders: input.orders, coordinator: input.coordinator, loadInputs, mayClose,
+    accountVerified: input.reconciliation.dataQuality === 'GOOD' && input.reconciliation.accountStatus === 'ACTIVE',
+    optionsCapabilityVerified: input.optionsCapabilityVerified,
     recordDecision: (decision, position, frontier) => recorder.record(decision, position, frontier), nextCloseAttempt: (id) => recorder.nextCloseAttempt(id),
     pinBandPct: definedRiskPinBandPct, maximumQuoteAgeSeconds: definedRiskMaximumQuoteAgeSeconds, decisionWindowSeconds: definedRiskDecisionWindowSeconds, now });
 }

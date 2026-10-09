@@ -552,7 +552,9 @@ export async function runAutonomousRuntimeCycle(
         const definedRisk=master.executionAccountId===null||definedRiskStore===null?[]:await runDefinedRiskManagementForRuntime({pool,alpaca:master.alpaca,
           coordinator:new PaperOrderCoordinator(master.executionBroker,definedRiskStore,{masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders},windowFence),
           orders:definedRiskStore,executionAccountId:master.executionAccountId,
-          reconciliation:{snapshotId:reconciliation.snapshotId,marketOpen:reconciliation.marketOpen,dataQuality:reconciliation.dataQuality,observedAt:reconciliation.observedAt},
+          reconciliation:{snapshotId:reconciliation.snapshotId,marketOpen:reconciliation.marketOpen,dataQuality:reconciliation.dataQuality,
+            accountStatus:reconciliation.accountStatus,observedAt:reconciliation.observedAt},
+          optionsCapabilityVerified:master.optionsCapabilityVerified,
           managementSubmissionEnabled:executionControl.managementSubmissionEnabled});
         definedRiskEscalated=definedRisk.some((item)=>item.escalate);
         const managementStore = new PostgresManagementInputStore(pool);

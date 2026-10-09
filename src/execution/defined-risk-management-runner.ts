@@ -34,6 +34,8 @@ export interface DefinedRiskManagementRunnerDeps {
   readonly decisionWindowSeconds: number;
   /** false = the decision is still computed and persisted, but NO order intent is prepared or submitted (submission not authorized, market closed, reconciliation not GOOD) */
   readonly mayClose: boolean;
+  readonly accountVerified: boolean;
+  readonly optionsCapabilityVerified: boolean;
   readonly now: () => string;
 }
 
@@ -81,19 +83,23 @@ export async function runDefinedRiskManagementScan(deps: DefinedRiskManagementRu
     // D proposes; the ONE management frontier selects; only its selection is executed
     const frontier = buildDefinedRiskManagementActionFrontier(definedRiskManagementProposal(decision, refreshed));
     const closeSelected = frontier.selectedAction === 'CLOSE_FULL';
-    const closeBlocked = decision.closeRequired && (!deps.mayClose || inputs.quoteFeed === null);
+    const closeAuthorized = deps.mayClose && deps.accountVerified && deps.optionsCapabilityVerified;
+    const closeBlocked = decision.closeRequired && (!closeAuthorized || inputs.quoteFeed === null);
     const reasons = [...decision.reasons, ...(inputError ? ['MANAGEMENT_INPUTS_UNAVAILABLE'] : []),
-      ...(closeSelected && !deps.mayClose ? ['CLOSE_SUBMISSION_NOT_AUTHORIZED_NOW'] : [])];
+      ...(closeSelected && !deps.mayClose ? ['CLOSE_SUBMISSION_NOT_AUTHORIZED_NOW'] : []),
+      ...(closeSelected && !deps.accountVerified ? ['CLOSE_ACCOUNT_NOT_VERIFIED'] : []),
+      ...(closeSelected && !deps.optionsCapabilityVerified ? ['CLOSE_OPTIONS_CAPABILITY_NOT_VERIFIED'] : [])];
     const decisionId = await deps.recordDecision(decision, position, frontier);
     let closeIntentId: string | null = null;
-    if (closeSelected && deps.mayClose && inputs.quoteFeed !== null
+    if (closeSelected && closeAuthorized && inputs.quoteFeed !== null
       && inputs.shortQuote?.bid != null && inputs.longQuote?.bid != null) {
       const attempt = await deps.nextCloseAttempt(position.orderIntentId);
       const expires = new Date(Date.parse(observedAt) + deps.decisionWindowSeconds * 1000).toISOString();
       const command = buildDefinedRiskCloseCommand({ openIntentId: position.orderIntentId, openEvidence: openIntent.multiLegEvidence, chainId: position.chainId, underlyingId: position.underlyingId,
         executionAccountId: inputs.executionAccountId, decisionId, decision, shortQuote: { symbol: shortLeg.occSymbol, bid: inputs.shortQuote.bid, ask: inputs.shortQuote.ask as number, observedAt: inputs.shortQuote.observedAt as string },
         longQuote: { symbol: longLeg.occSymbol, bid: inputs.longQuote.bid, ask: inputs.longQuote.ask as number, observedAt: inputs.longQuote.observedAt as string },
-        quoteFeed: inputs.quoteFeed, now: observedAt, decisionExpiresAt: expires,
+        quoteFeed: inputs.quoteFeed, accountVerified: deps.accountVerified,
+        optionsCapabilityVerified: deps.optionsCapabilityVerified, now: observedAt, decisionExpiresAt: expires,
         maximumQuoteAgeSeconds: deps.maximumQuoteAgeSeconds, attempt, aegisState: inputs.aegisState });
       const { gate, ...intent } = command;
       const existing = await deps.orders.getIntent(intent.orderIntentId);
