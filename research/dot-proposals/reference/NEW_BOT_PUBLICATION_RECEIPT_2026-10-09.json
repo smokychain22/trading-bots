@@ -1,0 +1,354 @@
+{
+  "schema": "theta.new_bot_research.publication_receipt.v2",
+  "prepared_at_utc": "2026-10-09T01:22:01Z",
+  "target_branch": "dot/theta-h-dte3-5-research-v1",
+  "target_directory": "research/dot-proposals/reference",
+  "state": "REVIEWED_PREPUBLICATION",
+  "original_h_proposal_changed": false,
+  "production_or_broker_authority": false,
+  "empirical_option_episodes": 0,
+  "publication_purpose": "New research deliverable; not a push to troubleshoot inherited CI. Keep draft PR18 unmerged.",
+  "archive_integrity": {
+    "schema": "new_bot_research.publication_candidate.v2",
+    "status": "LOCAL_PUBLIC_SAFE_CANDIDATE_PARENT_REVIEW_PENDING",
+    "publication_performed": false,
+    "Library_upload_performed": false,
+    "files": [
+      {
+        "path": "NEW_BOT_OFFLINE_RESEARCH_PACKAGE_2026-10-09_v2.zip",
+        "bytes": 233834,
+        "sha256": "d4ff103e30f51ff1361cca37d1a95c70109881d7f1bbb53ea196bfc77d21f583"
+      },
+      {
+        "path": "NEW_BOT_RESEARCH_OVERVIEW.md",
+        "bytes": 6769,
+        "sha256": "13c2e2b0fa65b31a58b3940c178b8c523712c842cb0238892715ad43fe2e1c23"
+      },
+      {
+        "path": "README.md",
+        "bytes": 3488,
+        "sha256": "bd7faaada995f78dd2f10242d226d41b745ca88647e434318c6b8b480fa06447"
+      },
+      {
+        "path": "MANIFEST_SHA256.json",
+        "bytes": 17303,
+        "sha256": "e242153fc3ffc5ca4d5c3fb170ca7382c8ee052ef16ca8c728db23addf588bb3"
+      },
+      {
+        "path": "PACKAGING_REPRODUCTION_RECEIPT.json",
+        "bytes": 5596,
+        "sha256": "b7b70acbbd0b3db62ade366862e26004542ff6fea60e3c78e45d0d175679657d"
+      },
+      {
+        "path": "PACKAGING_DOCS_REVISION_CONTINUITY_V2.json",
+        "bytes": 6234,
+        "sha256": "1ba5af4d51112a5565c0c7d9ccd9ddf6517b974299b889dd4e2b368f2e40529f"
+      }
+    ],
+    "self_excluded": "PUBLICATION_MANIFEST.json",
+    "superseded_zip_do_not_publish": "NEW_BOT_OFFLINE_RESEARCH_PACKAGE_2026-10-09.zip",
+    "package_scope": "Three separate offline research prototypes, full playbooks and exact public-safe independent reviews; no originalH proposal or private owner context.",
+    "family_review_status": "All three passed bounded offline structural review, with exact hashes verified; amended Harvester annualization prose accepted.",
+    "packaging_integrity_status": "Three entrypoints passed once on original extracted archive. v2 docs-only correction passed exact extraction and proves all code, tests, fixtures and financial outputs unchanged; no prototype rerun.",
+    "publication_authority": "This manifest and the reviews authorize no publication.",
+    "existing_canonical_reference": "One explicitly whitelisted byte-identical public pure arithmetic module with its source provenance; no operational source or account dependency."
+  },
+  "original_clean_reproduction": {
+    "actual_fills_added": 0,
+    "archive_manifest_sha256": "cd946769d5fd8584e423aa8b55781b931ff915d5afa6f48ae38e28d40a7f8388",
+    "completed_at_utc": "2026-10-09T01:15:49.616247+00:00",
+    "copied_outputs_changed_as_expected": [
+      {
+        "original_sha256": "95511700b8ac8efdeeea6e49c8b28a9787afea3aee99232fe8d2eb47736edcb5",
+        "packaging_rerun_sha256": "befe03426ed5ad1367c9f5a45862edb1cd2f4ac21fd02462886080189bf90c2c",
+        "path": "gamma/verification/FINAL_REPRODUCTION_RECEIPT_V1.json"
+      },
+      {
+        "original_sha256": "1fcbf1ed54a9d3709f739d0b3d5a8c3ed58b4dd5fa9f92331d6add842867a2c1",
+        "packaging_rerun_sha256": "af618c33cfda5a7b33af77690b7d33ef5a5e8efcedd48c6606bf9e89704edf3b",
+        "path": "gamma/verification/independent_tests.stderr.txt"
+      },
+      {
+        "original_sha256": "32976dc7814d6df1e6ef1e45874e7dfa022e8a1fb757f5a4076860cc05cc8579",
+        "packaging_rerun_sha256": "4995a310232e8e66a7ab2d12d95a08f2139389a99df0167406d53542de354a50",
+        "path": "gamma/verification/main_tests.stderr.txt"
+      },
+      {
+        "original_sha256": "c5eb5f5335b531091773a202af01b8c5f4048940e2f3f7dd5c6b548ba19c176e",
+        "packaging_rerun_sha256": "efe18f08e91e7ed39b142c847b678b3d9b7641d7a44838c86d6ab41f888d8fae",
+        "path": "harvester/evidence/final_run_receipt.json"
+      },
+      {
+        "original_sha256": "a4e2d44b6e643a858968eab4d616661cadd04290fa722af940b9e5d66f925bca",
+        "packaging_rerun_sha256": "e59ab993475c8c8f546ede441cf57cd12a034e373c6cbd0b726aed841da03bbb",
+        "path": "harvester/evidence/unit_tests_final.log"
+      }
+    ],
+    "dependencies": {
+      "installation_or_download_performed": false,
+      "node": "v24.19.0",
+      "python": "3.12.14"
+    },
+    "independent_validation_samples_added": 0,
+    "market_observations_added": 0,
+    "missing_dependency_policy": "FAIL; no silent skipping or automatic installation",
+    "original_archive_unchanged": true,
+    "original_source_files_checked_unchanged": 95,
+    "original_sources_unchanged": true,
+    "parent_review_status": "PENDING",
+    "pre_run_manifest_verification": {
+      "market_observations_added": 0,
+      "passed": true,
+      "purpose": "packaging_integrity_only",
+      "verified_files": 95
+    },
+    "production_or_broker_actions": false,
+    "public_log_policy": "Raw packaging stdout may contain temporary extraction paths and is excluded from the public package and receipt.",
+    "publication_performed": false,
+    "research_counts_must_not_be_added_to_packaging_reruns": true,
+    "runs": [
+      {
+        "command": [
+          "python3",
+          "verify_reproduce.py"
+        ],
+        "cwd": "gamma",
+        "deterministic_output_matches": {
+          "synthetic_decision_v1.json": true,
+          "synthetic_results_v1.json": true
+        },
+        "duration_seconds": 0.5901,
+        "entrypoint_invocations": 1,
+        "exit_code": 0,
+        "family": "gamma",
+        "market_observations_added": 0,
+        "original_research_counts_unchanged": true,
+        "purpose": "PACKAGING_INTEGRITY_REPRODUCTION_NOT_NEW_RESEARCH_EVIDENCE",
+        "reproduced_existing_test_methods": {
+          "developer": 62,
+          "independent": 33
+        },
+        "statistical_observations_added": 0
+      },
+      {
+        "command": [
+          "python3",
+          "reproduce_v1.py"
+        ],
+        "cwd": "volatility",
+        "deterministic_output_matches": {
+          "contracts_v1.json": true,
+          "fixture_inputs_v1.json": true,
+          "lifecycle_diagnostics_v1.json": true,
+          "synthetic_nomination_receipts_v1.json": true
+        },
+        "duration_seconds": 0.1757,
+        "entrypoint_invocations": 1,
+        "exit_code": 0,
+        "family": "volatility",
+        "market_observations_added": 0,
+        "original_research_counts_unchanged": true,
+        "purpose": "PACKAGING_INTEGRITY_REPRODUCTION_NOT_NEW_RESEARCH_EVIDENCE",
+        "reproduced_existing_test_methods": {
+          "developer": 70,
+          "independent": 33
+        },
+        "reproduced_invented_scenarios": 8,
+        "reproduced_nomination_rows": 80,
+        "statistical_observations_added": 0
+      },
+      {
+        "branch_decisions": {
+          "base": "CSP",
+          "caution": "PUT_CREDIT_SPREAD",
+          "unknown_events": "WAIT"
+        },
+        "command": [
+          "python3",
+          "reproduce.py"
+        ],
+        "cwd": "harvester",
+        "deterministic_output_matches": {
+          "evidence/base_synthetic_result.json": true,
+          "evidence/caution_synthetic_result.json": true,
+          "evidence/payoff_grid_receipt.json": true,
+          "evidence/unknown_events_synthetic_result.json": true,
+          "fixtures/base_synthetic.json": true,
+          "fixtures/caution_synthetic.json": true,
+          "fixtures/unknown_events_synthetic.json": true
+        },
+        "duration_seconds": 8.4843,
+        "entrypoint_invocations": 1,
+        "exit_code": 0,
+        "family": "harvester",
+        "market_observations_added": 0,
+        "original_research_counts_unchanged": true,
+        "prior_independent_randomized_cases": 200,
+        "prior_independent_review_methods": 19,
+        "purpose": "PACKAGING_INTEGRITY_REPRODUCTION_NOT_NEW_RESEARCH_EVIDENCE",
+        "reproduced_existing_test_methods": {
+          "developer": 94,
+          "independent_reviewer_harness_not_rerun_by_packaging": true
+        },
+        "reproduced_grid_checks": 620,
+        "reproduced_grid_rows": 310,
+        "statistical_observations_added": 0
+      }
+    ],
+    "schema": "new_bot_research.packaging_reproduction.v1",
+    "status": "PASS_CLEAN_EXTRACTION_THREE_ENTRYPOINTS_ONCE",
+    "zip": "NEW_BOT_OFFLINE_RESEARCH_PACKAGE_2026-10-09.zip",
+    "zip_bytes": 232644,
+    "zip_sha256": "a662ba48a738ac901b8be92c4809b8b0da44f2e850f08c0c639c569a62e134bf"
+  },
+  "docs_only_revision_continuity": {
+    "all_executable_code_and_test_files_byte_identical": true,
+    "all_fixture_and_generated_financial_outputs_byte_identical": true,
+    "archive_files": 96,
+    "changed_files": [
+      {
+        "current_sha256": "e242153fc3ffc5ca4d5c3fb170ca7382c8ee052ef16ca8c728db23addf588bb3",
+        "path": "MANIFEST_SHA256.json",
+        "previous_sha256": "cd946769d5fd8584e423aa8b55781b931ff915d5afa6f48ae38e28d40a7f8388"
+      },
+      {
+        "current_sha256": "13c2e2b0fa65b31a58b3940c178b8c523712c842cb0238892715ad43fe2e1c23",
+        "path": "NEW_BOT_RESEARCH_OVERVIEW.md",
+        "previous_sha256": "3112698d29f0b2ae571aa32e73d4a623a025491b9136e6195873a34e7ba1a117"
+      },
+      {
+        "current_sha256": "bd7faaada995f78dd2f10242d226d41b745ca88647e434318c6b8b480fa06447",
+        "path": "README.md",
+        "previous_sha256": "0712a434e9854fb56dbd23d98337f91920ec30e445efbbc4911a6ef82f2d5527"
+      },
+      {
+        "current_sha256": "b8fb60475f1bda4144bff997111a3493622e17a9872550f5c7245bf46c87877c",
+        "path": "harvester/FINAL_MANIFEST_v0.1.1.json",
+        "previous_sha256": "592dbb8cf27546584d3cdd7c5c3999b58beb1f85f4ad254dd103549283a57624"
+      },
+      {
+        "current_sha256": "ec5606cb82bb5aa71a710cc25e25a1120af60f7f7f2235b7fc8f9d2537b27111",
+        "path": "harvester/STRATEGY_CONTRACT_v0.1.1.md",
+        "previous_sha256": "33be04c07b23b19569f85189670744c79e5a650d9e97785046a84989d857c24f"
+      },
+      {
+        "current_sha256": "47d47c7a0296b29c2856e70b47f6fbb7ffa8f64cfd1e84642ac9dbadb7b9e670",
+        "path": "review/cross_family/INTERFACE_AND_CLAIMS_REVIEW.md",
+        "previous_sha256": "2de84fbc7abb956337359168d034e7f6d7a2121663481aa124ef83ae4cf4d303"
+      },
+      {
+        "current_sha256": "c359f8c7b0b9c6a1da6b4e9871f18856728bec8832617457e5dec16065309161",
+        "path": "review/cross_family/REVIEW_MANIFEST.json",
+        "previous_sha256": "c58aa589413d4b8f87f3d61e89cb989077b170314f57c60a1be04b64edb52481"
+      },
+      {
+        "current_sha256": "d08eae4174776364803629cd341d106a9f6d8e8d08b075abc87076392a134fc0",
+        "path": "review/cross_family/manifest_integrity.json",
+        "previous_sha256": "8729d1138fdd38d91067606bac5edc97e58a763054d3931ff5604d9229de998c"
+      },
+      {
+        "current_sha256": "9f359b4de1273a51e88ed8ba2a36f00bfc5504510f6f7d7e5af0adc7852d6e8c",
+        "path": "review/harvester/FINAL_REVIEW.md",
+        "previous_sha256": "d3ccde87ce95ab6b01bab84b020bdfebdb7de155c9956c5564b1ee1ea0331788"
+      },
+      {
+        "current_sha256": "3b28763464d59bb8528ca2055600259fdb0f687f847d035d0fc90d87f198bf61",
+        "path": "review/harvester/FINAL_REVIEW_RECEIPT.json",
+        "previous_sha256": "a092e288f3106297059b4203443840ae1cb85ed667cc3f331a3723d2d181ad40"
+      }
+    ],
+    "completed_at_utc": "2026-10-09T01:20:39.362431+00:00",
+    "correction": "252 denotes trading sessions per year for annualization of EWMA daily-return variance, not252 observed sessions or a forecast horizon. The prototype uses a65-session input window and initializes from20 returns. Comparison to30-calendar-day ATM IV remains unmatched.",
+    "current_archive_manifest_sha256": "e242153fc3ffc5ca4d5c3fb170ca7382c8ee052ef16ca8c728db23addf588bb3",
+    "current_source_input_files_exact": 95,
+    "current_zip": {
+      "bytes": 233834,
+      "path": "NEW_BOT_OFFLINE_RESEARCH_PACKAGE_2026-10-09_v2.zip",
+      "sha256": "d4ff103e30f51ff1361cca37d1a95c70109881d7f1bbb53ea196bfc77d21f583"
+    },
+    "exact_extraction_manifest_verification": {
+      "market_observations_added": 0,
+      "passed": true,
+      "purpose": "packaging_integrity_only",
+      "verified_files": 95
+    },
+    "market_observations_added": 0,
+    "new_prototype_or_test_executions": 0,
+    "original_single_run_receipt": {
+      "path": "PACKAGING_REPRODUCTION_RECEIPT.json",
+      "sha256": "b7b70acbbd0b3db62ade366862e26004542ff6fea60e3c78e45d0d175679657d",
+      "status": "PASS_CLEAN_EXTRACTION_THREE_ENTRYPOINTS_ONCE"
+    },
+    "parent_review_pending": true,
+    "publication_performed": false,
+    "review_history": "Original frozen test evidence keeps the earlier documentation hash; amended reviewer receipts identify the current prose and exact unchanged executable source. No retrospective relabeling of executed tests.",
+    "same_archive_inventory": true,
+    "schema": "new_bot_research.docs_revision_continuity.v2",
+    "statistical_evidence_added": 0,
+    "status": "PASS_DOCS_ONLY_CONTINUITY_AND_EXACT_EXTRACTION",
+    "superseded_zip": {
+      "do_not_publish": true,
+      "path": "NEW_BOT_OFFLINE_RESEARCH_PACKAGE_2026-10-09.zip",
+      "retain_for_evidence": true,
+      "sha256": "a662ba48a738ac901b8be92c4809b8b0da44f2e850f08c0c639c569a62e134bf"
+    },
+    "unchanged_executable_files": [
+      "gamma/gamma_research.py",
+      "gamma/independent_review/test_independent_gamma.py",
+      "gamma/run_research.py",
+      "gamma/synthetic_fixture.py",
+      "gamma/test_gamma_research.py",
+      "gamma/verify_reproduce.py",
+      "harvester/canonical_bridge.mjs",
+      "harvester/harvester.py",
+      "harvester/make_fixtures.py",
+      "harvester/reproduce.py",
+      "harvester/test_harvester.py",
+      "harvester/vendor/canonical-strategy-economics.ts",
+      "review/harvester/review_regressions.py",
+      "verify_package_manifest.py",
+      "volatility/reproduce_v1.py",
+      "volatility/review_adversarial_v1.py",
+      "volatility/test_volatility_v1.py",
+      "volatility/volatility_prototype_v1.py"
+    ],
+    "unchanged_files": 86,
+    "unchanged_fixture_and_output_files": [
+      "gamma/independent_review/synthetic_demo_rerun.json",
+      "gamma/synthetic_decision_v1.json",
+      "gamma/synthetic_fixture.py",
+      "gamma/synthetic_input_v1.json",
+      "gamma/synthetic_results_v1.json",
+      "gamma/verification/reproduced_synthetic_decision.json",
+      "gamma/verification/reproduced_synthetic_results.json",
+      "harvester/evidence/base_synthetic_result.json",
+      "harvester/evidence/caution_synthetic_result.json",
+      "harvester/evidence/payoff_grid_receipt.json",
+      "harvester/evidence/unknown_events_synthetic_result.json",
+      "harvester/fixtures/base_synthetic.json",
+      "harvester/fixtures/caution_synthetic.json",
+      "harvester/fixtures/unknown_events_synthetic.json",
+      "volatility/contracts_v1.json",
+      "volatility/fixture_inputs_v1.json",
+      "volatility/lifecycle_diagnostics_v1.json",
+      "volatility/synthetic_nomination_receipts_v1.json"
+    ]
+  },
+  "files": [
+    {
+      "path": "NEW_BOT_ARCHIVE_REVIEW_2026-10-09.json",
+      "bytes": 3451,
+      "sha256": "66ab59394893915aa3142b3adfd5ae80af3dc2318530c42ab0beee8ca4d89926"
+    },
+    {
+      "path": "NEW_BOT_OFFLINE_RESEARCH_PACKAGE_2026-10-09_v2.zip",
+      "bytes": 233834,
+      "sha256": "d4ff103e30f51ff1361cca37d1a95c70109881d7f1bbb53ea196bfc77d21f583"
+    },
+    {
+      "path": "NEW_BOT_RESEARCH_OVERVIEW.md",
+      "bytes": 6769,
+      "sha256": "13c2e2b0fa65b31a58b3940c178b8c523712c842cb0238892715ad43fe2e1c23"
+    }
+  ]
+}
