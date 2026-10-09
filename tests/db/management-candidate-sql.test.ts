@@ -89,11 +89,12 @@ test('management candidate producer batches a real-shaped broker lattice into im
     const expiration=new Date(Date.now()+40*86_400_000).toISOString().slice(0,10);
     const oldExpiration=new Date(Date.now()+20*86_400_000).toISOString().slice(0,10);
     const symbol=`${underlying}${expiration.slice(2).replaceAll('-','')}P00195000`;
+    const currentSymbol=`${underlying}${oldExpiration.slice(2).replaceAll('-','')}P00200000`;
     const quoteTimestamp=new Date().toISOString();
     await pool.query(`INSERT INTO market.underlying(underlying_id,symbol,asset_type)
       VALUES($1,$2,'EQUITY')`,[underlyingId,underlying]);
     const subject={chainId:randomUUID(),underlyingId,underlying,lifecycleState:'CSP_OPEN',
-      currentContractSymbol:null,currentContractId:null,currentOptionType:'PUT' as const,
+      currentContractSymbol:currentSymbol,currentContractId:randomUUID(),currentOptionType:'PUT' as const,
       currentExpiration:oldExpiration,currentMultiplier:100,optionQuantity:1,stockShares:0};
     const fetchImpl=(async(input:RequestInfo|URL)=>{
       const path=new URL(input instanceof URL?input.toString():String(input)).pathname;
