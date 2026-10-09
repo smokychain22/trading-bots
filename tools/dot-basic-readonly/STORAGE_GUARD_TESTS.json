@@ -1,0 +1,51 @@
+{
+  "evidence": "LOCAL_STATIC_CONDITION_COMPARISON_NOT_GITHUB_EXECUTION",
+  "ci_only_three_storage_changes": true,
+  "all_existing_tests_commands_unchanged": true,
+  "main_v4_config_unchanged": true,
+  "vercel_only_exact_branch_suppressed": true,
+  "cases": [
+    {
+      "event": "push",
+      "ref": "refs/heads/main",
+      "head_ref": "",
+      "npm_cache": "npm",
+      "both_artifact_uploads_if_always": true
+    },
+    {
+      "event": "push",
+      "ref": "refs/heads/codex/theta-v4-integration",
+      "head_ref": "",
+      "npm_cache": "npm",
+      "both_artifact_uploads_if_always": true
+    },
+    {
+      "event": "push",
+      "ref": "refs/heads/codex/dot-basic-readonly-v1",
+      "head_ref": "",
+      "npm_cache": "",
+      "both_artifact_uploads_if_always": false
+    },
+    {
+      "event": "pull_request",
+      "ref": "refs/pull/999/merge",
+      "head_ref": "codex/dot-basic-readonly-v1",
+      "npm_cache": "",
+      "both_artifact_uploads_if_always": false
+    },
+    {
+      "event": "pull_request",
+      "ref": "refs/pull/998/merge",
+      "head_ref": "codex/theta-v4-integration",
+      "npm_cache": "npm",
+      "both_artifact_uploads_if_always": true
+    },
+    {
+      "event": "pull_request",
+      "ref": "refs/pull/997/merge",
+      "head_ref": "ordinary-feature",
+      "npm_cache": "npm",
+      "both_artifact_uploads_if_always": true
+    }
+  ]
+}
